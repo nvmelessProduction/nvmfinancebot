@@ -1,9 +1,13 @@
 """Configurazione dell'impianto, letta da variabili d'ambiente e dal file .env.
 
 Qui non c'e' nessuna logica di trading: solo i parametri di collegamento
-(broker, Telegram, webhook) e la modalita' operativa.
+(broker, Telegram, webhook), la modalita' operativa e le salvaguardie.
+
+Le salvaguardie NON decidono mai di operare: possono solo rifiutare. E'
+la differenza fra un interruttore di sicurezza e una strategia.
 """
 
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -40,6 +44,9 @@ class Impostazioni(BaseSettings):
     # Se uno dei due manca, il notificatore stampa a console invece di fallire.
     TELEGRAM_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
+    # Quante volte ritentare un messaggio prima di rinunciare. Telegram cade
+    # di rado ma cade, e una notifica persa in modalita' semi e' un'occasione persa.
+    TELEGRAM_TENTATIVI: int = 3
 
     # --- MetaTrader 5 (FP Markets) ------------------------------------------
     # Se MT5_LOGIN e' 0 si assume che il terminale sia gia' loggato a mano.
@@ -52,9 +59,50 @@ class Impostazioni(BaseSettings):
     # Identificativo numerico che il bot mette sugli ordini che apre lui,
     # per distinguerli da quelli aperti a mano nello stesso conto.
     MT5_MAGIC: int = 20260901
+    # Scarto massimo di prezzo tollerato sull'esecuzione, in punti.
+    MT5_DEVIAZIONE: int = 20
+
+    # =======================================================================
+    # SALVAGUARDIE
+    # Nessuna di queste apre posizioni: possono solo impedirne l'apertura.
+    # Mettere 0 disattiva il controllo.
+    # =======================================================================
+
+    # Interruttore di emergenza: se esiste un file con questo nome nella
+    # cartella del progetto, il bot non invia piu' ordini. Funziona anche a
+    # server avviato, basta creare il file. E' il freno a mano.
+    FILE_BLOCCO: str = "STOP"
+
+    # Un alert consegnato in ritardo (tunnel caduto, rete lenta, PC in affanno)
+    # descrive un prezzo che non esiste piu'. Oltre questo ritardo l'alert
+    # viene archiviato ma NON eseguito. 0 disattiva il controllo.
+    MAX_RITARDO_ALERT_SEC: int = 180
+
+    # Tetto anti-errore sul volume del singolo ordine. Non calcola la size:
+    # rifiuta e basta, se qualcuno chiede un volume fuori scala. 0 disattiva.
+    VOLUME_MASSIMO: float = 1.0
+
+    # Quante posizioni il bot puo' tenere aperte contemporaneamente.
+    # E' un limite di capienza dell'impianto, non una regola di portafoglio.
+    # 0 disattiva.
+    MAX_POSIZIONI_APERTE: int = 5
+
+    # --- Sorvegliante di stop e target --------------------------------------
+    # Sul broker non ci sono ordini pendenti: i livelli stanno in archivio e
+    # li sorveglia questo ciclo. Se lo spegni, stop e target non esistono.
+    SENTINELLA_ATTIVA: bool = True
+    SENTINELLA_INTERVALLO_SEC: float = 5.0
 
     # --- Archivio ------------------------------------------------------------
     DB_PATH: str = "bot.db"
+
+    # --- Diario di bordo -----------------------------------------------------
+    LOG_FILE: str = "bot.log"
+    LOG_LIVELLO: str = "INFO"
+    # Dimensione massima del file di log prima della rotazione, e quante
+    # copie storiche tenere.
+    LOG_MAX_BYTE: int = 5_000_000
+    LOG_COPIE: int = 5
 
     # --- Rete ----------------------------------------------------------------
     TIMEOUT_HTTP: float = 10.0
@@ -68,6 +116,16 @@ class Impostazioni(BaseSettings):
     def webhook_configurato(self) -> bool:
         """True se la parola segreta del webhook e' stata impostata."""
         return bool(self.WEBHOOK_SECRET.strip())
+
+    @property
+    def bloccato(self) -> bool:
+        """True se il freno a mano e' tirato (esiste il file di blocco).
+
+        Viene riletto a ogni chiamata di proposito: deve poter cambiare
+        mentre il server e' in funzione, senza riavviarlo.
+        """
+        nome = self.FILE_BLOCCO.strip()
+        return bool(nome) and os.path.exists(nome)
 
 
 @lru_cache(maxsize=1)

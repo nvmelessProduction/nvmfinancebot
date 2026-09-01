@@ -5,6 +5,8 @@ filo (TradingView manda `close`, non `chiusura`): grazie a `populate_by_name`
 entrambe le forme sono accettate in ingresso.
 """
 
+import hashlib
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,7 +15,22 @@ from pydantic import BaseModel, ConfigDict, Field
 Azione = Literal["NONE", "BUY", "SELL", "CLOSE"]
 
 # Esiti registrati in archivio per ogni decisione.
-Esito = Literal["ignorato", "simulato", "in_attesa_conferma", "eseguito", "errore"]
+#   ignorato            la strategia non ha chiesto nulla (azione NONE)
+#   simulato            dry_run: nessun ordine e' partito
+#   in_attesa_conferma  semi: notificato, aspetta il via libera umano
+#   eseguito            l'ordine e' andato a mercato
+#   errore              si doveva operare e non si e' riusciti
+#   bloccato            una salvaguardia ha impedito l'operazione
+#   duplicato           alert gia' ricevuto, non rivalutato
+Esito = Literal[
+    "ignorato",
+    "simulato",
+    "in_attesa_conferma",
+    "eseguito",
+    "errore",
+    "bloccato",
+    "duplicato",
+]
 
 
 class AlertIn(BaseModel):
@@ -37,6 +54,47 @@ class AlertIn(BaseModel):
     # Campi facoltativi.
     rsi: Optional[float] = None
     nota: Optional[str] = Field(default=None, alias="note")
+
+    def orario_candela(self) -> Optional[datetime]:
+        """Interpreta `chiusura_candela_utc` in modo tollerante.
+
+        TradingView puo' mandare ISO 8601 con la Z, con un fuso esplicito, o
+        senza fuso. Se il formato e' irriconoscibile restituiamo None: chi
+        chiama deve trattare "non lo so" come "non blocco nulla", perche' un
+        formato inatteso non e' un buon motivo per perdere un segnale.
+        """
+        testo = self.chiusura_candela_utc.strip()
+        if not testo:
+            return None
+        try:
+            momento = datetime.fromisoformat(testo.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        # Senza fuso esplicito assumiamo UTC: e' quello che chiede il campo.
+        if momento.tzinfo is None:
+            momento = momento.replace(tzinfo=timezone.utc)
+        return momento.astimezone(timezone.utc)
+
+    def ritardo_secondi(self, adesso: Optional[datetime] = None) -> Optional[float]:
+        """Quanti secondi sono passati dalla chiusura candela dichiarata.
+
+        None se l'orario non e' interpretabile. Puo' essere negativo se
+        l'orologio del PC e' indietro rispetto a quello di TradingView.
+        """
+        momento = self.orario_candela()
+        if momento is None:
+            return None
+        riferimento = adesso or datetime.now(timezone.utc)
+        return (riferimento - momento).total_seconds()
+
+    def impronta(self) -> str:
+        """Identita' dell'alert, per riconoscere le consegne doppie.
+
+        Stesso simbolo, stesso timeframe, stessa candela = stesso alert, anche
+        se arriva tre volte perche' il tunnel ha ritentato.
+        """
+        semi = f"{self.simbolo}|{self.tf}|{self.chiusura_candela_utc}"
+        return hashlib.sha256(semi.encode("utf-8")).hexdigest()[:32]
 
 
 class Decision(BaseModel):

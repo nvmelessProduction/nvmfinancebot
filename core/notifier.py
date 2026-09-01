@@ -4,12 +4,16 @@ Se token o chat_id non sono configurati il messaggio finisce a console:
 l'impianto deve poter girare anche senza Telegram.
 """
 
+import time
 from typing import Optional
 
 import httpx
 
 from core.config import impostazioni
+from core.log import diario
 from core.models import AlertIn, Decision
+
+log = diario("telegram")
 
 URL_BASE: str = "https://api.telegram.org/bot{token}/{metodo}"
 
@@ -20,45 +24,59 @@ def _url(metodo: str) -> str:
 
 
 def invia(testo: str) -> tuple[bool, str]:
-    """Invia un messaggio a Telegram.
+    """Invia un messaggio a Telegram, ritentando se la rete fa i capricci.
 
     Restituisce (riuscito, dettaglio). Se Telegram non e' configurato stampa
-    a console e restituisce (False, "telegram non configurato"): non e' un
+    a log e restituisce (False, "telegram non configurato"): non e' un
     errore fatale, e' una funzionalita' spenta.
+
+    Non solleva mai: una notifica persa non deve far cadere un ordine.
     """
     cfg = impostazioni()
     if not cfg.telegram_configurato:
-        print(f"[TELEGRAM NON CONFIGURATO] {testo}")
+        log.info("[telegram spento] %s", testo.replace("\n", " | "))
         return False, "telegram non configurato (manca TELEGRAM_TOKEN o TELEGRAM_CHAT_ID)"
 
-    try:
-        risposta = httpx.post(
-            _url("sendMessage"),
-            json={
-                "chat_id": cfg.TELEGRAM_CHAT_ID,
-                "text": testo,
-                "disable_web_page_preview": True,
-            },
-            timeout=cfg.TIMEOUT_HTTP,
-        )
-    except httpx.HTTPError as errore:
-        # Rete assente, DNS, timeout: lo diciamo, ma non facciamo cadere il bot.
-        dettaglio = f"errore di rete verso Telegram: {errore!r}"
-        print(f"[TELEGRAM KO] {dettaglio}")
-        return False, dettaglio
+    tentativi = max(1, cfg.TELEGRAM_TENTATIVI)
+    ultimo_dettaglio = ""
 
-    if risposta.status_code != 200:
-        dettaglio = f"Telegram ha risposto {risposta.status_code}: {risposta.text[:300]}"
-        print(f"[TELEGRAM KO] {dettaglio}")
-        return False, dettaglio
+    for tentativo in range(1, tentativi + 1):
+        try:
+            risposta = httpx.post(
+                _url("sendMessage"),
+                json={
+                    "chat_id": cfg.TELEGRAM_CHAT_ID,
+                    "text": testo,
+                    "disable_web_page_preview": True,
+                },
+                timeout=cfg.TIMEOUT_HTTP,
+            )
+        except httpx.HTTPError as errore:
+            ultimo_dettaglio = f"errore di rete verso Telegram: {errore!r}"
+        else:
+            if risposta.status_code == 200 and risposta.json().get("ok", False):
+                return True, "messaggio inviato"
+            if risposta.status_code == 429:
+                # Troppi messaggi: Telegram dice lui quanto aspettare.
+                attesa = int(risposta.json().get("parameters", {}).get("retry_after", 5))
+                ultimo_dettaglio = f"limite di frequenza, attendo {attesa}s"
+                log.warning(ultimo_dettaglio)
+                time.sleep(min(attesa, 30))
+                continue
+            if 400 <= risposta.status_code < 500:
+                # Token sbagliato o chat inesistente: ritentare non serve.
+                dettaglio = f"Telegram ha rifiutato ({risposta.status_code}): {risposta.text[:300]}"
+                log.error(dettaglio)
+                return False, dettaglio
+            ultimo_dettaglio = f"Telegram ha risposto {risposta.status_code}: {risposta.text[:200]}"
 
-    corpo = risposta.json()
-    if not corpo.get("ok", False):
-        dettaglio = f"Telegram ha rifiutato il messaggio: {corpo}"
-        print(f"[TELEGRAM KO] {dettaglio}")
-        return False, dettaglio
+        if tentativo < tentativi:
+            attesa = 2 ** (tentativo - 1)  # 1s, 2s, 4s...
+            log.warning("%s (tentativo %d/%d, riprovo fra %ds)", ultimo_dettaglio, tentativo, tentativi, attesa)
+            time.sleep(attesa)
 
-    return True, "messaggio inviato"
+    log.error("notifica non consegnata: %s", ultimo_dettaglio)
+    return False, ultimo_dettaglio
 
 
 def verifica_credenziali() -> tuple[bool, str]:

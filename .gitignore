@@ -1,0 +1,21 @@
+# Contiene la password del conto e il segreto del webhook: non deve mai
+# finire su git. Se lo perdi lo rifai dal .env.example; se lo pubblichi,
+# cambia subito segreto e password.
+.env
+
+# Archivio, diario di bordo e freno a mano: stato locale di questa macchina.
+bot.db
+bot.db-wal
+bot.db-shm
+*.log
+*.log.*
+STOP
+
+# Roba di Python e degli editor
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.vscode/
+.idea/

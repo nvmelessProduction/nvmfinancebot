@@ -3,21 +3,33 @@
 Regola dell'impianto: l'alert va scritto qui *prima* di qualunque altra cosa,
 cosi' se il resto della catena esplode il dato resta comunque.
 
-La parola segreta del webhook non viene mai scritta in archivio.
+Due proprieta' su cui si regge il resto:
+  - la parola segreta del webhook non viene mai scritta in archivio;
+  - ogni alert ha un'impronta unica, quindi una consegna doppia non puo'
+    diventare un ordine doppio.
 """
 
 import json
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
 
 from core.config import impostazioni
+from core.log import diario
 from core.models import AlertIn, Decision, Esito
+
+log = diario("archivio")
+
+# Serializza le scritture: SQLite regge piu' lettori ma un solo scrittore, e
+# webhook e sentinella scrivono da thread diversi.
+_lucchetto_scrittura = threading.Lock()
 
 SCHEMA: str = """
 CREATE TABLE IF NOT EXISTS alert (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    impronta                TEXT    NOT NULL,
     ricevuto_utc            TEXT    NOT NULL,
     simbolo                 TEXT    NOT NULL,
     tf                      TEXT    NOT NULL,
@@ -28,6 +40,7 @@ CREATE TABLE IF NOT EXISTS alert (
     chiusura                REAL    NOT NULL,
     rsi                     REAL,
     nota                    TEXT,
+    ritardo_sec             REAL,
     payload_json            TEXT    NOT NULL
 );
 
@@ -62,6 +75,12 @@ CREATE TABLE IF NOT EXISTS posizione (
     motivo_chiusura     TEXT
 );
 
+"""
+
+# Gli indici stanno a parte perche' vanno creati DOPO la migrazione: su un
+# archivio vecchio la colonna `impronta` non esiste ancora.
+INDICI: str = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_impronta ON alert(impronta);
 CREATE INDEX IF NOT EXISTS idx_alert_simbolo ON alert(simbolo);
 CREATE INDEX IF NOT EXISTS idx_decisione_alert ON decisione(alert_id);
 CREATE INDEX IF NOT EXISTS idx_posizione_stato ON posizione(stato);
@@ -74,15 +93,21 @@ def adesso_utc() -> str:
 
 
 @contextmanager
-def connessione() -> Iterator[sqlite3.Connection]:
+def connessione(scrittura: bool = False) -> Iterator[sqlite3.Connection]:
     """Apre una connessione per singola operazione e la chiude sempre.
 
     Una connessione per operazione evita i problemi di SQLite fra thread
-    diversi (FastAPI esegue gli endpoint sincroni in un threadpool).
+    diversi (FastAPI esegue gli endpoint sincroni in un threadpool, e la
+    sentinella gira in un thread suo).
     """
-    conn = sqlite3.connect(impostazioni().DB_PATH, timeout=10.0)
+    if scrittura:
+        _lucchetto_scrittura.acquire()
+    conn = sqlite3.connect(impostazioni().DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
     try:
+        # WAL: lettori e scrittore non si bloccano a vicenda.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
         yield conn
         conn.commit()
     except sqlite3.Error:
@@ -90,30 +115,75 @@ def connessione() -> Iterator[sqlite3.Connection]:
         raise
     finally:
         conn.close()
+        if scrittura:
+            _lucchetto_scrittura.release()
+
+
+def _migra(conn: sqlite3.Connection) -> None:
+    """Aggiunge le colonne nuove a un archivio creato da una versione precedente.
+
+    Nessuno strumento di migrazione: sono due colonne, si fa a mano e si
+    controlla prima se ci sono gia'.
+    """
+    colonne = {riga["name"] for riga in conn.execute("PRAGMA table_info(alert)")}
+    if not colonne:
+        return  # tabella non ancora creata: ci pensa lo SCHEMA
+    if "impronta" not in colonne:
+        log.warning("archivio da aggiornare: aggiungo alert.impronta")
+        conn.execute("ALTER TABLE alert ADD COLUMN impronta TEXT NOT NULL DEFAULT ''")
+        # Le righe vecchie non hanno impronta: gli diamo la loro chiave naturale
+        # cosi' l'indice unico non le rifiuta.
+        conn.execute(
+            "UPDATE alert SET impronta = 'vecchio-' || id WHERE impronta = ''"
+        )
+    if "ritardo_sec" not in colonne:
+        log.warning("archivio da aggiornare: aggiungo alert.ritardo_sec")
+        conn.execute("ALTER TABLE alert ADD COLUMN ritardo_sec REAL")
 
 
 def inizializza() -> None:
-    """Crea le tabelle se non esistono. Va chiamata all'avvio del server."""
-    with connessione() as conn:
+    """Crea o aggiorna le tabelle. Va chiamata all'avvio del server.
+
+    L'ordine conta: prima le tabelle, poi le colonne mancanti, poi gli indici.
+    Un indice su una colonna non ancora aggiunta fallirebbe.
+    """
+    with connessione(scrittura=True) as conn:
         conn.executescript(SCHEMA)
+        _migra(conn)
+        conn.executescript(INDICI)
 
 
-def salva_alert(alert: AlertIn) -> int:
-    """Scrive l'alert in archivio e restituisce il suo id.
+def salva_alert(alert: AlertIn) -> tuple[int, bool]:
+    """Scrive l'alert in archivio.
+
+    Restituisce (id, gia_visto). `gia_visto` e' True se lo stesso alert era
+    gia' arrivato: succede quando TradingView o il tunnel ritentano la
+    consegna, ed e' il motivo per cui esiste l'impronta. In quel caso non si
+    inserisce niente e si restituisce l'id della riga originale.
 
     Il payload completo viene conservato in JSON, ma senza il campo `secret`.
     """
     payload: dict[str, Any] = alert.model_dump(by_alias=True)
     payload.pop("secret", None)
-    with connessione() as conn:
+    impronta = alert.impronta()
+
+    with connessione(scrittura=True) as conn:
+        esistente = conn.execute(
+            "SELECT id FROM alert WHERE impronta = ?", (impronta,)
+        ).fetchone()
+        if esistente is not None:
+            return int(esistente["id"]), True
+
         cur = conn.execute(
             """
             INSERT INTO alert (
-                ricevuto_utc, simbolo, tf, chiusura_candela_utc,
-                apertura, massimo, minimo, chiusura, rsi, nota, payload_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                impronta, ricevuto_utc, simbolo, tf, chiusura_candela_utc,
+                apertura, massimo, minimo, chiusura, rsi, nota,
+                ritardo_sec, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                impronta,
                 adesso_utc(),
                 alert.simbolo,
                 alert.tf,
@@ -124,13 +194,15 @@ def salva_alert(alert: AlertIn) -> int:
                 alert.chiusura,
                 alert.rsi,
                 alert.nota,
+                alert.ritardo_secondi(),
                 json.dumps(payload, ensure_ascii=False),
             ),
         )
         id_alert = cur.lastrowid
+
     if id_alert is None:
         raise sqlite3.Error("inserimento alert non ha restituito un id")
-    return id_alert
+    return id_alert, False
 
 
 def salva_decisione(
@@ -141,7 +213,7 @@ def salva_decisione(
     ticket: Optional[int] = None,
 ) -> int:
     """Scrive la decisione presa per un alert, con il suo esito."""
-    with connessione() as conn:
+    with connessione(scrittura=True) as conn:
         cur = conn.execute(
             """
             INSERT INTO decisione (
@@ -180,10 +252,10 @@ def registra_posizione(
 ) -> int:
     """Annota una posizione aperta dal bot.
 
-    Serve al futuro sorvegliante di stop e target: sul broker non ci saranno
-    ordini pendenti, quindi la memoria dei livelli sta qui.
+    Serve alla sentinella: sul broker non ci sono ordini pendenti, quindi la
+    memoria dei livelli di stop e target vive solo qui.
     """
-    with connessione() as conn:
+    with connessione(scrittura=True) as conn:
         cur = conn.execute(
             """
             INSERT INTO posizione (
@@ -215,7 +287,7 @@ def chiudi_posizione(
     motivo_chiusura: str = "",
 ) -> None:
     """Segna come chiusa una posizione gia' registrata."""
-    with connessione() as conn:
+    with connessione(scrittura=True) as conn:
         conn.execute(
             """
             UPDATE posizione
@@ -223,7 +295,7 @@ def chiudi_posizione(
                    chiusa_utc = ?,
                    prezzo_uscita = ?,
                    motivo_chiusura = ?
-             WHERE id = ?
+             WHERE id = ? AND stato = 'aperta'
             """,
             (adesso_utc(), prezzo_uscita, motivo_chiusura, id_posizione),
         )
@@ -246,3 +318,19 @@ def conteggi() -> dict[str, int]:
             "decisione": conn.execute("SELECT COUNT(*) FROM decisione").fetchone()[0],
             "posizione": conn.execute("SELECT COUNT(*) FROM posizione").fetchone()[0],
         }
+
+
+def ultime_decisioni(quante: int = 5) -> list[dict[str, Any]]:
+    """Le ultime decisioni prese, per capire al volo cosa sta succedendo."""
+    with connessione() as conn:
+        righe = conn.execute(
+            """
+            SELECT d.id, d.creata_utc, a.simbolo, a.tf, d.azione, d.esito, d.dettaglio
+              FROM decisione d
+              JOIN alert a ON a.id = d.alert_id
+             ORDER BY d.id DESC
+             LIMIT ?
+            """,
+            (quante,),
+        ).fetchall()
+    return [dict(riga) for riga in righe]

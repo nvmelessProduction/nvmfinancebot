@@ -4,52 +4,84 @@ Due soli endpoint:
     POST /webhook   riceve l'alert, lo archivia, chiede una decisione
     GET  /salute    dice in che stato siamo
 
-La catena e' sempre la stessa: verifica del segreto -> salvataggio -> decisione
--> azione secondo la modalita'. La decisione oggi e' sempre "NONE" perche' la
-strategia e' ancora uno stub: vedi core/strategy.py.
+La catena e' sempre la stessa:
+
+    segreto -> archivio -> strategia -> salvaguardie -> azione -> archivio
+
+La decisione oggi e' sempre "NONE" perche' la strategia e' ancora uno stub
+(core/strategy.py). Tutto il resto della catena e' vero e funzionante: quando
+la strategia arrivera', non ci sara' altro da costruire.
 """
 
 import hmac
+import threading
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException
 
 from core import broker, notifier, storage
 from core.config import impostazioni
+from core.log import configura as configura_log
+from core.log import diario
 from core.models import AlertIn, Decision, Esito
+from core.sentinella import sentinella
 from core.strategy import valuta
+
+log = diario("server")
+
+# Una decisione per volta. Due alert simultanei che passano insieme il
+# controllo "quante posizioni ho aperte" aprirebbero una posizione di troppo.
+_lucchetto_decisione = threading.Lock()
 
 
 @asynccontextmanager
 async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
-    """Prepara l'archivio all'avvio e stacca il broker alla chiusura."""
+    """Prepara l'impianto all'avvio e lo smonta con ordine alla chiusura."""
+    configura_log()
     cfg = impostazioni()
     storage.inizializza()
-    print(f"[AVVIO] modalita' = {cfg.MODE}, archivio = {cfg.DB_PATH}")
+
+    log.info("=" * 60)
+    log.info("avvio impianto | modalita' %s | archivio %s", cfg.MODE, cfg.DB_PATH)
 
     if not cfg.webhook_configurato:
-        print("[AVVIO] ATTENZIONE: WEBHOOK_SECRET non impostato, /webhook rifiutera' tutto.")
+        log.error("WEBHOOK_SECRET non impostato: /webhook rifiutera' ogni richiesta")
     if not cfg.telegram_configurato:
-        print("[AVVIO] Telegram non configurato: le notifiche finiranno a console.")
+        log.warning("Telegram non configurato: le notifiche finiranno solo nel log")
+    if cfg.bloccato:
+        log.warning("freno a mano tirato: esiste il file %s, non partiranno ordini", cfg.FILE_BLOCCO)
 
     # In dry_run non tocchiamo il broker nemmeno per connetterci.
     if cfg.MODE != "dry_run":
-        ok, messaggio = broker.connetti()
-        print(f"[AVVIO] MT5: {'ok' if ok else 'KO'} - {messaggio}")
+        connesso, messaggio = broker.connetti()
+        log.info("MT5: %s - %s", "ok" if connesso else "KO", messaggio)
     else:
-        print("[AVVIO] MT5 non contattato (modalita' dry_run).")
+        log.info("MT5 non contattato (modalita' dry_run)")
+
+    # La sentinella serve se c'e' qualcosa da sorvegliare, adesso o fra poco.
+    aperte = storage.posizioni_aperte()
+    if aperte and cfg.MODE == "dry_run":
+        log.warning(
+            "ci sono %d posizioni aperte in archivio ma la modalita' e' dry_run: "
+            "le sorveglio comunque",
+            len(aperte),
+        )
+    if cfg.MODE != "dry_run" or aperte:
+        sentinella.avvia()
 
     yield
 
+    sentinella.ferma()
     broker.disconnetti()
-    print("[ARRESTO] impianto fermato.")
+    log.info("impianto fermato")
+    log.info("=" * 60)
 
 
 app = FastAPI(
     title="nvmfinancebot - impianto",
     description="Infrastruttura del bot. La strategia non e' ancora implementata.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=ciclo_di_vita,
 )
 
@@ -66,39 +98,101 @@ def _segreto_valido(segreto_ricevuto: str) -> bool:
     return hmac.compare_digest(segreto_ricevuto.encode("utf-8"), cfg.WEBHOOK_SECRET.encode("utf-8"))
 
 
+def salvaguardia_violata(alert: AlertIn, decisione: Decision) -> Optional[str]:
+    """Controlla le salvaguardie prima di operare davvero.
+
+    Restituisce il motivo del blocco, o None se si puo' procedere. Nessuna di
+    queste regole decide di aprire qualcosa: possono solo dire di no.
+    """
+    cfg = impostazioni()
+
+    # 1. Freno a mano: un file, per fermare tutto senza toccare la config.
+    if cfg.bloccato:
+        return f"freno a mano tirato (esiste il file {cfg.FILE_BLOCCO})"
+
+    # 2. Alert vecchio: descrive un prezzo che non c'e' piu'.
+    if cfg.MAX_RITARDO_ALERT_SEC > 0:
+        ritardo = alert.ritardo_secondi()
+        # None = orario non interpretabile: non blocchiamo per un formato
+        # strano, sarebbe il modo peggiore di perdere segnali buoni.
+        if ritardo is not None and ritardo > cfg.MAX_RITARDO_ALERT_SEC:
+            return (
+                f"alert vecchio di {ritardo:.0f}s "
+                f"(massimo {cfg.MAX_RITARDO_ALERT_SEC}s): prezzo non piu' attuale"
+            )
+
+    # 3. Tetto anti-errore sul volume. Non calcola la size: rifiuta e basta.
+    if cfg.VOLUME_MASSIMO > 0 and decisione.volume is not None:
+        if decisione.volume > cfg.VOLUME_MASSIMO:
+            return (
+                f"volume richiesto {decisione.volume} oltre il tetto "
+                f"VOLUME_MASSIMO={cfg.VOLUME_MASSIMO}"
+            )
+
+    # 4. Capienza dell'impianto: quante posizioni riusciamo a sorvegliare.
+    if cfg.MAX_POSIZIONI_APERTE > 0 and decisione.azione in ("BUY", "SELL"):
+        try:
+            aperte = len(storage.posizioni_aperte())
+        except Exception as errore:
+            # Se non sappiamo quante ne abbiamo, non ne apriamo altre.
+            return f"impossibile contare le posizioni aperte: {errore!r}"
+        if aperte >= cfg.MAX_POSIZIONI_APERTE:
+            return (
+                f"gia' {aperte} posizioni aperte, tetto "
+                f"MAX_POSIZIONI_APERTE={cfg.MAX_POSIZIONI_APERTE}"
+            )
+
+    # 5. La sentinella deve essere in piedi prima di aprire qualcosa: senza,
+    #    stop e target non li guarderebbe nessuno.
+    if decisione.azione in ("BUY", "SELL") and (decisione.sl is not None or decisione.tp is not None):
+        if not sentinella.attiva():
+            return "la sentinella non e' in funzione: stop e target non sarebbero sorvegliati"
+
+    return None
+
+
 def _esegui_decisione(
     alert: AlertIn,
     decisione: Decision,
     id_alert: int,
-) -> tuple[Esito, str, int | None]:
+) -> tuple[Esito, str, Optional[int], Optional[float]]:
     """Applica la decisione secondo la modalita' operativa.
 
-    Restituisce (esito, dettaglio, ticket). Non decide nulla di suo: si limita
-    a fare cio' che la decisione dice, o a fermarsi.
+    Restituisce (esito, dettaglio, ticket, prezzo). Non decide nulla di suo:
+    si limita a fare cio' che la decisione dice, o a fermarsi.
     """
     cfg = impostazioni()
     testo = notifier.messaggio_decisione(alert, decisione, cfg.MODE)
 
     # Nessuna azione richiesta: e' il caso normale finche' la strategia e' uno stub.
     if decisione.azione == "NONE":
-        print(f"[NESSUNA AZIONE] {testo}")
-        return "ignorato", "azione NONE: nessuna operazione", None
+        log.info("nessuna azione | %s %s", alert.simbolo, alert.tf)
+        return "ignorato", "azione NONE: nessuna operazione", None, None
+
+    blocco = salvaguardia_violata(alert, decisione)
 
     if cfg.MODE == "dry_run":
-        print(f"[SIMULAZIONE] {testo}")
-        return "simulato", "dry_run: nessun ordine inviato al broker", None
+        # In simulazione diciamo anche cosa *avrebbe* fermato l'ordine: e' il
+        # momento giusto per accorgersi che una salvaguardia e' troppo stretta.
+        nota = f" (in auto sarebbe stato bloccato: {blocco})" if blocco else ""
+        log.info("simulazione | %s", testo.replace("\n", " | "))
+        return "simulato", f"dry_run: nessun ordine inviato al broker{nota}", None, None
+
+    if blocco is not None:
+        log.warning("operazione bloccata: %s", blocco)
+        notifier.invia(f"{testo}\n\nBLOCCATO: {blocco}")
+        return "bloccato", blocco, None, None
 
     if cfg.MODE == "semi":
         inviato, dettaglio_telegram = notifier.invia(
             f"{testo}\n\nModalita' semi: serve la tua conferma manuale."
         )
-        return (
-            "in_attesa_conferma",
-            f"semi: in attesa di conferma manuale ({dettaglio_telegram})"
-            if not inviato
-            else "semi: in attesa di conferma manuale (notifica inviata)",
-            None,
+        dettaglio = (
+            "semi: in attesa di conferma manuale (notifica inviata)"
+            if inviato
+            else f"semi: in attesa di conferma manuale (NOTIFICA NON CONSEGNATA: {dettaglio_telegram})"
         )
+        return "in_attesa_conferma", dettaglio, None, None
 
     # --- modalita' auto: si opera davvero ---------------------------------
     if decisione.azione == "CLOSE":
@@ -106,13 +200,13 @@ def _esegui_decisione(
         # indicare quando esistera'. Per ora non abbiamo dove prenderlo.
         dettaglio = "auto: CLOSE non gestibile senza un ticket indicato dalla strategia"
         notifier.invia(f"{testo}\n\n{dettaglio}")
-        return "errore", dettaglio, None
+        return "errore", dettaglio, None, None
 
     if decisione.volume is None or decisione.volume <= 0:
         # Il volume lo decide la strategia, non l'impianto: senza, non si opera.
         dettaglio = "auto: volume non indicato dalla decisione, ordine non inviato"
         notifier.invia(f"{testo}\n\n{dettaglio}")
-        return "errore", dettaglio, None
+        return "errore", dettaglio, None, None
 
     esito_ordine = broker.invia_ordine(
         simbolo=alert.simbolo,
@@ -123,9 +217,9 @@ def _esegui_decisione(
     notifier.invia(f"{testo}\n\nesecuzione: {esito_ordine.messaggio}")
 
     if not esito_ordine.ok:
-        return "errore", f"auto: {esito_ordine.messaggio}", None
+        return "errore", f"auto: {esito_ordine.messaggio}", None, None
 
-    return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket
+    return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket, esito_ordine.prezzo
 
 
 @app.post("/webhook")
@@ -133,48 +227,76 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
     """Punto di ingresso degli alert TradingView."""
     # 1. Il segreto per primo: se non torna, non lasciamo traccia in archivio.
     if not _segreto_valido(alert.segreto):
+        log.warning("richiesta con segreto non valido su %s", alert.simbolo)
         raise HTTPException(status_code=401, detail="segreto non valido")
 
     # 2. Archiviazione prima di tutto il resto.
     try:
-        id_alert = storage.salva_alert(alert)
+        id_alert, gia_visto = storage.salva_alert(alert)
     except Exception as errore:
-        print(f"[ARCHIVIO KO] impossibile salvare l'alert: {errore!r}")
+        log.exception("impossibile salvare l'alert")
         raise HTTPException(status_code=500, detail="archiviazione dell'alert fallita") from errore
 
-    # 3. Decisione (oggi sempre NONE) e sua esecuzione secondo la modalita'.
+    # 3. Consegna doppia (TradingView o il tunnel che ritentano): l'alert e'
+    #    gia' stato valutato, rivalutarlo significherebbe raddoppiare l'ordine.
+    if gia_visto:
+        log.info("alert duplicato ignorato (id %s, %s %s)", id_alert, alert.simbolo, alert.tf)
+        return {
+            "ricevuto": True,
+            "alert_id": id_alert,
+            "decisione_id": None,
+            "azione": "NONE",
+            "esito": "duplicato",
+            "dettaglio": "alert gia' ricevuto in precedenza, non rivalutato",
+            "modalita": impostazioni().MODE,
+        }
+
+    # 4. Decisione ed esecuzione, una per volta.
     decisione = valuta(alert)
-    try:
-        esito, dettaglio, ticket = _esegui_decisione(alert, decisione, id_alert)
-    except Exception as errore:
-        # Qualunque imprevisto: la decisione va comunque registrata.
-        esito, dettaglio, ticket = "errore", f"eccezione durante l'esecuzione: {errore!r}", None
-        print(f"[ESECUZIONE KO] {dettaglio}")
-
-    # 4. Registrazione della decisione con il suo esito.
-    try:
-        id_decisione: int | None = storage.salva_decisione(
-            id_alert, decisione, esito, dettaglio, ticket
-        )
-    except Exception as errore:
-        print(f"[ARCHIVIO KO] impossibile salvare la decisione: {errore!r}")
-        id_decisione = None
-
-    # 5. Se in auto abbiamo davvero aperto qualcosa, lo annotiamo: i livelli
-    #    di stop e target vivranno qui, non sul broker.
-    if esito == "eseguito" and id_decisione is not None:
+    with _lucchetto_decisione:
         try:
-            storage.registra_posizione(
-                simbolo=alert.simbolo,
-                direzione=decisione.azione,
-                volume=float(decisione.volume or 0.0),
-                ticket=ticket,
-                decisione_id=id_decisione,
-                sl=decisione.sl,
-                tp=decisione.tp,
-            )
+            esito, dettaglio, ticket, prezzo = _esegui_decisione(alert, decisione, id_alert)
         except Exception as errore:
-            print(f"[ARCHIVIO KO] impossibile registrare la posizione: {errore!r}")
+            # Qualunque imprevisto: la decisione va comunque registrata.
+            esito, dettaglio, ticket, prezzo = (
+                "errore",
+                f"eccezione durante l'esecuzione: {errore!r}",
+                None,
+                None,
+            )
+            log.exception("esecuzione fallita")
+
+        # 5. Registrazione della decisione con il suo esito.
+        try:
+            id_decisione: Optional[int] = storage.salva_decisione(
+                id_alert, decisione, esito, dettaglio, ticket
+            )
+        except Exception:
+            log.exception("impossibile salvare la decisione")
+            id_decisione = None
+
+        # 6. Se abbiamo davvero aperto qualcosa lo annotiamo subito: da questo
+        #    momento la sentinella se ne fa carico. Se questa scrittura fallisce
+        #    la posizione resta sul broker senza sorveglianza: va gridato.
+        if esito == "eseguito":
+            try:
+                storage.registra_posizione(
+                    simbolo=alert.simbolo,
+                    direzione=decisione.azione,
+                    volume=float(decisione.volume or 0.0),
+                    ticket=ticket,
+                    decisione_id=id_decisione,
+                    prezzo_ingresso=prezzo,
+                    sl=decisione.sl,
+                    tp=decisione.tp,
+                )
+            except Exception as errore:
+                log.exception("posizione aperta ma NON registrata in archivio")
+                notifier.invia(
+                    f"ATTENZIONE: ordine eseguito (ticket {ticket}) ma non registrato "
+                    f"in archivio: {errore!r}\n"
+                    "Stop e target NON sono sorvegliati. Intervieni a mano su MT5."
+                )
 
     return {
         "ricevuto": True,
@@ -189,32 +311,46 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
 
 @app.get("/salute")
 def salute() -> dict[str, Any]:
-    """Stato dell'impianto: modalita', broker, equity, posizioni aperte."""
+    """Stato dell'impianto: modalita', broker, equity, posizioni, salvaguardie."""
     cfg = impostazioni()
     stato_broker = broker.stato()
     conto = stato_broker.get("conto")
 
     try:
         conteggi = storage.conteggi()
-        aperte_archivio: int | None = len(storage.posizioni_aperte())
+        aperte = storage.posizioni_aperte()
+        ultime = storage.ultime_decisioni(5)
         archivio_ok = True
-    except Exception as errore:
-        print(f"[ARCHIVIO KO] {errore!r}")
-        conteggi = {}
-        aperte_archivio = None
-        archivio_ok = False
+    except Exception:
+        log.exception("archivio non leggibile")
+        conteggi, aperte, ultime, archivio_ok = {}, [], [], False
+
+    # Il campanello d'allarme: posizioni aperte che nessuno sta guardando.
+    scoperte = bool(aperte) and not sentinella.attiva()
 
     return {
         "modalita": cfg.MODE,
         "mt5_disponibile": stato_broker["mt5_disponibile"],
         "mt5_connesso": stato_broker["connesso"],
+        "mt5_trading_permesso": stato_broker["trading_permesso"],
         "mt5_dettaglio": stato_broker["dettaglio"],
         "equity": conto["equity"] if conto else None,
+        "saldo": conto["saldo"] if conto else None,
         "valuta": conto["valuta"] if conto else None,
         "posizioni_aperte_broker": stato_broker["posizioni_aperte"],
-        "posizioni_aperte_archivio": aperte_archivio,
+        "posizioni_aperte_archivio": len(aperte) if archivio_ok else None,
+        "posizioni_scoperte": scoperte,
+        "sentinella": sentinella.stato(),
+        "salvaguardie": {
+            "freno_a_mano": cfg.bloccato,
+            "file_blocco": cfg.FILE_BLOCCO,
+            "max_ritardo_alert_sec": cfg.MAX_RITARDO_ALERT_SEC,
+            "volume_massimo": cfg.VOLUME_MASSIMO,
+            "max_posizioni_aperte": cfg.MAX_POSIZIONI_APERTE,
+        },
         "archivio_ok": archivio_ok,
         "conteggi": conteggi,
+        "ultime_decisioni": ultime,
         "telegram_configurato": cfg.telegram_configurato,
         "webhook_configurato": cfg.webhook_configurato,
     }
@@ -223,5 +359,6 @@ def salute() -> dict[str, Any]:
 if __name__ == "__main__":
     import uvicorn
 
+    configura_log()
     cfg = impostazioni()
-    uvicorn.run("main:app", host=cfg.HOST, port=cfg.PORT, reload=False)
+    uvicorn.run("main:app", host=cfg.HOST, port=cfg.PORT, reload=False, log_config=None)

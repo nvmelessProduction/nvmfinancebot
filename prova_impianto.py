@@ -18,8 +18,9 @@ from typing import Callable
 
 import httpx
 
-from core import broker, notifier
+from core import broker, notifier, storage
 from core.config import impostazioni
+from core.log import configura as configura_log
 
 # Segnaposto usati nella stampa.
 VERDE_OK = "OK     "
@@ -59,12 +60,25 @@ def prova_mt5() -> tuple[bool, str]:
 
     ok_posizioni, posizioni, messaggio_posizioni = broker.posizioni_broker()
     numero = len(posizioni) if ok_posizioni else "?"
-    return True, (
+
+    riga = (
         f"conto {conto['login']} su {conto['server']} | "
         f"equity {conto['equity']} {conto['valuta']} | "
         f"posizioni aperte: {numero}"
-        + ("" if ok_posizioni else f" ({messaggio_posizioni})")
     )
+    if not ok_posizioni:
+        riga += f" ({messaggio_posizioni})"
+
+    # Connettersi non basta: se "Algo Trading" e' spento gli ordini vengono
+    # rifiutati senza spiegazioni. Meglio scoprirlo adesso.
+    permesso, messaggio_permesso = broker.trading_permesso()
+    if not permesso:
+        return False, (
+            f"{riga}\n"
+            f"         connesso, ma NON si puo' operare: {messaggio_permesso}"
+        )
+
+    return True, f"{riga} | trading da programma permesso"
 
 
 # --------------------------------------------------------------------------
@@ -150,12 +164,27 @@ def prova_webhook() -> tuple[bool, str]:
 
     corpo = accettato.json()
     stato = risposta_salute.json()
-    return True, (
+
+    righe = [
         f"server vivo in modalita' {stato.get('modalita')} | "
         f"segreto sbagliato respinto con 401 | "
         f"alert accettato (id {corpo.get('alert_id')}), "
         f"azione {corpo.get('azione')}, esito {corpo.get('esito')}"
-    )
+    ]
+
+    # Stato reale della sorveglianza, non quello sperato.
+    sentinella = stato.get("sentinella", {})
+    if sentinella.get("attiva"):
+        righe.append(f"         sentinella in funzione ({sentinella.get('giri', 0)} giri finora)")
+    elif stato.get("posizioni_aperte_archivio"):
+        righe.append("         ATTENZIONE: ci sono posizioni aperte e la sentinella NON gira")
+    else:
+        righe.append("         sentinella ferma (niente da sorvegliare al momento)")
+
+    if stato.get("posizioni_scoperte"):
+        righe.append("         ALLARME: posizioni aperte senza nessuno che guardi stop e target")
+
+    return True, "\n".join(righe)
 
 
 # --------------------------------------------------------------------------
@@ -173,14 +202,56 @@ def esegui(nome: str, prova: Callable[[], tuple[bool, str]]) -> bool:
     return ok
 
 
+def quadro_operativo() -> None:
+    """Stampa lo stato delle salvaguardie: non e' una prova, e' un promemoria.
+
+    Sono le impostazioni che decidono se il bot puo' farti male. Vanno viste
+    ogni volta, non solo quando qualcosa si rompe.
+    """
+    cfg = impostazioni()
+    print("QUADRO OPERATIVO")
+
+    freno = "TIRATO (nessun ordine partira')" if cfg.bloccato else "libero"
+    print(f"         freno a mano (file {cfg.FILE_BLOCCO}): {freno}")
+    print(f"         alert piu' vecchi di {cfg.MAX_RITARDO_ALERT_SEC}s: non eseguiti"
+          if cfg.MAX_RITARDO_ALERT_SEC else "         controllo sul ritardo alert: DISATTIVATO")
+    print(f"         tetto volume per ordine: {cfg.VOLUME_MASSIMO}"
+          if cfg.VOLUME_MASSIMO else "         tetto sul volume: DISATTIVATO")
+    print(f"         massimo posizioni aperte: {cfg.MAX_POSIZIONI_APERTE}"
+          if cfg.MAX_POSIZIONI_APERTE else "         tetto sulle posizioni aperte: DISATTIVATO")
+
+    # Attenzione: qui si legge la configurazione, non lo stato reale del
+    # server. Lo stato vero lo riporta la prova 3, che interroga /salute.
+    if cfg.SENTINELLA_ATTIVA:
+        print(f"         sentinella stop/target: prevista ogni {cfg.SENTINELLA_INTERVALLO_SEC}s")
+    else:
+        print("         sentinella stop/target: DISATTIVATA in configurazione - "
+              "stop e target non sarebbero sorvegliati da nessuno")
+
+    try:
+        aperte = storage.posizioni_aperte()
+        if aperte:
+            print(f"         posizioni attualmente in archivio: {len(aperte)}")
+    except Exception as errore:
+        print(f"         archivio non leggibile: {errore!r}")
+
+    if cfg.MODE == "auto":
+        print()
+        print("         >>> MODALITA' AUTO: il bot puo' operare da solo. <<<")
+    print()
+
+
 def main() -> int:
     """Esegue le tre prove e riassume il risultato."""
+    configura_log()
     cfg = impostazioni()
     print("=" * 72)
     print("COLLAUDO IMPIANTO nvmfinancebot")
     print(f"modalita': {cfg.MODE}   archivio: {cfg.DB_PATH}   server: {indirizzo_base()}")
     print("=" * 72)
     print()
+
+    quadro_operativo()
 
     risultati = {
         "1. MetaTrader 5 (broker)": esegui("1. MetaTrader 5 (broker)", prova_mt5),
@@ -194,7 +265,13 @@ def main() -> int:
     for nome, ok in risultati.items():
         print(f"  {'OK    ' if ok else 'ERRORE'}  {nome}")
     passate = sum(1 for ok in risultati.values() if ok)
-    print(f"\n  {passate} collegamenti su 3 funzionanti.")
+    print(f"\n  {passate} collegamenti su {len(risultati)} funzionanti.")
+
+    if passate == len(risultati):
+        print("\n  Impianto in piedi. La strategia resta da scrivere:")
+        print("  finche' core/strategy.py restituisce NONE, non verra' aperto nulla.")
+    else:
+        print("\n  Sistema quello che e' in ERRORE prima di andare avanti.")
     print("=" * 72)
 
     return 0 if passate == len(risultati) else 1
