@@ -1,0 +1,10 @@
+# Dipendenze dell'impianto. Nient'altro: niente Docker, niente ORM, niente framework extra.
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+httpx>=0.27
+
+# MetaTrader5 esiste solo per Windows: il marcatore evita che pip fallisca
+# altrove. Su Linux/macOS il progetto si avvia lo stesso, con il broker spento.
+MetaTrader5>=5.0.45 ; sys_platform == "win32"
