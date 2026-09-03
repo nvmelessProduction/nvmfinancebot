@@ -1,6 +1,6 @@
 # 01_definizioni.md
 
-Versione: 1.6 — DEF-32 rivista: nessun ritardo fisso di esecuzione
+Versione: 1.8 — aggiunte DEF-46 (target per TF) e DEF-47 (size sul future)
 Data: 2026-08-11
 Stato: CHIUSO per tutto ciò che compete a questo file. I punti residui in
 sezione 9 appartengono ad altri documenti.
@@ -42,6 +42,35 @@ Nessun altro timeframe può essere citato da nessuna regola della strategia.
 
 Ordine gerarchico, dal più alto al più basso:
 `TF_12M > TF_6M > TF_3M > TF_1M > TF_1W > TF_1D > TF_H4 > TF_H1`
+
+### DEF-45 — Calcolo e sorveglianza
+
+Il sistema compie due attività di natura diversa, e il vincolo delle candele
+chiuse si applica solo alla prima.
+
+```
+CALCOLO      Determinare bias, gap, key level, CRT, target e livelli di stop.
+             Usa ESCLUSIVAMENTE candele chiuse (DEF-02, PRIN-11, ESCL-13).
+             Nessun calcolo avviene mai su una candela in formazione.
+
+SORVEGLIANZA Verificare se un livello GIÀ FISSATO da un calcolo precedente
+             è stato toccato dal prezzo.
+             Usa il prezzo scambiato, in continuo.
+```
+
+La sorveglianza non produce mai un livello nuovo: verifica soltanto il
+raggiungimento di livelli calcolati su candele chiuse. Per questo non viola il
+vincolo.
+
+Regole di sola sorveglianza: DEF-27 (livello consumato), DEF-29 (target
+raggiunto), DEF-34, RISK-12, GEST-04 (TP1 e break even), GEST-11.
+
+Regole di solo calcolo: tutte le altre.
+
+**DEF-38 appartiene al calcolo.** La presa di un key level si conferma
+esclusivamente **alla chiusura di candela**, non sul prezzo scambiato. Uno
+sfioramento intraday che non trova conferma alla chiusura non è una presa e non
+abilita alcuna ricerca di setup.
 
 ### DEF-02 — Candela chiusa e notazione
 
@@ -712,6 +741,18 @@ KL_min_TF = low[C1]
 KL_50_TF  = (high[C1] + low[C1]) / 2
 ```
 
+**Il livello del 50% è calcolabile su qualsiasi candela e qualsiasi
+timeframe.** Quando `TP1` (GEST-07) richiede il 50% della candela `N1`, si usa:
+
+```
+liv_50(candela) = (high[candela] + low[candela]) / 2
+```
+
+applicato a `N1` del timeframe su cui è nato il CRT, incluso `TF_H4` e
+`TF_H1`. È la stessa formula di `KL_50_TF`, applicata a una candela diversa:
+`KL_50_TF` si riferisce a `C1`, `TP1` si riferisce a `N1`. Non sono lo stesso
+valore e non vanno confusi.
+
 I key level si ricalcolano alla chiusura di ogni candela del rispettivo
 timeframe, e in nessun altro momento.
 
@@ -740,17 +781,22 @@ candele settimanali. Sono lo stesso prezzo, non due prezzi vicini.
 ### DEF-38 — Presa di un key level
 
 ```
-SE il prezzo scambiato supera KL_max_TF
+Alla chiusura di una candela sul timeframe del key level:
+
+SE high[C0] > KL_max_TF
 ALLORA KL_max_TF è PRESO_RIALZO
 
-SE il prezzo scambiato scende sotto KL_min_TF
+SE low[C0] < KL_min_TF
 ALLORA KL_min_TF è PRESO_RIBASSO
 
 ALTRIMENTI il key level non è preso
 ```
 
-La presa si verifica sul prezzo scambiato, non alla chiusura di candela. È la
-condizione che abilita la ricerca del setup (SETUP-01, SETUP-02).
+La presa si conferma **alla chiusura di candela**, mai sul prezzo scambiato
+(DEF-45). Un superamento intraday rientrato prima della chiusura non conta: il
+key level resta non preso e nessun setup viene cercato.
+
+È la condizione che abilita la ricerca del setup (SETUP-00, SETUP-02).
 
 ---
 
@@ -802,6 +848,74 @@ Frequenza di ricalcolo per timeframe: `TF_12M` una volta l'anno, `TF_6M` due,
 `TF_3M` quattro, `TF_1M` dodici, `TF_1W` a ogni chiusura settimanale, `TF_1D` a
 ogni chiusura giornaliera, `TF_H4` e `TF_H1` a ogni chiusura del rispettivo
 periodo.
+
+### DEF-46 — Target di un timeframe
+
+Ogni timeframe ha un proprio target, distinto dal target direzionale globale di
+DEF-22.
+
+```
+target_di(TF) = key level del timeframe IMMEDIATAMENTE SUPERIORE a TF,
+                nella direzione della bias di TF
+```
+
+| Timeframe | Target su |
+|---|---|
+| `TF_H1` | `TF_H4` |
+| `TF_H4` | `TF_1D` |
+| `TF_1D` | `TF_1W` |
+| `TF_1W` | `TF_1M` |
+| `TF_1M` | `TF_3M` |
+| `TF_3M` | `TF_6M` |
+| `TF_6M` | `TF_12M` |
+| `TF_12M` | vedi sotto |
+
+Direzione:
+```
+bias LONG  → target_di(TF) = KL_max del timeframe superiore
+bias SHORT → target_di(TF) = KL_min del timeframe superiore
+```
+
+`TF_H12` e `TF_H6` non compaiono: servono solo ai gap (DEF-31).
+
+```
+SE TF == TF_12M
+ALLORA target_di(TF_12M) = target direzionale globale (DEF-22)
+ALTRIMENTI si applica la tabella sopra
+```
+
+È questo il valore a cui si riferiscono SETUP-06 e SETUP-08 quando citano "il
+target di `tf_comando`".
+
+### DEF-47 — Calcolo della size sul future
+
+Regola che sostituisce il calcolo di RISK-03 nella parte che confrontava
+prezzi future e CFD.
+
+```
+Passo 1 — Sul FUTURE, calcola la distanza di stop in punti:
+          distanza_stop_future = |prezzo_riferimento_future - livello_stop_future|
+          dove prezzo_riferimento_future è la chiusura di N2 sul future
+
+Passo 2 — Converti la distanza in rischio percentuale usando il valore punto
+          dello strumento CFD:
+          size_lotti = (equity × rischio_operazione) / (distanza_stop_future × valore_punto)
+
+Passo 3 — Arrotonda per difetto al passo minimo del broker
+```
+
+Nessun prezzo CFD entra nel calcolo della distanza: la distanza è misurata
+interamente sul future. Il CFD interviene solo con `valore_punto`, che è un
+moltiplicatore monetario e non un prezzo.
+
+Su `USDJPY` e `USDCHF` la distanza si misura sul future `6J` e `6S`, di segno
+invertito rispetto al CFD (DEF-33). Il valore assoluto della distanza è
+invariante rispetto all'inversione di segno, quindi il calcolo resta valido.
+
+> **APERTO — vedi PA-62.** Il rapporto tra un punto di `6J` e un punto di
+> `USDJPY` non è uno a uno: i due strumenti hanno quotazione e moltiplicatore
+> diversi. Serve, per ciascuno dei sei strumenti, il fattore di conversione tra
+> punto future e punto CFD, da misurare una volta e inserire in tabella.
 
 ### DEF-22 — Target direzionale
 
@@ -882,6 +996,11 @@ eseguibile.
 | `gap_fase` | 1 aggressione, 2 reazione, 3 liquidazione, 4 continuazione | Calcolato dal server |
 | `dxy_close` | Chiusura DXY sulla candela valutata | TradingView |
 | `equity` | Equity attuale del conto | MT5 |
+| `valore_punto` | Valore monetario di 1 punto per 1 lotto, per strumento | MT5 |
+| `pnl_settimanale` | P&L chiuso della settimana corrente | MT5 |
+| `pnl_mensile` | P&L chiuso del mese corrente | MT5 |
+| `atr` | ATR(14) sul timeframe indicato, uso esclusivo GIUD-01 | Calcolato dal server |
+| `distanza_kl_gap` | Distanza tra key level e bordo del gap (GIUD-01) | Calcolato dal server |
 | `pnl_giornaliero` | P&L chiuso della giornata | MT5 |
 
 ---
@@ -915,6 +1034,12 @@ Universo: `XAUUSD`, `EURUSD`, `GBPUSD`, `AUDUSD`, `USDCHF`, `USDJPY`
 | PA-07 | Numero minimo di candele storiche perché un timeframe produca bias valida | CHIUSO in v0.3: `lookback` 5 anni, minimo 3 candele chiuse per timeframe (DEF-26) |
 | PA-08 | Simbolo DXY | CHIUSO in v1.4 (DEF-33): ICEUS sui TF alti, CAPITALCOM:DXY sui TF bassi |
 | PA-39 | Se la divergenza RSI debba restare statistica o diventare operativa | APERTO |
+| PA-56 | Presa del key level | CHIUSO in v1.8 (DEF-38, DEF-45): a candela chiusa |
+| PA-57 | Target di un timeframe | CHIUSO in v1.8 (DEF-46) |
+| PA-58 | Calcolo della size | CHIUSO in v1.8 (DEF-47): distanza misurata sul future |
+| PA-62 | Fattore di conversione tra punto future e punto CFD per ciascuno dei sei strumenti | APERTO — BLOCCANTE |
+| PA-59 | ATR in GIUD-01 | CHIUSO in v1.8: eccezione esplicita in ESCL-15, uso come sola unità di misura |
+| PA-60 | SETUP-14 usa i key level come target, mentre DEF-36 assegna ai key level l'ingresso e ai livelli strutturali (DEF-25) il target | APERTO |
 | PA-09 | Corrispondenza gap → timeframe di ingresso | CHIUSO in v0.3 (DEF-30) |
 | PA-10 | Strumento di analisi vs esecuzione | CHIUSO in v0.4 (DEF-32, DEF-33, DEF-34): analisi sempre su future CME, esecuzione su CFD FP Markets, nessuna conversione di prezzo |
 | PA-11 | Gestione del rollover dei contratti futures | CHIUSO in v0.5 (DEF-35): trattati come gap normali, nessun filtro |

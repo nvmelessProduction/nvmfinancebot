@@ -1,6 +1,6 @@
 # 03_setup.md
 
-Versione: 0.3 — bozza in revisione
+Versione: 0.4 — reintrodotta la tabella DXY come SETUP-19
 Data: 2026-08-12
 Stato: INCOMPLETO. Vedi sezione 9 (Punti aperti).
 
@@ -220,6 +220,42 @@ ALTRIMENTI le posizioni restano aperte
 Il target di `tf_comando` era il bersaglio dichiarato dell'operatività: una
 volta raggiunto, le posizioni che lo inseguivano non hanno più ragione di
 esistere.
+
+---
+
+### SETUP-19 — Direzione operativa dalla bias DXY
+
+Regola reintrodotta in v0.4. Era presente nella v0.1 con ID `SETUP-08` ed è
+andata persa nella riscrittura v0.2. L'ID `SETUP-08` è stato nel frattempo
+assegnato al reversal e non viene riciclato (ESCL-18): questa regola prende
+l'ID nuovo `SETUP-19`.
+
+Si applica esclusivamente a `EURUSD`, `GBPUSD`, `AUDUSD`, `USDCHF`, `USDJPY`.
+`XAUUSD` è escluso (PRIN-09).
+
+| `bias_comando` sul DXY | EURUSD | GBPUSD | AUDUSD | USDCHF | USDJPY |
+|---|---|---|---|---|---|
+| LONG | SELL | SELL | SELL | BUY | BUY |
+| SHORT | BUY | BUY | BUY | SELL | SELL |
+| NESSUNA | nessuna operazione su alcuna coppia |
+
+`bias_comando` sul DXY si calcola con SETUP-06 applicato al DXY (DEF-33).
+
+**Doppia trasformazione, da non confondere.** Questa tabella è espressa in
+direzioni **CFD**. L'analisi avviene sul future corrispondente, che per `6J` e
+`6S` ha segno invertito (DEF-33). Le due trasformazioni sono indipendenti e
+vanno applicate entrambe:
+
+```
+Passo 1 — bias_comando sul DXY  →  direzione CFD, da questa tabella
+Passo 2 — CRT sul future dello strumento  →  segno DEF-33 per convertire
+          la direzione rilevata sul future in direzione CFD
+Passo 3 — l'ingresso avviene solo se le due direzioni coincidono (RISK-05)
+```
+
+Esempio: DXY in bias LONG. Da questa tabella `USDJPY` va BUY. Sul future `6J`
+la direzione corrispondente è SELL, perché `6J` ha segno invertito. Quindi il
+CRT da cercare su `6J` è **short**, e produce un ordine **BUY** su `USDJPY`.
 
 ---
 

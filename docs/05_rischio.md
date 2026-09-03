@@ -1,6 +1,6 @@
 # 05_rischio.md
 
-Versione: 0.3 — bozza in revisione
+Versione: 0.5 — ridimensionamento e size sul future
 Data: 2026-08-12
 Stato: INCOMPLETO. Vedi sezione 7 (Punti aperti).
 
@@ -27,13 +27,46 @@ Si applica esclusivamente agli strumenti forex derivati dal DXY: `EURUSD`,
 
 Sia `n` il numero di posizioni che verrebbero aperte simultaneamente.
 
-| `n` | Rischio per ciascuna posizione | Rischio totale |
+```
+SE n == 1  ALLORA rischio_operazione = 1.00%
+SE n == 2  ALLORA rischio_operazione = 0.75%
+SE n >= 3  ALLORA rischio_operazione = 0.45%
+```
+
+**Ridimensionamento.** A ogni nuova apertura tutte le posizioni già aperte
+vengono ridimensionate al nuovo `rischio_operazione`, così che ciascuna rischi
+sempre la stessa percentuale.
+
+```
+SE viene aperta una nuova posizione e n cambia
+ALLORA ricalcola rischio_operazione
+       adegua il volume di TUTTE le posizioni aperte al nuovo valore
+ALTRIMENTI nessun effetto
+```
+
+| `n` | Rischio per posizione | Rischio totale |
 |---|---|---|
 | 1 | 1,00% | 1,00% |
 | 2 | 0,75% | 1,50% |
 | 3 | 0,45% | 1,35% |
 | 4 | 0,45% | 1,80% |
 | 5 | 0,45% | 2,25% |
+
+**Due conseguenze da conoscere.**
+
+La tabella non è monotona: passando da 2 a 3 posizioni il rischio totale scende
+da 1,50% a 1,35%. Aprire una terza posizione **riduce** l'esposizione
+complessiva. È una conseguenza voluta del ridimensionamento, ma va tenuta
+presente: non è il comportamento che ci si aspetta intuitivamente.
+
+Il ridimensionamento richiede di modificare il volume di posizioni già aperte.
+Su MT5 questo significa chiudere parzialmente una posizione in essere, con i
+costi di transazione relativi e senza garanzia di ottenere un volume esatto se
+il passo minimo del broker non lo consente.
+
+> **APERTO — vedi PA-63.** Va deciso cosa fare quando il ridimensionamento
+> produrrebbe un volume inferiore al passo minimo del broker, o quando la
+> chiusura parziale non è eseguibile.
 
 ```
 SE n == 1  ALLORA rischio_operazione = 1.00%
@@ -50,11 +83,18 @@ ridimensionate quando `n` cresce.
 
 ### RISK-03 — Calcolo della size
 
+Si applica DEF-47: la distanza di stop si misura **interamente sul future**.
+
 ```
-distanza_stop = |prezzo_ingresso - livello_stop|      (in punti dello strumento)
-valore_punto  = valore monetario di 1 punto per 1 lotto sullo strumento
-size_lotti    = (equity × rischio_operazione) / (distanza_stop × valore_punto)
+distanza_stop_future = |chiusura_N2_future - livello_stop_future|
+valore_punto         = valore monetario di 1 punto per 1 lotto sul CFD
+size_lotti = (equity × rischio_operazione) / (distanza_stop_future × valore_punto × k)
 ```
+
+dove `k` è il fattore di conversione tra punto future e punto CFD dello
+strumento (PA-62).
+
+Nessun prezzo CFD entra nel calcolo della distanza.
 
 SE `distanza_stop == 0`
 ALLORA il dato è incoerente: nessun ordine, si applica PRIN-99
@@ -287,6 +327,10 @@ visione settimanale, l'estremo opposto della candela `N1` settimanale.
 |---|---|---|
 | PA-32 | Scala del rischio | CHIUSO in v0.2 (RISK-02) |
 | PA-33 | Tetto di rischio aggregato di portafoglio, calcolato prima dell'apertura | ALTA |
+| PA-58 | Calcolo della size | CHIUSO in v0.5 (DEF-47) |
+| PA-62 | Fattore di conversione `k` punto future / punto CFD per i sei strumenti | CRITICA |
+| PA-61 | Ridimensionamento | CHIUSO in v0.5 (RISK-02): tutte le posizioni si adeguano |
+| PA-63 | Ridimensionamento non eseguibile per passo minimo del broker | ALTA |
 | PA-34 | Se il raggiungimento di un limite di perdita debba chiudere le posizioni aperte | MEDIA |
 | PA-35 | Conflitto stop broker vs future | CHIUSO in v0.2 (RISK-12): il future è l'unico riferimento, chiusura a mercato sul CFD |
 | PA-36 | Filtro news per `XAUUSD` | CHIUSO in v0.3 (RISK-13): tutte le news 3 stelle |

@@ -1,6 +1,6 @@
 # 04_gestione.md
 
-Versione: 0.2 — bozza in revisione
+Versione: 0.3 — GEST-01 corretta: il rapporto si calcola su TP1
 Data: 2026-08-12
 Stato: INCOMPLETO. Vedi sezione 6 (Punti aperti).
 
@@ -24,13 +24,24 @@ Il controllo si esegue prima dell'invio, sui prezzi effettivi al momento
 dell'ordine, non su quelli teorici alla chiusura di `N2`.
 
 ```
-target_iniziale = target_finale alla data dell'ingresso (SETUP-14),
-                  NON TP1
+target_iniziale = TP1  (GEST-07)
 ```
 
-Il rapporto si calcola sul target finale, non sul parziale. Il filtro esclude
-quindi i soli setup in cui lo stop è ampio rispetto alla distanza dal target
-finale, e lascia passare la maggior parte dei setup conformi.
+Il rapporto si calcola su **TP1**, non sul target finale. È la scelta più
+selettiva delle due: poiché `TP1` è il 50% del range di `N1` e lo stop
+aggressivo è l'estremo di `N2`, il filtro esclude i setup in cui la spike di
+`N2` è ampia rispetto al range di `N1`. Una manipolazione molto estesa allarga
+lo stop senza avvicinare il parziale, e il rapporto crolla.
+
+Esempio, caso short. `N1` con massimo 1100 e minimo 1000, quindi `TP1 = 1050`.
+
+| Massimo di `N2` | Chiusura di `N2` | Rischio | Rendimento | `rr` | Esito |
+|---|---|---|---|---|---|
+| 1110 | 1090 | 20 | 40 | 2,00 | ammesso |
+| 1120 | 1095 | 25 | 45 | 1,80 | ammesso |
+| 1150 | 1090 | 60 | 40 | 0,67 | escluso |
+
+`CTX-01` punto 5 è coerente con questa formulazione.
 
 ---
 

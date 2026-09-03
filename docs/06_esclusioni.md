@@ -70,8 +70,18 @@ ESCL-14  Mai usare un dato assente dal vocabolario di 01_definizioni.md.
          Se una regola richiede un dato non presente in quella tabella, la
          regola non è eseguibile.
 
-ESCL-15  Mai usare indicatori oltre l'RSI applicato ai gap, e limitatamente
-         alla registrazione della divergenza (DEF-44).
+ESCL-15  Mai usare indicatori per generare o filtrare segnali.
+         Due sole eccezioni, entrambe circoscritte:
+
+         a) RSI, applicato ai soli gap e limitatamente alla registrazione
+            della divergenza (DEF-44). Non modifica alcuna decisione.
+
+         b) ATR(14), ammesso ESCLUSIVAMENTE come unità di misura per
+            normalizzare distanze (GIUD-01, 07_casi.md §3.1).
+            L'ATR non può mai generare un segnale, filtrare un ingresso,
+            determinare uno stop né dimensionare una posizione.
+            Serve solo a esprimere una distanza in una scala confrontabile
+            tra strumenti e timeframe diversi.
 
 ESCL-16  Mai considerare un gap INVALIDATO come nuovamente valido.
 
