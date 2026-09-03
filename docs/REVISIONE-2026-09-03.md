@@ -19,6 +19,96 @@ Legenda della colonna *effetto*:
 
 ---
 
+# Stato dopo la revisione documenti del 2026-09-03
+
+Aggiornato dopo `01_definizioni.md` v1.8, `03_setup.md` v0.4, `04_gestione.md`
+v0.3, `05_rischio.md` v0.5, `06_esclusioni.md` (ESCL-15 riscritta).
+
+`00_principi.md`, `02_contesto.md` e `07_casi.md` non sono stati modificati.
+
+## Chiuse — 8 voci
+
+| REV | Come è stata chiusa |
+|---|---|
+| REV-04 | `DEF-47` + `RISK-03` v0.5: la distanza si misura interamente sul future. Resta `PA-62` (fattore `k`), che il documento stesso marca BLOCCANTE |
+| REV-05 | Vocabolario esteso: `valore_punto`, `pnl_settimanale`, `pnl_mensile`, `atr`, `distanza_kl_gap` |
+| REV-06 | `SETUP-19`, con l'ID nuovo invece di riciclare `SETUP-08` — corretto per `ESCL-18`. La nota sulla doppia trasformazione (tabella in direzioni CFD + segno `DEF-33` sul future) risolve anche il punto che non avevo sollevato |
+| REV-07 | `DEF-46`: `target_di(TF)` = key level del timeframe immediatamente superiore |
+| REV-09 | `DEF-45`: separazione CALCOLO / SORVEGLIANZA. Vedi però REV-43 |
+| REV-12 | `GEST-01` v0.3: `rr` su `TP1`, con la tabella di esempio che mostra l'effetto. `CTX-01` #5 diventa coerente |
+| REV-24 | `DEF-36`: aggiunta `liv_50(candela)`, applicabile a `N1` su qualsiasi timeframe |
+| REV-33 | Parzialmente: `ESCL-15` ammette l'ATR come sola unità di misura e il vocabolario lo contiene. Resta aperta la soglia `PA-44`, quindi `GIUD-01` non è ancora eseguibile — per un motivo invece di tre |
+
+## Nuove — 3 voci
+
+### REV-42 — `RISK-02` adesso dice sia sì sia no al ridimensionamento — BLOCCA
+
+La frase vecchia non è stata cancellata. Nella stessa regola convivono:
+
+> **Ridimensionamento.** A ogni nuova apertura **tutte** le posizioni già aperte
+> vengono ridimensionate al nuovo `rischio_operazione`.
+
+e, ventisei righe più sotto:
+
+> `n` si calcola al momento dell'invio dell'ordine [...] Le posizioni già aperte
+> **non** vengono ridimensionate quando `n` cresce.
+
+Il blocco `SE n == 1 / n == 2 / n >= 3` compare inoltre due volte, identico.
+
+La colonna "Rischio totale" della tabella è corretta **solo** nella lettura con
+ridimensionamento. Con l'altra restano validi i numeri di REV-01 e REV-02
+(2,65% per quattro posizioni, 13,25% per cinque strumenti). Finché la frase
+vecchia resta, non so quale delle due regole applicare — ed è la differenza fra
+un'esposizione massima di 1,80% e una di 2,65% per strumento.
+
+Nota: la non monotonia è ora dichiarata voluta, e va bene. Ma vale solo con il
+ridimensionamento: senza, non esiste proprio.
+
+### REV-43 — `DEF-43` ricade nel CALCOLO ma il suo testo parla di prezzo scambiato — BLOCCA
+
+`DEF-45` elenca come sorveglianza: `DEF-27`, `DEF-29`, `DEF-34`, `RISK-12`,
+`GEST-04`, `GEST-11`. E chiude con *"Regole di solo calcolo: tutte le altre"*.
+
+`DEF-43` non è nell'elenco, quindi è calcolo, quindi solo candele chiuse. Ma il
+suo testo dice tre volte *"il prezzo scambiato"* (entra, esce, rientra dalla
+zona) e *"`estremo_fase1` si aggiorna **in continuo** durante la fase 1"*.
+
+Non è un dettaglio: `gap_fase == 3` è la condizione di ingresso di `SETUP-09`.
+Valutare le fasi a tick o a candela chiusa cambia quando — e se — scatta.
+`DEF-43` va messo in una delle due liste, e se va nel calcolo il suo testo va
+riscritto.
+
+### REV-44 — La tabella DXY esiste ora in due posti, con contenuto diverso — FORMALE
+
+`SETUP-19` la reintroduce, ma la copia nel promemoria §8 di
+`01_definizioni.md` è rimasta, e le due non coincidono:
+
+| | Colonna `XAUUSD` | Riga `NESSUNA` |
+|---|---|---|
+| §8 promemoria | presente ("non derivata dal DXY") | assente |
+| `SETUP-19` | assente | presente |
+
+REV-40 diceva di rimuovere §8 **dopo** la migrazione. La migrazione è fatta:
+ora §8 va cancellato, o le due copie divergeranno.
+
+## Restano aperte — 30 voci
+
+Nessuna di queste è stata toccata da questo giro.
+
+**Bloccanti:** REV-03 (`XAUUSD` senza scala di rischio: `RISK-02` dice
+"esclusivamente forex", `RISK-06` dice "segue la scala di RISK-02"), REV-08
+(`PA-31`), REV-20 (`CTX-08` contro `CTX-10`), REV-21 (`PRIN-16` contro
+`SETUP-04`), REV-22 (`SETUP-05` con due condizioni diverse), REV-25 (`PA-60`),
+REV-26 ("conferma il pattern" non definito).
+
+**Cambiano i numeri:** REV-01 (dipende da REV-42), REV-02 (idem), REV-10, REV-11,
+REV-13, REV-14, REV-15, REV-16, REV-17, REV-18, REV-23, REV-27, REV-28, REV-29,
+REV-30, REV-31, REV-32.
+
+**Formali:** REV-19, REV-34, REV-35, REV-36, REV-37, REV-38, REV-39, REV-41.
+
+---
+
 ## 1. Aritmetica del rischio che non torna
 
 Li metto per primi perché non sono ambiguità di lettura: sono conti.
