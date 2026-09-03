@@ -1,6 +1,6 @@
 # 05_rischio.md
 
-Versione: 0.5 — ridimensionamento e size sul future
+Versione: 0.6 — sciolti i punti aperti di docs/DECISIONI-2026-09-03.md
 Data: 2026-08-12
 Stato: INCOMPLETO. Vedi sezione 7 (Punti aperti).
 
@@ -22,8 +22,17 @@ il saldo iniziale né il picco storico.
 
 ### RISK-02 — Rischio ridotto in caso di correlazione piena
 
-Si applica esclusivamente agli strumenti forex derivati dal DXY: `EURUSD`,
-`GBPUSD`, `AUDUSD`, `USDCHF`, `USDJPY`.
+Si applica a tutti gli strumenti di PRIN-08, contando `n` dentro il gruppo di
+correlazione (REV-03):
+
+- gruppo forex: `EURUSD`, `GBPUSD`, `AUDUSD`, `USDCHF`, `USDJPY`, correlati fra
+  loro perché derivano tutti dal DXY
+- gruppo `XAUUSD`: le posizioni multiple sullo stesso strumento sono correlate
+  in modo totale, essendo lo stesso strumento
+
+Fino alla v0.5 questa regola escludeva `XAUUSD`, che però RISK-06 include
+quando ammette quattro posizioni per strumento: quattro posizioni al rischio
+pieno di RISK-01 valgono il 4,00%, oltre il limite giornaliero di RISK-07.
 
 Sia `n` il numero di posizioni che verrebbero aperte simultaneamente.
 
@@ -68,18 +77,18 @@ il passo minimo del broker non lo consente.
 > produrrebbe un volume inferiore al passo minimo del broker, o quando la
 > chiusura parziale non è eseguibile.
 
-```
-SE n == 1  ALLORA rischio_operazione = 1.00%
-SE n == 2  ALLORA rischio_operazione = 0.75%
-SE n >= 3  ALLORA rischio_operazione = 0.45%
-```
-
 La stessa scala si applica sia alle posizioni su strumenti forex diversi
 (RISK-05) sia alle posizioni multiple sullo stesso strumento (RISK-06).
 
 `n` si calcola al momento dell'invio dell'ordine, contando le posizioni già
-aperte più quella in valutazione. Le posizioni già aperte non vengono
-ridimensionate quando `n` cresce.
+aperte più quella in valutazione, **dentro il gruppo di correlazione**: le
+cinque coppie forex formano un gruppo unico, `XAUUSD` un gruppo proprio
+(REV-03).
+
+La frase "Le posizioni già aperte non vengono ridimensionate quando `n` cresce"
+e la seconda copia del blocco di calcolo, presenti fino alla v0.5,
+contraddicevano il paragrafo "Ridimensionamento" qui sopra e sono state rimosse
+in v0.6 (REV-42).
 
 ### RISK-03 — Calcolo della size
 

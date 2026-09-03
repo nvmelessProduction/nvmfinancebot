@@ -23,6 +23,7 @@ Nessuna dipendenza esterna: questo modulo sta sotto tutto il resto.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from enum import Enum
 from typing import Any, Final, Optional
 
@@ -173,6 +174,32 @@ LIMITE_MENSILE: Final[float] = 0.10
 # Se l'arrotondamento produce zero, non si opera.
 ARROTONDAMENTO_SIZE_PER_DIFETTO: Final[bool] = True
 
+# DEF-47 come corretta in DECISIONI-2026-09-03 (PA-62).
+#
+# La distanza di stop si misura sul future in forma ADIMENSIONALE:
+#     r = |chiusura_N2_future - stop_future| / chiusura_N2_future
+# e si applica al prezzo CFD:
+#     distanza_cfd = r * prezzo_cfd_corrente
+#
+# Nessun prezzo future viene confrontato con un prezzo CFD (ESCL-12): `r` e'
+# un numero puro. Il fattore `k` costante previsto da DEF-47 non puo'
+# esistere per `6J` e `6S`, che quotano il reciproco del rispettivo CFD: la
+# derivata di 1/x non e' costante, quindi nessun `k` sarebbe corretto per piu'
+# di un istante.
+METODO_SIZE: Final[str] = "distanza_relativa"
+
+# GEST-04, buffer del break even (PA-46). Letto dallo spread al momento, non
+# fissato per strumento: uno spread cambia, un numero in tabella no.
+BUFFER_BE_MOLTIPLICATORE_SPREAD: Final[float] = 2.0
+
+# DEF-32 / CTX-05 come corrette (REV-14): nessun ritardo di esecuzione.
+RITARDO_ESECUZIONE_MINUTI: Final[int] = 0
+
+# PA-54: il calendario news e' un file locale, letto a ogni valutazione.
+# Se manca, e' vuoto o e' piu' vecchio di questa soglia, si applica PA-55.
+PERCORSO_CALENDARIO_NEWS: Final[str] = "dati/news.csv"
+ETA_MASSIMA_CALENDARIO_ORE: Final[int] = 24
+
 
 # ===========================================================================
 # 6. Contesto e calendario (02_contesto.md)
@@ -186,24 +213,102 @@ NEWS_IMPATTO_MINIMO_STELLE: Final[int] = 3
 # CTX-06 e DEF-32: latenza tollerata del solo dato DXY.
 LATENZA_DXY_MINUTI: Final[int] = 10
 
-# CTX-04. Valide per il 2026, verificate data per data. PA-53 chiede di
-# aggiornarle a inizio anno o di sostituirle con il calcolo automatico delle
-# festivita' USA a data mobile: quelle segnate MOBILE cambiano ogni anno.
-ANNO_DI_VALIDITA_FESTIVITA: Final[int] = 2026
-FESTIVITA_MERCATO: Final[dict[tuple[int, int], str]] = {
-    (1, 1): "Capodanno",
-    (1, 19): "Martin Luther King Day (MOBILE)",
-    (2, 16): "Presidents' Day (MOBILE)",
-    (4, 3): "Venerdi' Santo (MOBILE)",
-    (5, 25): "Memorial Day (MOBILE)",
-    (6, 19): "Juneteenth",
-    (7, 3): "Independence Day, osservato (MOBILE)",
-    (9, 7): "Labor Day (MOBILE)",
-    (11, 26): "Thanksgiving (MOBILE)",
-    (11, 27): "Giorno dopo Thanksgiving (MOBILE)",
-    (12, 24): "Vigilia di Natale",
-    (12, 25): "Natale",
-}
+# CTX-04, festivita' di mercato. PA-53 chiedeva se aggiornare la tabella ogni
+# anno o calcolarla: calcolata (vedi DECISIONI-2026-09-03, sezione Misure).
+# Sei date su dodici sono mobili, e una tabella fissa scade il 1 gennaio.
+
+
+def _pasqua(anno: int) -> date:
+    """Domenica di Pasqua, algoritmo gregoriano anonimo (computus)."""
+    a = anno % 19
+    b, c = divmod(anno, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    lu = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * lu) // 451
+    mese, giorno = divmod(h + lu - 7 * m + 114, 31)
+    return date(anno, mese, giorno + 1)
+
+
+def _nesimo(anno: int, mese: int, giorno_settimana: int, n: int) -> date:
+    """N-esimo giorno della settimana del mese. 0 = lunedi'."""
+    primo = date(anno, mese, 1)
+    scarto = (giorno_settimana - primo.weekday()) % 7
+    return primo + timedelta(days=scarto + 7 * (n - 1))
+
+
+def _ultimo(anno: int, mese: int, giorno_settimana: int) -> date:
+    """Ultimo giorno della settimana del mese. 0 = lunedi'."""
+    giorno = date(anno, mese, 28)
+    while (giorno + timedelta(days=7)).month == mese:
+        giorno += timedelta(days=7)
+    return giorno - timedelta(days=(giorno.weekday() - giorno_settimana) % 7)
+
+
+def _osservata(giorno: date) -> date:
+    """Festivita' a data fissa che cade nel fine settimana: si sposta.
+
+    Sabato -> venerdi' precedente, domenica -> lunedi' successivo. E' la
+    regola di osservanza degli exchange statunitensi.
+    """
+    if giorno.weekday() == 5:
+        return giorno - timedelta(days=1)
+    if giorno.weekday() == 6:
+        return giorno + timedelta(days=1)
+    return giorno
+
+
+def festivita_mercato(anno: int) -> dict[date, str]:
+    """Le chiusure di CTX-04, calcolate per l'anno richiesto.
+
+    Sono dodici voci, ma le **date distinte** possono essere undici: quando
+    Natale cade di sabato l'osservanza scivola al 24 dicembre e si sovrappone
+    alla Vigilia. In quel caso la data porta entrambe le etichette.
+
+    Un caso simile riguarda il Capodanno: se il 1 gennaio cade di sabato,
+    l'osservanza e' il 31 dicembre dell'anno **precedente**, quindi la data
+    restituita puo' cadere fuori da `anno`. Per sapere se un giorno qualsiasi
+    e' festivo usa `e_festivita()`, che tiene conto del confine.
+    """
+    pasqua = _pasqua(anno)
+    thanksgiving = _nesimo(anno, 11, 3, 4)          # 4 = giovedi'
+    voci: list[tuple[date, str]] = [
+        (_osservata(date(anno, 1, 1)), "Capodanno"),
+        (_nesimo(anno, 1, 0, 3), "Martin Luther King Day"),
+        (_nesimo(anno, 2, 0, 3), "Presidents' Day"),
+        (pasqua - timedelta(days=2), "Venerdi' Santo"),
+        (_ultimo(anno, 5, 0), "Memorial Day"),
+        (_osservata(date(anno, 6, 19)), "Juneteenth"),
+        (_osservata(date(anno, 7, 4)), "Independence Day"),
+        (_nesimo(anno, 9, 0, 1), "Labor Day"),
+        (thanksgiving, "Thanksgiving"),
+        (thanksgiving + timedelta(days=1), "Giorno dopo Thanksgiving"),
+        (date(anno, 12, 24), "Vigilia di Natale"),
+        (_osservata(date(anno, 12, 25)), "Natale"),
+    ]
+
+    calendario: dict[date, str] = {}
+    for giorno, nome in voci:
+        # Due festivita' sullo stesso giorno: il giorno resta uno, le ragioni
+        # sono due. Perderne una renderebbe illeggibile il motivo del blocco.
+        calendario[giorno] = f"{calendario[giorno]} / {nome}" if giorno in calendario else nome
+    return calendario
+
+
+def e_festivita(giorno: date) -> Optional[str]:
+    """Nome della festivita' se il giorno e' di chiusura, altrimenti None.
+
+    Interroga il calendario dell'anno del giorno e quello dell'anno dopo,
+    perche' l'osservanza del Capodanno puo' ricadere nel dicembre precedente.
+    """
+    for anno in (giorno.year, giorno.year + 1):
+        nome = festivita_mercato(anno).get(giorno)
+        if nome is not None:
+            return nome
+    return None
 
 
 # ===========================================================================
@@ -234,6 +339,22 @@ UNIVERSO: Final[dict[str, Strumento]] = {
     "USDCHF": Strumento("USDCHF", "6S", "CME", True, True),
     "USDJPY": Strumento("USDJPY", "6J", "CME", True, True),
 }
+
+# RISK-02 come corretta (REV-03): `n` si conta dentro il gruppo di
+# correlazione, non sull'intero portafoglio.
+GRUPPI_CORRELAZIONE: Final[dict[str, tuple[str, ...]]] = {
+    "forex_dxy": ("EURUSD", "GBPUSD", "AUDUSD", "USDCHF", "USDJPY"),
+    "oro": ("XAUUSD",),
+}
+
+
+def gruppo_di(strumento: str) -> str:
+    """Gruppo di correlazione a cui appartiene lo strumento (RISK-02, REV-03)."""
+    for nome, membri in GRUPPI_CORRELAZIONE.items():
+        if strumento in membri:
+            return nome
+    raise ValueError(f"strumento fuori da PRIN-08: {strumento}")
+
 
 # DEF-33: strumenti di sola analisi, mai operati.
 DXY_TF_ALTI: Final[str] = "ICEUS"          # future ICE, per TF_1D e superiori
@@ -408,7 +529,7 @@ PUNTI_APERTI: Final[dict[str, PuntoAperto]] = {
         "dice che ogni posizione segue la scala di RISK-02. Con RISK-01 "
         "secco, quattro posizioni sull'oro valgono il 4,00%.",
         bloccante=True,
-        letture=("scala_risk02", "rischio_pieno_risk01"),
+        letture=("per_gruppo_correlazione", "scala_risk02", "rischio_pieno_risk01"),
     ),
     "REV-43": PuntoAperto(
         "REV-43",
@@ -450,7 +571,7 @@ PUNTI_APERTI: Final[dict[str, PuntoAperto]] = {
         "'a seconda di quale abbia generato il contesto'. La regola che lo "
         "stabilisce non esiste.",
         bloccante=True,
-        letture=("gap", "key_level", "il_piu_alto_dei_due"),
+        letture=("dipende_dal_tipo_di_ingresso", "gap", "key_level"),
     ),
     "REV-29": PuntoAperto(
         "REV-29",
@@ -467,6 +588,7 @@ PUNTI_APERTI: Final[dict[str, PuntoAperto]] = {
         "estremo_fase1 e' interno alla zona, 'rientra' e 'supera' possono non "
         "essere simultaneamente vere.",
         bloccante=True,
+        letture=("uscita_lato_entrata_sequenziale",),
     ),
     "REV-31": PuntoAperto(
         "REV-31",
@@ -567,11 +689,11 @@ PUNTI_APERTI: Final[dict[str, PuntoAperto]] = {
         "Aggiornamento annuale del calendario festivita', o calcolo "
         "automatico delle festivita' USA a data mobile.",
         bloccante=False,
-        default=ANNO_DI_VALIDITA_FESTIVITA,
+        default="calcolate",
         motivo_default=(
-            "La tabella FESTIVITA_MERCATO e' corretta per il 2026, verificata "
-            "data per data. Il motore deve rifiutarsi di usarla in un anno "
-            "diverso invece di operare in giorni sbagliati."
+            "Calcolate da festivita_mercato(anno): sei date su dodici sono "
+            "mobili e una tabella fissa scade il 1 gennaio. Il calcolo e' "
+            "verificato contro la tabella 2026 scritta a mano in CTX-04."
         ),
     ),
     "PA-55": PuntoAperto(
@@ -627,13 +749,49 @@ PUNTI_APERTI: Final[dict[str, PuntoAperto]] = {
 # ===========================================================================
 
 SCELTE: dict[str, Any] = {
-    # Compila qui per sciogliere un punto aperto, con l'ID come chiave.
-    # Ogni voce va accompagnata da una riga di commento che dice su quale
-    # documento o decisione si basa, cosi' resta tracciabile.
-    #
-    # Esempi di forma, NON scelte fatte:
-    #   "REV-10": "completa",     # deciso il gg/mm: DEF-01 corretta, resta la completa
-    #   "PA-62": {"XAUUSD": 1.0, "EURUSD": 1.25, ...}
+    # Sciolti il 2026-09-03 su richiesta esplicita dell'autore.
+    # Il ragionamento di ciascuna sta in docs/DECISIONI-2026-09-03.md.
+    # Cambiare una riga qui cambia il comportamento del motore, e nient'altro.
+
+    # --- RICOSTRUZIONI: la risposta era nei documenti -------------------
+    "REV-10": "completa",                   # DEF-01, gerarchia residua rimossa
+    "REV-42": "ridimensiona",               # RISK-02 v0.6, frase residua rimossa
+    "REV-14": 0,                            # minuti; DEF-32 v1.6 + CTX-05
+    "REV-13": "solo_future",                # ESCL-12 + PREC-05
+    "REV-17": "unione",                     # PRIN-99 su due elenchi di divieti
+    "REV-18": "per_strumento",              # CTX-02 lo qualifica gia'
+    "REV-20": "ricalcola_prima",            # CTX-08 vieta l'attesa, non il calcolo
+    "REV-16": "sessione_eth",               # DEF-03 conseguenza vincolante
+    "REV-15": "con_h12_h6",                 # DEF-31 esplicita
+    "REV-11": "crt_vietato_su_h12_h6",      # SETUP-05 regola batte esempio
+    "REV-22": "due_tf_key_level",           # il blocco "Numero minimo" di SETUP-05
+    "REV-23": "C1",                         # con C0 DEF-38 sarebbe vacua
+    "REV-26": "crt_formato",                # "pattern" = CRT in 00_principi
+    "REV-27": "tf_piu_alto",                # DEF-13 passo 2 + PREC-02
+    "REV-28": "dipende_dal_tipo_di_ingresso",   # SETUP-09 vs SETUP-02
+    "REV-29": "polarita",                   # DEF-42 valuta il gap alla formazione
+    "REV-31": "tf_del_gap",                 # DEF-44 lo scrive come assegnazione
+    "REV-43": "sorveglianza_tick",          # fasi 1-3; la fase 4 resta calcolo
+    "PA-31": "rifiuto_semplice_senza_spike",    # il preambolo descriveva il forte
+    "PA-05": "setup06_senza_dxy",           # PRIN-09: una regola in meno
+    "PA-44": "tutto_categoria_c",           # regola di uscita di GIUD-01
+    "PA-47": "nessuna_azione",              # GEST-06 lo dice gia'
+    "PA-48": "ricalcola_target",            # modello di DEF-29
+    "PA-51": "scade_non_si_recupera",       # modello di SETUP-16
+    "PA-60": "nessun_conflitto_def46",      # DEF-46 formalizza i due target
+
+    # --- GIUDIZI: i documenti tacciono, la scelta e' mia ----------------
+    "REV-32": "0.05",                       # testo normativo, e piu' selettivo
+    "REV-03": "per_gruppo_correlazione",    # l'oro correla con se' stesso
+    "REV-30": "uscita_lato_entrata_sequenziale",   # il meno sicuro dei giudizi
+    "PA-15": "solo_statistica",             # un filtro senza criterio non e' tale
+    "PA-63": "non_aprire_la_nuova",         # RISK-11 + PRIN-99
+    "PA-46": 2.0,                           # moltiplicatore dello spread corrente
+    "PA-54": "file_locale",                 # dati/news.csv, nessuna rete
+
+    # --- MISURE: risolte leggendo, non decidendo ------------------------
+    "PA-62": "distanza_relativa",           # k costante non esiste per 6J e 6S
+    "PA-53": "calcolate",                   # festivita_mercato(anno)
 }
 
 
@@ -721,52 +879,66 @@ def soglia_corpo_indecisione() -> float:
 
 
 def rischio_per_posizione(n: int, strumento: str) -> float:
-    """Rischio per singola posizione secondo RISK-01, RISK-02 e RISK-06.
+    """Rischio per singola posizione (RISK-01, RISK-02, RISK-06).
 
-    Due punti contesi entrano qui: se XAUUSD segua la scala (REV-03) e se le
-    posizioni aperte vengano ridimensionate (REV-42). Il secondo non cambia
-    questo valore ma cambia l'esposizione totale, quindi va deciso prima che
-    il motore apra alcunche'.
+    `n` e' il numero di posizioni del **gruppo di correlazione** dello
+    strumento, contando quella in valutazione (REV-03). Le cinque coppie forex
+    formano un gruppo unico; XAUUSD un gruppo proprio.
     """
     if n < 1:
         raise ValueError(f"n deve essere almeno 1, ricevuto {n}")
     if strumento not in UNIVERSO:
         raise ValueError(f"strumento fuori da PRIN-08: {strumento}")
 
-    # REV-42 va sciolto comunque: senza, non so quale sia l'esposizione reale.
-    richiedi("REV-42")
+    # REV-42 decide se le posizioni aperte si adeguino: cambia l'esposizione
+    # totale anche quando non cambia questo valore.
+    if richiedi("REV-42") not in ("ridimensiona", "non_ridimensiona"):
+        raise PuntoApertoError(f"REV-42: lettura non riconosciuta: {richiedi('REV-42')!r}")
 
-    if not UNIVERSO[strumento].deriva_direzione_dal_dxy:
-        # XAUUSD: RISK-02 lo esclude, RISK-06 lo include.
-        scelta = richiedi("REV-03")
-        if scelta == "rischio_pieno_risk01":
-            return RISCHIO_BASE
-        if scelta != "scala_risk02":
-            raise PuntoApertoError(f"REV-03: lettura non riconosciuta: {scelta!r}")
+    scelta = richiedi("REV-03")
+    if scelta not in ("per_gruppo_correlazione", "scala_risk02", "rischio_pieno_risk01"):
+        raise PuntoApertoError(f"REV-03: lettura non riconosciuta: {scelta!r}")
+    if scelta == "rischio_pieno_risk01" and gruppo_di(strumento) == "oro":
+        # Lettura letterale di RISK-01: nessuna scala sull'oro.
+        return RISCHIO_BASE
 
     return SCALA_RISCHIO.get(n, SCALA_RISCHIO_DA_3_IN_SU)
 
 
-def fattore_conversione_punto(strumento: str) -> float:
-    """Fattore `k` fra punto future e punto CFD (DEF-47, RISK-03, PA-62)."""
-    tabella = richiedi("PA-62")
-    if strumento not in tabella:
-        raise PuntoApertoError(
-            f"PA-62: manca il fattore k per {strumento}. "
-            "Va misurato una volta per ciascuno dei sei strumenti."
-        )
-    return float(tabella[strumento])
+def posizioni_ridimensionate() -> bool:
+    """True se aprire una posizione adegua il volume di quelle gia' aperte."""
+    return richiedi("REV-42") == "ridimensiona"
 
 
-def calendario_festivita_valido_per(anno: int) -> dict[tuple[int, int], str]:
-    """Festivita' di CTX-04, solo se la tabella vale per quell'anno (PA-53)."""
-    if anno != richiedi("PA-53"):
-        raise PuntoApertoError(
-            f"PA-53: FESTIVITA_MERCATO vale per il {ANNO_DI_VALIDITA_FESTIVITA}, "
-            f"non per il {anno}. Sei delle dodici date sono mobili. "
-            "Aggiorna la tabella o sostituiscila con il calcolo automatico."
-        )
-    return FESTIVITA_MERCATO
+def distanza_relativa_stop(chiusura_n2_future: float, stop_future: float) -> float:
+    """Distanza di stop in forma adimensionale, misurata sul future.
+
+    Primo passo del calcolo della size (DEF-47 come corretta da PA-62).
+    Restituisce un numero puro: nessun prezzo CFD entra qui, quindi ESCL-12 e'
+    rispettata. Chi chiama lo moltiplica per il prezzo CFD corrente per
+    ottenere la distanza in punti dello strumento operativo.
+    """
+    metodo = richiedi("PA-62")
+    if metodo != "distanza_relativa":
+        raise PuntoApertoError(f"PA-62: metodo non riconosciuto: {metodo!r}")
+    if chiusura_n2_future <= 0:
+        raise ValueError(f"prezzo future non valido: {chiusura_n2_future}")
+    distanza = abs(chiusura_n2_future - stop_future)
+    if distanza == 0:
+        # RISK-03: distanza nulla e' dato incoerente, si applica PRIN-99.
+        raise ValueError("distanza di stop nulla: PRIN-99, nessun ordine")
+    return distanza / chiusura_n2_future
+
+
+def calendario_festivita_valido_per(anno: int) -> dict[date, str]:
+    """Festivita' di CTX-04 per l'anno richiesto (PA-53, chiuso).
+
+    Non c'e' piu' una tabella da aggiornare: le sei date mobili si calcolano.
+    """
+    scelta = richiedi("PA-53")
+    if scelta != "calcolate":
+        raise PuntoApertoError(f"PA-53: lettura non riconosciuta: {scelta!r}")
+    return festivita_mercato(anno)
 
 
 # ===========================================================================
@@ -831,9 +1003,25 @@ def verifica() -> None:
     for coppia in coppie:
         assert DIREZIONE_DA_BIAS_DXY["LONG"][coppia] != DIREZIONE_DA_BIAS_DXY["SHORT"][coppia]
 
-    # Festivita': date esistenti nel calendario.
-    for mese, giorno in FESTIVITA_MERCATO:
-        assert 1 <= mese <= 12 and 1 <= giorno <= 31, (mese, giorno)
+    # Festivita' calcolate: dodici per anno, e coincidono con la tabella 2026
+    # scritta a mano in CTX-04. E' la prova che il calcolo e' quello giusto.
+    attese_2026 = {
+        (1, 1), (1, 19), (2, 16), (4, 3), (5, 25), (6, 19),
+        (7, 3), (9, 7), (11, 26), (11, 27), (12, 24), (12, 25),
+    }
+    calcolate = festivita_mercato(2026)
+    assert len(calcolate) == 12, len(calcolate)
+    ottenute = {(g.month, g.day) for g in calcolate}
+    assert ottenute == attese_2026, sorted(ottenute ^ attese_2026)
+
+    # Negli altri anni le date distinte sono 11 o 12: 11 quando Natale cade di
+    # sabato e la sua osservanza si sovrappone alla Vigilia.
+    for anno in range(2020, 2041):
+        quante = len(festivita_mercato(anno))
+        assert 11 <= quante <= 12, (anno, quante)
+        # Nessuna data e' silenziosamente persa: le etichette restano dodici.
+        etichette = sum(len(n.split(" / ")) for n in festivita_mercato(anno).values())
+        assert etichette == 12, (anno, etichette)
 
     # I punti aperti sono coerenti con la propria dichiarazione.
     for identificativo, punto in PUNTI_APERTI.items():

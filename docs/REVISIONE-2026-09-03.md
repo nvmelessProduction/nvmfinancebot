@@ -1,5 +1,22 @@
 # Revisione dei documenti — 2026-09-03
 
+> **Chiuso.** Tutti i punti bloccanti elencati qui sono stati sciolti il
+> 2026-09-03 su richiesta dell'autore. Le decisioni, con il ragionamento e la
+> categoria di ciascuna, stanno in **`docs/DECISIONI-2026-09-03.md`**; sono
+> applicate in `core/parametri.py`, dizionario `SCELTE`, e reversibili una per
+> una. I documenti di strategia sono stati corretti solo dove si trattava di
+> cancellare un residuo, mai di riscrivere una regola.
+>
+> Due voci erano mie imprecisioni, corrette il 2026-09-03:
+> **REV-18** (`CTX-02` la qualificazione per strumento ce l'ha, nel paragrafo
+> dopo il blocco di codice: nessun conflitto con `RISK-13`, declassata a
+> FORMALE) e **REV-23** (non era una scelta: con i key level su `C0` il
+> `DEF-38` riscritto in v1.8 confronterebbe `high[C0] > high[C0]`, sempre
+> falso).
+>
+> Questo file resta come traccia di cosa è stato trovato e perché.
+
+
 Lettura completa degli otto file, nell'ordine indicato: `01`, `03`, `02`, `04`,
 `05`, `06`, `00`, `07`.
 

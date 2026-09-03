@@ -1,6 +1,6 @@
 # 03_setup.md
 
-Versione: 0.4 — reintrodotta la tabella DXY come SETUP-19
+Versione: 0.5 — sciolti i punti aperti di docs/DECISIONI-2026-09-03.md
 Data: 2026-08-12
 Stato: INCOMPLETO. Vedi sezione 9 (Punti aperti).
 
@@ -291,8 +291,13 @@ Per i gap il CRT può formarsi **anche sullo stesso timeframe del gap**. Per i
 key level invece il CRT deve stare su un timeframe strettamente inferiore
 (SETUP-02). Sono due regole diverse e non vanno confuse.
 
-Esempio conforme: gap su `TF_1W`, CRT ammesso su `TF_1W`, `TF_1D`, `TF_H12`,
-`TF_H6`, `TF_H4`, `TF_H1`.
+Esempio conforme: gap su `TF_1W`, CRT ammesso su `TF_1W`, `TF_1D`, `TF_H4`,
+`TF_H1`.
+
+`TF_H12` e `TF_H6`, presenti in questo esempio fino alla v0.4, sono stati
+rimossi in v0.5 (REV-11): DEF-31 li riserva alla sola rilevazione dei gap e
+SETUP-05 non definisce per essi alcuna condizione di allineamento, quindi un
+CRT formato lì non potrebbe mai superare SETUP-15.
 
 **Stop dei due ingressi.**
 

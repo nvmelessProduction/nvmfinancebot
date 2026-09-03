@@ -1,6 +1,6 @@
 # 01_definizioni.md
 
-Versione: 1.8 — aggiunte DEF-46 (target per TF) e DEF-47 (size sul future)
+Versione: 1.9 — sciolti i punti aperti di docs/DECISIONI-2026-09-03.md
 Data: 2026-08-11
 Stato: CHIUSO per tutto ciò che compete a questo file. I punti residui in
 sezione 9 appartengono ad altri documenti.
@@ -40,8 +40,12 @@ timeframe del gap attivo. Vedi PA-09.
 
 Nessun altro timeframe può essere citato da nessuna regola della strategia.
 
-Ordine gerarchico, dal più alto al più basso:
-`TF_12M > TF_6M > TF_3M > TF_1M > TF_1W > TF_1D > TF_H4 > TF_H1`
+Esiste **una sola** gerarchia, quella completa qui sopra. La versione a otto
+timeframe presente fino alla v1.8 era un residuo precedente all'introduzione di
+`TF_H12` e `TF_H6`, ed è stata rimossa (REV-10).
+
+`TF_H12` e `TF_H6` restano esclusi dall'**allineamento** per regola propria di
+SETUP-05, che è cosa diversa dalla gerarchia.
 
 ### DEF-45 — Calcolo e sorveglianza
 
@@ -63,7 +67,13 @@ raggiungimento di livelli calcolati su candele chiuse. Per questo non viola il
 vincolo.
 
 Regole di sola sorveglianza: DEF-27 (livello consumato), DEF-29 (target
-raggiunto), DEF-34, RISK-12, GEST-04 (TP1 e break even), GEST-11.
+raggiunto), DEF-34, RISK-12, GEST-04 (TP1 e break even), GEST-11, e le
+**fasi 1, 2 e 3 di DEF-43** (interazione del prezzo con zona_gap ed
+estremo_fase1). La zona e l'estremo sono livelli già fissati da un calcolo su
+candele chiuse: verificarne il tocco rientra nella definizione di sorveglianza.
+
+La **fase 4 di DEF-43 è calcolo**: richiede un CRT formato, che si valuta solo
+su candele chiuse.
 
 Regole di solo calcolo: tutte le altre.
 
@@ -186,7 +196,8 @@ Selezione del gap attivo rialzista (a specchio per il ribassista):
 
 ```
 Passo 1 — Scorri i timeframe in questo ordine esatto:
-          TF_12M, TF_6M, TF_3M, TF_1M, TF_1W, TF_1D
+          TF_12M, TF_6M, TF_3M, TF_1M, TF_1W, TF_1D, TF_H12, TF_H6
+          (TF_H12 e TF_H6 inclusi per DEF-31; corretto in v1.9, REV-15)
 Passo 2 — Fermati al PRIMO timeframe in cui esiste almeno un gap rialzista
           non invalidato secondo DEF-14
 Passo 3 — SE su quel timeframe esiste più di un gap rialzista non invalidato
@@ -272,9 +283,16 @@ ombra_inf = min(open, close) - low
 
 ### DEF-21 — Rifiuto
 
-Questa definizione sostituisce la versione precedente di DEF-21. Il rifiuto
-richiede **due** condizioni simultanee: la mancata accettazione del livello e
-una spike prevalente sul corpo.
+Questa definizione sostituisce la versione precedente di DEF-21.
+
+Il **rifiuto forte** richiede due condizioni simultanee: la mancata accettazione
+del livello e una spike prevalente sul corpo. Il **rifiuto semplice** richiede
+la sola mancata accettazione, senza alcuna soglia sulla spike.
+
+La formulazione precedente attribuiva a entrambi i gradi la condizione sulla
+spike, che appartiene al solo grado forte. Corretto in v1.9 (PA-31, REV-08):
+DEF-16 passi 4 e 5 usano il rifiuto semplice, come scritto nella sua
+definizione.
 
 Esistono **due gradi** di rifiuto, con scopi diversi. Non sono
 interscambiabili: usare il grado sbagliato cambia il numero di segnali.
@@ -568,8 +586,12 @@ Nessuna operazione di reversal è ammessa in nessuna circostanza mentre
 
 ### DEF-18 — Durata della bias
 
-`bias_12M` viene calcolata alla chiusura della candela `TF_12M` (31 dicembre,
-24:00 UTC) e resta invariata per tutto l'anno solare successivo.
+`bias_12M` viene calcolata alla chiusura della candela `TF_12M` — che segue i
+confini di sessione ETH dell'exchange (DEF-03), non il giorno solare — e resta
+invariata fino alla chiusura della candela annuale successiva.
+
+La parentesi "31 dicembre, 24:00 UTC" presente fino alla v1.8 è stata rimossa:
+contraddiceva DEF-03, che si dichiara conseguenza vincolante (REV-16).
 
 Lo stesso principio vale per ogni altro timeframe: la bias di un timeframe
 cambia solo alla chiusura di una sua candela.
@@ -649,15 +671,18 @@ Nessuna regola può usare un gap con un ruolo diverso da quello qui assegnato.
 Ogni valore di `open`, `high`, `low`, `close` usato da qualsiasi regola della
 strategia proviene dal **grafico future**, mai dal CFD.
 
-| Timeframe | Fonte primaria | Conferma | Momento operativo |
-|---|---|---|---|
-| Da `TF_1D` in su | Future CME | non richiesta | 10 minuti dopo la chiusura del periodo (es. 00:10 anziché 00:00) |
-| `TF_H12`, `TF_H6` (gap) | CFD Capital.com | Future CME | dopo la conferma del future, 10 minuti dopo la chiusura |
-| `TF_H4`, `TF_H1` (ingresso) | CFD Capital.com | Future CME | dopo la conferma del future, 10 minuti dopo la chiusura |
+| Timeframe | Fonte | Momento operativo |
+|---|---|---|
+| Tutti, da `TF_12M` a `TF_H1` | Future CME | all'apertura di N3, senza ritardo prestabilito |
 
-Sui timeframe da `TF_1D` in su il segnale si legge direttamente sul future. Sui
-timeframe inferiori il segnale viene rilevato sul CFD e diventa operativo solo
-quando il dato del future lo conferma.
+Corretto in v1.9 (REV-13). La versione precedente indicava il CFD Capital.com
+come fonte primaria su `TF_H12`, `TF_H6`, `TF_H4` e `TF_H1`, con conferma del
+future. Quel meccanismo è un confronto fra un dato CFD e un dato future, che
+ESCL-12 e DEF-03 vietano e che PREC-05 rende prevalente sul resto.
+
+**Conseguenza operativa:** serve il flusso dati CME su tutti i timeframe, non
+solo sui più alti. Il CFD di FP Markets resta esclusivamente lo strumento di
+esecuzione.
 
 **Revisione in v1.6.** Non esiste un ritardo prestabilito di esecuzione.
 L'ingresso avviene all'apertura di `N3`, il prima possibile. Un ritardo di
@@ -665,17 +690,15 @@ alcuni minuti è tollerato purché il rapporto rischio/rendimento ricalcolato su
 prezzi effettivi resti pari o superiore a 1,5 (GEST-01, CTX-05). Il valore di
 10 minuti resta valido come latenza attesa del solo dato DXY (CTX-06).
 
-```
-SE il segnale è rilevato sul CFD
-AND il dato del future, all'arrivo, non conferma il segnale
-ALLORA nessun ordine
-ALTRIMENTI l'ordine è ammesso
-```
-
 Conseguenza vincolante: nessuna regola può assumere l'esecuzione al prezzo di
 chiusura della candela. Il momento di valutazione è l'arrivo del dato di
-chiusura del future, che può avvenire fino a 10 minuti dopo la chiusura
-effettiva del periodo. Ogni backtest deve usare lo stesso ritardo.
+chiusura del future.
+
+**Nessun ritardo prestabilito.** Il paragrafo che imponeva 10 minuti è stato
+rimosso in v1.9 (REV-14): contraddiceva la revisione v1.6 di questa stessa
+regola e CTX-05. La tollerabilità di un ritardo la stabilisce il rapporto
+rischio/rendimento ricalcolato sui prezzi effettivi (GEST-01, CTX-05), non un
+limite di tempo. I 10 minuti restano validi per il solo dato DXY (CTX-06).
 
 ### DEF-33 — Corrispondenza tra strumento di analisi e strumento di esecuzione
 
@@ -758,8 +781,13 @@ timeframe, e in nessun altro momento.
 
 I key level sono cosa diversa dai livelli strutturali di DEF-25. I livelli
 strutturali sono l'insieme di tutti i massimi e minimi entro `lookback` e
-servono per il target di lungo periodo (DEF-22). I key level sono i tre valori
-qui sopra, riferiti alla sola candela precedente, e servono per l'ingresso.
+servono per il target direzionale globale di DEF-22. I key level sono i tre
+valori qui sopra, riferiti alla sola candela precedente, e servono per
+l'ingresso **e per il target della singola posizione** (DEF-46, SETUP-14).
+
+Precisato in v1.9 (PA-60): i due target sono distinti e leciti. Quello di
+DEF-22 è su livelli strutturali e riguarda `tf_comando`; quello di DEF-46 e
+SETUP-14 è su key level e riguarda la posizione aperta.
 
 ### DEF-37 — Priorità e assorbimento dei key level
 
@@ -985,7 +1013,7 @@ eseguibile.
 | `target_raggiunto` | true/false (DEF-29) | Calcolato dal server |
 | `livelli_long_disponibili` | Elenco livelli rialzisti DISPONIBILI con relativo TF | Calcolato dal server |
 | `livelli_short_disponibili` | Elenco livelli ribassisti DISPONIBILI con relativo TF | Calcolato dal server |
-| `rsi` | RSI(14) sul timeframe di trigger (DEF-44) | Calcolato dal server |
+| `rsi` | RSI(14) sul timeframe del gap (DEF-44) | Calcolato dal server |
 | `divergenza_rsi` | RIBASSISTA / RIALZISTA / NESSUNA (DEF-44) | Calcolato dal server |
 | `is_rifiuto_forte_rialzo` | true/false (DEF-21) | Calcolato dal server |
 | `is_rifiuto_forte_ribasso` | true/false (DEF-21) | Calcolato dal server |
@@ -1005,19 +1033,12 @@ eseguibile.
 
 ---
 
-## 8. Promemoria di lavoro (da rimuovere prima della consegna)
+## 8. Rimosso
 
-Contenuto che appartiene ad altri file e non a questo.
-
-Universo: `XAUUSD`, `EURUSD`, `GBPUSD`, `AUDUSD`, `USDCHF`, `USDJPY`
-→ destinazione `00_principi.md`
-
-| Bias DXY | EURUSD | GBPUSD | AUDUSD | USDCHF | USDJPY | XAUUSD |
-|---|---|---|---|---|---|---|
-| LONG | SELL | SELL | SELL | BUY | BUY | non derivata dal DXY |
-| SHORT | BUY | BUY | BUY | SELL | SELL | non derivata dal DXY |
-
-→ destinazione `03_setup.md`
+La sezione "Promemoria di lavoro" è stata rimossa in v1.9 (REV-44). Conteneva
+l'universo strumenti, migrato in PRIN-08, e la tabella di direzione dal DXY,
+migrata in SETUP-19. Tenerne una seconda copia qui significava lasciarle
+divergere.
 
 ---
 
