@@ -69,9 +69,14 @@ class FintoMT5(types.ModuleType):
         super().__init__("MetaTrader5")
         self.azzera()
 
+    ACCOUNT_TRADE_MODE_DEMO = 0
+    ACCOUNT_TRADE_MODE_CONTEST = 1
+    ACCOUNT_TRADE_MODE_REAL = 2
+
     def azzera(self) -> None:
         self.avviato = False
         self.trading_abilitato = True
+        self.modo_conto = 0                 # demo
         self.bid = 1.10000
         self.ask = 1.10010
         self.posizioni: list[Oggetto] = []
@@ -101,7 +106,7 @@ class FintoMT5(types.ModuleType):
         return Oggetto(
             login=123456, server="FPMarkets-Demo", currency="EUR",
             balance=10000.0, equity=10050.0, margin_free=9800.0,
-            leverage=30, trade_allowed=True,
+            leverage=30, trade_allowed=True, trade_mode=self.modo_conto,
         )
 
     # -- simboli e prezzi --
@@ -116,7 +121,12 @@ class FintoMT5(types.ModuleType):
     def symbol_info(self, simbolo: str):
         if simbolo == "SIMBOLO-INESISTENTE":
             return None
-        return Oggetto(filling_mode=2, volume_step=0.01, volume_min=0.01, volume_max=50.0)
+        return Oggetto(
+            name=simbolo, description=f"prova {simbolo}", digits=5,
+            filling_mode=2, volume_step=0.01, volume_min=0.01, volume_max=50.0,
+            trade_tick_size=0.00001, trade_tick_value=0.1,
+            trade_contract_size=100000.0, spread=12,
+        )
 
     # -- posizioni e ordini --
     def positions_get(self, symbol: str | None = None, ticket: int | None = None):
@@ -456,6 +466,58 @@ class ProvaBroker(BaseCollaudo):
         self.assertTrue(chiusura.ok, chiusura.messaggio)
         _, posizioni, _ = broker.posizioni_broker()
         self.assertEqual(len(posizioni), 0)
+
+
+# ==========================================================================
+# 5bis. Specifiche di contratto e tipo di conto
+# ==========================================================================
+class ProvaSpecifiche(BaseCollaudo):
+    def setUp(self) -> None:
+        super().setUp()
+        broker.disconnetti()
+
+    def test_specifiche_lette_dal_broker(self) -> None:
+        ok, specifiche, messaggio = broker.specifiche_simbolo("EURUSD")
+        self.assertTrue(ok, messaggio)
+        self.assertEqual(specifiche["volume_min"], 0.01)
+        self.assertEqual(specifiche["volume_step"], 0.01)
+
+    def test_valore_punto_calcolato(self) -> None:
+        """RISK-03 vuole il valore di 1 unita' di prezzo per 1 lotto.
+
+        Con un tick da 0.00001 che vale 0.1, un punto intero vale 10000.
+        E' il numero che chiude PA-62 misurandolo invece che stimandolo.
+        """
+        _, specifiche, _ = broker.specifiche_simbolo("EURUSD")
+        self.assertAlmostEqual(specifiche["valore_punto"], 0.1 / 0.00001)
+
+    def test_simbolo_inesistente(self) -> None:
+        ok, specifiche, _ = broker.specifiche_simbolo("SIMBOLO-INESISTENTE")
+        self.assertFalse(ok)
+        self.assertIsNone(specifiche)
+
+    def test_riconosce_il_conto_demo(self) -> None:
+        finto.modo_conto = finto.ACCOUNT_TRADE_MODE_DEMO
+        demo, messaggio = broker.conto_e_demo()
+        self.assertTrue(demo, messaggio)
+        self.assertIn("demo", messaggio)
+
+    def test_rifiuta_il_conto_reale(self) -> None:
+        """La prova di esecuzione non deve poter partire su un conto vero."""
+        finto.modo_conto = finto.ACCOUNT_TRADE_MODE_REAL
+        try:
+            demo, messaggio = broker.conto_e_demo()
+            self.assertFalse(demo)
+            self.assertIn("REALE", messaggio)
+        finally:
+            finto.modo_conto = finto.ACCOUNT_TRADE_MODE_DEMO
+
+    def test_rifiuta_anche_il_conto_contest(self) -> None:
+        finto.modo_conto = finto.ACCOUNT_TRADE_MODE_CONTEST
+        try:
+            self.assertFalse(broker.conto_e_demo()[0])
+        finally:
+            finto.modo_conto = finto.ACCOUNT_TRADE_MODE_DEMO
 
 
 # ==========================================================================
