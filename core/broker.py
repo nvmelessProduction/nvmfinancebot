@@ -446,6 +446,75 @@ def chiudi_posizione(ticket: int, deviazione: Optional[int] = None) -> OrderResu
     )
 
 
+def specifiche_simbolo(simbolo: str) -> tuple[bool, Optional[dict[str, Any]], str]:
+    """Le specifiche di contratto di uno strumento, lette dal broker.
+
+    Servono a due cose: dimensionare correttamente (RISK-03 vuole
+    `valore_punto`, che e' `trade_tick_value / trade_tick_size`) e chiudere
+    PA-62 con numeri misurati invece che stimati.
+
+    Va letta una volta per ciascuno dei sei strumenti, sul conto su cui si
+    opera: i valori dipendono dal broker e dalla valuta del conto, non sono
+    proprieta' universali dello strumento.
+    """
+    ok, messaggio = _assicura_connessione()
+    if not ok or mt5 is None:
+        return False, None, messaggio
+
+    with _lucchetto:
+        if not mt5.symbol_select(simbolo, True):
+            codice, descrizione = _errore_mt5()
+            return False, None, f"simbolo {simbolo} non selezionabile: [{codice}] {descrizione}"
+        info = mt5.symbol_info(simbolo)
+        if info is None:
+            codice, descrizione = _errore_mt5()
+            return False, None, f"symbol_info({simbolo}) vuota: [{codice}] {descrizione}"
+
+        passo_tick = float(getattr(info, "trade_tick_size", 0.0) or 0.0)
+        valore_tick = float(getattr(info, "trade_tick_value", 0.0) or 0.0)
+        # valore_punto = quanto vale 1 unita' di prezzo per 1 lotto.
+        valore_punto = (valore_tick / passo_tick) if passo_tick else 0.0
+
+        return (
+            True,
+            {
+                "simbolo": info.name,
+                "descrizione": getattr(info, "description", ""),
+                "cifre": int(info.digits),
+                "volume_min": float(info.volume_min),
+                "volume_max": float(info.volume_max),
+                "volume_step": float(info.volume_step),
+                "trade_tick_size": passo_tick,
+                "trade_tick_value": valore_tick,
+                "valore_punto": valore_punto,
+                "spread_punti": int(getattr(info, "spread", 0)),
+                "contract_size": float(getattr(info, "trade_contract_size", 0.0)),
+            },
+            "specifiche lette",
+        )
+
+
+def conto_e_demo() -> tuple[bool, str]:
+    """True solo se il conto collegato e' un DEMO.
+
+    E' il controllo che precede qualsiasi invio di ordine di collaudo. Un
+    ordine di prova su un conto reale non e' una prova: e' un'operazione.
+    """
+    ok, messaggio = _assicura_connessione()
+    if not ok or mt5 is None:
+        return False, messaggio
+    with _lucchetto:
+        conto = mt5.account_info()
+        if conto is None:
+            return False, "account_info() vuota: impossibile stabilire il tipo di conto"
+        modo = int(getattr(conto, "trade_mode", -1))
+        demo = int(getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0))
+        if modo == demo:
+            return True, f"conto demo {conto.login} su {conto.server}"
+        nomi = {0: "DEMO", 1: "CONTEST", 2: "REALE"}
+        return False, f"conto {nomi.get(modo, modo)} {conto.login}: non e' un demo"
+
+
 def stato() -> dict[str, Any]:
     """Riassunto dello stato del broker, usato da /salute e dal collaudo."""
     if not MT5_DISPONIBILE:
