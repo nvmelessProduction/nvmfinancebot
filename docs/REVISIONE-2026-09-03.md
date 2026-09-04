@@ -108,6 +108,23 @@ riscritto.
 REV-40 diceva di rimuovere §8 **dopo** la migrazione. La migrazione è fatta:
 ora §8 va cancellato, o le due copie divergeranno.
 
+### REV-45 — `SETUP-02A` e `SETUP-02B` hanno una condizione ridondante — FORMALE
+
+Trovata scrivendo `setup.py`, il 2026-09-03.
+
+La terza condizione di `SETUP-02A` (`close[N2] <= high[N1]`) e' **implicata**
+dalla quarta (`close[N2] < close[N1]`): poiche' `close[N1] <= high[N1]` vale
+per costruzione di qualunque candela, da `close[N2] < close[N1]` segue sempre
+`close[N2] < high[N1]`. Verificato per forza bruta su tutte le combinazioni.
+
+Stessa cosa a specchio in `SETUP-02B`.
+
+Non e' un errore e non cambia alcun comportamento: la regola e' corretta, solo
+piu' verbosa del necessario. La segnalo perche' ha una conseguenza pratica —
+nessun test potra' mai distinguere `<=` da `<` in quella riga, quindi una
+mutazione li' sopravvive sempre. Il codice la tiene comunque, per restare
+confrontabile riga per riga con il documento.
+
 ## Restano aperte — 30 voci
 
 Nessuna di queste è stata toccata da questo giro.
