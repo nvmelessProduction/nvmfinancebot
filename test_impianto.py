@@ -246,14 +246,28 @@ class ProvaSicurezza(BaseCollaudo):
 
 
 # ==========================================================================
-# 2. La strategia deve restare uno stub
+# 2. La strategia senza livello dati non opera, e dice perche'
 # ==========================================================================
 class ProvaStrategia(BaseCollaudo):
-    def test_restituisce_sempre_none(self) -> None:
+    """Dalla v0.3 la strategia esiste: sta in core/motore.py.
+
+    Quello che manca e' il livello dati che costruisce la Fotografia. Finche'
+    nessuno lo collega il bot si astiene, e queste prove verificano che si
+    astenga **dichiarando il motivo** invece di restituire un NONE muto che
+    sembrerebbe una decisione di strategia.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        from core import strategy
+        strategy.registra_fornitore(None)
+
+    def test_senza_livello_dati_non_opera(self) -> None:
         for chiusura in (1.0, 1.5, 99.0, 0.0001):
             decisione = valuta(AlertIn.model_validate(alert_finto(close=chiusura)))
             self.assertEqual(decisione.azione, "NONE")
             self.assertIsNone(decisione.volume)
+            self.assertIn("livello dati non collegato", decisione.motivo)
 
     def test_alert_valido_non_apre_nulla(self) -> None:
         riconfigura(MODE="auto")
@@ -261,7 +275,38 @@ class ProvaStrategia(BaseCollaudo):
             corpo = c.post("/webhook", json=alert_finto()).json()
         self.assertEqual(corpo["azione"], "NONE")
         self.assertEqual(corpo["esito"], "ignorato")
-        self.assertEqual(len(finto.ordini_inviati), 0, "con la strategia stub non deve partire nessun ordine")
+        self.assertEqual(
+            len(finto.ordini_inviati), 0,
+            "senza livello dati non deve partire nessun ordine",
+        )
+
+    def test_il_motore_di_strategia_e_collegabile(self) -> None:
+        """L'innesto funziona: registrato un fornitore, il motore decide."""
+        from core import strategy
+        from core.motore import Decisione
+
+        def fornitore_finto(alert):
+            return None            # sa di non poter costruire la fotografia
+
+        strategy.registra_fornitore(fornitore_finto)
+        try:
+            self.assertTrue(strategy.fornitore_collegato())
+            decisione = valuta(AlertIn.model_validate(alert_finto()))
+            self.assertEqual(decisione.azione, "NONE")
+            self.assertIn("PRIN-99", decisione.motivo)
+        finally:
+            strategy.registra_fornitore(None)
+
+    def test_la_traduzione_conserva_le_regole(self) -> None:
+        """L'archivio e Telegram devono poter dire quale regola ha deciso."""
+        from core import strategy
+        from core.motore import Decisione
+
+        tradotta = strategy.traduci(
+            Decisione(azione="NONE", strumento="EURUSD",
+                      regole_che_bloccano=("SETUP-05",), motivo="non allineato")
+        )
+        self.assertIn("SETUP-05", tradotta.motivo)
 
 
 # ==========================================================================

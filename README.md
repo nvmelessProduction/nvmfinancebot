@@ -1,28 +1,31 @@
-# nvmfinancebot — impianto
+# nvmfinancebot
 
-Infrastruttura di un bot di trading: riceve gli alert di TradingView, li
+Bot di trading: riceve gli alert di TradingView, li
 archivia, li passa a una funzione di strategia, sa eseguire ordini su
 MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 
-> **La strategia non c'è ancora, ed è voluto.**
-> `core/strategy.py` contiene una funzione `valuta(alert) -> Decision` che
-> restituisce sempre `action="NONE"`. Finché resta così, l'impianto gira a
-> vuoto: registra tutto e non apre niente. È esattamente il comportamento
-> atteso in questa fase.
+> **La strategia c'è. Quello che manca è il livello dati.**
+> Le 143 regole di `docs/` sono tradotte in codice in `core/`, con 425 prove
+> automatiche. Il motore però non gira ancora, perché nessuno costruisce la
+> `Fotografia` che gli serve: cinque anni di storia sui future CME, su dieci
+> timeframe, per sei strumenti più il DXY.
 >
-> Tutto il resto — sicurezza, archivio, esecuzione, sorveglianza, salvaguardie
-> — è vero e collaudato. Quando la strategia arriverà, non ci sarà altro da
-> costruire attorno.
+> Un alert di TradingView, da solo, non basta: dice **quando** rivalutare, non
+> **cosa** decidere. `core/strategy.py` espone l'innesto
+> (`registra_fornitore`), e finché nessuno lo collega il bot si astiene
+> dichiarando il motivo.
 
 ---
 
 ## I file
 
+**L'impianto** — riceve, archivia, esegue, sorveglia:
+
 | File | Ruolo |
 |---|---|
 | `main.py` | Server FastAPI: `POST /webhook`, `GET /salute` |
 | `prova_impianto.py` | Collaudo manuale dei tre collegamenti (MT5, Telegram, webhook) |
-| `test_impianto.py` | Collaudo automatico: 40 prove, gira anche senza MT5 |
+| `test_impianto.py` | Collaudo automatico dell'impianto: 42 prove, gira anche senza MT5 |
 | `core/config.py` | Configurazione dal `.env` |
 | `core/models.py` | `AlertIn`, `Decision`, `OrderResult` |
 | `core/storage.py` | Archivio SQLite: `alert`, `decisione`, `posizione` |
@@ -30,7 +33,25 @@ MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 | `core/broker.py` | Adattatore MetaTrader 5: tutto ciò che tocca il broker sta qui |
 | `core/sentinella.py` | Sorveglia stop e target delle posizioni aperte |
 | `core/log.py` | Diario di bordo su console e file, con rotazione |
-| `core/strategy.py` | **Stub.** Restituisce sempre `NONE` |
+
+**Il motore di strategia** — le regole di `docs/` tradotte in codice:
+
+| File | Documento | Ruolo |
+|---|---|---|
+| `core/parametri.py` | tutti | Valori numerici e registro dei punti aperti |
+| `core/definizioni.py` | `01` | Gap, bias, key level, fasi, RSI — funzioni pure |
+| `core/contesto.py` | `02` | Filtri di astensione |
+| `core/setup.py` | `03` | CRT, allineamento, bias di comando |
+| `core/gestione.py` | `04` | Stop, TP1, break even, estensione del target |
+| `core/rischio.py` | `05` | Size, limiti, esposizione |
+| `core/esclusioni.py` | `06` | Divieti permanenti: l'ultima riga di difesa |
+| `core/motore.py` | — | Orchestrazione, precedenze, divieto di lookahead |
+| `core/stato.py` | — | Dallo storico di candele alla `Fotografia` |
+| `core/strategy.py` | — | Il ponte fra l'impianto e il motore |
+| `core/calendario.py` | `PA-54` | Lettura del calendario news da file |
+| `core/casi.py` | `07` | Esportazione nel formato blocco di `07_casi.md` |
+| `core/statistiche.py` | — | Metriche del forward test |
+| `tests/` | — | 383 prove sul motore |
 
 Il percorso di un alert:
 
@@ -138,10 +159,12 @@ guardato per primo.
 
    ```bat
    python -m unittest test_impianto
+   python -m pytest tests -q
    ```
 
-   Sono 40 prove e girano in mezzo secondo, senza MT5 e senza toccare il conto.
-   Se qualcuna fallisce, non andare avanti.
+   Sono 42 prove sull'impianto e 383 sul motore di strategia. Girano in poco
+   più di un secondo, senza MT5 e senza toccare il conto. Se qualcuna
+   fallisce, non andare avanti.
 
 6. **Avvia il server**:
 
@@ -412,18 +435,44 @@ riconciliazione — è già costruito e collaudato attorno a questa funzione.
 
 In ordine di importanza:
 
-1. **La strategia.** `core/strategy.py` è uno stub. È il punto in cui andrà
-   scritta la logica, quando i documenti che la descrivono saranno pronti.
-2. **Il calcolo della size.** `Decision.volume` esiste ma nessuno lo riempie.
-   Finché resta `None`, in `auto` l'ordine non parte — ed è giusto così.
-3. **La conferma manuale in `semi`.** Oggi la modalità notifica e si ferma:
-   manca il modo di dire "sì, esegui" (un bottone nel messaggio Telegram, o un
-   endpoint di conferma).
+1. **Il livello dati.** È l'unica cosa che separa il motore dal girare.
+   Serve qualcosa che costruisca la `Fotografia`: cinque anni di candele
+   chiuse sui future CME/COMEX (`GC`, `6E`, `6B`, `6A`, `6S`, `6J`) più
+   `ICEUS` per il DXY, su tutti i timeframe di `DEF-01`. `core/stato.py` fa
+   già tutto il resto — bias, key level, gap, livelli strutturali — a partire
+   da uno storico di candele: manca chi gliele porta. `REV-13` ha reso la cosa
+   più stringente: il future serve su **tutti** i timeframe, non solo sui più
+   alti.
+2. **`PA-62` verificato sul conto.** Il metodo della distanza relativa
+   sostituisce il fattore `k`, ma `valore_punto` va letto da MT5 per ciascuno
+   dei sei strumenti e confrontato una volta con una size calcolata a mano.
+3. **La conferma manuale in `semi`.** `PRIN-16` la impone, `SETUP-04` fa
+   decadere il setup all'apertura di `N3`. Praticabile da `TF_1D` in su.
 4. **La chiusura mirata (`CLOSE`).** L'adattatore sa chiudere per ticket, ma
-   nessuno gli dice quale: servirà quando la strategia esprimerà uscite.
+   la strategia non esprime ancora quale.
 5. **La conversione dei simboli** fra il nome TradingView e quello FP Markets.
-6. **Riavvio automatico** di server e cloudflared all'accensione del PC
-   (Utilità di pianificazione di Windows).
+6. **Riavvio automatico** di server e cloudflared all'accensione del PC.
 7. **Un secondo canale di allarme** indipendente dal PC: se il PC muore, muore
    anche Telegram, e non lo sai.
-8. **Trailing stop e uscite parziali**, se la strategia le prevederà.
+8. **`PA-44`.** Finché la soglia fra "vicini" e "distanti" non esiste, ogni
+   caso di `GIUD-01` è categoria C e il target resta al key level. Il campo
+   `rapporto` viene registrato per ogni decisione, e `core/statistiche.py` ne
+   mostra la distribuzione: servono 30 campioni per chiuderla.
+
+## Come sono state trattate le regole
+
+I documenti in `docs/` contenevano contraddizioni, ambiguità e regole non
+eseguibili. Sono state trovate e catalogate in
+`docs/REVISIONE-2026-09-03.md` — 45 voci con ID `REV-nn` — e sciolte in
+`docs/DECISIONI-2026-09-03.md`, ciascuna classificata come **ricostruzione**
+(la risposta era nei documenti), **giudizio** (i documenti tacevano) o
+**misura** (un numero da leggere, non da decidere).
+
+Ogni decisione vive nel dizionario `SCELTE` di `core/parametri.py` ed è
+reversibile in una riga. Dove i documenti non decidono e nessuno ha compilato
+`SCELTE`, il motore solleva `PuntoApertoError` citando la regola: non sceglie
+di nascosto.
+
+I documenti di strategia sono stati corretti **solo** dove si trattava di
+cancellare un residuo di una versione precedente, mai di riscrivere una
+regola. Ogni modifica porta accanto la nota di cosa è stato tolto e perché.

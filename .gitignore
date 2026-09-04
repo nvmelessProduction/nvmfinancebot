@@ -19,3 +19,6 @@ venv/
 .pytest_cache/
 .vscode/
 .idea/
+
+# Calendario news locale: stato di questa macchina, non del progetto.
+dati/news.csv
