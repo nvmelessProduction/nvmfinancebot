@@ -60,20 +60,14 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         log.info("MT5 non contattato (modalita' dry_run)")
 
     # --- Fornitore dei dati di analisi ------------------------------------
-    if cfg.FORNITORE_DATI == "mt5":
-        if not broker.disponibile():
-            log.error(
-                "FORNITORE_DATI=mt5 ma MetaTrader5 non e' importabile: "
-                "il motore restera' senza dati e si asterra'"
-            )
-        else:
-            from core.fornitore_mt5 import NON_CONFORMITA, collega
+    if cfg.FORNITORE_DATI == "tradingview":
+        from core.fornitore_tradingview import collega
 
-            collega(suffisso=cfg.MT5_SUFFISSO_SIMBOLI)
-            log.warning("=" * 60)
-            log.warning("NON CONFORMITA' DICHIARATA")
-            log.warning("%s", NON_CONFORMITA)
-            log.warning("=" * 60)
+        collega(suffisso_broker=cfg.MT5_SUFFISSO_SIMBOLI)
+        log.info("analisi sul future via TradingView, esecuzione su CFD via MT5")
+        for riga in storage.copertura_candele():
+            log.info("  archivio: %s %s, %d candele dal %s",
+                     riga["strumento"], riga["tf"], riga["quante"], riga["dalla"][:10])
     else:
         log.info("nessun fornitore dati: il motore si asterra' dichiarandolo")
 
@@ -248,7 +242,18 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
         log.warning("richiesta con segreto non valido su %s", alert.simbolo)
         raise HTTPException(status_code=401, detail="segreto non valido")
 
-    # 2. Archiviazione prima di tutto il resto.
+    # 2. La candela del future entra in archivio: e' il dato su cui il motore
+    #    ragionera' adesso e nelle valutazioni future (DEF-32).
+    if impostazioni().FORNITORE_DATI == "tradingview":
+        from core.fornitore_tradingview import archivia_candela
+
+        try:
+            archiviata, motivo = archivia_candela(alert)
+            log.info("candela: %s", motivo)
+        except Exception:
+            log.exception("archiviazione della candela fallita")
+
+    # 3. Archiviazione dell'alert, prima di tutto il resto.
     try:
         id_alert, gia_visto = storage.salva_alert(alert)
     except Exception as errore:
@@ -352,12 +357,14 @@ def salute() -> dict[str, Any]:
         "configurato": cfg.FORNITORE_DATI,
         "collegato": strategy.fornitore_collegato(),
     }
-    if cfg.FORNITORE_DATI == "mt5":
-        from core.fornitore_mt5 import NON_CONFORMITA
-
-        # Va mostrata dove si guarda lo stato, non solo nel log di avvio:
-        # una non conformita' che scorre via non e' dichiarata, e' sepolta.
-        fornitore["non_conformita"] = NON_CONFORMITA
+    if cfg.FORNITORE_DATI == "tradingview":
+        # La copertura dell'archivio va guardata prima di fidarsi: senza
+        # storia sufficiente DEF-26 fa tacere i timeframe, e il bot non opera
+        # senza che sia evidente il perche'.
+        try:
+            fornitore["archivio"] = storage.copertura_candele()
+        except Exception as errore:
+            fornitore["archivio"] = f"non leggibile: {errore!r}"
 
     return {
         "modalita": cfg.MODE,

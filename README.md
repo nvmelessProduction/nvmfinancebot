@@ -4,16 +4,23 @@ Bot di trading: riceve gli alert di TradingView, li
 archivia, li passa a una funzione di strategia, sa eseguire ordini su
 MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 
-> **La strategia c'è. Quello che manca è il livello dati.**
-> Le 143 regole di `docs/` sono tradotte in codice in `core/`, con 425 prove
-> automatiche. Il motore però non gira ancora, perché nessuno costruisce la
-> `Fotografia` che gli serve: cinque anni di storia sui future CME, su dieci
-> timeframe, per sei strumenti più il DXY.
+> **Si analizza sul future, si opera sul CFD.**
+> È l'architettura di `DEF-32`, `DEF-33` e `DEF-34`, ed è visibile nel
+> vocabolario di `01_definizioni.md` §7:
 >
-> Un alert di TradingView, da solo, non basta: dice **quando** rivalutare, non
-> **cosa** decidere. `core/strategy.py` espone l'innesto
-> (`registra_fornitore`), e finché nessuno lo collega il bot si astiene
-> dichiarando il motivo.
+> | Da dove | Cosa |
+> |---|---|
+> | **TradingView**, grafico **future** | i prezzi: `open/high/low/close`, `high_c1`, `low_c1`, `dxy_close` |
+> | **il server** | tutto il ragionamento: bias, gap, key level, target, fasi |
+> | **MT5**, conto **CFD** | solo `equity`, `valore_punto`, `pnl` — e l'esecuzione |
+>
+> Nessun prezzo attraversa il confine: `ESCL-12` lo vieta. I prezzi di analisi
+> arrivano solo da TradingView; da MT5 arrivano solo numeri del conto.
+>
+> Ogni alert porta **una candela chiusa** del future. Il server la archivia e
+> ricalcola tutto dall'archivio: la storia si accumula da sola, un alert alla
+> volta. Per i cinque anni che `DEF-26` richiede si semina una volta con
+> `importa_storico.py`.
 
 ---
 
@@ -48,6 +55,11 @@ MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 | `core/motore.py` | — | Orchestrazione, precedenze, divieto di lookahead |
 | `core/stato.py` | — | Dallo storico di candele alla `Fotografia` |
 | `core/strategy.py` | — | Il ponte fra l'impianto e il motore |
+| `core/fornitore_tradingview.py` | — | Archivia le candele del future e costruisce la `Fotografia` |
+| `core/simboli.py` | `DEF-33` | Ticker TradingView ↔ future di analisi ↔ CFD operativo |
+| `core/aggregazione.py` | `DEF-01` | `TF_3M`, `TF_6M`, `TF_12M` dai mensili |
+| `importa_storico.py` | `DEF-26` | Semina l'archivio da un export CSV di TradingView |
+| `prova_esecuzione.py` | — | Collaudo del percorso dei soldi su conto demo |
 | `core/calendario.py` | `PA-54` | Lettura del calendario news da file |
 | `core/casi.py` | `07` | Esportazione nel formato blocco di `07_casi.md` |
 | `core/statistiche.py` | — | Metriche del forward test |
@@ -221,6 +233,13 @@ Verifica aprendo nel browser `https://tuo-indirizzo.trycloudflare.com/salute`.
 Crea l'alert, apri la scheda **Notifiche**, spunta **Webhook URL** e incolla
 l'indirizzo del tunnel (`.../webhook`).
 
+**Gli alert vanno sul grafico del future**, non del CFD: `GC1!`, `6E1!`,
+`6B1!`, `6A1!`, `6S1!`, `6J1!` e `ICEUS` per il DXY. È da lì che vengono i
+prezzi su cui il bot ragiona (`DEF-32`).
+
+Serve **un alert per ogni timeframe** che vuoi che il bot veda: ognuno porta
+una candela chiusa. Imposta ciascuno su **"Once Per Bar Close"**.
+
 Nella scheda **Impostazioni**, campo **Messaggio**, incolla esattamente questo:
 
 ```json
@@ -233,9 +252,24 @@ Nella scheda **Impostazioni**, campo **Messaggio**, incolla esattamente questo:
   "high": {{high}},
   "low": {{low}},
   "close": {{close}},
+  "high_c1": {{high[1]}},
+  "low_c1": {{low[1]}},
   "note": "{{exchange}}"
 }
 ```
+
+`high_c1` e `low_c1` sono gli estremi della candela precedente, che il
+vocabolario elenca fra i dati di TradingView. Servono a un controllo: se il
+grafico da cui parte l'alert e l'archivio del server non concordano sulla
+candela precedente, uno dei due è sbagliato e il bot si astiene invece di
+ragionare su una storia che non esiste. Sono facoltativi, ma toglierli
+significa rinunciare a quel controllo.
+
+**Quanti alert servono.** Sette strumenti per sette timeframe fanno
+quarantanove alert, e i piani TradingView hanno un tetto. Se non ci stai,
+comincia dai timeframe che `SETUP-06` usa per la bias di comando — `TF_1M`,
+`TF_1W`, `TF_1D` — più quello su cui vuoi entrare. I timeframe senza alert
+semplicemente tacciono (`DEF-26`), e il bot te lo scrive nel log.
 
 Note importanti:
 
@@ -435,14 +469,10 @@ riconciliazione — è già costruito e collaudato attorno a questa funzione.
 
 In ordine di importanza:
 
-1. **Il livello dati.** È l'unica cosa che separa il motore dal girare.
-   Serve qualcosa che costruisca la `Fotografia`: cinque anni di candele
-   chiuse sui future CME/COMEX (`GC`, `6E`, `6B`, `6A`, `6S`, `6J`) più
-   `ICEUS` per il DXY, su tutti i timeframe di `DEF-01`. `core/stato.py` fa
-   già tutto il resto — bias, key level, gap, livelli strutturali — a partire
-   da uno storico di candele: manca chi gliele porta. `REV-13` ha reso la cosa
-   più stringente: il future serve su **tutti** i timeframe, non solo sui più
-   alti.
+1. **Seminare l'archivio.** `DEF-26` vuole cinque anni. Esporta i grafici
+   future da TradingView (*Export chart data...*) e importali con
+   `importa_storico.py`, uno per strumento e timeframe. Finché l'archivio è
+   corto i timeframe tacciono, e `/salute` te lo mostra nel campo `archivio`.
 2. **`PA-62` verificato sul conto.** Il metodo della distanza relativa
    sostituisce il fattore `k`, ma `valore_punto` va letto da MT5 per ciascuno
    dei sei strumenti e confrontato una volta con una size calcolata a mano.

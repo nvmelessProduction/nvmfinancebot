@@ -391,3 +391,97 @@ class TestPonte:
         assert tradotta.azione == "SELL"
         assert tradotta.volume == 0.25
         assert tradotta.sl == 111.0 and tradotta.tp == 105.0
+
+
+# ===========================================================================
+# importa_storico.py — semina dell'archivio da TradingView
+# ===========================================================================
+class TestImportazione:
+    """La stessa trappola del fornitore: TradingView esporta l'orario di
+    APERTURA, l'archivio vuole quello di CHIUSURA."""
+
+    def csv(self, tmp_path, righe: str):
+        percorso = tmp_path / "export.csv"
+        percorso.write_text("time,open,high,low,close\n" + righe, encoding="utf-8")
+        return percorso
+
+    def test_legge_un_export(self, tmp_path) -> None:
+        import importa_storico as imp
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,110,95,105\n"
+            "2026-03-11T00:00:00Z,105,115,104,112\n"
+        ))
+        barre = imp.leggi_csv(percorso)
+        assert len(barre) == 2
+        assert barre[0]["apertura"] == 100
+
+    def test_accetta_anche_il_tempo_unix(self, tmp_path) -> None:
+        import importa_storico as imp
+
+        percorso = self.csv(tmp_path, "1772928000,100,110,95,105\n")
+        assert len(imp.leggi_csv(percorso)) == 1
+
+    def test_l_orario_diventa_la_chiusura(self, tmp_path) -> None:
+        """La barra aperta il 10 chiude l'11, non il 10."""
+        import importa_storico as imp
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,110,95,105\n"
+            "2026-03-11T00:00:00Z,105,115,104,112\n"
+            "2026-03-12T00:00:00Z,112,120,110,118\n"
+        ))
+        righe = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        assert righe[0]["chiusura_utc"].startswith("2026-03-11")
+        assert righe[0]["apertura"] == 100
+
+    def test_l_ultima_barra_viene_scartata(self, tmp_path) -> None:
+        """E' quella in corso: tre barre danno due candele chiuse."""
+        import importa_storico as imp
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,110,95,105\n"
+            "2026-03-11T00:00:00Z,105,115,104,112\n"
+            "2026-03-12T00:00:00Z,112,120,110,118\n"
+        ))
+        righe = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        assert len(righe) == 2
+
+    def test_una_sola_barra_non_da_candele(self, tmp_path) -> None:
+        import importa_storico as imp
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, "2026-03-10T00:00:00Z,100,110,95,105\n")
+        assert imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1) == []
+
+    def test_colonne_mancanti(self, tmp_path) -> None:
+        import importa_storico as imp
+
+        percorso = tmp_path / "rotto.csv"
+        percorso.write_text("time,open\n2026-03-10T00:00:00Z,100\n", encoding="utf-8")
+        with pytest.raises(imp.CsvNonValido):
+            imp.leggi_csv(percorso)
+
+    def test_le_barre_si_ordinano(self, tmp_path) -> None:
+        import importa_storico as imp
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-12T00:00:00Z,112,120,110,118\n"
+            "2026-03-10T00:00:00Z,100,110,95,105\n"
+        ))
+        barre = imp.leggi_csv(percorso)
+        assert barre[0]["apertura_utc"] < barre[1]["apertura_utc"]
+
+    def test_barra_incoerente_scartata(self, tmp_path) -> None:
+        import importa_storico as imp
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,90,110,105\n"      # massimo sotto il minimo
+            "2026-03-11T00:00:00Z,105,115,104,112\n"
+            "2026-03-12T00:00:00Z,112,120,110,118\n"
+        ))
+        righe = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        assert len(righe) == 1, "la barra rotta sparisce, le altre restano"

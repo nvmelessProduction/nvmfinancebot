@@ -51,6 +51,16 @@ class AlertIn(BaseModel):
     massimo: float = Field(alias="high")
     minimo: float = Field(alias="low")
     chiusura: float = Field(alias="close")
+    # Estremi della candela precedente (DEF-19). Il vocabolario di
+    # 01_definizioni.md li elenca fra i dati che arrivano da TradingView:
+    # servono a verificare che l'archivio del server sia allineato con il
+    # grafico da cui l'alert e' partito.
+    massimo_c1: Optional[float] = Field(default=None, alias="high_c1")
+    minimo_c1: Optional[float] = Field(default=None, alias="low_c1")
+
+    # Chiusura del DXY sulla candela valutata (DEF-33, SETUP-19).
+    dxy_chiusura: Optional[float] = Field(default=None, alias="dxy_close")
+
     # Campi facoltativi.
     rsi: Optional[float] = None
     nota: Optional[str] = Field(default=None, alias="note")

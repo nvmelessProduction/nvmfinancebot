@@ -542,141 +542,291 @@ class ProvaSpecifiche(BaseCollaudo):
 
 
 # ==========================================================================
-# 5ter. Il fornitore dei dati: dalle barre di MT5 alla Fotografia
+# 5ter. Il fornitore: analisi sul future di TradingView, esecuzione su CFD
 # ==========================================================================
-class ProvaFornitore(BaseCollaudo):
-    """Il collegamento fra le candele vere del terminale e il motore.
+class ProvaSimboli(BaseCollaudo):
+    """I tre mondi di nomi: TradingView, future di analisi, CFD operativo."""
 
-    Il test che conta e' quello sulla conversione degli orari: MT5 marca ogni
-    barra con l'istante di apertura, la strategia ragiona su quello di
-    chiusura, e confonderli rende ogni candela visibile un periodo prima del
-    dovuto. Su TF_1W significherebbe leggere la settimana con sette giorni di
-    anticipo.
-    """
+    def test_ticker_tradingview_al_future(self) -> None:
+        from core.simboli import future_da_ticker
 
+        self.assertEqual(future_da_ticker("GC1!"), "GC")
+        self.assertEqual(future_da_ticker("COMEX:GC1!"), "GC")
+        self.assertEqual(future_da_ticker("CME:6J2!"), "6J")
+        self.assertEqual(future_da_ticker("6E"), "6E")
+
+    def test_ticker_sconosciuto(self) -> None:
+        from core.simboli import future_da_ticker
+
+        self.assertIsNone(future_da_ticker("AAPL"))
+        self.assertIsNone(future_da_ticker("BTCUSD"))
+
+    def test_future_al_cfd(self) -> None:
+        """Si analizza su GC e si opera su XAUUSD (DEF-33)."""
+        from core.simboli import cfd_di, future_di
+
+        self.assertEqual(cfd_di("GC"), "XAUUSD")
+        self.assertEqual(cfd_di("6J"), "USDJPY")
+        self.assertEqual(future_di("EURUSD"), "6E")
+
+    def test_il_dxy_e_di_sola_analisi(self) -> None:
+        """PRIN-08: il DXY non e' uno strumento operativo."""
+        from core.simboli import cfd_di, e_solo_analisi, future_da_ticker
+
+        self.assertTrue(e_solo_analisi(future_da_ticker("ICEUS")))
+        self.assertIsNone(cfd_di("ICEUS"))
+
+    def test_intervallo_al_timeframe(self) -> None:
+        from core.parametri import TF
+        from core.simboli import timeframe_da_intervallo
+
+        self.assertIs(timeframe_da_intervallo("60"), TF.H1)
+        self.assertIs(timeframe_da_intervallo("240"), TF.H4)
+        self.assertIs(timeframe_da_intervallo("1D"), TF.D1)
+        self.assertIs(timeframe_da_intervallo("W"), TF.W1)
+
+    def test_intervallo_fuori_da_def01(self) -> None:
+        """Un alert a 5 minuti non innesca nulla: DEF-01 non lo prevede."""
+        from core.simboli import timeframe_da_intervallo
+
+        self.assertIsNone(timeframe_da_intervallo("5"))
+        self.assertIsNone(timeframe_da_intervallo("15"))
+
+    def test_suffisso_del_broker(self) -> None:
+        from core.simboli import simbolo_esecuzione
+
+        self.assertEqual(simbolo_esecuzione("EURUSD"), "EURUSD")
+        self.assertEqual(simbolo_esecuzione("EURUSD", ".a"), "EURUSD.a")
+
+
+class ProvaArchivioCandele(BaseCollaudo):
+    """Le candele del future arrivano dagli alert e si accumulano."""
+
+    def alert_candela(self, **modifiche) -> AlertIn:
+        base = {
+            "secret": "segreto-di-collaudo", "symbol": "GC1!", "tf": "1D",
+            "candle_close_time_utc": "2026-03-10T22:00:00Z",
+            "open": 4700.0, "high": 4750.0, "low": 4680.0, "close": 4730.0,
+        }
+        base.update(modifiche)
+        return AlertIn.model_validate(base)
+
+    def test_la_candela_viene_archiviata(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        archiviata, motivo = archivia_candela(self.alert_candela())
+        self.assertTrue(archiviata, motivo)
+        righe = storage.candele_archiviate("GC", "TF_1D")
+        self.assertEqual(len(righe), 1)
+        self.assertEqual(righe[0]["chiusura"], 4730.0)
+
+    def test_lo_stesso_alert_non_duplica(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        archivia_candela(self.alert_candela())
+        archivia_candela(self.alert_candela())
+        self.assertEqual(len(storage.candele_archiviate("GC", "TF_1D")), 1)
+
+    def test_candele_diverse_si_accumulano(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        for giorno in (10, 11, 12):
+            archivia_candela(self.alert_candela(
+                candle_close_time_utc=f"2026-03-{giorno}T22:00:00Z"))
+        self.assertEqual(len(storage.candele_archiviate("GC", "TF_1D")), 3)
+
+    def test_timeframe_separati(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        archivia_candela(self.alert_candela(tf="1D"))
+        archivia_candela(self.alert_candela(tf="1W"))
+        self.assertEqual(len(storage.candele_archiviate("GC", "TF_1D")), 1)
+        self.assertEqual(len(storage.candele_archiviate("GC", "TF_1W")), 1)
+
+    def test_strumento_fuori_da_prin08_non_archiviato(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        archiviata, motivo = archivia_candela(self.alert_candela(symbol="AAPL"))
+        self.assertFalse(archiviata)
+        self.assertIn("PRIN-08", motivo)
+
+    def test_timeframe_fuori_da_def01_non_archiviato(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        archiviata, motivo = archivia_candela(self.alert_candela(tf="5"))
+        self.assertFalse(archiviata)
+        self.assertIn("DEF-01", motivo)
+
+    def test_il_webhook_archivia_la_candela(self) -> None:
+        """Il giro vero: alert dal webhook, candela in archivio."""
+        riconfigura(FORNITORE_DATI="tradingview")
+        try:
+            with TestClient(main.app) as c:
+                risposta = c.post("/webhook", json={
+                    "secret": "segreto-di-collaudo", "symbol": "GC1!", "tf": "1D",
+                    "candle_close_time_utc": "2026-03-10T22:00:00Z",
+                    "open": 4700.0, "high": 4750.0, "low": 4680.0, "close": 4730.0,
+                })
+            self.assertEqual(risposta.status_code, 200)
+            self.assertEqual(len(storage.candele_archiviate("GC", "TF_1D")), 1)
+        finally:
+            riconfigura(FORNITORE_DATI="nessuno")
+
+    def test_copertura_dell_archivio(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        for giorno in range(10, 20):
+            archivia_candela(self.alert_candela(
+                candle_close_time_utc=f"2026-03-{giorno}T22:00:00Z"))
+        copertura = storage.copertura_candele()
+        self.assertEqual(len(copertura), 1)
+        self.assertEqual(copertura[0]["quante"], 10)
+        self.assertEqual(copertura[0]["strumento"], "GC")
+
+
+class ProvaAllineamento(BaseCollaudo):
+    """`high_c1`/`low_c1` verificano che grafico e archivio raccontino la stessa storia."""
+
+    def prepara(self) -> None:
+        from core.fornitore_tradingview import archivia_candela
+
+        for giorno, (massimo, minimo) in enumerate(
+            [(4750.0, 4680.0), (4760.0, 4700.0)], start=10
+        ):
+            archivia_candela(AlertIn.model_validate({
+                "secret": "s", "symbol": "GC1!", "tf": "1D",
+                "candle_close_time_utc": f"2026-03-{giorno}T22:00:00Z",
+                "open": 4700.0, "high": massimo, "low": minimo, "close": 4730.0,
+            }))
+
+    def test_allineato(self) -> None:
+        from core.fornitore_tradingview import verifica_allineamento
+        from core.parametri import TF
+
+        self.prepara()
+        alert = AlertIn.model_validate({
+            "secret": "s", "symbol": "GC1!", "tf": "1D",
+            "candle_close_time_utc": "2026-03-12T22:00:00Z",
+            "open": 4730.0, "high": 4770.0, "low": 4710.0, "close": 4750.0,
+            "high_c1": 4750.0, "low_c1": 4680.0,
+        })
+        self.assertIsNone(verifica_allineamento(alert, "GC", TF.D1))
+
+    def test_disallineato(self) -> None:
+        """Se il grafico e l'archivio non concordano, uno dei due e' sbagliato."""
+        from core.fornitore_tradingview import verifica_allineamento
+        from core.parametri import TF
+
+        self.prepara()
+        alert = AlertIn.model_validate({
+            "secret": "s", "symbol": "GC1!", "tf": "1D",
+            "candle_close_time_utc": "2026-03-12T22:00:00Z",
+            "open": 4730.0, "high": 4770.0, "low": 4710.0, "close": 4750.0,
+            "high_c1": 9999.0, "low_c1": 4680.0,
+        })
+        motivo = verifica_allineamento(alert, "GC", TF.D1)
+        self.assertIsNotNone(motivo)
+        self.assertIn("9999", motivo)
+
+    def test_senza_i_campi_non_si_verifica(self) -> None:
+        """Sono facoltativi: senza, non e' un errore."""
+        from core.fornitore_tradingview import verifica_allineamento
+        from core.parametri import TF
+
+        self.prepara()
+        alert = AlertIn.model_validate({
+            "secret": "s", "symbol": "GC1!", "tf": "1D",
+            "candle_close_time_utc": "2026-03-12T22:00:00Z",
+            "open": 4730.0, "high": 4770.0, "low": 4710.0, "close": 4750.0,
+        })
+        self.assertIsNone(verifica_allineamento(alert, "GC", TF.D1))
+
+
+class ProvaFornitoreTradingView(BaseCollaudo):
     def setUp(self) -> None:
         super().setUp()
         broker.disconnetti()
         broker.connetti()
-        from datetime import datetime, timedelta, timezone
 
-        # Cinque barre orarie: aperture alle 10, 11, 12, 13, 14.
-        # L'ultima e' quella in formazione.
-        base = datetime(2026, 3, 10, 10, tzinfo=timezone.utc)
-        finto.barre_per_timeframe[finto.TIMEFRAME_H1] = [
-            {
-                "time": int((base + timedelta(hours=i)).timestamp()),
-                "open": 100.0 + i, "high": 101.0 + i,
-                "low": 99.0 + i, "close": 100.5 + i,
-            }
-            for i in range(5)
-        ]
+    def semina(self, quante: int = 40) -> None:
+        """Riempie l'archivio come farebbe un'importazione da TradingView."""
+        righe = []
+        for tf in ("TF_1M", "TF_1W", "TF_1D", "TF_H12", "TF_H6", "TF_H4", "TF_H1"):
+            for i in range(quante):
+                righe.append({
+                    "strumento": "6E", "tf": tf,
+                    "chiusura_utc": f"2026-01-{(i % 28) + 1:02d}T{(i % 24):02d}:00:00Z",
+                    "apertura": 1.10 + i * 0.001, "massimo": 1.11 + i * 0.001,
+                    "minimo": 1.09 + i * 0.001, "chiusura": 1.105 + i * 0.001,
+                })
+        storage.salva_candele(righe)
 
-    def fornitore(self):
-        from core.fornitore_mt5 import FornitoreMT5
-        return FornitoreMT5()
-
-    def test_l_orario_e_la_chiusura_non_l_apertura(self) -> None:
-        from datetime import datetime, timezone
+    def test_lo_storico_si_costruisce_dall_archivio(self) -> None:
+        from core.fornitore_tradingview import FornitoreTradingView
         from core.parametri import TF
 
-        candele = self.fornitore().candele_di("EURUSD", TF.H1, 10)
-        # La barra aperta alle 10 chiude alle 11, non alle 10.
-        self.assertEqual(
-            candele[0].orario,
-            datetime(2026, 3, 10, 11, tzinfo=timezone.utc),
-            "l'orario deve essere la chiusura, altrimenti e' lookahead",
-        )
-        self.assertEqual(candele[0].apertura, 100.0)
-
-    def test_la_barra_in_formazione_viene_scartata(self) -> None:
-        from core.parametri import TF
-
-        candele = self.fornitore().candele_di("EURUSD", TF.H1, 10)
-        self.assertEqual(len(candele), 4, "cinque barre, una in corso: restano quattro")
+        self.semina()
+        storico = FornitoreTradingView().storico("6E")
+        self.assertGreater(len(storico[TF.D1]), 0)
+        self.assertIn(TF.M3, storico, "i trimestrali si aggregano dai mensili")
 
     def test_le_candele_sono_in_ordine(self) -> None:
+        from core.fornitore_tradingview import FornitoreTradingView
         from core.parametri import TF
 
-        candele = self.fornitore().candele_di("EURUSD", TF.H1, 10)
+        self.semina()
+        candele = FornitoreTradingView().storico("6E")[TF.D1]
         orari = [c.orario for c in candele]
         self.assertEqual(orari, sorted(orari))
 
-    def test_timeframe_non_nativo_e_un_errore(self) -> None:
+    def test_il_dxy_non_innesca_valutazioni(self) -> None:
+        """PRIN-08: si analizza, non si opera."""
+        from core.fornitore_tradingview import FornitoreTradingView
+
+        alert = AlertIn.model_validate({
+            "secret": "s", "symbol": "ICEUS", "tf": "1D",
+            "candle_close_time_utc": "2026-03-10T22:00:00Z",
+            "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.5,
+        })
+        self.assertIsNone(FornitoreTradingView().costruisci(alert))
+
+    def test_la_catena_completa(self) -> None:
+        """Alert sul future -> archivio -> motore -> decisione sul CFD."""
+        from core import strategy
+        from core.fornitore_tradingview import FornitoreTradingView
+
+        self.semina()
+        strategy.registra_fornitore(FornitoreTradingView().costruisci)
+        try:
+            decisione = valuta(AlertIn.model_validate({
+                "secret": "s", "symbol": "6E1!", "tf": "60",
+                "candle_close_time_utc": "2026-03-10T22:00:00Z",
+                "open": 1.10, "high": 1.11, "low": 1.09, "close": 1.105,
+            }))
+            self.assertIn(decisione.azione, ("NONE", "BUY", "SELL"))
+            self.assertTrue(decisione.motivo)
+        finally:
+            strategy.registra_fornitore(None)
+
+    def test_nessun_prezzo_di_analisi_arriva_da_mt5(self) -> None:
+        """ESCL-12: i prezzi di analisi vengono dal future, non dal broker.
+
+        Se il fornitore leggesse le candele da MT5, azzerare l'archivio non
+        cambierebbe niente. Deve invece far tacere tutto.
+        """
+        from core.fornitore_tradingview import FornitoreTradingView
         from core.parametri import TF
 
-        with self.assertRaises(ValueError):
-            self.fornitore().candele_di("EURUSD", TF.M3, 10)
+        self.semina()
+        pieno = FornitoreTradingView().storico("6E")
+        self.assertGreater(len(pieno[TF.D1]), 0)
 
-    def test_il_suffisso_dei_simboli(self) -> None:
-        """Su FP Markets i nomi possono essere EURUSD.a invece che EURUSD."""
-        from core.fornitore_mt5 import FornitoreMT5, SimboloNonTrovato
+        with storage.connessione(scrittura=True) as conn:
+            conn.execute("DELETE FROM candela")
 
-        # Il finto accetta qualsiasi nome tranne SIMBOLO-INESISTENTE.
-        self.assertEqual(FornitoreMT5().simbolo_broker("EURUSD"), "EURUSD")
-
-        originale = finto.symbol_select
-        finto.symbol_select = lambda s, a=True: s.endswith(".a")
-        try:
-            fornitore = FornitoreMT5(suffisso=".a")
-            self.assertEqual(fornitore.simbolo_broker("EURUSD"), "EURUSD.a")
-        finally:
-            finto.symbol_select = originale
-
-    def test_simbolo_introvabile(self) -> None:
-        from core.fornitore_mt5 import FornitoreMT5, SimboloNonTrovato
-
-        originale = finto.symbol_select
-        finto.symbol_select = lambda s, a=True: False
-        try:
-            with self.assertRaises(SimboloNonTrovato):
-                FornitoreMT5().simbolo_broker("EURUSD")
-        finally:
-            finto.symbol_select = originale
-
-    def test_alert_fuori_da_prin08_ignorato(self) -> None:
-        alert = AlertIn.model_validate(alert_finto(symbol="BTCUSD"))
-        self.assertIsNone(self.fornitore().costruisci(alert))
-
-    def test_timeframe_alert_non_di_trigger(self) -> None:
-        """Un alert a 5 minuti non innesca nulla: DEF-01 non lo prevede."""
-        alert = AlertIn.model_validate(alert_finto(symbol="EURUSD", tf="5"))
-        self.assertIsNone(self.fornitore().costruisci(alert))
-
-    def test_la_catena_completa_produce_una_decisione(self) -> None:
-        """Alert -> fotografia da MT5 -> motore -> decisione tracciabile."""
-        from core import strategy
-        from core.fornitore_mt5 import FornitoreMT5
-
-        for costante in (finto.TIMEFRAME_H4, finto.TIMEFRAME_H6, finto.TIMEFRAME_H12,
-                         finto.TIMEFRAME_D1, finto.TIMEFRAME_W1, finto.TIMEFRAME_MN1):
-            finto.barre_per_timeframe[costante] = finto.barre_per_timeframe[finto.TIMEFRAME_H1]
-
-        strategy.registra_fornitore(FornitoreMT5().costruisci)
-        try:
-            decisione = valuta(AlertIn.model_validate(alert_finto(symbol="EURUSD", tf="60")))
-            self.assertIn(decisione.azione, ("NONE", "BUY", "SELL"))
-            self.assertTrue(decisione.motivo, "una decisione senza motivo non e' tracciabile")
-            if decisione.azione == "NONE":
-                self.assertIn("[", decisione.motivo, "le regole devono finire nel motivo")
-        finally:
-            strategy.registra_fornitore(None)
-
-    def test_senza_calendario_news_ci_si_astiene(self) -> None:
-        """PA-55: senza calendario non si opera, e lo si dice."""
-        from core import strategy
-        from core.fornitore_mt5 import FornitoreMT5
-
-        for costante in (finto.TIMEFRAME_H4, finto.TIMEFRAME_D1,
-                         finto.TIMEFRAME_W1, finto.TIMEFRAME_MN1):
-            finto.barre_per_timeframe[costante] = finto.barre_per_timeframe[finto.TIMEFRAME_H1]
-
-        strategy.registra_fornitore(FornitoreMT5().costruisci)
-        try:
-            decisione = valuta(AlertIn.model_validate(alert_finto(symbol="EURUSD", tf="60")))
-            self.assertEqual(decisione.azione, "NONE")
-        finally:
-            strategy.registra_fornitore(None)
+        vuoto = FornitoreTradingView().storico("6E")
+        self.assertEqual(len(vuoto[TF.D1]), 0,
+                         "senza archivio non ci sono prezzi: non li prende da MT5")
 
 
 # ==========================================================================

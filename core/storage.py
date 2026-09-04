@@ -44,6 +44,19 @@ CREATE TABLE IF NOT EXISTS alert (
     payload_json            TEXT    NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS candela (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    strumento               TEXT    NOT NULL,
+    tf                      TEXT    NOT NULL,
+    chiusura_utc            TEXT    NOT NULL,
+    apertura                REAL    NOT NULL,
+    massimo                 REAL    NOT NULL,
+    minimo                  REAL    NOT NULL,
+    chiusura                REAL    NOT NULL,
+    origine                 TEXT    NOT NULL DEFAULT 'tradingview',
+    ricevuta_utc            TEXT    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS decisione (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     alert_id        INTEGER NOT NULL REFERENCES alert(id),
@@ -81,6 +94,9 @@ CREATE TABLE IF NOT EXISTS posizione (
 # archivio vecchio la colonna `impronta` non esiste ancora.
 INDICI: str = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_impronta ON alert(impronta);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_candela_unica
+    ON candela(strumento, tf, chiusura_utc);
+CREATE INDEX IF NOT EXISTS idx_candela_serie ON candela(strumento, tf, chiusura_utc);
 CREATE INDEX IF NOT EXISTS idx_alert_simbolo ON alert(simbolo);
 CREATE INDEX IF NOT EXISTS idx_decisione_alert ON decisione(alert_id);
 CREATE INDEX IF NOT EXISTS idx_posizione_stato ON posizione(stato);
@@ -317,7 +333,113 @@ def conteggi() -> dict[str, int]:
             "alert": conn.execute("SELECT COUNT(*) FROM alert").fetchone()[0],
             "decisione": conn.execute("SELECT COUNT(*) FROM decisione").fetchone()[0],
             "posizione": conn.execute("SELECT COUNT(*) FROM posizione").fetchone()[0],
+            "candela": conn.execute("SELECT COUNT(*) FROM candela").fetchone()[0],
         }
+
+
+def salva_candela(
+    strumento: str,
+    tf: str,
+    chiusura_utc: str,
+    apertura: float,
+    massimo: float,
+    minimo: float,
+    chiusura: float,
+    origine: str = "tradingview",
+) -> bool:
+    """Archivia una candela chiusa. True se e' nuova, False se gia' c'era.
+
+    E' l'archivio dei prezzi su cui il motore ragiona: le candele arrivano da
+    TradingView, una per alert, e restano. La chiave e' (strumento, tf,
+    chiusura), quindi lo stesso alert riconsegnato non duplica nulla.
+
+    `origine` distingue le candele arrivate dal vivo da quelle importate: una
+    riga importata da un CSV vale come una ricevuta dal webhook, ma sapere
+    quale e' quale serve quando qualcosa non torna.
+    """
+    with connessione(scrittura=True) as conn:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO candela (
+                strumento, tf, chiusura_utc, apertura, massimo, minimo,
+                chiusura, origine, ricevuta_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (strumento, tf, chiusura_utc, apertura, massimo, minimo,
+             chiusura, origine, adesso_utc()),
+        )
+        return cur.rowcount > 0
+
+
+def salva_candele(righe: list[dict[str, Any]], origine: str = "importazione") -> tuple[int, int]:
+    """Archivia molte candele in un colpo solo. Restituisce (nuove, gia' viste)."""
+    if not righe:
+        return 0, 0
+    with connessione(scrittura=True) as conn:
+        prima = conn.execute("SELECT COUNT(*) FROM candela").fetchone()[0]
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO candela (
+                strumento, tf, chiusura_utc, apertura, massimo, minimo,
+                chiusura, origine, ricevuta_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (r["strumento"], r["tf"], r["chiusura_utc"], r["apertura"],
+                 r["massimo"], r["minimo"], r["chiusura"], origine, adesso_utc())
+                for r in righe
+            ],
+        )
+        dopo = conn.execute("SELECT COUNT(*) FROM candela").fetchone()[0]
+    nuove = dopo - prima
+    return nuove, len(righe) - nuove
+
+
+def candele_archiviate(
+    strumento: str,
+    tf: str,
+    limite: Optional[int] = None,
+) -> list[dict[str, Any]]:
+    """Le candele di uno strumento su un timeframe, dalla piu' vecchia.
+
+    Con `limite` restituisce le piu' recenti, comunque in ordine cronologico:
+    e' quello che serve al motore, che guarda sempre la coda della serie.
+    """
+    with connessione() as conn:
+        if limite is None:
+            righe = conn.execute(
+                "SELECT * FROM candela WHERE strumento = ? AND tf = ? "
+                "ORDER BY chiusura_utc",
+                (strumento, tf),
+            ).fetchall()
+        else:
+            righe = conn.execute(
+                "SELECT * FROM candela WHERE strumento = ? AND tf = ? "
+                "ORDER BY chiusura_utc DESC LIMIT ?",
+                (strumento, tf, limite),
+            ).fetchall()
+            righe = list(reversed(righe))
+    return [dict(riga) for riga in righe]
+
+
+def copertura_candele() -> list[dict[str, Any]]:
+    """Quante candele ci sono per strumento e timeframe, e da quando.
+
+    Serve a sapere se l'archivio basta prima di accendere il motore: senza
+    storia sufficiente DEF-26 fa tacere i timeframe, e il bot non opera senza
+    che sia evidente il perche'.
+    """
+    with connessione() as conn:
+        righe = conn.execute(
+            """
+            SELECT strumento, tf, COUNT(*) AS quante,
+                   MIN(chiusura_utc) AS dalla, MAX(chiusura_utc) AS alla
+              FROM candela
+             GROUP BY strumento, tf
+             ORDER BY strumento, tf
+            """
+        ).fetchall()
+    return [dict(riga) for riga in righe]
 
 
 def ultime_decisioni(quante: int = 5) -> list[dict[str, Any]]:
