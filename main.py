@@ -59,6 +59,24 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
     else:
         log.info("MT5 non contattato (modalita' dry_run)")
 
+    # --- Fornitore dei dati di analisi ------------------------------------
+    if cfg.FORNITORE_DATI == "mt5":
+        if not broker.disponibile():
+            log.error(
+                "FORNITORE_DATI=mt5 ma MetaTrader5 non e' importabile: "
+                "il motore restera' senza dati e si asterra'"
+            )
+        else:
+            from core.fornitore_mt5 import NON_CONFORMITA, collega
+
+            collega(suffisso=cfg.MT5_SUFFISSO_SIMBOLI)
+            log.warning("=" * 60)
+            log.warning("NON CONFORMITA' DICHIARATA")
+            log.warning("%s", NON_CONFORMITA)
+            log.warning("=" * 60)
+    else:
+        log.info("nessun fornitore dati: il motore si asterra' dichiarandolo")
+
     # La sentinella serve se c'e' qualcosa da sorvegliare, adesso o fra poco.
     aperte = storage.posizioni_aperte()
     if aperte and cfg.MODE == "dry_run":
@@ -328,8 +346,22 @@ def salute() -> dict[str, Any]:
     # Il campanello d'allarme: posizioni aperte che nessuno sta guardando.
     scoperte = bool(aperte) and not sentinella.attiva()
 
+    from core import strategy
+
+    fornitore = {
+        "configurato": cfg.FORNITORE_DATI,
+        "collegato": strategy.fornitore_collegato(),
+    }
+    if cfg.FORNITORE_DATI == "mt5":
+        from core.fornitore_mt5 import NON_CONFORMITA
+
+        # Va mostrata dove si guarda lo stato, non solo nel log di avvio:
+        # una non conformita' che scorre via non e' dichiarata, e' sepolta.
+        fornitore["non_conformita"] = NON_CONFORMITA
+
     return {
         "modalita": cfg.MODE,
+        "fornitore_dati": fornitore,
         "mt5_disponibile": stato_broker["mt5_disponibile"],
         "mt5_connesso": stato_broker["connesso"],
         "mt5_trading_permesso": stato_broker["trading_permesso"],

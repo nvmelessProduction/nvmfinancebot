@@ -19,6 +19,7 @@ arrivano sempre dall'esterno.
 """
 
 import threading
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from core.config import impostazioni
@@ -513,6 +514,91 @@ def conto_e_demo() -> tuple[bool, str]:
             return True, f"conto demo {conto.login} su {conto.server}"
         nomi = {0: "DEMO", 1: "CONTEST", 2: "REALE"}
         return False, f"conto {nomi.get(modo, modo)} {conto.login}: non e' un demo"
+
+
+def candele(simbolo: str, timeframe_mt5: int, quante: int) -> tuple[bool, list[dict[str, Any]], str]:
+    """Legge le barre storiche di un simbolo.
+
+    Restituisce dizionari con `apertura_utc`, `open`, `high`, `low`, `close`.
+    **`apertura_utc` e' l'istante di APERTURA della barra**, che e' come MT5 le
+    marca: convertirlo in chiusura e' compito di chi chiama, e sbagliarlo
+    significa vedere ogni candela un periodo prima del dovuto.
+
+    L'ultima barra restituita da MT5 e' quella **in formazione**. Viene
+    consegnata cosi' com'e': scartarla e' parte della conversione.
+    """
+    ok, messaggio = _assicura_connessione()
+    if not ok or mt5 is None:
+        return False, [], messaggio
+
+    with _lucchetto:
+        if not mt5.symbol_select(simbolo, True):
+            codice, descrizione = _errore_mt5()
+            return False, [], f"simbolo {simbolo} non selezionabile: [{codice}] {descrizione}"
+        barre = mt5.copy_rates_from_pos(simbolo, timeframe_mt5, 0, quante)
+
+    if barre is None or len(barre) == 0:
+        codice, descrizione = _errore_mt5()
+        return False, [], f"nessuna barra per {simbolo}: [{codice}] {descrizione}"
+
+    lette = [
+        {
+            "apertura_utc": datetime.fromtimestamp(int(barra["time"]), tz=timezone.utc),
+            "open": float(barra["open"]),
+            "high": float(barra["high"]),
+            "low": float(barra["low"]),
+            "close": float(barra["close"]),
+        }
+        for barra in barre
+    ]
+    return True, lette, f"{len(lette)} barre"
+
+
+def posizioni_per_strumento() -> tuple[bool, dict[str, int], str]:
+    """Quante posizioni aperte per ciascuno strumento.
+
+    E' il dato che RISK-06 usa per il tetto delle quattro posizioni e RISK-02
+    per contare `n` dentro il gruppo di correlazione.
+    """
+    ok, posizioni, messaggio = posizioni_broker()
+    if not ok:
+        return False, {}, messaggio
+    conteggi: dict[str, int] = {}
+    for posizione in posizioni:
+        conteggi[posizione["simbolo"]] = conteggi.get(posizione["simbolo"], 0) + 1
+    return True, conteggi, messaggio
+
+
+def pnl_chiuso(da: datetime, a: Optional[datetime] = None) -> tuple[bool, float, str]:
+    """P&L **chiuso** nel periodo, come lo vogliono RISK-07, RISK-08 e RISK-09.
+
+    Somma profitto, commissioni e swap dei deal di uscita. Le posizioni ancora
+    aperte non entrano: RISK-10 dice esplicitamente che i limiti si calcolano
+    sul P&L chiuso, e che una posizione aperta non viene chiusa dal
+    raggiungimento di un limite.
+    """
+    ok, messaggio = _assicura_connessione()
+    if not ok or mt5 is None:
+        return False, 0.0, messaggio
+
+    fine = a or datetime.now(timezone.utc)
+    with _lucchetto:
+        deal = mt5.history_deals_get(da, fine)
+
+    if deal is None:
+        codice, descrizione = _errore_mt5()
+        # Nessuno storico non e' un errore: puo' non esserci stata attivita'.
+        if codice == 0:
+            return True, 0.0, "nessun deal nel periodo"
+        return False, 0.0, f"history_deals_get fallita: [{codice}] {descrizione}"
+
+    uscita = int(getattr(mt5, "DEAL_ENTRY_OUT", 1))
+    totale = sum(
+        float(d.profit) + float(getattr(d, "commission", 0.0)) + float(getattr(d, "swap", 0.0))
+        for d in deal
+        if int(getattr(d, "entry", -1)) == uscita
+    )
+    return True, totale, f"{len(deal)} deal nel periodo"
 
 
 def stato() -> dict[str, Any]:

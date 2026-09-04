@@ -93,6 +93,16 @@ class Impostazioni(BaseSettings):
     SENTINELLA_ATTIVA: bool = True
     SENTINELLA_INTERVALLO_SEC: float = 5.0
 
+    # --- Fornitore dei dati di analisi ---------------------------------------
+    # "nessuno": il motore non riceve dati e si astiene dichiarandolo.
+    # "mt5":     legge le candele dal terminale. ATTENZIONE: sono CFD, non
+    #            future CME, quindi NON conforme a DEF-32/REV-13. Fa girare la
+    #            macchina su dati veri, non misura la strategia.
+    FORNITORE_DATI: Literal["nessuno", "mt5"] = "nessuno"
+    # Suffisso che il broker aggiunge ai simboli (es. ".a", ".pro").
+    # Si scopre con: python prova_esecuzione.py
+    MT5_SUFFISSO_SIMBOLI: str = ""
+
     # --- Archivio ------------------------------------------------------------
     DB_PATH: str = "bot.db"
 

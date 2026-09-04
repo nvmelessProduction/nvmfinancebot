@@ -64,6 +64,14 @@ class FintoMT5(types.ModuleType):
     ORDER_FILLING_IOC = 1
     ORDER_FILLING_RETURN = 2
     TRADE_RETCODE_DONE = 10009
+    DEAL_ENTRY_OUT = 1
+    TIMEFRAME_H1 = 16385
+    TIMEFRAME_H4 = 16388
+    TIMEFRAME_H6 = 16390
+    TIMEFRAME_H12 = 16396
+    TIMEFRAME_D1 = 16408
+    TIMEFRAME_W1 = 32769
+    TIMEFRAME_MN1 = 49153
 
     def __init__(self) -> None:
         super().__init__("MetaTrader5")
@@ -83,6 +91,8 @@ class FintoMT5(types.ModuleType):
         self.ordini_inviati: list[dict] = []
         self.prossimo_ticket = 1000
         self.ordine_fallisce = False
+        self.barre_per_timeframe: dict[int, list[dict]] = {}
+        self.deal: list[Oggetto] = []
 
     # -- ciclo di vita --
     def initialize(self, **_: object) -> bool:
@@ -127,6 +137,17 @@ class FintoMT5(types.ModuleType):
             trade_tick_size=0.00001, trade_tick_value=0.1,
             trade_contract_size=100000.0, spread=12,
         )
+
+    # -- storico --
+    def copy_rates_from_pos(self, simbolo: str, timeframe: int, inizio: int, quante: int):
+        """Come MT5: `time` e' l'APERTURA della barra, e l'ultima e' in corso."""
+        barre = self.barre_per_timeframe.get(timeframe)
+        if barre is None:
+            return None
+        return barre[-quante:] if quante else barre
+
+    def history_deals_get(self, da, a):
+        return tuple(self.deal)
 
     # -- posizioni e ordini --
     def positions_get(self, symbol: str | None = None, ticket: int | None = None):
@@ -518,6 +539,144 @@ class ProvaSpecifiche(BaseCollaudo):
             self.assertFalse(broker.conto_e_demo()[0])
         finally:
             finto.modo_conto = finto.ACCOUNT_TRADE_MODE_DEMO
+
+
+# ==========================================================================
+# 5ter. Il fornitore dei dati: dalle barre di MT5 alla Fotografia
+# ==========================================================================
+class ProvaFornitore(BaseCollaudo):
+    """Il collegamento fra le candele vere del terminale e il motore.
+
+    Il test che conta e' quello sulla conversione degli orari: MT5 marca ogni
+    barra con l'istante di apertura, la strategia ragiona su quello di
+    chiusura, e confonderli rende ogni candela visibile un periodo prima del
+    dovuto. Su TF_1W significherebbe leggere la settimana con sette giorni di
+    anticipo.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        broker.disconnetti()
+        broker.connetti()
+        from datetime import datetime, timedelta, timezone
+
+        # Cinque barre orarie: aperture alle 10, 11, 12, 13, 14.
+        # L'ultima e' quella in formazione.
+        base = datetime(2026, 3, 10, 10, tzinfo=timezone.utc)
+        finto.barre_per_timeframe[finto.TIMEFRAME_H1] = [
+            {
+                "time": int((base + timedelta(hours=i)).timestamp()),
+                "open": 100.0 + i, "high": 101.0 + i,
+                "low": 99.0 + i, "close": 100.5 + i,
+            }
+            for i in range(5)
+        ]
+
+    def fornitore(self):
+        from core.fornitore_mt5 import FornitoreMT5
+        return FornitoreMT5()
+
+    def test_l_orario_e_la_chiusura_non_l_apertura(self) -> None:
+        from datetime import datetime, timezone
+        from core.parametri import TF
+
+        candele = self.fornitore().candele_di("EURUSD", TF.H1, 10)
+        # La barra aperta alle 10 chiude alle 11, non alle 10.
+        self.assertEqual(
+            candele[0].orario,
+            datetime(2026, 3, 10, 11, tzinfo=timezone.utc),
+            "l'orario deve essere la chiusura, altrimenti e' lookahead",
+        )
+        self.assertEqual(candele[0].apertura, 100.0)
+
+    def test_la_barra_in_formazione_viene_scartata(self) -> None:
+        from core.parametri import TF
+
+        candele = self.fornitore().candele_di("EURUSD", TF.H1, 10)
+        self.assertEqual(len(candele), 4, "cinque barre, una in corso: restano quattro")
+
+    def test_le_candele_sono_in_ordine(self) -> None:
+        from core.parametri import TF
+
+        candele = self.fornitore().candele_di("EURUSD", TF.H1, 10)
+        orari = [c.orario for c in candele]
+        self.assertEqual(orari, sorted(orari))
+
+    def test_timeframe_non_nativo_e_un_errore(self) -> None:
+        from core.parametri import TF
+
+        with self.assertRaises(ValueError):
+            self.fornitore().candele_di("EURUSD", TF.M3, 10)
+
+    def test_il_suffisso_dei_simboli(self) -> None:
+        """Su FP Markets i nomi possono essere EURUSD.a invece che EURUSD."""
+        from core.fornitore_mt5 import FornitoreMT5, SimboloNonTrovato
+
+        # Il finto accetta qualsiasi nome tranne SIMBOLO-INESISTENTE.
+        self.assertEqual(FornitoreMT5().simbolo_broker("EURUSD"), "EURUSD")
+
+        originale = finto.symbol_select
+        finto.symbol_select = lambda s, a=True: s.endswith(".a")
+        try:
+            fornitore = FornitoreMT5(suffisso=".a")
+            self.assertEqual(fornitore.simbolo_broker("EURUSD"), "EURUSD.a")
+        finally:
+            finto.symbol_select = originale
+
+    def test_simbolo_introvabile(self) -> None:
+        from core.fornitore_mt5 import FornitoreMT5, SimboloNonTrovato
+
+        originale = finto.symbol_select
+        finto.symbol_select = lambda s, a=True: False
+        try:
+            with self.assertRaises(SimboloNonTrovato):
+                FornitoreMT5().simbolo_broker("EURUSD")
+        finally:
+            finto.symbol_select = originale
+
+    def test_alert_fuori_da_prin08_ignorato(self) -> None:
+        alert = AlertIn.model_validate(alert_finto(symbol="BTCUSD"))
+        self.assertIsNone(self.fornitore().costruisci(alert))
+
+    def test_timeframe_alert_non_di_trigger(self) -> None:
+        """Un alert a 5 minuti non innesca nulla: DEF-01 non lo prevede."""
+        alert = AlertIn.model_validate(alert_finto(symbol="EURUSD", tf="5"))
+        self.assertIsNone(self.fornitore().costruisci(alert))
+
+    def test_la_catena_completa_produce_una_decisione(self) -> None:
+        """Alert -> fotografia da MT5 -> motore -> decisione tracciabile."""
+        from core import strategy
+        from core.fornitore_mt5 import FornitoreMT5
+
+        for costante in (finto.TIMEFRAME_H4, finto.TIMEFRAME_H6, finto.TIMEFRAME_H12,
+                         finto.TIMEFRAME_D1, finto.TIMEFRAME_W1, finto.TIMEFRAME_MN1):
+            finto.barre_per_timeframe[costante] = finto.barre_per_timeframe[finto.TIMEFRAME_H1]
+
+        strategy.registra_fornitore(FornitoreMT5().costruisci)
+        try:
+            decisione = valuta(AlertIn.model_validate(alert_finto(symbol="EURUSD", tf="60")))
+            self.assertIn(decisione.azione, ("NONE", "BUY", "SELL"))
+            self.assertTrue(decisione.motivo, "una decisione senza motivo non e' tracciabile")
+            if decisione.azione == "NONE":
+                self.assertIn("[", decisione.motivo, "le regole devono finire nel motivo")
+        finally:
+            strategy.registra_fornitore(None)
+
+    def test_senza_calendario_news_ci_si_astiene(self) -> None:
+        """PA-55: senza calendario non si opera, e lo si dice."""
+        from core import strategy
+        from core.fornitore_mt5 import FornitoreMT5
+
+        for costante in (finto.TIMEFRAME_H4, finto.TIMEFRAME_D1,
+                         finto.TIMEFRAME_W1, finto.TIMEFRAME_MN1):
+            finto.barre_per_timeframe[costante] = finto.barre_per_timeframe[finto.TIMEFRAME_H1]
+
+        strategy.registra_fornitore(FornitoreMT5().costruisci)
+        try:
+            decisione = valuta(AlertIn.model_validate(alert_finto(symbol="EURUSD", tf="60")))
+            self.assertEqual(decisione.azione, "NONE")
+        finally:
+            strategy.registra_fornitore(None)
 
 
 # ==========================================================================

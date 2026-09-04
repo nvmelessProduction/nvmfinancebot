@@ -282,3 +282,98 @@ class TestPurezza:
                 moduli.add(nodo.module.split(".")[0])
         vietati = {"httpx", "requests", "socket", "urllib", "sqlite3", "os", "pathlib", "csv"}
         assert not (moduli & vietati), moduli & vietati
+
+
+# ===========================================================================
+# Aggregazione dei timeframe che MT5 non ha
+# ===========================================================================
+class TestAggregazione:
+    """`TF_3M`, `TF_6M` e `TF_12M` si costruiscono dalle mensili.
+
+    Il test che conta e' quello sui periodi incompleti: un trimestre in corso
+    non e' una candela, e' una candela in formazione. Emetterlo creerebbe un
+    lookahead di mesi, non di minuti, e sarebbe invisibile perche' i numeri
+    sembrerebbero giusti.
+    """
+
+    def mensili(self, quanti: int = 12, anno: int = 2026) -> list[Candela]:
+        return [
+            Candela(datetime(anno, mese, 28, tzinfo=timezone.utc),
+                    100 + mese, 110 + mese, 90 + mese, 105 + mese)
+            for mese in range(1, quanti + 1)
+        ]
+
+    def test_trimestrali_da_un_anno_completo(self) -> None:
+        from core.aggregazione import aggrega
+
+        trimestri = aggrega(self.mensili(), 3)
+        assert len(trimestri) == 4
+
+    def test_ohlc_del_gruppo(self) -> None:
+        """Apertura del primo, chiusura dell'ultimo, estremi di tutti."""
+        from core.aggregazione import aggrega
+
+        q1 = aggrega(self.mensili(3), 3)[0]
+        assert q1.apertura == 101          # gennaio
+        assert q1.chiusura == 108          # marzo
+        assert q1.massimo == 113           # massimo di marzo
+        assert q1.minimo == 91             # minimo di gennaio
+
+    def test_il_periodo_incompleto_non_esiste(self) -> None:
+        """CASO CRITICO: con undici mensili l'ultimo trimestre e' in corso."""
+        from core.aggregazione import aggrega
+
+        assert len(aggrega(self.mensili(11), 3)) == 3, (
+            "il quarto trimestre ha due mensili su tre: e' in formazione, "
+            "e una candela in formazione non va mai valutata (ESCL-13)"
+        )
+        assert len(aggrega(self.mensili(5), 3)) == 1
+        assert len(aggrega(self.mensili(2), 3)) == 0
+
+    def test_semestrali_e_annuale(self) -> None:
+        from core.aggregazione import aggrega
+
+        assert len(aggrega(self.mensili(12), 6)) == 2
+        assert len(aggrega(self.mensili(12), 12)) == 1
+        assert len(aggrega(self.mensili(11), 12)) == 0, "l'anno non e' finito"
+
+    def test_allineamento_al_calendario(self) -> None:
+        """I trimestri sono gennaio-marzo, non tre mesi qualsiasi."""
+        from core.aggregazione import aggrega
+
+        # Partendo da febbraio, il primo trimestre completo e' aprile-giugno.
+        da_febbraio = [
+            Candela(datetime(2026, mese, 28, tzinfo=timezone.utc),
+                    100 + mese, 110 + mese, 90 + mese, 105 + mese)
+            for mese in range(2, 13)
+        ]
+        trimestri = aggrega(da_febbraio, 3)
+        assert len(trimestri) == 3, "gennaio manca: il primo trimestre e' incompleto"
+        assert trimestri[0].apertura == 104, "il primo completo parte da aprile"
+
+    def test_costruisci_superiori(self) -> None:
+        from core.aggregazione import costruisci_superiori
+
+        superiori = costruisci_superiori(self.mensili())
+        assert set(superiori) == {TF.M3, TF.M6, TF.M12}
+        assert len(superiori[TF.M3]) == 4
+        assert len(superiori[TF.M6]) == 2
+        assert len(superiori[TF.M12]) == 1
+
+    def test_gruppo_non_valido(self) -> None:
+        from core.aggregazione import aggrega
+
+        with pytest.raises(ValueError):
+            aggrega(self.mensili(), 0)
+
+    def test_orari_di_chiusura_scarta_l_ultima(self) -> None:
+        """La chiusura della barra i e' l'apertura della i+1.
+
+        L'ultima non ha successore, quindi non ha chiusura nota: e' quella in
+        formazione, e sparisce.
+        """
+        from core.aggregazione import orari_di_chiusura
+
+        assert orari_di_chiusura([10, 11, 12, 13]) == (11, 12, 13)
+        assert orari_di_chiusura([10]) == ()
+        assert orari_di_chiusura([]) == ()
