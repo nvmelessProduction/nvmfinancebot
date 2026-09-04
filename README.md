@@ -174,7 +174,7 @@ guardato per primo.
    python -m pytest tests -q
    ```
 
-   Sono 42 prove sull'impianto e 383 sul motore di strategia. Girano in poco
+   Sono 71 prove sull'impianto e 399 sul motore di strategia. Girano in poco
    più di un secondo, senza MT5 e senza toccare il conto. Se qualcuna
    fallisce, non andare avanti.
 
@@ -283,6 +283,8 @@ Note importanti:
   candela ancora aperta.
 - `{{timenow}}` serve a due cose: capire se l'alert è arrivato in ritardo, e
   riconoscere le consegne doppie. **Non toglierlo.**
+- Anche `"dxy_close": {{close}}` è facoltativo, e ha senso solo sull'alert
+  del grafico `ICEUS`: è il valore che `DEF-40` usa per la bias del dollaro.
 - Il campo `rsi` è facoltativo e non è nel modello sopra: si aggiunge solo se
   l'alert nasce da un indicatore che espone quel valore, con
   `"rsi": {{plot("RSI")}}` (il nome tra virgolette dev'essere quello del plot
@@ -424,10 +426,12 @@ ordine va storto alle 3 di notte, la console non c'è più ma il file sì.
 python -m unittest test_impianto -v
 ```
 
-40 prove, mezzo secondo, nessun conto toccato. Coprono:
+71 prove, meno di un secondo, nessun conto toccato. Coprono:
 
 - la sicurezza del webhook (segreto sbagliato, vuoto, non configurato)
-- che la strategia resti uno stub e che un alert valido non apra nulla
+- la traduzione dei nomi: si analizza `GC`, si opera `XAUUSD`, il DXY non si opera
+- che i prezzi di analisi non arrivino mai da MT5 (`ESCL-12`)
+- che l'archivio delle candele si riempia dal webhook, senza duplicati
 - le consegne doppie
 - ogni salvaguardia, una per una
 - il percorso completo degli ordini, **con un MetaTrader5 finto**: BUY in ask,
@@ -444,9 +448,10 @@ un centesimo.
 
 ---
 
-## Quando la strategia sarà pronta
+## Dove entra la strategia
 
-Si scrive **solo** in `core/strategy.py`. Il contratto è già fissato:
+Il motore vive in `core/motore.py` e nei moduli attorno; `core/strategy.py`
+è l'innesto verso l'impianto. Il contratto è questo:
 
 ```python
 def valuta(alert: AlertIn) -> Decision:
@@ -480,7 +485,7 @@ In ordine di importanza:
    decadere il setup all'apertura di `N3`. Praticabile da `TF_1D` in su.
 4. **La chiusura mirata (`CLOSE`).** L'adattatore sa chiudere per ticket, ma
    la strategia non esprime ancora quale.
-5. **La conversione dei simboli** fra il nome TradingView e quello FP Markets.
+5. **Il calendario news** (`dati/news.csv`): senza, `CTX-02` non può filtrare.
 6. **Riavvio automatico** di server e cloudflared all'accensione del PC.
 7. **Un secondo canale di allarme** indipendente dal PC: se il PC muore, muore
    anche Telegram, e non lo sai.
