@@ -338,3 +338,33 @@ class TestPurezza:
                     moduli.add(nodo.module.split(".")[0])
             vietati = {"httpx", "requests", "socket", "urllib", "sqlite3", "os", "pathlib"}
             assert not (moduli & vietati), (modulo, moduli & vietati)
+
+
+# ===========================================================================
+# PRIN-12, PRIN-13, PRIN-14 — finestra operativa
+# ===========================================================================
+class TestFinestraOperativa:
+    DOMENICA = datetime(2026, 3, 8, 23, 0, tzinfo=timezone.utc)
+    LUNEDI = datetime(2026, 3, 9, 10, 0, tzinfo=timezone.utc)
+
+    def test_prin13_domenica_solo_dal_settimanale_in_su(self) -> None:
+        assert ctx.operativita_domenicale_ammessa(self.DOMENICA, TF.W1) is True
+        assert ctx.operativita_domenicale_ammessa(self.DOMENICA, TF.M1) is True
+        assert ctx.operativita_domenicale_ammessa(self.DOMENICA, TF.D1) is False
+        assert ctx.operativita_domenicale_ammessa(self.DOMENICA, TF.H4) is False
+        assert ctx.operativita_domenicale_ammessa(self.DOMENICA, TF.H1) is False
+
+    def test_prin13_negli_altri_giorni_nessuna_restrizione(self) -> None:
+        for tf in (TF.H1, TF.H4, TF.D1, TF.W1):
+            assert ctx.operativita_domenicale_ammessa(self.LUNEDI, tf) is True
+
+    def test_prin12_e_prin14(self) -> None:
+        assert ctx.fasce_orarie_escluse() is False
+        assert ctx.unica_sospensione_prevista() == "RISK-13"
+
+    def test_escl24_universo_non_configurabile(self) -> None:
+        from core import esclusioni as e
+        from core.parametri import SCELTE, UNIVERSO
+        assert e.strumento_abilitabile_da_parametro() is False
+        assert not any("UNIVERSO" in str(chiave) for chiave in SCELTE)
+        assert len(UNIVERSO) == 6

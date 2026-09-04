@@ -148,6 +148,35 @@ def id_riciclabile(identificativo: str) -> bool:
 ID_RITIRATI: frozenset[str] = frozenset({"DEF-05", "DEF-06", "DEF-07", "DEF-08", "DEF-15"})
 
 
+def strumento_abilitabile_da_parametro() -> bool:
+    """ESCL-24 — Non esistono strumenti abilitati da parametro.
+
+    Aggiungere uno strumento richiede di modificare PRIN-08, non un file di
+    configurazione. Nel codice questo e' garantito dalla struttura:
+    `UNIVERSO` in `parametri.py` e' un dizionario scritto a mano, non un
+    valore letto dal `.env`, e `SCELTE` non puo' toccarlo.
+    """
+    return False
+
+
+# ESCL-19, ESCL-20, ESCL-21, ESCL-22 e ESCL-23 non hanno codice, ed e'
+# corretto cosi': sono regole su **come si scrivono e si mantengono i
+# documenti**, non sul comportamento del bot.
+#
+#   ESCL-19  mai un aggettivo valutativo senza soglia numerica
+#   ESCL-20  mai rimandi impliciti fra parti dei documenti
+#   ESCL-21  mai informazione presente solo in un'immagine
+#   ESCL-22  mai eccezioni discrezionali alle regole
+#   ESCL-23  mai etichettare un caso di 07_casi.md sull'esito del trade
+#
+# ESCL-22 e' quella che il codice rispetta per costruzione: non esiste alcun
+# percorso che porti a un ordine se non attraverso le regole. Non c'e' un
+# ramo "opera comunque".
+REGOLE_SUI_DOCUMENTI: frozenset[str] = frozenset(
+    {"ESCL-19", "ESCL-20", "ESCL-21", "ESCL-22", "ESCL-23"}
+)
+
+
 # ===========================================================================
 # Cio' che invece e' ammesso (sezione 6 di 06_esclusioni.md)
 # ===========================================================================

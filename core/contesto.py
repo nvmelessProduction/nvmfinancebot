@@ -27,6 +27,7 @@ from typing import Mapping, Optional, Sequence
 from core.definizioni import Bias
 from core.parametri import (
     FINESTRA_NEWS_MINUTI_DOPO,
+    gerarchia,
     FINESTRA_NEWS_MINUTI_PRIMA,
     MAX_POSIZIONI_PER_STRUMENTO,
     NEWS_IMPATTO_MINIMO_STELLE,
@@ -244,6 +245,48 @@ def pronto_all_avvio(timeframe_ricalcolati: Sequence[TF], timeframe_attesi: Sequ
     if richiedi("REV-20") != "ricalcola_prima":
         raise ValueError(f"REV-20: lettura non riconosciuta: {richiedi('REV-20')!r}")
     return set(timeframe_attesi) <= set(timeframe_ricalcolati)
+
+
+# ===========================================================================
+# PRIN-12, PRIN-13, PRIN-14 — finestra operativa
+# ===========================================================================
+
+
+def fasce_orarie_escluse() -> bool:
+    """PRIN-12 — Il sistema e' attivo 24 ore su 24 nei giorni di mercato aperto.
+
+    Non esistono fasce orarie escluse ne' periodi dell'anno di sospensione.
+    Restituisce sempre False, ed esiste perche' e' una regola che verra'
+    cercata.
+    """
+    return False
+
+
+def unica_sospensione_prevista() -> str:
+    """PRIN-14 — L'unica interruzione e' la finestra news a 3 stelle (RISK-13)."""
+    return "RISK-13"
+
+
+def operativita_domenicale_ammessa(istante: datetime, tf_setup: TF) -> bool:
+    """PRIN-13 — All'apertura domenicale si opera solo da TF_1W in su.
+
+    *"SE all'apertura domenicale esiste un setup valido su TF_1W o superiore
+    ALLORA l'ingresso sulla candela N3 e' ammesso ALTRIMENTI nessuna
+    operativita' domenicale."*
+
+    Il giorno di contrattazione del future comincia alle 18:00 di New York
+    della domenica (DEF-03), quindi la "domenica" del calendario solare
+    contiene sia la chiusura del fine settimana sia l'apertura della
+    settimana nuova. Qui si usa il giorno solare UTC: e' il criterio piu'
+    prudente, perche' copre l'intera finestra in cui la regola si applica.
+
+    Fuori dalla domenica non c'e' alcuna restrizione: la regola parla solo
+    dell'apertura domenicale.
+    """
+    if istante.weekday() != 6:            # 6 = domenica
+        return True
+    ordine = gerarchia()
+    return ordine.index(tf_setup) <= ordine.index(TF.W1)
 
 
 # ===========================================================================
