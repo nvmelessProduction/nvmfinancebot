@@ -16,6 +16,7 @@ cui vengono: aggregandole si conservano, senza reinventarli.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Sequence
 
 from core.definizioni import Candela
@@ -52,9 +53,19 @@ def aggrega(mensili: Sequence[Candela], quanti: int) -> tuple[Candela, ...]:
     ordinate = sorted(mensili, key=lambda c: c.orario)
     gruppi: dict[tuple[int, int], list[Candela]] = {}
     for candela in ordinate:
-        # L'orario di una candela e' la sua chiusura: il mese di appartenenza
-        # e' quello che sta finendo, quindi si guarda l'ultimo istante utile.
-        chiave = (candela.orario.year, _indice_gruppo(candela.orario.month, quanti))
+        # L'orario di una candela e' la sua chiusura, e la chiusura appartiene
+        # al mese che sta finendo, non a quello che comincia. Si guarda percio'
+        # l'ultimo istante *prima* della chiusura.
+        #
+        # Non e' un dettaglio: chi costruisce le candele dagli orari di
+        # apertura (importa_storico, scarica_storico, il fornitore) marca la
+        # mensile di gennaio con la chiusura "1 febbraio 00:00". Leggendo
+        # `.month` direttamente si otterrebbe febbraio, i gruppi
+        # risulterebbero sfasati di un mese e quasi ogni trimestre finirebbe
+        # con due mesi o con quattro: scartato come incompleto. Il risultato
+        # non e' un errore visibile, e' un TF_12M sempre vuoto.
+        appartenenza = candela.orario - timedelta(microseconds=1)
+        chiave = (appartenenza.year, _indice_gruppo(appartenenza.month, quanti))
         gruppi.setdefault(chiave, []).append(candela)
 
     aggregate: list[Candela] = []
@@ -72,6 +83,51 @@ def aggrega(mensili: Sequence[Candela], quanti: int) -> tuple[Candela, ...]:
             )
         )
     return tuple(aggregate)
+
+
+def aggrega_per_mese(giornaliere: Sequence[Candela]) -> tuple[Candela, ...]:
+    """Costruisce le mensili dalle giornaliere.
+
+    Serve quando la fonte dei dati ha le giornaliere complete ma le mensili
+    bucate — che e' esattamente il caso delle fonti gratuite sui future: sul
+    contratto dell'oro mancano una quarantina di mesi su trecento, sempre
+    diversi da strumento a strumento. Un mese mancante non e' un fastidio
+    estetico: `aggrega` rifiuta giustamente i periodi incompleti, quindi ogni
+    trimestre che contiene quel buco sparisce, e con esso l'anno intero. Il
+    sintomo e' un `TF_12M` sempre vuoto.
+
+    Un mese e' la somma delle sue sessioni, quindi costruirlo dalle giornaliere
+    non inventa niente: apertura della prima sessione, chiusura dell'ultima,
+    estremi di tutte. E' la stessa operazione che `aggrega` fa dai mesi ai
+    trimestri, un piano piu' in basso.
+
+    **L'ultimo mese si scarta.** Un mese e' finito quando esiste una sessione
+    che gli e' successiva: senza quella prova il mese e' in corso, ed e' una
+    candela in formazione (`ESCL-13`). E' la stessa regola con cui
+    l'importatore scarta l'ultima barra.
+    """
+    ordinate = sorted(giornaliere, key=lambda c: c.orario)
+    gruppi: dict[tuple[int, int], list[Candela]] = {}
+    for candela in ordinate:
+        # Stessa convenzione di `aggrega`: la chiusura appartiene al periodo
+        # che sta finendo, quindi si guarda l'istante prima.
+        appartenenza = candela.orario - timedelta(microseconds=1)
+        gruppi.setdefault((appartenenza.year, appartenenza.month), []).append(candela)
+
+    chiavi = sorted(gruppi)
+    mensili: list[Candela] = []
+    for chiave in chiavi[:-1]:           # l'ultimo mese e' in formazione
+        gruppo = gruppi[chiave]
+        mensili.append(
+            Candela(
+                orario=gruppo[-1].orario,
+                apertura=gruppo[0].apertura,
+                massimo=max(c.massimo for c in gruppo),
+                minimo=min(c.minimo for c in gruppo),
+                chiusura=gruppo[-1].chiusura,
+            )
+        )
+    return tuple(mensili)
 
 
 def costruisci_superiori(mensili: Sequence[Candela]) -> dict[TF, tuple[Candela, ...]]:

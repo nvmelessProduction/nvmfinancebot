@@ -351,6 +351,101 @@ class TestAggregazione:
         assert len(trimestri) == 3, "gennaio manca: il primo trimestre e' incompleto"
         assert trimestri[0].apertura == 104, "il primo completo parte da aprile"
 
+    def test_la_chiusura_al_primo_del_mese_appartiene_al_mese_prima(self) -> None:
+        """CASO CRITICO, e per un anno intero e' passato inosservato.
+
+        Chi costruisce le candele dagli orari di apertura — l'importatore, lo
+        scaricatore, il fornitore — marca la mensile di gennaio con la
+        chiusura "1 febbraio 00:00", perche' la chiusura di una barra e'
+        l'apertura della successiva. Leggendo `.month` di quell'orario si
+        ottiene *febbraio*: i gruppi si sfasano di un mese, quasi ogni
+        trimestre finisce con due mesi o con quattro, e viene scartato come
+        incompleto. Il sintomo non e' un errore, e' un `TF_12M` sempre vuoto.
+        """
+        from core.aggregazione import aggrega
+
+        # Dodici mensili del 2025, marcate come le marca l'importatore:
+        # la mensile di gennaio chiude il primo febbraio.
+        mensili = [
+            Candela(datetime(2025 + (mese == 12), (mese % 12) + 1, 1, tzinfo=timezone.utc),
+                    100 + mese, 110 + mese, 90 + mese, 105 + mese)
+            for mese in range(1, 13)
+        ]
+        assert len(aggrega(mensili, 3)) == 4, "quattro trimestri, non zero"
+        assert len(aggrega(mensili, 6)) == 2
+        assert len(aggrega(mensili, 12)) == 1, "l'anno c'e' tutto"
+
+        anno = aggrega(mensili, 12)[0]
+        assert anno.apertura == 101, "l'anno apre con gennaio"
+        assert anno.chiusura == 117, "e chiude con dicembre"
+
+    # -- mensili costruite dalle giornaliere --------------------------------
+    def giornaliere(self, mese: int, giorni: tuple[int, ...], anno: int = 2026):
+        """Sessioni di un mese, con la chiusura marcata come la marca
+        l'importatore: l'apertura della sessione successiva."""
+        return [
+            Candela(datetime(anno, mese, giorno, tzinfo=timezone.utc),
+                    100 + giorno, 110 + giorno, 90 + giorno, 105 + giorno)
+            for giorno in giorni
+        ]
+
+    def test_mensile_costruita_dalle_sessioni(self) -> None:
+        from core.aggregazione import aggrega_per_mese
+
+        sessioni = (self.giornaliere(1, (5, 15, 25))
+                    + self.giornaliere(2, (4, 14, 24)))
+        mensili = aggrega_per_mese(sessioni)
+        assert len(mensili) == 1, "febbraio e' in corso: resta fuori"
+        gennaio = mensili[0]
+        assert gennaio.apertura == 105, "apre con la prima sessione"
+        assert gennaio.chiusura == 130, "chiude con l'ultima"
+        assert gennaio.massimo == 135, "il piu' alto di tutte"
+        assert gennaio.minimo == 95, "il piu' basso di tutte"
+
+    def test_l_ultimo_mese_e_in_formazione(self) -> None:
+        """Un mese e' finito quando esiste una sessione successiva."""
+        from core.aggregazione import aggrega_per_mese
+
+        assert len(aggrega_per_mese(self.giornaliere(1, (5, 15)))) == 0
+        tre_mesi = (self.giornaliere(1, (5,)) + self.giornaliere(2, (5,))
+                    + self.giornaliere(3, (5,)))
+        assert len(aggrega_per_mese(tre_mesi)) == 2
+
+    def test_un_mese_con_sessioni_mancanti_esiste_lo_stesso(self) -> None:
+        """Differenza voluta rispetto ad `aggrega`.
+
+        Un trimestre senza uno dei suoi tre mesi e' incompleto e non esiste.
+        Un mese con meno sessioni del solito e' invece normale: festivita',
+        mezze giornate, chiusure dell'exchange. Pretendere un numero fisso di
+        sessioni cancellerebbe dicembre di ogni anno.
+        """
+        from core.aggregazione import aggrega_per_mese
+
+        scarso = self.giornaliere(1, (7,)) + self.giornaliere(2, (3, 13))
+        assert len(aggrega_per_mese(scarso)) == 1
+
+    def test_la_chiusura_al_primo_del_mese_finisce_nel_mese_giusto(self) -> None:
+        """Stessa trappola di `aggrega`, un piano piu' in basso."""
+        from core.aggregazione import aggrega_per_mese
+
+        sessioni = [
+            Candela(datetime(2026, 1, 30, tzinfo=timezone.utc), 100, 110, 90, 105),
+            # l'ultima sessione di gennaio chiude quando apre la prima di febbraio
+            Candela(datetime(2026, 2, 1, tzinfo=timezone.utc), 105, 115, 95, 112),
+            Candela(datetime(2026, 2, 10, tzinfo=timezone.utc), 112, 120, 108, 118),
+            Candela(datetime(2026, 3, 1, tzinfo=timezone.utc), 118, 125, 115, 120),
+            # marzo serve solo a provare che febbraio e' finito
+            Candela(datetime(2026, 3, 15, tzinfo=timezone.utc), 120, 128, 118, 124),
+        ]
+        mensili = aggrega_per_mese(sessioni)
+        assert len(mensili) == 2
+        gennaio, febbraio = mensili
+        assert gennaio.chiusura == 112, (
+            "la sessione marcata 1 febbraio e' l'ultima di GENNAIO: "
+            "e' la sua chiusura, non l'apertura di febbraio"
+        )
+        assert febbraio.apertura == 112
+
     def test_costruisci_superiori(self) -> None:
         from core.aggregazione import costruisci_superiori
 

@@ -195,6 +195,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 from core import broker, sentinella as modulo_sentinella, storage  # noqa: E402
 from core.config import impostazioni  # noqa: E402
 from core.models import AlertIn, Decision  # noqa: E402
+from core.parametri import TF  # noqa: E402
+from core.simboli import FUTURE_A_CFD  # noqa: E402
 from core.strategy import valuta  # noqa: E402
 
 import main  # noqa: E402
@@ -728,6 +730,33 @@ class ProvaAllineamento(BaseCollaudo):
         self.assertIsNotNone(motivo)
         self.assertIn("9999", motivo)
 
+    def test_c1_di_altra_provenienza_non_si_confronta(self) -> None:
+        """Storico seminato da una fonte diversa: il confronto tace.
+
+        Due fornitori ricostruiscono il contratto continuo con regole di
+        rollover proprie. Pretendere che coincidano al decimale farebbe
+        astenere il bot per sempre sulla giuntura fra storico seminato e alert
+        dal vivo — cioe' esattamente al primo alert dopo l'installazione.
+        """
+        storage.salva_candele([
+            {"strumento": "GC", "tf": "TF_1D", "chiusura_utc": "2026-03-10T00:00:00Z",
+             "apertura": 100, "massimo": 110, "minimo": 90, "chiusura": 105},
+            {"strumento": "GC", "tf": "TF_1D", "chiusura_utc": "2026-03-11T00:00:00Z",
+             "apertura": 105, "massimo": 115, "minimo": 104, "chiusura": 112},
+        ], origine="yahoo")
+        alert = AlertIn(
+            secret="segreto-di-collaudo", symbol="GC1!", tf="1D",
+            candle_close_time_utc="2026-03-12T00:00:00Z",
+            open=112, high=120, low=110, close=118,
+            high_c1=999.0, low_c1=1.0,          # completamente diversi
+        )
+        from core.fornitore_tradingview import verifica_allineamento
+
+        self.assertIsNone(
+            verifica_allineamento(alert, "GC", TF.D1),
+            "su una C1 di altra provenienza il controllo non deve scattare",
+        )
+
     def test_senza_i_campi_non_si_verifica(self) -> None:
         """Sono facoltativi: senza, non e' un errore."""
         from core.fornitore_tradingview import verifica_allineamento
@@ -1026,6 +1055,116 @@ class ProvaSalute(BaseCollaudo):
         with TestClient(main.app) as c:
             stato = c.get("/salute").json()
         self.assertTrue(stato["posizioni_scoperte"], "posizioni aperte senza sentinella = allarme")
+
+
+# ==========================================================================
+# 9. Scaricamento automatico dello storico (nessuna rete: risposte finte)
+# ==========================================================================
+class ProvaScaricoStorico(BaseCollaudo):
+    """La fonte gratuita non e' un'API con contratto: puo' rispondere altro.
+
+    Il collaudo interessante e' quello sul passo delle barre. Chiedendo barre
+    giornaliere su tutto lo storico, la fonte non risponde con un errore:
+    risponde con **barre mensili**. Senza il controllo finirebbero in archivio
+    con l'etichetta sbagliata e il motore ragionerebbe su una scala che non e'
+    quella che crede — senza che nulla lo segnali.
+    """
+
+    GIORNO = 86_400
+    MESE = 2_678_400
+
+    def risposta(self, passo: int, quante: int = 6, buchi: bool = False) -> dict:
+        base = 1_700_000_000
+        orari = [base + i * passo for i in range(quante)]
+        aperture = [100.0 + i for i in range(quante)]
+        massimi = [110.0 + i for i in range(quante)]
+        minimi = [90.0 + i for i in range(quante)]
+        chiusure = [105.0 + i for i in range(quante)]
+        if buchi:
+            massimi[1] = None
+            chiusure[2] = None
+        return {"chart": {"result": [{
+            "meta": {"symbol": "GC=F"},
+            "timestamp": orari,
+            "indicators": {"quote": [{
+                "open": aperture, "high": massimi, "low": minimi, "close": chiusure,
+            }]},
+        }]}}
+
+    def test_il_passo_giusto_passa(self) -> None:
+        import scarica_storico as sc
+
+        barre = sc.in_barre(self.risposta(self.GIORNO), sc.INTERVALLI[TF.D1])
+        self.assertEqual(len(barre), 6)
+
+    def test_barre_mensili_spacciate_per_giornaliere(self) -> None:
+        """CASO CRITICO: e' successo davvero, alla prima esecuzione vera."""
+        import scarica_storico as sc
+
+        with self.assertRaises(sc.ScaricoFallito) as caso:
+            sc.in_barre(self.risposta(self.MESE), sc.INTERVALLI[TF.D1])
+        self.assertIn("secondi", str(caso.exception))
+
+    def test_barre_giornaliere_spacciate_per_orarie(self) -> None:
+        import scarica_storico as sc
+
+        with self.assertRaises(sc.ScaricoFallito):
+            sc.in_barre(self.risposta(self.GIORNO), sc.INTERVALLI[TF.H1])
+
+    def test_le_barre_senza_prezzi_si_scartano(self) -> None:
+        """Giorni di chiusura e buchi della fonte: niente prezzo, niente candela."""
+        import scarica_storico as sc
+
+        barre = sc.in_barre(self.risposta(self.GIORNO, buchi=True), sc.INTERVALLI[TF.D1])
+        self.assertEqual(len(barre), 4)
+
+    def test_risposta_vuota(self) -> None:
+        import scarica_storico as sc
+
+        for corpo in ({"chart": {"result": []}}, {"chart": {"result": [{"meta": {}}]}}, {}):
+            with self.assertRaises(sc.ScaricoFallito):
+                sc.in_barre(corpo, sc.INTERVALLI[TF.D1])
+
+    def test_ogni_strumento_di_prin08_ha_un_ticker(self) -> None:
+        import scarica_storico as sc
+
+        sc.verifica()
+        self.assertEqual(set(sc.TICKER_FONTE), set(FUTURE_A_CFD) | {"ICEUS"})
+        for ticker in sc.TICKER_FONTE.values():
+            self.assertNotIn("XAU", ticker, "si scarica il future, non il CFD")
+            self.assertNotIn("USD=X", ticker, "e nemmeno il cambio a pronti")
+
+    def test_lo_stato_http_diventa_un_errore_parlante(self) -> None:
+        import scarica_storico as sc
+
+        class ClienteFinto:
+            def get(self, url, params=None):
+                return Oggetto(status_code=429, json=lambda: {})
+
+        with self.assertRaises(sc.ScaricoFallito) as caso:
+            sc.scarica("GC=F", sc.INTERVALLI[TF.D1], ClienteFinto())
+        self.assertIn("429", str(caso.exception))
+
+    def test_la_catena_completa_senza_rete(self) -> None:
+        """Risposta finta -> barre -> candele chiuse -> archivio."""
+        import scarica_storico as sc
+        from importa_storico import in_candele
+
+        class ClienteFinto:
+            def __init__(self, corpo): self.corpo = corpo
+            def get(self, url, params=None):
+                return Oggetto(status_code=200, json=lambda: self.corpo)
+
+        barre = sc.scarica("GC=F", sc.INTERVALLI[TF.D1],
+                           ClienteFinto(self.risposta(self.GIORNO)))
+        righe, riparate = in_candele(barre, "GC", TF.D1)
+        self.assertEqual(len(righe), 5, "l'ultima barra e' quella in corso")
+        self.assertEqual(riparate, 0)
+        nuove, _ = storage.salva_candele(righe, origine=sc.ORIGINE)
+        self.assertEqual(nuove, 5)
+        archiviate = storage.candele_archiviate("GC", "TF_1D")
+        self.assertEqual(archiviate[0]["origine"], "yahoo",
+                         "la provenienza si registra: non tutti i dati vengono da TradingView")
 
 
 if __name__ == "__main__":

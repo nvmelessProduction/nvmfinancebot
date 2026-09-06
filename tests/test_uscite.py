@@ -432,7 +432,7 @@ class TestImportazione:
             "2026-03-11T00:00:00Z,105,115,104,112\n"
             "2026-03-12T00:00:00Z,112,120,110,118\n"
         ))
-        righe = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        righe, _ = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
         assert righe[0]["chiusura_utc"].startswith("2026-03-11")
         assert righe[0]["apertura"] == 100
 
@@ -446,7 +446,7 @@ class TestImportazione:
             "2026-03-11T00:00:00Z,105,115,104,112\n"
             "2026-03-12T00:00:00Z,112,120,110,118\n"
         ))
-        righe = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        righe, _ = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
         assert len(righe) == 2
 
     def test_una_sola_barra_non_da_candele(self, tmp_path) -> None:
@@ -454,7 +454,7 @@ class TestImportazione:
         from core.parametri import TF
 
         percorso = self.csv(tmp_path, "2026-03-10T00:00:00Z,100,110,95,105\n")
-        assert imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1) == []
+        assert imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1) == ([], 0)
 
     def test_colonne_mancanti(self, tmp_path) -> None:
         import importa_storico as imp
@@ -474,6 +474,61 @@ class TestImportazione:
         barre = imp.leggi_csv(percorso)
         assert barre[0]["apertura_utc"] < barre[1]["apertura_utc"]
 
+    def test_estremo_incoerente_riportato_a_norma(self, tmp_path) -> None:
+        """Le fonti gratuite chiudono le barre fuori dal proprio massimo.
+
+        Non e' un caso di scuola: sul giornaliero dell'oro succede sul 6.7%
+        delle barre, con scarti fino a 48 punti. La barra si tiene, perche'
+        scartarla bucherebbe la serie e i periodi aggregati sopra di lei
+        sparirebbero; l'estremo si allarga fino alla chiusura, che e' un
+        prezzo che quella barra ha davvero dichiarato.
+        """
+        import importa_storico as imp
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,105,95,110\n"     # chiude sopra il massimo
+            "2026-03-11T00:00:00Z,105,115,104,112\n"
+        ))
+        righe, riparate = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        assert len(righe) == 1
+        assert righe[0]["massimo"] == 110, "il massimo arriva alla chiusura"
+        assert righe[0]["minimo"] == 95, "il minimo non si tocca"
+        assert riparate == 1, "la correzione va contata, non nascosta"
+
+    def test_la_barra_sana_non_viene_toccata(self, tmp_path) -> None:
+        import importa_storico as imp
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,110,95,105\n"
+            "2026-03-11T00:00:00Z,105,115,104,112\n"
+        ))
+        righe, riparate = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        assert (righe[0]["massimo"], righe[0]["minimo"]) == (110, 95)
+        assert riparate == 0
+
+    def test_ogni_riga_importata_regge_il_costruttore(self, tmp_path) -> None:
+        """La prova che conta: quello che esce di qui deve poter diventare
+        una Candela, o l'archivio si riempie di righe che il motore scarta."""
+        import importa_storico as imp
+        from core.definizioni import Candela
+        from core.parametri import TF
+
+        percorso = self.csv(tmp_path, (
+            "2026-03-10T00:00:00Z,100,105,95,110\n"     # chiude sopra il massimo
+            "2026-03-11T00:00:00Z,105,100,90,88\n"      # chiude sotto il minimo
+            "2026-03-12T00:00:00Z,112,120,110,118\n"
+        ))
+        righe, _ = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        assert len(righe) == 2
+        for riga in righe:
+            Candela(
+                orario=datetime.fromisoformat(riga["chiusura_utc"].replace("Z", "+00:00")),
+                apertura=riga["apertura"], massimo=riga["massimo"],
+                minimo=riga["minimo"], chiusura=riga["chiusura"],
+            )
+
     def test_barra_incoerente_scartata(self, tmp_path) -> None:
         import importa_storico as imp
         from core.parametri import TF
@@ -483,5 +538,5 @@ class TestImportazione:
             "2026-03-11T00:00:00Z,105,115,104,112\n"
             "2026-03-12T00:00:00Z,112,120,110,118\n"
         ))
-        righe = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
+        righe, _ = imp.in_candele(imp.leggi_csv(percorso), "GC", TF.D1)
         assert len(righe) == 1, "la barra rotta sparisce, le altre restano"

@@ -61,6 +61,7 @@ MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 | `importa_storico.py` | `DEF-26` | Semina l'archivio da un export CSV di TradingView |
 | `prova_esecuzione.py` | — | Collaudo del percorso dei soldi su conto demo |
 | `core/calendario.py` | `PA-54` | Lettura del calendario news da file |
+| `scarica_storico.py` | — | Semina dell'archivio da una fonte gratuita |
 | `core/casi.py` | `07` | Esportazione nel formato blocco di `07_casi.md` |
 | `core/statistiche.py` | — | Metriche del forward test |
 | `tests/` | — | 383 prove sul motore |
@@ -474,10 +475,20 @@ riconciliazione — è già costruito e collaudato attorno a questa funzione.
 
 In ordine di importanza:
 
-1. **Seminare l'archivio.** `DEF-26` vuole cinque anni. Esporta i grafici
-   future da TradingView (*Export chart data...*) e importali con
-   `importa_storico.py`, uno per strumento e timeframe. Finché l'archivio è
-   corto i timeframe tacciono, e `/salute` te lo mostra nel campo `archivio`.
+1. **Seminare l'archivio.** `DEF-26` vuole cinque anni. Due strade:
+
+   ```bat
+   python scarica_storico.py           :: fonte gratuita, tutto in un colpo
+   python importa_storico.py GC TF_1D dati\GC_giornaliero.csv   :: export TradingView
+   ```
+
+   `scarica_storico.py` prende gli **stessi future** (`GC=F`, `6E=F`, …) da una
+   fonte gratuita: cambia il fornitore, non lo strumento, quindi `ESCL-12`
+   regge. Porta ~25 anni di giornaliere, settimanali e mensili per tutti e
+   sette gli strumenti. `--orari` aggiunge `TF_H1` (la fonte copre 2 anni).
+   `TF_H4`, `TF_H6` e `TF_H12` quella fonte non li ha: si riempiono dagli
+   alert. Finché l'archivio è corto i timeframe tacciono, e `/salute` te lo
+   mostra nel campo `archivio`.
 2. **`PA-62` verificato sul conto.** Il metodo della distanza relativa
    sostituisce il fattore `k`, ma `valore_punto` va letto da MT5 per ciascuno
    dei sei strumenti e confrontato una volta con una size calcolata a mano.

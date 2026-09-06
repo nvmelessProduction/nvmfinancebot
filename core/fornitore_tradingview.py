@@ -22,9 +22,16 @@ e ricalcola tutto dall'archivio. Non serve un abbonamento dati in piu': la
 storia si costruisce da sola, un alert alla volta.
 
 `DEF-26` pero' vuole cinque anni di storico, e aspettarli sarebbe assurdo.
-Per questo esiste `importa_storico.py`: si esporta il grafico da TradingView
-in CSV, lo si importa una volta, e da li' in poi gli alert lo tengono
-aggiornato.
+Per questo si semina una volta sola, in due modi:
+
+- `importa_storico.py` legge il CSV esportato da TradingView. E' la via
+  migliore, ma l'export e' una funzione dei piani a pagamento.
+- `scarica_storico.py` prende le stesse candele degli **stessi future** da una
+  fonte gratuita. Cambia il fornitore, non lo strumento: `ESCL-12` regge.
+
+Le righe seminate portano la loro provenienza in archivio, e il controllo di
+allineamento qui sotto ne tiene conto invece di pretendere che due fornitori
+coincidano al decimale.
 
 ## Il limite da conoscere
 
@@ -126,6 +133,13 @@ def verifica_allineamento(alert: AlertIn, future: str, tf: TF) -> Optional[str]:
 
     Restituisce il motivo della discrepanza, o None se tutto torna. Senza i
     campi non si verifica nulla e non e' un errore: sono facoltativi.
+
+    **Il confronto vale solo fra dati dello stesso fornitore.** L'archivio si
+    puo' seminare da una fonte diversa da TradingView (`scarica_storico.py`),
+    e due fornitori ricostruiscono il contratto continuo con regole di
+    rollover proprie: pretendere che coincidano al decimale farebbe astenere
+    il bot per sempre sulla giuntura fra storico seminato e alert dal vivo.
+    Su una C1 di altra provenienza il controllo tace, e lo dice al diario.
     """
     if alert.massimo_c1 is None and alert.minimo_c1 is None:
         return None
@@ -133,6 +147,14 @@ def verifica_allineamento(alert: AlertIn, future: str, tf: TF) -> Optional[str]:
     righe = storage.candele_archiviate(future, tf.value, limite=2)
     if len(righe) < 2:
         return None                     # non c'e' ancora una C1 con cui confrontare
+
+    provenienza = str(righe[0].get("origine") or "")
+    if provenienza != "tradingview":
+        log.info(
+            "allineamento non verificato su %s %s: la C1 in archivio viene da %r, "
+            "non da TradingView", future, tf.value, provenienza or "origine ignota",
+        )
+        return None
 
     c1 = _da_riga(righe[0])
     if c1 is None:

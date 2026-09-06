@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,7 +103,47 @@ def leggi_csv(percorso: Path) -> list[dict]:
     return sorted(barre, key=lambda b: b["apertura_utc"])
 
 
-def in_candele(barre: list[dict], strumento: str, tf: TF) -> list[dict]:
+def estremi_coerenti(barra: dict) -> Optional[tuple[float, float, int]]:
+    """Restituisce (massimo, minimo, quante correzioni) oppure None.
+
+    Per definizione il massimo di un periodo e' il piu' alto prezzo scambiato
+    in quel periodo, e apertura e chiusura sono prezzi scambiati in quel
+    periodo: quindi il massimo non puo' stare sotto di loro, e il minimo non
+    puo' stare sopra. E' un'invariante, non un'opinione, ed e' la stessa che
+    `Candela` fa rispettare in `core/definizioni.py`.
+
+    Le fonti gratuite la violano piu' spesso di quanto si creda: aggregano gli
+    estremi su una finestra di sessione e la chiusura su un'altra, e ne esce
+    una barra che chiude sopra il proprio massimo. Qui la si riporta a norma
+    prendendo il piu' alto dei valori che la fonte stessa ha dichiarato per
+    quella barra: non si inventa un prezzo, si sceglie fra quelli dati.
+
+    None se la barra e' irrecuperabile: un prezzo non finito o non positivo,
+    oppure un massimo sotto il proprio minimo. Quelle si scartano, perche' non
+    c'e' niente da cui ricostruirle.
+    """
+    try:
+        valori = [float(barra[campo]) for campo in
+                  ("apertura", "massimo", "minimo", "chiusura")]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) and v > 0 for v in valori):
+        return None
+
+    apertura, massimo, minimo, chiusura = valori
+    if massimo < minimo:
+        # Massimo sotto il minimo non e' un estremo da correggere: e' una
+        # barra che si contraddice da sola (colonne invertite, dato corrotto).
+        # Allargarla ad apertura e chiusura la renderebbe plausibile senza
+        # renderla vera, e non c'e' nulla da cui ricostruire l'originale.
+        return None
+    corretto_massimo = max(massimo, apertura, chiusura)
+    corretto_minimo = min(minimo, apertura, chiusura)
+    corretta = int(corretto_massimo != massimo or corretto_minimo != minimo)
+    return corretto_massimo, corretto_minimo, corretta
+
+
+def in_candele(barre: list[dict], strumento: str, tf: TF) -> tuple[list[dict], int]:
     """Converte le barre in righe d'archivio, con l'orario di **chiusura**.
 
     La chiusura della barra `i` e' l'apertura della barra `i+1`. L'ultima non
@@ -110,23 +151,31 @@ def in_candele(barre: list[dict], strumento: str, tf: TF) -> list[dict]:
     scartata (`ESCL-13`). E' la stessa conversione che fa il fornitore, ed e'
     il punto in cui un import distratto introdurrebbe un lookahead di un
     periodo intero.
+
+    Restituisce `(righe, riparate)`: `riparate` sono le barre a cui e' stato
+    corretto un estremo incoerente (vedi `estremi_coerenti`). Il numero va
+    mostrato a chi importa: se e' alto, la fonte non e' buona.
     """
     righe: list[dict] = []
+    riparate = 0
     for indice in range(len(barre) - 1):
         barra = barre[indice]
         chiusura = barre[indice + 1]["apertura_utc"]
-        if barra["massimo"] < barra["minimo"]:
-            continue                     # barra incoerente: si scarta
+        estremi = estremi_coerenti(barra)
+        if estremi is None:
+            continue                     # barra irrecuperabile: si scarta
+        massimo, minimo, corretta = estremi
+        riparate += corretta
         righe.append({
             "strumento": strumento,
             "tf": tf.value,
             "chiusura_utc": chiusura.isoformat().replace("+00:00", "Z"),
             "apertura": barra["apertura"],
-            "massimo": barra["massimo"],
-            "minimo": barra["minimo"],
+            "massimo": massimo,
+            "minimo": minimo,
             "chiusura": barra["chiusura"],
         })
-    return righe
+    return righe, riparate
 
 
 def main() -> int:
@@ -163,7 +212,7 @@ def main() -> int:
         print(f"ERRORE  {errore}")
         return 1
 
-    righe = in_candele(barre, strumento, tf)
+    righe, riparate = in_candele(barre, strumento, tf)
     if not righe:
         print(f"ERRORE  nessuna candela chiusa nel file ({len(barre)} barre lette)")
         return 1
