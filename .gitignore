@@ -21,4 +21,6 @@ venv/
 .idea/
 
 # Calendario news locale: stato di questa macchina, non del progetto.
+# Il modello dati/news.example.csv resta tracciato, cosi' chi scarica il
+# progetto trova la cartella e sa che formato deve avere il file.
 dati/news.csv

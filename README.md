@@ -485,7 +485,12 @@ In ordine di importanza:
    decadere il setup all'apertura di `N3`. Praticabile da `TF_1D` in su.
 4. **La chiusura mirata (`CLOSE`).** L'adattatore sa chiudere per ticket, ma
    la strategia non esprime ancora quale.
-5. **Il calendario news** (`dati/news.csv`): senza, `CTX-02` non può filtrare.
+5. **Il calendario news.** Il file `dati/news.csv` non è tracciato (è stato
+   locale di questa macchina): si crea dal modello con
+   `copy dati\news.example.csv dati\news.csv` e si riempie a mano. Senza,
+   `CTX-02` non può filtrare e `PA-55` fa astenere. Va aggiornato almeno
+   ogni 24 ore: oltre quella soglia il calendario è considerato vecchio e
+   il bot si astiene invece di fidarsi di un file fermo.
 6. **Riavvio automatico** di server e cloudflared all'accensione del PC.
 7. **Un secondo canale di allarme** indipendente dal PC: se il PC muore, muore
    anche Telegram, e non lo sai.

@@ -113,10 +113,16 @@ def calendario_utilizzabile(
 ) -> bool:
     """PA-55 — Il calendario news e' disponibile e abbastanza fresco?
 
-    Se manca, e' vuoto o e' piu' vecchio della soglia, non si opera: e'
-    PRIN-99, e il filtro news e' obbligatorio in CTX-01 #8 e SETUP-15.
-    Operare senza sapere se fra due minuti esce un dato a 3 stelle sarebbe
-    peggio che saltare la giornata.
+    Se manca o e' piu' vecchio della soglia, non si opera: e' PRIN-99, e il
+    filtro news e' obbligatorio in CTX-01 #8 e SETUP-15. Operare senza sapere
+    se fra due minuti esce un dato a 3 stelle sarebbe peggio che saltare la
+    giornata.
+
+    Un calendario **vuoto ma fresco** e' invece informazione valida: significa
+    "oggi non esce niente", e bloccare qui fermerebbe il bot in ogni giornata
+    tranquilla. Chi lo compila tiene anche le righe a una e due stelle proprio
+    per rendere quel "vuoto" distinguibile da un file mai riempito — e chi non
+    lo aggiorna viene fermato dalla freschezza, non dal conteggio delle righe.
     """
     from core.parametri import ETA_MASSIMA_CALENDARIO_ORE
 
