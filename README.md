@@ -62,6 +62,7 @@ MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 | `prova_esecuzione.py` | — | Collaudo del percorso dei soldi su conto demo |
 | `core/calendario.py` | `PA-54` | Lettura del calendario news da file |
 | `scarica_storico.py` | — | Semina dell'archivio da una fonte gratuita |
+| `avvio/` | — | Script di avvio e riavvio automatico, e come farlo girare h24 |
 | `core/casi.py` | `07` | Esportazione nel formato blocco di `07_casi.md` |
 | `core/statistiche.py` | — | Metriche del forward test |
 | `tests/` | — | 383 prove sul motore |
@@ -502,7 +503,9 @@ In ordine di importanza:
    `CTX-02` non può filtrare e `PA-55` fa astenere. Va aggiornato almeno
    ogni 24 ore: oltre quella soglia il calendario è considerato vecchio e
    il bot si astiene invece di fidarsi di un file fermo.
-6. **Riavvio automatico** di server e cloudflared all'accensione del PC.
+6. **Il tunnel con indirizzo fisso.** Il tunnel "quick" cambia URL a ogni
+   riavvio: per il funzionamento continuo serve un tunnel nominato, che
+   richiede un dominio proprio. Vedi `avvio/LEGGIMI.md`.
 7. **Un secondo canale di allarme** indipendente dal PC: se il PC muore, muore
    anche Telegram, e non lo sai.
 8. **`PA-44`.** Finché la soglia fra "vicini" e "distanti" non esiste, ogni
