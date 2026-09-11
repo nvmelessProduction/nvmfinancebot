@@ -1,0 +1,248 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// © nvmfinancebot
+//
+// =============================================================================
+//  nvmfinancebot — CRT su presa di key level
+// =============================================================================
+//
+//  COSA FA
+//  Riconosce sul grafico il CRT come lo definiscono le regole SETUP-00,
+//  SETUP-02A e SETUP-02B, lo disegna, e alla chiusura della candela manda un
+//  avviso al bot con i prezzi che servono.
+//
+//  COSA NON FA, DI PROPOSITO
+//  Non decide se operare. Non calcola la size, non guarda il calendario delle
+//  notizie, non sa quante posizioni sono aperte sugli altri strumenti, non
+//  conosce il tuo conto. Quelle non sono cose del grafico: sono cose del bot,
+//  che rivaluta tutto con il proprio motore prima di muovere un euro.
+//
+//  Questo indicatore PROPONE. Il bot DECIDE. Un errore qui non puo' aprire
+//  un'operazione che le regole vietano: puo' solo far guardare il motore a
+//  vuoto.
+//
+//  DA DOVE VENGONO LE REGOLE
+//  Non sono reinterpretate dai documenti: sono trasposte da core/setup.py e
+//  core/definizioni.py del bot, che sono gia' tradotti e coperti da test. Ogni
+//  blocco cita l'identificativo della regola, cosi' le due implementazioni
+//  restano confrontabili riga per riga. Se un giorno divergono, si vede.
+//
+//  SU QUALE GRAFICO SI METTE
+//  Sul FUTURE di analisi (GC1!, 6E1!, 6B1!, 6A1!, 6S1!, 6J1!), mai sul CFD.
+//  Il timeframe del grafico e' il timeframe di innesco: H1 o H4.
+//  DEF-31 e REV-11 escludono H12 e H6, che sono riservati ai gap: li'
+//  l'indicatore si disattiva da solo e lo scrive.
+//
+// =============================================================================
+
+//@version=6
+indicator("nvmfinancebot — CRT", overlay = true, max_lines_count = 100, max_labels_count = 100)
+
+// =============================================================================
+//  Impostazioni
+// =============================================================================
+gruppoBot = "Collegamento al bot"
+segreto   = input.string("", "Parola segreta del bot", group = gruppoBot,
+     tooltip = "La stessa che sta in WEBHOOK_SECRET nel file .env. " +
+               "Sta qui e non nel codice: cosi' non finisce in uno script condiviso.")
+inviaAvvisi = input.bool(true, "Manda l'avviso al bot", group = gruppoBot)
+
+gruppoGrafico = "Cosa disegnare"
+mostraLivelli = input.bool(true,  "Key level dei timeframe superiori", group = gruppoGrafico)
+mostraCrt     = input.bool(true,  "CRT, stop e TP1",                   group = gruppoGrafico)
+mostraTarghe  = input.bool(true,  "Etichette N1 e N2",                 group = gruppoGrafico)
+storiaLivelli = input.int(3, "Quante candele superiori tenere a schermo", minval = 1, maxval = 20,
+     group = gruppoGrafico)
+
+// =============================================================================
+//  DEF-01 e DUE_TF_SUPERIORI — i due timeframe che danno i key level
+//
+//  SETUP-00 vuole che il key level preso venga da un timeframe STRETTAMENTE
+//  superiore a quello del CRT. La tabella e' quella di parametri.py: per ogni
+//  timeframe di innesco, i due immediatamente sopra nella gerarchia ridotta.
+// =============================================================================
+tfGrafico = timeframe.period
+
+tfSuperiore1 = switch tfGrafico
+    "60"   => "240"    // H1  -> H4
+    "240"  => "1D"     // H4  -> 1D
+    "1D"   => "1W"     // 1D  -> 1W
+    "1W"   => "1M"     // 1W  -> 1M
+    "1M"   => "3M"     // 1M  -> 3M
+    => ""
+
+tfSuperiore2 = switch tfGrafico
+    "60"   => "1D"     // H1  -> 1D
+    "240"  => "1W"     // H4  -> 1W
+    "1D"   => "1M"     // 1D  -> 1M
+    "1W"   => "3M"     // 1W  -> 3M
+    "1M"   => "6M"     // 1M  -> 6M
+    => ""
+
+// DEF-31 e REV-11: su H12 e H6 non nasce mai un CRT, quindi qui non si lavora.
+timeframeAmmesso = tfSuperiore1 != "" and tfSuperiore2 != ""
+
+if barstate.islast and not timeframeAmmesso
+    var label avviso = na
+    label.delete(avviso)
+    avviso := label.new(bar_index, high, 
+         "Timeframe non previsto per il CRT.\nUsa H1, H4, 1D, 1W oppure 1M.",
+         style = label.style_label_down, color = color.new(color.orange, 20),
+         textcolor = color.white, size = size.normal)
+
+// =============================================================================
+//  DEF-36 — I key level di un timeframe, calcolati su C1
+//
+//  C1 e non C0: con C0 la presa di DEF-38 confronterebbe high[C0] con se'
+//  stesso e sarebbe sempre falsa (REV-23).
+//
+//  La forma `expr[1]` con lookahead_on e' l'unica che restituisce l'ultima
+//  candela CHIUSA del timeframe superiore senza ridisegnarsi. Senza il [1]
+//  l'indicatore leggerebbe la candela ancora in formazione, cioe' guarderebbe
+//  il futuro, e in backtest sembrerebbe bravissimo.
+// =============================================================================
+[max1, min1] = request.security(syminfo.tickerid, timeframeAmmesso ? tfSuperiore1 : tfGrafico,
+     [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+[max2, min2] = request.security(syminfo.tickerid, timeframeAmmesso ? tfSuperiore2 : tfGrafico,
+     [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+meta1 = (max1 + min1) / 2
+meta2 = (max2 + min2) / 2
+
+// =============================================================================
+//  DEF-37 — Assorbimento fra key level coincidenti
+//
+//  Quando due key level di timeframe diversi valgono lo STESSO identico
+//  numero, resta solo quello del timeframe piu' alto. Uguaglianza esatta,
+//  nessuna tolleranza: non e' un caso raro, perche' il minimo di una mensile
+//  e' per costruzione identico al minimo di una delle sue settimanali.
+//
+//  Qui il timeframe piu' alto e' il secondo, quindi e' il primo a sparire.
+// =============================================================================
+max1Vivo = max1 != max2
+min1Vivo = min1 != min2
+
+// =============================================================================
+//  DEF-38 — Presa di un key level, a candela chiusa
+//
+//  Dalla v1.9 la presa si conferma alla chiusura, mai sul prezzo scambiato
+//  (DEF-45): uno sfioramento intraday rientrato prima della chiusura non e'
+//  una presa e non abilita alcun setup.
+//
+//  N2 e' la candela appena chiusa, N1 quella prima.
+// =============================================================================
+n1Max = high[1]
+n1Min = low[1]
+n1Chi = close[1]
+n2Max = high
+n2Min = low
+n2Chi = close
+
+// =============================================================================
+//  SETUP-02A — CRT short
+//
+//  Quattro condizioni simultanee: N2 prende un KL_max di timeframe superiore,
+//  supera il massimo di N1, richiude dentro il range di N1, e chiude sotto la
+//  chiusura di N1.
+//
+//  La terza (close[N2] <= high[N1]) e' implicata dalla quarta, perche'
+//  close[N1] <= high[N1] per costruzione. E' scritta lo stesso perche' il
+//  documento la elenca e questo file traduce il documento: toglierla
+//  renderebbe il codice piu' corto e meno confrontabile (REV-45).
+// =============================================================================
+crtShortSu(float livello) =>
+    n2Max > livello and n2Max > n1Max and n2Chi <= n1Max and n2Chi < n1Chi
+
+// SETUP-02B — CRT long, a specchio.
+crtLongSu(float livello) =>
+    n2Min < livello and n2Min < n1Min and n2Chi >= n1Min and n2Chi > n1Chi
+
+valutabile = timeframeAmmesso and barstate.isconfirmed and not na(max1) and not na(max2)
+
+// I key level si provano dal timeframe PIU' ALTO verso il basso: se piu' di
+// uno produce un CRT si tiene quello del timeframe superiore (PREC-02).
+shortSu2 = valutabile and crtShortSu(max2)
+shortSu1 = valutabile and max1Vivo and crtShortSu(max1)
+longSu2  = valutabile and crtLongSu(min2)
+longSu1  = valutabile and min1Vivo and crtLongSu(min1)
+
+eShort = shortSu2 or shortSu1
+eLong  = longSu2 or longSu1
+
+// Short e long insieme non possono valere: le condizioni si escludono sulla
+// chiusura rispetto a N1. Se accadesse, e' un errore di questo file e va visto.
+conflitto = eShort and eLong
+
+tfDelLivello = shortSu2 or longSu2 ? tfSuperiore2 : tfSuperiore1
+livelloPreso = shortSu2 ? max2 : shortSu1 ? max1 : longSu2 ? min2 : longSu1 ? min1 : na
+
+// =============================================================================
+//  GEST-02 — Stop ancorato al CRT: l'estremo di N2
+//  GEST-07 — TP1: il 50% del range di N1
+// =============================================================================
+stopCrt = eShort ? n2Max : eLong ? n2Min : na
+tp1Crt  = (n1Max + n1Min) / 2
+
+// =============================================================================
+//  Disegno
+// =============================================================================
+coloreAlto = color.new(#ee7a55, 0)
+coloreBasso = color.new(#3fbba2, 0)
+coloreMeta = color.new(#93a09b, 40)
+
+plot(mostraLivelli and max1Vivo ? max1 : na, "KL max sup1", coloreAlto,  1, plot.style_linebr)
+plot(mostraLivelli and min1Vivo ? min1 : na, "KL min sup1", coloreBasso, 1, plot.style_linebr)
+plot(mostraLivelli ? meta1 : na,             "KL 50% sup1", coloreMeta,  1, plot.style_linebr)
+plot(mostraLivelli ? max2 : na, "KL max sup2", coloreAlto,  2, plot.style_linebr)
+plot(mostraLivelli ? min2 : na, "KL min sup2", coloreBasso, 2, plot.style_linebr)
+plot(mostraLivelli ? meta2 : na, "KL 50% sup2", coloreMeta, 2, plot.style_linebr)
+
+if mostraCrt and (eShort or eLong)
+    colore = eShort ? coloreAlto : coloreBasso
+    label.new(bar_index, eShort ? high : low,
+         (eShort ? "CRT short" : "CRT long") + "\nKL " + tfDelLivello,
+         style = eShort ? label.style_label_down : label.style_label_up,
+         color = color.new(colore, 15), textcolor = color.white, size = size.small)
+    line.new(bar_index - 1, stopCrt, bar_index + 6, stopCrt,
+         color = coloreAlto, style = line.style_dashed, width = 1)
+    line.new(bar_index - 1, tp1Crt, bar_index + 6, tp1Crt,
+         color = coloreBasso, style = line.style_dashed, width = 1)
+
+if mostraTarghe and (eShort or eLong)
+    label.new(bar_index - 1, low[1], "N1", style = label.style_none,
+         textcolor = color.new(color.white, 25), size = size.tiny)
+    label.new(bar_index, low, "N2", style = label.style_none,
+         textcolor = color.new(color.white, 25), size = size.tiny)
+
+if conflitto and barstate.isconfirmed
+    label.new(bar_index, high, "CONFLITTO: short e long insieme",
+         style = label.style_label_down, color = color.red,
+         textcolor = color.white, size = size.normal)
+
+// =============================================================================
+//  L'avviso al bot
+//
+//  Un solo avviso per strumento: dentro ci sono i prezzi dei timeframe che il
+//  motore usa, letti da qui con request.security. Cosi' non servono sette
+//  alert per sette timeframe.
+//
+//  L'orario e' quello di CHIUSURA della candela, non di apertura: e' la
+//  convenzione che usa l'archivio del bot, e sbagliarla sposterebbe ogni
+//  candela di un periodo intero.
+// =============================================================================
+numero(float valore) => str.tostring(valore, format.mintick)
+
+if valutabile and inviaAvvisi and (eShort or eLong) and not conflitto
+    messaggio = '{"secret":"' + segreto + '"' +
+         ',"symbol":"' + syminfo.ticker + '"' +
+         ',"tf":"' + tfGrafico + '"' +
+         ',"candle_close_time_utc":"' + str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + '"' +
+         ',"open":' + numero(open) +
+         ',"high":' + numero(high) +
+         ',"low":' + numero(low) +
+         ',"close":' + numero(close) +
+         ',"high_c1":' + numero(n1Max) +
+         ',"low_c1":' + numero(n1Min) +
+         ',"nota":"crt ' + (eShort ? "short" : "long") + ' su KL ' + tfDelLivello + '"' +
+         '}'
+    alert(messaggio, alert.freq_once_per_bar_close)
