@@ -5,145 +5,245 @@
 //  nvmfinancebot — CRT su presa di key level
 // =============================================================================
 //
-//  COSA FA
-//  Riconosce sul grafico il CRT come lo definiscono le regole SETUP-00,
-//  SETUP-02A e SETUP-02B, lo disegna, e alla chiusura della candela manda un
-//  avviso al bot con i prezzi che servono.
+//  TRASPOSIZIONE, NON INTERPRETAZIONE
+//  Ogni blocco cita la regola dei documenti in docs/ e corrisponde a una
+//  funzione di core/definizioni.py, core/setup.py o core/gestione.py, che sono
+//  gia' tradotte e coperte da test. Se le due implementazioni divergono si
+//  vede confrontando gli identificativi riga per riga.
 //
-//  COSA NON FA, DI PROPOSITO
-//  Non decide se operare. Non calcola la size, non guarda il calendario delle
-//  notizie, non sa quante posizioni sono aperte sugli altri strumenti, non
-//  conosce il tuo conto. Quelle non sono cose del grafico: sono cose del bot,
-//  che rivaluta tutto con il proprio motore prima di muovere un euro.
+//  PROPONE, NON DECIDE
+//  Il bot rivaluta tutto con il proprio motore prima di muovere un euro.
+//  Quello che questo file NON puo' sapere, e che quindi non prova nemmeno a
+//  indovinare: il calendario delle notizie, l'equity del conto, le posizioni
+//  aperte sugli altri strumenti, i limiti per gruppo di correlazione, i limiti
+//  di perdita. Non sono cose del grafico.
 //
-//  Questo indicatore PROPONE. Il bot DECIDE. Un errore qui non puo' aprire
-//  un'operazione che le regole vietano: puo' solo far guardare il motore a
-//  vuoto.
+//  L'INDICIZZAZIONE, CHE E' TUTTO
+//  Dentro request.security si scrive tutto rispetto alla candela CORRENTE del
+//  timeframe superiore, e al momento della richiesta si applica [1] all'intera
+//  espressione. Cosi' quello che arriva e' il valore dell'ultima candela
+//  CHIUSA, e l'indicatore non si ridisegna. Senza quel [1] leggerebbe la
+//  candela in formazione — guarderebbe il futuro — e in backtest sembrerebbe
+//  bravissimo.
 //
-//  DA DOVE VENGONO LE REGOLE
-//  Non sono reinterpretate dai documenti: sono trasposte da core/setup.py e
-//  core/definizioni.py del bot, che sono gia' tradotti e coperti da test. Ogni
-//  blocco cita l'identificativo della regola, cosi' le due implementazioni
-//  restano confrontabili riga per riga. Se un giorno divergono, si vede.
-//
-//  SU QUALE GRAFICO SI METTE
-//  Sul FUTURE di analisi (GC1!, 6E1!, 6B1!, 6A1!, 6S1!, 6J1!), mai sul CFD.
-//  Il timeframe del grafico e' il timeframe di innesco: H1 o H4.
-//  DEF-31 e REV-11 escludono H12 e H6, che sono riservati ai gap: li'
-//  l'indicatore si disattiva da solo e lo scrive.
+//  DOVE SI METTE
+//  Sul grafico del FUTURE di analisi (GC1!, 6E1!, ...), mai sul CFD.
+//  Timeframe del grafico = timeframe di innesco: H1 o H4.
+//  DEF-31 e REV-11 escludono H12 e H6: li' l'indicatore si spegne e lo dice.
 //
 // =============================================================================
 
 //@version=6
-indicator("nvmfinancebot — CRT", overlay = true,
-     max_lines_count = 100, max_labels_count = 100, max_boxes_count = 20)
+indicator("nvmfinancebot — CRT", overlay = true, max_lines_count = 60,
+     max_labels_count = 60, max_boxes_count = 10)
 
 // =============================================================================
 //  Impostazioni
 // =============================================================================
-gruppoBot = "Collegamento al bot"
-segreto   = input.string("", "Parola segreta del bot", group = gruppoBot,
-     tooltip = "La stessa che sta in WEBHOOK_SECRET nel file .env. " +
-               "Sta qui e non nel codice: cosi' non finisce in uno script condiviso.")
-inviaAvvisi = input.bool(true, "Manda l'avviso al bot", group = gruppoBot)
+gBot = "Collegamento al bot"
+segreto     = input.string("", "Parola segreta", group = gBot,
+     tooltip = "La stessa di WEBHOOK_SECRET nel .env. Sta qui e non nel codice: " +
+               "cosi' non finisce in uno script condiviso.")
+inviaAvvisi = input.bool(true, "Manda l'avviso al bot", group = gBot)
 
-gruppoGrafico = "Cosa disegnare"
-mostraLivelli = input.bool(true,  "Key level dei timeframe superiori", group = gruppoGrafico)
-mostraCrt     = input.bool(true,  "CRT, stop e TP1",                   group = gruppoGrafico)
-mostraOperazione = input.bool(true, "Riquadro dell'operazione (rischio/premio)", group = gruppoGrafico)
-mostraQuadro  = input.bool(true,  "Riepilogo in alto a destra",        group = gruppoGrafico)
-mostraScartati = input.bool(false, "Segna anche i CRT scartati",       group = gruppoGrafico,
-     tooltip = "Una crocetta dove si e' formato un CRT che GEST-01 esclude, " +
-               "per capire perche' un candidato che a occhio c'era non compare.")
+gRegole = "Regole"
 rrMinimo = input.float(1.5, "Rapporto minimo su TP1 (GEST-01)", minval = 0.0, step = 0.1,
-     group = "Regole",
-     tooltip = "Deve coincidere con RR_MINIMO in core/parametri.py: se cambia li', va cambiato anche qui.")
-barreLivello  = input.int(60, "Lunghezza delle linee, in barre", minval = 10, maxval = 500,
-     group = gruppoGrafico,
-     tooltip = "I key level non si tracciano su tutta la storia: solo sulle ultime " +
-               "barre, altrimenti il grafico diventa illeggibile.")
+     group = gRegole, tooltip = "Deve coincidere con RR_MINIMO in core/parametri.py.")
+applicaAllineamento = input.bool(true, "Pretendi l'allineamento (SETUP-05)", group = gRegole)
+applicaComando      = input.bool(true, "Pretendi la bias di comando (SETUP-06, DEF-17)", group = gRegole)
+
+gVista = "Cosa disegnare"
+vediLivelli   = input.bool(true,  "Key level dei due timeframe superiori", group = gVista)
+vediOperazione= input.bool(true,  "Riquadro dell'operazione", group = gVista)
+vediQuadro    = input.bool(true,  "Riepilogo", group = gVista)
+vediScartati  = input.bool(false, "Segna i CRT scartati, con il motivo", group = gVista)
+barreLivello  = input.int(80, "Lunghezza delle linee, in barre", minval = 10, maxval = 500,
+     group = gVista)
 
 // =============================================================================
-//  DEF-01 e DUE_TF_SUPERIORI — i due timeframe che danno i key level
-//
-//  SETUP-00 vuole che il key level preso venga da un timeframe STRETTAMENTE
-//  superiore a quello del CRT. La tabella e' quella di parametri.py: per ogni
-//  timeframe di innesco, i due immediatamente sopra nella gerarchia ridotta.
+//  DEF-01 — Gerarchia, e i due timeframe immediatamente superiori (SETUP-05)
 // =============================================================================
-tfGrafico = timeframe.period
+tfChart = timeframe.period
 
-tfSuperiore1 = switch tfGrafico
-    "60"   => "240"    // H1  -> H4
-    "240"  => "1D"     // H4  -> 1D
-    "1D"   => "1W"     // 1D  -> 1W
-    "1W"   => "1M"     // 1W  -> 1M
-    "1M"   => "3M"     // 1M  -> 3M
+tfSup1 = switch tfChart
+    "60"  => "240"
+    "240" => "1D"
+    "1D"  => "1W"
+    "1W"  => "1M"
+    "1M"  => "3M"
     => ""
 
-tfSuperiore2 = switch tfGrafico
-    "60"   => "1D"     // H1  -> 1D
-    "240"  => "1W"     // H4  -> 1W
-    "1D"   => "1M"     // 1D  -> 1M
-    "1W"   => "3M"     // 1W  -> 3M
-    "1M"   => "6M"     // 1M  -> 6M
+tfSup2 = switch tfChart
+    "60"  => "1D"
+    "240" => "1W"
+    "1D"  => "1M"
+    "1W"  => "3M"
+    "1M"  => "6M"
     => ""
 
-// DEF-31 e REV-11: su H12 e H6 non nasce mai un CRT, quindi qui non si lavora.
-timeframeAmmesso = tfSuperiore1 != "" and tfSuperiore2 != ""
-
-// La dichiarazione sta fuori dal blocco di proposito: una `var` dentro un
-// `if` esiste solo quando quel ramo viene eseguito, ed e' una sottigliezza
-// che fa sparire il disegno senza un errore che lo spieghi.
-var label avvisoTf = na
-
-if barstate.islast and not timeframeAmmesso
-    label.delete(avvisoTf)
-    avvisoTf := label.new(bar_index, high,
-         "Timeframe non previsto per il CRT.\nUsa H1, H4, 1D, 1W oppure 1M.",
-         style = label.style_label_down, color = color.new(color.orange, 20),
-         textcolor = color.white, size = size.normal)
+attivo = tfSup1 != "" and tfSup2 != ""
 
 // =============================================================================
-//  DEF-36 — I key level di un timeframe, calcolati su C1
+//  DEF-16 — Bias di un singolo timeframe
 //
-//  C1 e non C0: con C0 la presa di DEF-38 confronterebbe high[C0] con se'
-//  stesso e sarebbe sempre falsa (REV-23).
+//  Algoritmo a passi: si applica il PRIMO passo la cui condizione e' vera.
 //
-//  La forma `expr[1]` con lookahead_on e' l'unica che restituisce l'ultima
-//  candela CHIUSA del timeframe superiore senza ridisegnarsi. Senza il [1]
-//  l'indicatore leggerebbe la candela ancora in formazione, cioe' guarderebbe
-//  il futuro, e in backtest sembrerebbe bravissimo.
+//  INDICIZZAZIONE, ed e' il punto delicato. Dentro il timeframe superiore
+//  l'indice 0 e' la candela IN FORMAZIONE. Quindi:
+//      indice 1 = ultima candela chiusa = C0
+//      indice 2 = C1
+//      indice 3 = C2
+//  Scrivendo tutto da 1 in su, l'espressione non dipende dalla candela in
+//  formazione e non si ridisegna. E' lo stesso risultato del classico [1]
+//  applicato fuori, che pero' in Pine non si puo' scrivere su una chiamata di
+//  funzione.
+//
+//    1. rompe entrambi gli estremi e chiude dentro -> NESSUNA
+//    2. accettazione rialzo   (DEF-20) -> LONG
+//    3. accettazione ribasso  (DEF-20) -> SHORT
+//    4. rifiuto rialzo        (DEF-21 semplice) -> SHORT
+//    5. rifiuto ribasso       (DEF-21 semplice) -> LONG
+//    6. inside bar            (DEF-09) -> DEF-23
+//    7. altrimenti            -> NESSUNA
+//
+//  Il rifiuto usato qui e' quello SEMPLICE, senza soglia sulla spike: la
+//  condizione sulla spike appartiene al solo rifiuto forte, che serve al CRT e
+//  alla mitigazione dei gap (DEF-21 v1.9, PA-31, REV-08). Usare il grado
+//  sbagliato cambia il numero di segnali.
+//
+//  Valori: 1 = LONG, -1 = SHORT, 0 = NESSUNA.
 // =============================================================================
-[max1, min1] = request.security(syminfo.tickerid, timeframeAmmesso ? tfSuperiore1 : tfGrafico,
-     [high[1], low[1]], lookahead = barmerge.lookahead_on)
+biasDelTimeframe() =>
+    supC1 = high[2]                                   // DEF-19, ombre incluse
+    infC1 = low[2]
 
-[max2, min2] = request.security(syminfo.tickerid, timeframeAmmesso ? tfSuperiore2 : tfGrafico,
-     [high[1], low[1]], lookahead = barmerge.lookahead_on)
+    // DEF-24 — eredita': l'ultima bias determinata da una candela non inside.
+    // E' ricorsiva, e vive qui perche' questa funzione gira sulle candele del
+    // timeframe superiore, non su quelle del grafico.
+    var int ereditata = 0
 
-meta1 = (max1 + min1) / 2
-meta2 = (max2 + min2) / 2
+    passo1 = high[1] > supC1 and low[1] < infC1 and close[1] >= infC1 and close[1] <= supC1
+    accRialzo  = close[1] > supC1                     // DEF-20
+    accRibasso = close[1] < infC1
+    rifRialzo  = high[1] > supC1 and close[1] <= supC1 and close[1] < close[2]   // DEF-21
+    rifRibasso = low[1] < infC1 and close[1] >= infC1 and close[1] > close[2]
+    insideBar  = high[1] <= supC1 and low[1] >= infC1                            // DEF-09
+
+    // DEF-23 — inside bar: conta solo se forma un gap con P1=C2, P2=C1, P3=C0.
+    gapRialzista  = low[1] > high[3]                  // DEF-10
+    gapRibassista = high[1] < low[3]                  // DEF-11
+
+    esito = passo1 ? 0 :
+         accRialzo ? 1 :
+         accRibasso ? -1 :
+         rifRialzo ? -1 :
+         rifRibasso ? 1 :
+         insideBar ? (gapRialzista ? 1 : gapRibassista ? -1 : ereditata) :
+         0
+
+    // L'eredita' si aggiorna solo quando la bias e' stata DETERMINATA da
+    // questa candela: una inside bar senza gap non ridefinisce niente, la
+    // tramanda (DEF-24).
+    if not (insideBar and not gapRialzista and not gapRibassista)
+        ereditata := esito
+    esito
+
+// =============================================================================
+//  SETUP-05 — In che direzione un timeframe ha sbilanciato un key level
+//
+//  I key level di un timeframe sono gli estremi della sua C1 (DEF-36); li
+//  "prende" la sua C0 (DEF-38). Un timeframe che ha preso sia il massimo sia
+//  il minimo non sbilancia in alcuna direzione: la candela ha spazzato
+//  entrambi i lati e non dice nulla, come in DEF-16 passo 1.
+// =============================================================================
+sbilanciamentoDelTimeframe() =>
+    presoMax = high[1] > high[2]
+    presoMin = low[1] < low[2]
+    presoMax and not presoMin ? 1 : presoMin and not presoMax ? -1 : 0
+
+// Il key level di C1 e se la C0 dello stesso timeframe lo ha preso.
+klMassimo()   => high[2]
+klMinimo()    => low[2]
+klPresoMax()  => high[1] > high[2]
+klPresoMin()  => low[1] < low[2]
+
+// =============================================================================
+//  Le richieste ai timeframe superiori
+//
+//  Il [1] su ogni espressione e' quello che rende il valore non ridisegnabile:
+//  arriva l'ultima candela CHIUSA, mai quella in formazione.
+// =============================================================================
+tfSicuro(string tf) => tf == "" ? tfChart : tf
+
+[kMax1, kMin1, presoMax1, presoMin1, sbil1, bias1] = request.security(
+     syminfo.tickerid, tfSicuro(tfSup1),
+     [klMassimo(), klMinimo(), klPresoMax(), klPresoMin(),
+      sbilanciamentoDelTimeframe(), biasDelTimeframe()],
+     lookahead = barmerge.lookahead_on)
+
+[kMax2, kMin2, presoMax2, presoMin2, sbil2, bias2] = request.security(
+     syminfo.tickerid, tfSicuro(tfSup2),
+     [klMassimo(), klMinimo(), klPresoMax(), klPresoMin(),
+      sbilanciamentoDelTimeframe(), biasDelTimeframe()],
+     lookahead = barmerge.lookahead_on)
+
+// SETUP-06 vuole la scala completa, dal piu' alto in giu'.
+bias12M = request.security(syminfo.tickerid, "12M", biasDelTimeframe(), lookahead = barmerge.lookahead_on)
+bias6M  = request.security(syminfo.tickerid, "6M", biasDelTimeframe(), lookahead = barmerge.lookahead_on)
+bias3M  = request.security(syminfo.tickerid, "3M", biasDelTimeframe(), lookahead = barmerge.lookahead_on)
+bias1M  = request.security(syminfo.tickerid, "1M", biasDelTimeframe(), lookahead = barmerge.lookahead_on)
+bias1W  = request.security(syminfo.tickerid, "1W", biasDelTimeframe(), lookahead = barmerge.lookahead_on)
+bias1D  = request.security(syminfo.tickerid, "1D", biasDelTimeframe(), lookahead = barmerge.lookahead_on)
+
+// =============================================================================
+//  SETUP-06 — Bias di comando
+//
+//  Si scorrono 12M, 6M, 3M, 1M, 1W, 1D e ci si ferma al PRIMO con bias diversa
+//  da NESSUNA. Il passo (b) della regola — "il target associato non e'
+//  raggiunto" (DEF-29) — richiede i livelli strutturali, che sono storia
+//  profonda e non roba di grafico: lo verifica il bot.
+// =============================================================================
+comando = bias12M != 0 ? bias12M : bias6M != 0 ? bias6M : bias3M != 0 ? bias3M :
+     bias1M != 0 ? bias1M : bias1W != 0 ? bias1W : bias1D != 0 ? bias1D : 0
+
+tfComando = bias12M != 0 ? "12M" : bias6M != 0 ? "6M" : bias3M != 0 ? "3M" :
+     bias1M != 0 ? "1M" : bias1W != 0 ? "1W" : bias1D != 0 ? "1D" : "—"
 
 // =============================================================================
 //  DEF-37 — Assorbimento fra key level coincidenti
 //
-//  Quando due key level di timeframe diversi valgono lo STESSO identico
-//  numero, resta solo quello del timeframe piu' alto. Uguaglianza esatta,
-//  nessuna tolleranza: non e' un caso raro, perche' il minimo di una mensile
-//  e' per costruzione identico al minimo di una delle sue settimanali.
-//
-//  Qui il timeframe piu' alto e' il secondo, quindi e' il primo a sparire.
+//  Stesso identico valore su due timeframe: resta solo quello del timeframe
+//  piu' alto. Uguaglianza esatta, nessuna tolleranza — il minimo di una
+//  mensile e' per costruzione identico al minimo di una delle sue settimanali.
 // =============================================================================
-max1Vivo = max1 != max2
-min1Vivo = min1 != min2
+kMax1Vivo = kMax1 != kMax2
+kMin1Vivo = kMin1 != kMin2
 
 // =============================================================================
-//  DEF-38 — Presa di un key level, a candela chiusa
+//  SETUP-00 — Nessun CRT senza key level PRESO
 //
-//  Dalla v1.9 la presa si conferma alla chiusura, mai sul prezzo scambiato
-//  (DEF-45): uno sfioramento intraday rientrato prima della chiusura non e'
-//  una presa e non abilita alcun setup.
+//  "Il CRT esiste solo come reazione alla presa di un key level. In assenza di
+//  un key level preso, nessun CRT e' valido, qualunque sia la forma delle
+//  candele." Un livello che il suo timeframe non ha ancora preso non e' un
+//  key level preso, e non abilita niente: era la condizione che mancava.
+// =============================================================================
+maxDisponibile2 = presoMax2
+minDisponibile2 = presoMin2
+maxDisponibile1 = presoMax1 and kMax1Vivo
+minDisponibile1 = presoMin1 and kMin1Vivo
+
+// =============================================================================
+//  SETUP-02A / SETUP-02B — Il CRT, alla chiusura di N2
 //
-//  N2 e' la candela appena chiusa, N1 quella prima.
+//  N2 e' la candela appena chiusa del grafico, N1 quella prima.
+//
+//  Short: N2 prende il KL_max, supera il massimo di N1, richiude dentro il
+//  range di N1, e chiude sotto la chiusura di N1.
+//
+//  La terza condizione (close[N2] <= high[N1]) e' implicata dalla quarta,
+//  perche' close[N1] <= high[N1] per costruzione. E' scritta lo stesso perche'
+//  il documento la elenca e questo file traduce il documento: toglierla
+//  renderebbe il codice piu' corto e meno confrontabile (REV-45).
 // =============================================================================
 n1Max = high[1]
 n1Min = low[1]
@@ -152,232 +252,177 @@ n2Max = high
 n2Min = low
 n2Chi = close
 
-// =============================================================================
-//  SETUP-02A — CRT short
-//
-//  Quattro condizioni simultanee: N2 prende un KL_max di timeframe superiore,
-//  supera il massimo di N1, richiude dentro il range di N1, e chiude sotto la
-//  chiusura di N1.
-//
-//  La terza (close[N2] <= high[N1]) e' implicata dalla quarta, perche'
-//  close[N1] <= high[N1] per costruzione. E' scritta lo stesso perche' il
-//  documento la elenca e questo file traduce il documento: toglierla
-//  renderebbe il codice piu' corto e meno confrontabile (REV-45).
-// =============================================================================
-crtShortSu(float livello) =>
-    n2Max > livello and n2Max > n1Max and n2Chi <= n1Max and n2Chi < n1Chi
+crtShortSu(float liv) => n2Max > liv and n2Max > n1Max and n2Chi <= n1Max and n2Chi < n1Chi
+crtLongSu(float liv)  => n2Min < liv and n2Min < n1Min and n2Chi >= n1Min and n2Chi > n1Chi
 
-// SETUP-02B — CRT long, a specchio.
-crtLongSu(float livello) =>
-    n2Min < livello and n2Min < n1Min and n2Chi >= n1Min and n2Chi > n1Chi
+dati = attivo and barstate.isconfirmed and not na(kMax1) and not na(kMax2)
 
-valutabile = timeframeAmmesso and barstate.isconfirmed and not na(max1) and not na(max2)
+// PREC-02: se piu' key level producono un CRT, comanda il timeframe piu' alto.
+sh2 = dati and maxDisponibile2 and crtShortSu(kMax2)
+sh1 = dati and maxDisponibile1 and crtShortSu(kMax1)
+lo2 = dati and minDisponibile2 and crtLongSu(kMin2)
+lo1 = dati and minDisponibile1 and crtLongSu(kMin1)
 
-// I key level si provano dal timeframe PIU' ALTO verso il basso: se piu' di
-// uno produce un CRT si tiene quello del timeframe superiore (PREC-02).
-shortSu2 = valutabile and crtShortSu(max2)
-shortSu1 = valutabile and max1Vivo and crtShortSu(max1)
-longSu2  = valutabile and crtLongSu(min2)
-longSu1  = valutabile and min1Vivo and crtLongSu(min1)
+figuraShort = sh2 or sh1
+figuraLong  = lo2 or lo1
+conflitto   = figuraShort and figuraLong
 
-eShort = shortSu2 or shortSu1
-eLong  = longSu2 or longSu1
-
-// Short e long insieme non possono valere: le condizioni si escludono sulla
-// chiusura rispetto a N1. Se accadesse, e' un errore di questo file e va visto.
-conflitto = eShort and eLong
-
-tfDelLivello = shortSu2 or longSu2 ? tfSuperiore2 : tfSuperiore1
-livelloPreso = shortSu2 ? max2 : shortSu1 ? max1 : longSu2 ? min2 : longSu1 ? min1 : na
+tfKl  = sh2 or lo2 ? tfSup2 : tfSup1
+kl    = sh2 ? kMax2 : sh1 ? kMax1 : lo2 ? kMin2 : lo1 ? kMin1 : na
+verso = figuraShort ? -1 : figuraLong ? 1 : 0
 
 // =============================================================================
-//  GEST-02 — Stop ancorato al CRT: l'estremo di N2
+//  GEST-02 — Stop: l'estremo di N2
 //  GEST-07 — TP1: il 50% del range di N1
+//  CTX-05  — L'ingresso vero e' l'apertura di N3, che ora non esiste: il bot
+//            usa il prezzo effettivo al momento dell'ordine. Qui si usa la
+//            chiusura di N2, l'unica cosa nota adesso.
 // =============================================================================
-stopCrt = eShort ? n2Max : eLong ? n2Min : na
-tp1Crt  = (n1Max + n1Min) / 2
-
-// L'ingresso vero e' l'apertura di N3, che alla chiusura di N2 non esiste
-// ancora; il bot usa il prezzo effettivo al momento dell'ordine (CTX-05).
-// Qui si usa la chiusura di N2, l'unica cosa nota adesso.
+stopCrt     = figuraShort ? n2Max : figuraLong ? n2Min : na
+tp1Crt      = (n1Max + n1Min) / 2
 ingressoCrt = n2Chi
 
 // =============================================================================
-//  GEST-01 — Il cancello che rende un CRT un'operazione
+//  GEST-01 — Cosa rende un CRT un'operazione
 //
-//  Due condizioni, ed e' la parte che separa un setup da una figura.
-//
-//  1. STOP E TARGET DA PARTI OPPOSTE dell'ingresso. Non e' pignoleria: in un
-//     CRT long dove N2 chiude oltre la meta' di N1, il TP1 e' gia' superato
-//     al momento dell'ingresso. GEST-01 scrive la formula con i valori
-//     assoluti e tace sul caso, ma con gli assoluti uscirebbe un rapporto
-//     positivo e plausibile, e la size verrebbe calcolata su quello. E' un
-//     dato incoerente, non un setup sfortunato.
-//
-//  2. RAPPORTO ALMENO PARI A RR_MINIMO. Sotto quella soglia il motore si
-//     astiene comunque: disegnarlo qui vorrebbe dire riempire il grafico di
-//     candidati che il bot butta via.
-//
-//  Senza questo blocco l'indicatore proponeva long con il target SOTTO
-//  l'ingresso, disegnati con il riquadro rovesciato.
+//  Stop e target da parti OPPOSTE dell'ingresso, e rapporto almeno RR_MINIMO.
+//  In un CRT long dove N2 chiude oltre la meta' di N1 il TP1 e' gia' superato
+//  all'ingresso: con i valori assoluti della formula uscirebbe un rapporto
+//  positivo e plausibile, e la size verrebbe calcolata su quello. E' un dato
+//  incoerente, non un setup sfortunato.
 // =============================================================================
-rischioCrt = math.abs(ingressoCrt - stopCrt)
-
-// Il prodotto e' negativo solo se stop e target stanno da parti opposte.
-latiOpposti = (stopCrt - ingressoCrt) * (tp1Crt - ingressoCrt) < 0
-
-rapportoCrt = rischioCrt > 0 and latiOpposti ? math.abs(tp1Crt - ingressoCrt) / rischioCrt : na
-
-crtScartato = (eShort or eLong) and (na(rapportoCrt) or rapportoCrt < rrMinimo)
-motivoScarto = not (eShort or eLong) ? "" : rischioCrt == 0 ? "rischio nullo" : not latiOpposti ? "TP1 gia' superato all'ingresso" : "R sotto " + str.tostring(rrMinimo)
-
-// Da qui in poi "CRT" significa CRT OPERABILE.
-crtShort = eShort and not crtScartato
-crtLong = eLong and not crtScartato
+rischio      = math.abs(ingressoCrt - stopCrt)
+latiOpposti  = (stopCrt - ingressoCrt) * (tp1Crt - ingressoCrt) < 0
+rapporto     = rischio > 0 and latiOpposti ? math.abs(tp1Crt - ingressoCrt) / rischio : na
 
 // =============================================================================
-//  Disegno
-//
-//  Principio: sul grafico ci va il MENO possibile, e deve essere leggibile a
-//  colpo d'occhio. Sei linee tracciate su tutta la storia e un'etichetta a
-//  ogni CRT di due anni fa rendono il grafico inutile: si vede tutto e non si
-//  capisce niente.
-//
-//  Quindi:
-//    - i key level sono SEI LINEE SOLE che si spostano, non sei tracciati
-//      storici. Una linea per livello, aggiornata a ogni barra.
-//    - i CRT passati sono un triangolino e basta.
-//    - stop e TP1 si disegnano solo per l'ULTIMO CRT, che e' l'unico su cui
-//      puoi ancora fare qualcosa.
-//    - il resoconto sta in una tabella in un angolo, che e' il posto dove si
-//      legge senza cercare.
+//  SETUP-05 — I due timeframe immediatamente superiori devono aver sbilanciato
+//             nella direzione dell'operazione
+//  SETUP-06 + DEF-17 — Il CRT non puo' andare contro la bias di comando
+// =============================================================================
+allineato = sbil1 == verso and sbil2 == verso and verso != 0
+concorde  = comando != 0 and comando == verso
+
+// =============================================================================
+//  Il cancello, e il motivo quando non passa
+// =============================================================================
+figura = (figuraShort or figuraLong) and not conflitto
+
+scarto = not figura ? "" :
+     rischio == 0 ? "rischio nullo (RISK-03)" :
+     not latiOpposti ? "TP1 gia' superato all'ingresso (GEST-01)" :
+     rapporto < rrMinimo ? "R " + str.tostring(rapporto, "#.##") + " sotto " + str.tostring(rrMinimo) + " (GEST-01)" :
+     applicaAllineamento and not allineato ? "i due TF superiori non hanno sbilanciato nella stessa direzione (SETUP-05)" :
+     applicaComando and not concorde ? "contro la bias di comando " + tfComando + " (SETUP-06, DEF-17)" :
+     ""
+
+operabile = figura and scarto == ""
+crtShort  = operabile and figuraShort
+crtLong   = operabile and figuraLong
+scartato  = figura and scarto != ""
+
+// =============================================================================
+//  Disegno — il meno possibile, e leggibile a colpo d'occhio
 // =============================================================================
 C_MAX   = #e8734f
 C_MIN   = #3fbba2
-C_META  = #8a9591
 C_FONDO = #161b19
 C_BORDO = #2a3230
 C_TESTO = #e2e8e4
 C_TENUE = #93a09b
 
-// -- i key level: una linea ciascuno, che si sposta -------------------------
 var line lnMax1 = na
 var line lnMin1 = na
-var line lnMeta1 = na
 var line lnMax2 = na
 var line lnMin2 = na
-var line lnMeta2 = na
 
-muoviLinea(line ln, float prezzo, color colore, int spessore, string stile) =>
-    risultato = na(ln) ? line.new(bar_index - barreLivello, prezzo, bar_index + 3, prezzo,
+muovi(line ln, float prezzo, color colore, int spessore, string stile) =>
+    r = na(ln) ? line.new(bar_index - barreLivello, prezzo, bar_index + 3, prezzo,
          color = colore, width = spessore, style = stile) : ln
-    line.set_xy1(risultato, bar_index - barreLivello, prezzo)
-    line.set_xy2(risultato, bar_index + 3, prezzo)
-    line.set_color(risultato, colore)
-    risultato
+    line.set_xy1(r, bar_index - barreLivello, prezzo)
+    line.set_xy2(r, bar_index + 3, prezzo)
+    line.set_color(r, colore)
+    r
 
-if mostraLivelli and barstate.islast and timeframeAmmesso
-    // Il timeframe piu' alto e' piu' marcato: e' quello che comanda (PREC-02).
-    lnMax2  := muoviLinea(lnMax2,  max2,  C_MAX,  2, line.style_solid)
-    lnMin2  := muoviLinea(lnMin2,  min2,  C_MIN,  2, line.style_solid)
-    lnMeta2 := muoviLinea(lnMeta2, meta2, color.new(C_META, 55), 1, line.style_dotted)
-    // Il timeframe intermedio: piu' sottile, e sparisce se assorbito (DEF-37).
-    // Un livello assorbito non si cancella: si rende invisibile. Passare un
-    // prezzo `na` a una linea e' il modo piu' rapido per far sparire tutto il
-    // disegno senza capire perche'.
-    lnMax1  := muoviLinea(lnMax1,  max1, color.new(C_MAX, max1Vivo ? 45 : 100), 1, line.style_dashed)
-    lnMin1  := muoviLinea(lnMin1,  min1, color.new(C_MIN, min1Vivo ? 45 : 100), 1, line.style_dashed)
-    lnMeta1 := muoviLinea(lnMeta1, meta1, color.new(C_META, 75), 1, line.style_dotted)
-    // Nessuna targa sui livelli: i valori stanno gia' nella tabella, e
-    // quattro etichette in piu' sul bordo destro si accavallano a quelle
-    // dell'operazione rendendo illeggibile proprio la zona che conta.
+if vediLivelli and barstate.islast and attivo
+    // Un livello gia' PRESO dal suo timeframe e' pieno: e' quello che puo'
+    // abilitare un CRT. Uno non ancora preso resta tratteggiato e sbiadito.
+    lnMax2 := muovi(lnMax2, kMax2, color.new(C_MAX, presoMax2 ? 0 : 70), 2,
+         presoMax2 ? line.style_solid : line.style_dashed)
+    lnMin2 := muovi(lnMin2, kMin2, color.new(C_MIN, presoMin2 ? 0 : 70), 2,
+         presoMin2 ? line.style_solid : line.style_dashed)
+    lnMax1 := muovi(lnMax1, kMax1, color.new(C_MAX, not kMax1Vivo ? 100 : presoMax1 ? 35 : 80), 1,
+         presoMax1 ? line.style_solid : line.style_dashed)
+    lnMin1 := muovi(lnMin1, kMin1, color.new(C_MIN, not kMin1Vivo ? 100 : presoMin1 ? 35 : 80), 1,
+         presoMin1 ? line.style_solid : line.style_dashed)
 
-// -- i CRT: un triangolino, nient'altro ------------------------------------
-plotshape(mostraCrt and crtShort, "CRT short", shape.triangledown, location.abovebar,
-     color.new(C_MAX, 0), size = size.tiny)
-plotshape(mostraCrt and crtLong, "CRT long", shape.triangleup, location.belowbar,
-     color.new(C_MIN, 0), size = size.tiny)
-// Gli scartati, se li vuoi vedere: serve a capire perche' un candidato che a
-// occhio c'era non compare.
-plotshape(mostraScartati and crtScartato, "CRT scartato", shape.xcross, location.abovebar,
-     color.new(C_TENUE, 35), size = size.tiny)
+plotshape(crtShort, "CRT short", shape.triangledown, location.abovebar, C_MAX, size = size.tiny)
+plotshape(crtLong,  "CRT long",  shape.triangleup,   location.belowbar, C_MIN, size = size.tiny)
+plotshape(vediScartati and scartato, "scartato", shape.xcross, location.abovebar,
+     color.new(C_TENUE, 45), size = size.tiny)
 
-// -- il riquadro dell'operazione, solo per l'ultimo CRT ---------------------
-//
-//  E' lo stesso colpo d'occhio dello strumento "posizione long/short" di
-//  TradingView: la fascia rossa e' quello che rischi, la verde quello che
-//  punti a prendere. Si disegna solo per l'ULTIMO CRT, perche' e' l'unico su
-//  cui puoi ancora fare qualcosa: riempire il grafico con le operazioni di
-//  due anni fa non aiuta a decidere niente.
-//
-//  L'ingresso disegnato e' la chiusura di N2. Il prezzo vero sara' l'apertura
-//  della candela dopo, che qui non esiste ancora: e' un'approssimazione di
-//  DISEGNO, e il bot usa il prezzo effettivo al momento dell'ordine (CTX-05).
-var box rischio = na
-var box premio = na
-var label etIngresso = na
+// -- il riquadro dell'operazione, solo per l'ultimo CRT operabile -----------
+var box  bxRischio = na
+var box  bxPremio  = na
+var label etIng = na
 var label etStop = na
 var label etTp1 = na
-var int barraCrt = na
-var float stopVivo = na
-var float tp1Vivo = na
-var float ingressoVivo = na
-var float rapportoVivo = na
-var bool shortVivo = false
+var int   barCrt = na
+var float vStop = na
+var float vTp1 = na
+var float vIng = na
+var float vR = na
+var bool  vShort = false
 
 if crtShort or crtLong
-    barraCrt := bar_index
-    stopVivo := stopCrt
-    tp1Vivo := tp1Crt
-    ingressoVivo := ingressoCrt
-    shortVivo := crtShort
-    rapportoVivo := rapportoCrt
+    barCrt := bar_index
+    vStop  := stopCrt
+    vTp1   := tp1Crt
+    vIng   := ingressoCrt
+    vR     := rapporto
+    vShort := crtShort
 
-if mostraOperazione and barstate.islast and not na(barraCrt)
+if vediOperazione and barstate.islast and not na(barCrt)
     destra = bar_index + 8
-
     // Su uno short lo stop sta SOPRA l'ingresso, su un long sotto: prendere
-    // sempre il maggiore come bordo alto evita di disegnare i riquadri
-    // rovesciati su meta' dei casi.
-    rischioAlto  = math.max(ingressoVivo, stopVivo)
-    rischioBasso = math.min(ingressoVivo, stopVivo)
-    premioAlto   = math.max(ingressoVivo, tp1Vivo)
-    premioBasso  = math.min(ingressoVivo, tp1Vivo)
+    // sempre il maggiore come bordo alto evita riquadri rovesciati.
+    rAlto  = math.max(vIng, vStop)
+    rBasso = math.min(vIng, vStop)
+    pAlto  = math.max(vIng, vTp1)
+    pBasso = math.min(vIng, vTp1)
 
-    rischio := na(rischio) ? box.new(barraCrt, rischioAlto, destra, rischioBasso,
-         border_color = color.new(C_MAX, 55), bgcolor = color.new(C_MAX, 82)) : rischio
-    box.set_lefttop(rischio, barraCrt, rischioAlto)
-    box.set_rightbottom(rischio, destra, rischioBasso)
+    bxRischio := na(bxRischio) ? box.new(barCrt, rAlto, destra, rBasso,
+         border_color = color.new(C_MAX, 60), bgcolor = color.new(C_MAX, 85)) : bxRischio
+    box.set_lefttop(bxRischio, barCrt, rAlto)
+    box.set_rightbottom(bxRischio, destra, rBasso)
 
-    premio := na(premio) ? box.new(barraCrt, premioAlto, destra, premioBasso,
-         border_color = color.new(C_MIN, 55), bgcolor = color.new(C_MIN, 82)) : premio
-    box.set_lefttop(premio, barraCrt, premioAlto)
-    box.set_rightbottom(premio, destra, premioBasso)
+    bxPremio := na(bxPremio) ? box.new(barCrt, pAlto, destra, pBasso,
+         border_color = color.new(C_MIN, 60), bgcolor = color.new(C_MIN, 85)) : bxPremio
+    box.set_lefttop(bxPremio, barCrt, pAlto)
+    box.set_rightbottom(bxPremio, destra, pBasso)
 
-    etIngresso := na(etIngresso) ? label.new(destra + 1, ingressoVivo, "",
-         style = label.style_label_left, color = color.new(C_FONDO, 15),
-         textcolor = C_TESTO, size = size.tiny) : etIngresso
-    label.set_xy(etIngresso, destra + 1, ingressoVivo)
-    label.set_text(etIngresso, (shortVivo ? "short " : "long ") +
-         str.tostring(ingressoVivo, format.mintick) +
-         (na(rapportoVivo) ? "" : "   R " + str.tostring(rapportoVivo, "#.##")))
+    etIng := na(etIng) ? label.new(destra + 1, vIng, "", style = label.style_label_left,
+         color = color.new(C_FONDO, 10), textcolor = C_TESTO, size = size.tiny) : etIng
+    label.set_xy(etIng, destra + 1, vIng)
+    label.set_text(etIng, (vShort ? "short " : "long ") + str.tostring(vIng, format.mintick) +
+         "   R " + str.tostring(vR, "#.##"))
 
-    etStop := na(etStop) ? label.new(destra + 1, stopVivo, "",
-         style = label.style_label_left, color = color.new(C_FONDO, 15),
-         textcolor = C_MAX, size = size.tiny) : etStop
-    label.set_xy(etStop, destra + 1, stopVivo)
-    label.set_text(etStop, "stop " + str.tostring(stopVivo, format.mintick))
+    etStop := na(etStop) ? label.new(destra + 1, vStop, "", style = label.style_label_left,
+         color = color.new(C_FONDO, 10), textcolor = C_MAX, size = size.tiny) : etStop
+    label.set_xy(etStop, destra + 1, vStop)
+    label.set_text(etStop, "stop " + str.tostring(vStop, format.mintick))
 
-    etTp1 := na(etTp1) ? label.new(destra + 1, tp1Vivo, "",
-         style = label.style_label_left, color = color.new(C_FONDO, 15),
-         textcolor = C_MIN, size = size.tiny) : etTp1
-    label.set_xy(etTp1, destra + 1, tp1Vivo)
-    label.set_text(etTp1, "TP1 " + str.tostring(tp1Vivo, format.mintick))
+    etTp1 := na(etTp1) ? label.new(destra + 1, vTp1, "", style = label.style_label_left,
+         color = color.new(C_FONDO, 10), textcolor = C_MIN, size = size.tiny) : etTp1
+    label.set_xy(etTp1, destra + 1, vTp1)
+    label.set_text(etTp1, "TP1 " + str.tostring(vTp1, format.mintick))
 
-// -- il resoconto, dove si legge senza cercarlo -----------------------------
-var table quadro = table.new(position.top_right, 2, 9,
-     bgcolor = color.new(C_FONDO, 8), border_color = C_BORDO, border_width = 1,
-     frame_color = C_BORDO, frame_width = 1)
+// -- il riepilogo ----------------------------------------------------------
+nomeBias(int b) => b == 1 ? "long" : b == -1 ? "short" : "nessuna"
+coloreBias(int b) => b == 1 ? C_MIN : b == -1 ? C_MAX : C_TENUE
+
+var table quadro = table.new(position.top_right, 2, 10, bgcolor = color.new(C_FONDO, 8),
+     border_color = C_BORDO, border_width = 1, frame_color = C_BORDO, frame_width = 1)
 
 riga(int y, string voce, string valore, color colore) =>
     table.cell(quadro, 0, y, voce, text_color = C_TENUE, text_size = size.small,
@@ -385,69 +430,75 @@ riga(int y, string voce, string valore, color colore) =>
     table.cell(quadro, 1, y, valore, text_color = colore, text_size = size.small,
          text_halign = text.align_right)
 
-if mostraQuadro and barstate.islast
-    if not timeframeAmmesso
-        riga(0, "nvmfinancebot", "non attivo", C_MAX)
-        riga(1, "timeframe", tfGrafico + " non previsto", C_TENUE)
+if vediQuadro and barstate.islast
+    if not attivo
+        riga(0, "nvmfinancebot", "spento", C_MAX)
+        riga(1, tfChart, "non e' un TF di innesco", C_TENUE)
         riga(2, "usa", "H1, H4, 1D, 1W, 1M", C_TESTO)
     else
-        barreFa = na(barraCrt) ? na : bar_index - barraCrt
-        quando = barreFa == 0 ? "adesso" :
-             barreFa == 1 ? "1 barra fa" : str.tostring(barreFa) + " barre fa"
-        statoTesto = na(barraCrt) ? "nessun CRT operabile" :
-             (shortVivo ? "CRT short" : "CRT long") + " — " + quando
-        statoColore = na(barraCrt) ? C_TENUE : shortVivo ? C_MAX : C_MIN
+        fa = na(barCrt) ? na : bar_index - barCrt
+        quando = fa == 0 ? "adesso" : fa == 1 ? "1 barra fa" : str.tostring(fa) + " barre fa"
 
-        riga(0, syminfo.ticker, tfGrafico, C_TESTO)
-        riga(1, "stato", statoTesto, statoColore)
-        riga(2, "ingresso / R", na(barraCrt) ? "—" :
-             str.tostring(ingressoVivo, format.mintick) + "   R " +
-             str.tostring(rapportoVivo, "#.##"),
-             na(barraCrt) ? C_TENUE : C_TESTO)
-        riga(3, "stop / TP1", na(barraCrt) ? "—" :
-             str.tostring(stopVivo, format.mintick) + " / " + str.tostring(tp1Vivo, format.mintick),
-             na(barraCrt) ? C_TENUE : C_TESTO)
-        riga(4, tfSuperiore2 + " max", str.tostring(max2, format.mintick), C_MAX)
-        riga(5, tfSuperiore2 + " min", str.tostring(min2, format.mintick), C_MIN)
-        riga(6, tfSuperiore1 + " max", max1Vivo ? str.tostring(max1, format.mintick) : "assorbito",
-             max1Vivo ? color.new(C_MAX, 35) : C_TENUE)
-        riga(7, tfSuperiore1 + " min", min1Vivo ? str.tostring(min1, format.mintick) : "assorbito",
-             min1Vivo ? color.new(C_MIN, 35) : C_TENUE)
-        // Quello che da qui NON si vede, perche' non e' roba del grafico.
-        riga(8, crtScartato ? "scartato" : "il bot verifica",
-             crtScartato ? motivoScarto : "bias, news, rischio, size",
-             crtScartato ? C_MAX : C_TENUE)
+        riga(0, syminfo.ticker, tfChart, C_TESTO)
+
+        // SETUP-06: chi comanda, e da quale timeframe.
+        riga(1, "bias comando", nomeBias(comando) + "  (" + tfComando + ")", coloreBias(comando))
+
+        // DEF-16 sui due timeframe che SETUP-05 interroga.
+        riga(2, "bias " + tfSup2 + " / " + tfSup1,
+             nomeBias(bias2) + " / " + nomeBias(bias1), C_TESTO)
+
+        // SETUP-05: la condizione vera del cancello.
+        riga(3, "sbilanciamento", nomeBias(sbil2) + " / " + nomeBias(sbil1),
+             allineato ? coloreBias(verso) : C_TENUE)
+
+        // DEF-36 e DEF-38: i livelli, e quali sono gia' stati presi.
+        riga(4, tfSup2 + " max/min",
+             str.tostring(kMax2, format.mintick) + (presoMax2 ? " preso" : "") + "  /  " +
+             str.tostring(kMin2, format.mintick) + (presoMin2 ? " preso" : ""), C_TESTO)
+        riga(5, tfSup1 + " max/min",
+             (kMax1Vivo ? str.tostring(kMax1, format.mintick) + (presoMax1 ? " preso" : "") : "assorbito") +
+             "  /  " +
+             (kMin1Vivo ? str.tostring(kMin1, format.mintick) + (presoMin1 ? " preso" : "") : "assorbito"),
+             C_TENUE)
+
+        riga(6, "CRT", na(barCrt) ? "nessuno" : (vShort ? "short" : "long") + " — " + quando,
+             na(barCrt) ? C_TENUE : coloreBias(vShort ? -1 : 1))
+        riga(7, "ingresso / R", na(barCrt) ? "—" :
+             str.tostring(vIng, format.mintick) + "   R " + str.tostring(vR, "#.##"),
+             na(barCrt) ? C_TENUE : C_TESTO)
+        riga(8, "stop / TP1", na(barCrt) ? "—" :
+             str.tostring(vStop, format.mintick) + " / " + str.tostring(vTp1, format.mintick),
+             na(barCrt) ? C_TENUE : C_TESTO)
+
+        // L'ultima riga e' la piu' importante: dice perche' NON c'e' un
+        // segnale, oppure cosa manca ancora perche' diventi un ordine.
+        riga(9, scartato ? "scartato" : "resta al bot",
+             scartato ? scarto : "news, rischio, size, esclusioni",
+             scartato ? C_MAX : C_TENUE)
 
 if conflitto and barstate.isconfirmed
     label.new(bar_index, high, "CONFLITTO: short e long insieme",
-         style = label.style_label_down, color = color.red,
-         textcolor = color.white, size = size.small)
+         style = label.style_label_down, color = color.red, textcolor = color.white,
+         size = size.small)
 
 // =============================================================================
 //  L'avviso al bot
 //
-//  Un solo avviso per strumento: dentro ci sono i prezzi dei timeframe che il
-//  motore usa, letti da qui con request.security. Cosi' non servono sette
-//  alert per sette timeframe.
-//
-//  L'orario e' quello di CHIUSURA della candela, non di apertura: e' la
-//  convenzione che usa l'archivio del bot, e sbagliarla sposterebbe ogni
-//  candela di un periodo intero.
+//  Un solo avviso per strumento. L'orario e' quello di CHIUSURA della candela,
+//  che e' la convenzione dell'archivio: sbagliarla sposterebbe ogni candela di
+//  un periodo intero.
 // =============================================================================
-numero(float valore) => str.tostring(valore, format.mintick)
+num(float v) => str.tostring(v, format.mintick)
 
-if valutabile and inviaAvvisi and (crtShort or crtLong) and not conflitto
-    messaggio = '{"secret":"' + segreto + '"' +
+if dati and inviaAvvisi and operabile
+    msg = '{"secret":"' + segreto + '"' +
          ',"symbol":"' + syminfo.ticker + '"' +
-         ',"tf":"' + tfGrafico + '"' +
+         ',"tf":"' + tfChart + '"' +
          ',"candle_close_time_utc":"' + str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + '"' +
-         ',"open":' + numero(open) +
-         ',"high":' + numero(high) +
-         ',"low":' + numero(low) +
-         ',"close":' + numero(close) +
-         ',"high_c1":' + numero(n1Max) +
-         ',"low_c1":' + numero(n1Min) +
-         ',"nota":"crt ' + (crtShort ? "short" : "long") + ' su KL ' + tfDelLivello +
-              ' R ' + str.tostring(rapportoCrt, "#.##") + '"' +
-         '}'
-    alert(messaggio, alert.freq_once_per_bar_close)
+         ',"open":' + num(open) + ',"high":' + num(high) +
+         ',"low":' + num(low) + ',"close":' + num(close) +
+         ',"high_c1":' + num(n1Max) + ',"low_c1":' + num(n1Min) +
+         ',"nota":"crt ' + (crtShort ? "short" : "long") + ' KL ' + tfKl + ' ' +
+              num(kl) + ' R ' + str.tostring(rapporto, "#.##") + '"}'
+    alert(msg, alert.freq_once_per_bar_close)

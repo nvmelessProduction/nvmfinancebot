@@ -88,6 +88,61 @@ dell'indirizzo che cambia — sparisce del tutto.
 
 ---
 
+## Quali regole applica, e quali no
+
+Applica tutto quello che si puo' calcolare da un grafico:
+
+| Regola | Cosa fa |
+|---|---|
+| `DEF-16` | bias di ogni timeframe, con i sette passi, il rifiuto **semplice**, l'inside bar e l'eredita' ricorsiva |
+| `DEF-36` | key level sugli estremi di **C1**, non di C0 |
+| `DEF-37` | assorbimento fra livelli coincidenti |
+| `DEF-38` | presa del key level da parte della C0 del suo timeframe |
+| `SETUP-00` | nessun CRT senza un key level **gia' preso** |
+| `SETUP-02A/B` | le quattro condizioni del CRT |
+| `SETUP-05` | i due timeframe superiori devono aver sbilanciato nella stessa direzione |
+| `SETUP-06` | bias di comando, dal timeframe piu' alto in giu' |
+| `DEF-17` | nessun CRT contro la bias di comando |
+| `PREC-02` | fra piu' key level comanda quello del timeframe piu' alto |
+| `GEST-01` | stop e target da parti opposte, e rapporto minimo |
+| `GEST-02` | stop sull'estremo di N2 |
+| `GEST-07` | TP1 al 50% del range di N1 |
+| `DEF-31`, `REV-11` | su H12 e H6 non si lavora |
+
+Non applica, perche' non sono cose del grafico:
+
+- il **calendario delle notizie** (`CTX-02`, `SETUP-15`)
+- la **size** e i limiti di rischio (`RISK-01/02/03`, `RISK-06/07`)
+- le **posizioni aperte sugli altri strumenti** e i gruppi di correlazione
+- i **limiti di perdita** giornaliero, settimanale, mensile
+- il passo (b) di `SETUP-06`, cioe' se il target del timeframe di comando e'
+  gia' stato raggiunto: richiede i livelli strutturali, che sono storia
+  profonda
+
+Le verifica il bot, e il riquadro di riepilogo lo scrive nell'ultima riga.
+
+---
+
+## Leggere il riquadro
+
+| Riga | Cosa dice |
+|---|---|
+| bias comando | chi comanda, e da quale timeframe (`SETUP-06`) |
+| bias 1W / 1D | la bias dei due timeframe superiori (`DEF-16`) |
+| sbilanciamento | in che direzione hanno preso un key level (`SETUP-05`) |
+| 1W max/min | i livelli, e quali sono gia' stati **presi** |
+| CRT | se c'e', in che direzione e da quante barre |
+| ingresso / R | prezzo e rapporto rischio-rendimento |
+| **scartato** | **perche' un CRT che c'era non e' diventato un segnale** |
+
+L'ultima riga e' quella che serve davvero: quando a occhio vedi un CRT e
+l'indicatore non segna niente, li' c'e' scritto quale regola l'ha escluso.
+
+Sul grafico, un key level **gia' preso** e' una linea piena; uno non ancora
+preso e' tratteggiato e sbiadito. Solo i primi possono abilitare un CRT.
+
+---
+
 ## Cosa non ho potuto provare
 
 Pine si compila solo dentro TradingView: questo file è scritto dalle regole
