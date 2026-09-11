@@ -25,7 +25,9 @@ from core.config import impostazioni
 from core.log import configura as configura_log
 from core.log import diario
 from core.models import AlertIn, Decision, Esito
+from core.mercato import mercato
 from core.sentinella import sentinella
+from core.simboli import simbolo_esecuzione
 from core.strategy import valuta
 
 log = diario("server")
@@ -45,7 +47,7 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
     log.info("=" * 60)
     log.info("avvio impianto | modalita' %s | archivio %s", cfg.MODE, cfg.DB_PATH)
 
-    if not cfg.webhook_configurato:
+    if not cfg.webhook_configurato and cfg.FORNITORE_DATI != "mercato":
         log.error("WEBHOOK_SECRET non impostato: /webhook rifiutera' ogni richiesta")
     if not cfg.telegram_configurato:
         log.warning("Telegram non configurato: le notifiche finiranno solo nel log")
@@ -60,14 +62,21 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         log.info("MT5 non contattato (modalita' dry_run)")
 
     # --- Fornitore dei dati di analisi ------------------------------------
-    if cfg.FORNITORE_DATI == "tradingview":
+    if cfg.FORNITORE_DATI in ("tradingview", "mercato"):
         from core.fornitore_tradingview import collega
 
         collega(suffisso_broker=cfg.MT5_SUFFISSO_SIMBOLI)
-        log.info("analisi sul future via TradingView, esecuzione su CFD via MT5")
+        log.info("analisi sul future, esecuzione su CFD via MT5")
         for riga in storage.copertura_candele():
             log.info("  archivio: %s %s, %d candele dal %s",
                      riga["strumento"], riga["tf"], riga["quante"], riga["dalla"][:10])
+
+    # --- Il bot si prende i dati da solo ----------------------------------
+    if cfg.FORNITORE_DATI == "mercato":
+        mercato.intervallo_sec = cfg.MERCATO_INTERVALLO_SEC
+        mercato.su_candela = processa_alert
+        mercato.avvia()
+        log.info("nessun alert da configurare: le candele le cerca il bot")
     else:
         log.info("nessun fornitore dati: il motore si asterra' dichiarandolo")
 
@@ -84,6 +93,7 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
+    mercato.ferma()
     sentinella.ferma()
     broker.disconnetti()
     log.info("impianto fermato")
@@ -163,6 +173,22 @@ def salvaguardia_violata(alert: AlertIn, decisione: Decision) -> Optional[str]:
     return None
 
 
+def simbolo_da_eseguire(alert: AlertIn, decisione: Decision) -> Optional[str]:
+    """Il simbolo da mandare al broker, con il suffisso del conto.
+
+    La decisione nomina il CFD (`XAUUSD`); il broker puo' chiamarlo
+    `XAUUSD.a`. Il suffisso e' un fatto del conto, non della strategia, ed e'
+    qui che si aggiunge.
+
+    None quando non si puo' sapere su cosa operare. Ripiegare sul simbolo
+    dell'alert sarebbe il peggiore dei mondi: quello e' lo strumento di
+    ANALISI, e mandarlo al broker significa chiedergli un future che non ha.
+    """
+    if not decisione.simbolo:
+        return None
+    return simbolo_esecuzione(decisione.simbolo, impostazioni().MT5_SUFFISSO_SIMBOLI)
+
+
 def _esegui_decisione(
     alert: AlertIn,
     decisione: Decision,
@@ -220,8 +246,22 @@ def _esegui_decisione(
         notifier.invia(f"{testo}\n\n{dettaglio}")
         return "errore", dettaglio, None, None
 
+    # Si analizza sul future e si opera sul CFD (DEF-33): il simbolo da
+    # mandare al broker e' quello della decisione, non quello dell'alert.
+    # Mandare `alert.simbolo` significherebbe chiedere a MT5 un contratto
+    # future che il broker non quota.
+    simbolo_ordine = simbolo_da_eseguire(alert, decisione)
+    if simbolo_ordine is None:
+        dettaglio = (
+            "auto: la decisione non indica su quale strumento operare, "
+            "e il simbolo dell'alert e' quello di analisi: ordine non inviato"
+        )
+        log.error(dettaglio)
+        notifier.invia(f"{testo}\n\n{dettaglio}")
+        return "errore", dettaglio, None, None
+
     esito_ordine = broker.invia_ordine(
-        simbolo=alert.simbolo,
+        simbolo=simbolo_ordine,
         direzione=decisione.azione,
         volume=decisione.volume,
         commento=f"alert {id_alert}",
@@ -234,14 +274,27 @@ def _esegui_decisione(
     return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket, esito_ordine.prezzo
 
 
-@app.post("/webhook")
-def webhook(alert: AlertIn) -> dict[str, Any]:
-    """Punto di ingresso degli alert TradingView."""
-    # 1. Il segreto per primo: se non torna, non lasciamo traccia in archivio.
-    if not _segreto_valido(alert.segreto):
-        log.warning("richiesta con segreto non valido su %s", alert.simbolo)
-        raise HTTPException(status_code=401, detail="segreto non valido")
+class ArchiviazioneFallita(RuntimeError):
+    """L'alert non e' finito in archivio: non si prosegue.
 
+    Archiviare prima di tutto il resto e' una regola dell'impianto: senza
+    traccia dell'alert, una decisione presa non sarebbe ricostruibile.
+    """
+
+
+def processa_alert(alert: AlertIn) -> dict[str, Any]:
+    """Il percorso completo di un alert, da qualunque parte arrivi.
+
+    Lo chiamano in due: il webhook di TradingView, e il ciclo di mercato che
+    va a prendersi le candele da solo. Tutto cio' che conta — archiviazione,
+    riconoscimento dei duplicati, decisione, salvaguardie, esecuzione,
+    notifica, registrazione della posizione — sta qui, una volta sola, perche'
+    due copie di questo percorso finirebbero per divergere proprio nel punto
+    che muove i soldi.
+
+    La verifica del segreto NON sta qui: riguarda solo cio' che arriva da
+    internet, ed e' compito di `/webhook`.
+    """
     # 2. La candela del future entra in archivio: e' il dato su cui il motore
     #    ragionera' adesso e nelle valutazioni future (DEF-32).
     if impostazioni().FORNITORE_DATI == "tradingview":
@@ -258,7 +311,7 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
         id_alert, gia_visto = storage.salva_alert(alert)
     except Exception as errore:
         log.exception("impossibile salvare l'alert")
-        raise HTTPException(status_code=500, detail="archiviazione dell'alert fallita") from errore
+        raise ArchiviazioneFallita("archiviazione dell'alert fallita") from errore
 
     # 3. Consegna doppia (TradingView o il tunnel che ritentano): l'alert e'
     #    gia' stato valutato, rivalutarlo significherebbe raddoppiare l'ordine.
@@ -304,7 +357,10 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
         if esito == "eseguito":
             try:
                 storage.registra_posizione(
-                    simbolo=alert.simbolo,
+                    # Quello davvero aperto sul broker: la sentinella dovra'
+                    # chiederne il prezzo, e il prezzo del future non
+                    # chiuderebbe una posizione sul CFD.
+                    simbolo=simbolo_da_eseguire(alert, decisione) or alert.simbolo,
                     direzione=decisione.azione,
                     volume=float(decisione.volume or 0.0),
                     ticket=ticket,
@@ -330,6 +386,24 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
         "dettaglio": dettaglio,
         "modalita": impostazioni().MODE,
     }
+
+
+@app.post("/webhook")
+def webhook(alert: AlertIn) -> dict[str, Any]:
+    """Punto di ingresso degli alert TradingView.
+
+    Resta per chi vuole usare gli alert, ma non serve piu': con
+    `FORNITORE_DATI=mercato` il bot si prende le candele da solo.
+    """
+    # Il segreto per primo: se non torna, non lasciamo traccia in archivio.
+    if not _segreto_valido(alert.segreto):
+        log.warning("richiesta con segreto non valido su %s", alert.simbolo)
+        raise HTTPException(status_code=401, detail="segreto non valido")
+
+    try:
+        return processa_alert(alert)
+    except ArchiviazioneFallita as errore:
+        raise HTTPException(status_code=500, detail=str(errore)) from errore
 
 
 @app.get("/salute")

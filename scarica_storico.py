@@ -191,6 +191,9 @@ def in_barre(risposta: dict, intervallo: Intervallo) -> list[dict]:
     chiusure = _numeri(quote, "close")
 
     _verifica_passo(orari, intervallo)
+    orari, aperture, massimi, minimi, chiusure = _senza_segnaposto_del_momento(
+        orari, aperture, massimi, minimi, chiusure
+    )
 
     barre: list[dict] = []
     for indice, momento in enumerate(orari):
@@ -205,6 +208,32 @@ def in_barre(risposta: dict, intervallo: Intervallo) -> list[dict]:
             "chiusura": float(valori[3]),
         })
     return barre
+
+
+def _senza_segnaposto_del_momento(orari: list, *serie: list) -> tuple:
+    """Toglie l'ultima voce quando non e' una barra ma il prezzo di adesso.
+
+    La fonte, sulle serie intraday, appende in coda una voce marcata con
+    l'istante corrente invece che con l'inizio di un periodo: alle 10:08:51
+    la serie oraria finisce con una voce "10:08:51". Non e' una barra, e'
+    il prezzo in questo momento.
+
+    Il danno e' subdolo. `in_candele` scarta sempre l'ultima voce perche' e'
+    quella in formazione; se l'ultima voce e' il segnaposto, quella scartata
+    e' il segnaposto e **la candela ancora in formazione passa per chiusa**,
+    con un orario di chiusura che non cade nemmeno su un'ora tonda. E' un
+    lookahead di un periodo intero, e i prezzi sembrerebbero giusti.
+
+    Si riconosce dal passo: l'ultimo intervallo e' molto piu' corto degli
+    altri, perche' misura "da inizio periodo a adesso" invece che un periodo.
+    """
+    if len(orari) < 3:
+        return (orari, *serie)
+    passi = [int(orari[i + 1]) - int(orari[i]) for i in range(len(orari) - 1)]
+    mediano = statistics.median(passi[:-1]) if len(passi) > 1 else passi[0]
+    if passi[-1] >= mediano * 0.9:
+        return (orari, *serie)
+    return (orari[:-1], *(valori[:-1] for valori in serie))
 
 
 def _verifica_passo(orari: list, intervallo: Intervallo) -> None:

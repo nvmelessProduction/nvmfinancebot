@@ -94,12 +94,19 @@ class Impostazioni(BaseSettings):
     SENTINELLA_INTERVALLO_SEC: float = 5.0
 
     # --- Fornitore dei dati di analisi ---------------------------------------
+    # "mercato":     il bot va a prendersi da solo le candele dei future
+    #                (DEFAULT). Niente alert da creare, niente tunnel, niente
+    #                segreto: si preme avvia e basta.
     # "nessuno":     il motore non riceve dati e si astiene dichiarandolo.
     # "tradingview": i prezzi arrivano dagli alert sul grafico FUTURE e si
     #                accumulano in archivio; MT5 serve solo al conto e
     #                all'esecuzione sul CFD. E' l'architettura di DEF-32,
     #                DEF-33 e DEF-34.
-    FORNITORE_DATI: Literal["nessuno", "tradingview"] = "nessuno"
+    FORNITORE_DATI: Literal["nessuno", "tradingview", "mercato"] = "mercato"
+    # Ogni quanto il bot va a cercare candele nuove, in secondi. Non serve
+    # scendere: una serie viene chiesta solo quando puo' essersi chiusa
+    # qualcosa, quindi girare spesso non moltiplica le richieste.
+    MERCATO_INTERVALLO_SEC: float = 60.0
     # Suffisso che il broker aggiunge ai simboli (es. ".a", ".pro").
     # Si scopre con: python prova_esecuzione.py
     MT5_SUFFISSO_SIMBOLI: str = ""

@@ -1,134 +1,106 @@
-# Far girare il bot 24 ore su 24
+# Farlo girare da solo
 
-Il bot gira sul tuo PC Windows, e tre cose devono restare vive
-contemporaneamente:
+## In breve
 
-| Cosa | Perché serve | Se muore |
+1. **Doppio clic su `avvia.bat`.** La prima volta prepara tutto e fa tre
+   domande; dalla seconda in poi parte e basta.
+2. **Una volta sola, doppio clic su `avvio\installa_avvio_automatico.bat`.**
+   Da quel momento il bot riparte da solo a ogni accensione del PC.
+
+Non c'è altro. Niente alert da creare, niente tunnel, niente dominio, niente
+segreti da copiare.
+
+---
+
+## Cosa deve restare acceso
+
+Solo due cose, non più tre:
+
+| Cosa | Perché | Se muore |
 |---|---|---|
-| **MetaTrader 5**, aperto e loggato | il bot non fa il login da solo: si aggancia al terminale già aperto | niente ordini, niente prezzi per la sorveglianza |
-| **`main.py`** (il server) | riceve gli alert, decide, sorveglia stop e target | le posizioni aperte restano **senza stop e senza target** |
-| **`cloudflared`** (il tunnel) | è la porta da cui entra TradingView | gli alert non arrivano più, in silenzio |
+| **MetaTrader 5**, aperto e connesso | il bot non fa il login da solo: si aggancia al terminale già aperto | niente ordini, niente prezzi per la sorveglianza |
+| **`avvia.bat`** | è il bot: cerca le candele, decide, sorveglia stop e target | le posizioni aperte restano **senza stop e senza target** |
 
-Nessuna di queste tre si riavvia da sola: gli script in questa cartella
-servono a questo.
+Il tunnel non serve più. Prima serviva perché TradingView doveva riuscire a
+bussare al tuo PC; adesso è il bot che va a prendersi i dati, quindi non c'è
+niente da esporre su internet. È sparito anche tutto quello che ci girava
+intorno: indirizzi che cambiano, domini da comprare, `WEBHOOK_SECRET` da
+tenere allineato.
 
----
-
-## 1. Il tunnel deve avere un indirizzo fisso
-
-È il punto che rovina la maggior parte dei tentativi di far girare tutto
-h24, ed è meglio saperlo prima.
-
-Il tunnel gratuito "quick" (`cloudflared tunnel --url http://localhost:8000`)
-genera **un indirizzo nuovo a ogni avvio**. Riavviarlo automaticamente
-produce quindi la peggiore delle situazioni: un bot che sembra funzionare —
-il server gira, MT5 è connesso, `/salute` risponde in locale — mentre
-TradingView continua a scrivere a un indirizzo che non esiste più. Nessun
-errore, nessuna notifica, semplicemente non succede più niente.
-
-Per il funzionamento continuo serve un **tunnel nominato**, che ha un
-indirizzo stabile. È gratuito, ma richiede **un dominio tuo** con i DNS
-gestiti da Cloudflare (un dominio economico costa una decina di euro
-l'anno). Si crea una volta sola:
-
-```bat
-cloudflared tunnel login
-cloudflared tunnel create nvmfinancebot
-cloudflared tunnel route dns nvmfinancebot bot.iltuodominio.it
-```
-
-Poi crea il file `C:\Users\<tuonome>\.cloudflared\config.yml`:
-
-```yaml
-tunnel: nvmfinancebot
-credentials-file: C:\Users\<tuonome>\.cloudflared\<id-del-tunnel>.json
-
-ingress:
-  - hostname: bot.iltuodominio.it
-    service: http://localhost:8000
-  - service: http_status:404
-```
-
-Da quel momento l'URL dell'alert su TradingView è
-`https://bot.iltuodominio.it/webhook` e **non cambia più**.
+`avvia.bat` non parte e basta: se il bot muore lo **rifà partire** dopo 15
+secondi, all'infinito. Ogni riavvio finisce in `avvio\riavvii.log`: se quel
+file cresce, lì c'è scritto quando e quante volte.
 
 ---
 
-## 2. Far partire tutto all'accensione
+## Le due cose che Windows non fa da solo
 
-1. Premi **Windows+R**, scrivi `shell:startup`, Invio. Si apre la cartella
-   dei programmi che partono da soli.
-2. Metti lì dentro un **collegamento** a:
-   - `avvio\avvia_bot.bat`
-   - `avvio\avvia_tunnel.bat`
-   - `terminal64.exe` di MetaTrader 5
-3. In MetaTrader, menù *Strumenti → Opzioni → Server*, spunta **"Mantieni
-   le informazioni personali"** perché faccia il login da solo. E lascia
-   acceso **Algo Trading**.
+### MetaTrader deve aprirsi e collegarsi da solo
 
-I due `.bat` non partono e basta: se il programma che avviano muore, lo
-**rifanno partire** dopo 15 secondi, all'infinito. Ogni riavvio finisce in
-`avvio\riavvii.log`: se quel file cresce, qualcosa non va e lì c'è scritto
-quando.
+Premi **Windows+R**, scrivi `shell:startup`, Invio: si apre la cartella dei
+programmi che partono all'accensione. Mettici dentro un collegamento a
+`terminal64.exe` di MetaTrader 5.
 
----
+Poi, dentro MT5: *Strumenti → Opzioni → Server*, spunta **"Mantieni le
+informazioni personali"** perché faccia il login da solo. E lascia acceso il
+pulsante **Algo Trading**.
 
-## 3. Perché il PC deve accedere da solo
+### Il PC deve accedere da solo
 
-Se manca la corrente, al ritorno Windows si ferma alla schermata di accesso
-e **niente parte**, perché tutto quanto sopra parte al *login*, non
-all'avvio.
+Se manca la corrente, al ritorno Windows si ferma alla schermata di accesso e
+**niente parte**, perché tutto quanto sopra parte al *login*, non all'avvio.
 
-Serve quindi l'accesso automatico: `Windows+R` → `netplwiz` → togli la
-spunta a *"Per utilizzare questo computer è necessario che l'utente immetta
-il nome e la password"*.
+`Windows+R` → `netplwiz` → togli la spunta a *"Per utilizzare questo computer
+è necessario che l'utente immetta il nome e la password"*.
 
-> **Il prezzo di questo:** chiunque abbia accesso fisico al PC entra senza
-> password, e su quel PC c'è il tuo `.env` con la parola segreta del
-> webhook. Se il computer non sta in un posto tuo, non farlo.
+> **Il prezzo:** chiunque abbia accesso fisico al PC entra senza password, e
+> su quel PC c'è il tuo `.env`. Se il computer non sta in un posto tuo, non
+> farlo.
 
 ---
 
-## 4. Windows Update
+## Windows Update
 
-Un riavvio a sorpresa nel mezzo di una posizione aperta è esattamente ciò
-che non vuoi. Non si può disattivare del tutto, ma si può governare:
+Un riavvio a sorpresa nel mezzo di una posizione aperta è esattamente ciò che
+non vuoi. Non si disattiva del tutto, ma si governa:
 
 - *Impostazioni → Windows Update → Opzioni avanzate → **Ore di attività***:
   impostale sull'orario in cui i mercati sono aperti.
-- Nella stessa pagina, **"Sospendi aggiornamenti"** per rimandarli a un
-  momento in cui sei davanti al computer.
+- Nella stessa pagina, **"Sospendi aggiornamenti"** quando non vuoi sorprese.
 
-Dopo ogni riavvio, controlla `/salute`: è la verifica che tutte e tre le
-cose sono ripartite davvero.
-
----
-
-## 5. Accorgersi che è morto, senza dipendere dal PC
-
-Se il PC si spegne muore anche Telegram, quindi il bot **non può dirti che
-è morto**. Serve qualcosa fuori.
-
-Il modo più semplice è un servizio gratuito di monitoraggio (ce ne sono
-diversi) puntato su `https://bot.iltuodominio.it/salute`, con un controllo
-ogni pochi minuti e la notifica via email o push quando smette di
-rispondere. Costa zero e copre il caso peggiore: black-out, disco pieno,
-Windows che si riavvia da solo alle tre di notte.
+Dopo ogni riavvio il bot riparte da solo, ma MT5 deve essersi ricollegato:
+apri `http://localhost:8000/salute` e guarda che `mt5_connesso` sia vero.
 
 ---
 
-## 6. Se il server riparte con posizioni aperte
+## Se il bot riparte con posizioni aperte
 
-Non è un disastro: i livelli di stop e target non stanno nella memoria del
-programma, stanno **in archivio** (`bot.db`). Alla ripartenza la sentinella
-li rilegge e ricomincia a sorvegliarli, e riconcilia con quello che il
-broker ha davvero aperto.
+Non è un disastro: stop e target non stanno nella memoria del programma,
+stanno in **`bot.db`**. Alla ripartenza la sentinella li rilegge e riconcilia
+con quello che il broker ha davvero aperto.
 
-Quello che si perde sono **i secondi di buco**: mentre il server era giù,
-nessuno guardava i livelli. Se il prezzo li ha attraversati in quel
-momento, la chiusura avviene alla ripartenza, al prezzo di allora e non a
-quello del livello.
+Quello che si perde sono i **secondi di buco**: mentre il bot era giù nessuno
+guardava i livelli. Se il prezzo li ha attraversati in quel momento, la
+chiusura avviene alla ripartenza, al prezzo di allora e non a quello del
+livello.
 
-`/salute` ha un campo `posizioni_scoperte` che serve esattamente a questo:
-se è diverso da zero, ci sono posizioni aperte che nessuno sta
-sorvegliando.
+`/salute` ha un campo `posizioni_scoperte`: se è diverso da zero, ci sono
+posizioni aperte che nessuno sta sorvegliando.
+
+### E non si rivaluta il passato
+
+Se il bot è stato spento due giorni, alla ripartenza trova decine di candele
+nuove. Le **archivia tutte**, perché servono alla storia, ma **decide solo
+sull'ultima**. Decidere adesso su prezzi di ieri sarebbe sbagliato, e farlo
+venti volte di fila sarebbe peggio.
+
+---
+
+## Accorgersi che è morto, senza dipendere dal PC
+
+Se il PC si spegne muore anche Telegram, quindi il bot **non può dirti che è
+morto**. Serve qualcosa fuori: il modo più semplice resta un servizio
+gratuito di monitoraggio, ma adesso che non c'è più un indirizzo pubblico
+serve un piccolo ponte (o un controllo che fai tu). È l'unica cosa che il
+passaggio al funzionamento autonomo ha reso più scomoda, e vale la pena
+saperlo.

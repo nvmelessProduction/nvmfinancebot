@@ -117,6 +117,12 @@ class Decision(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     azione: Azione = Field(default="NONE", alias="action")
+    # Lo strumento su cui ESEGUIRE, che non e' quello su cui si e' analizzato:
+    # si ragiona sul future (GC) e si opera sul CFD (XAUUSD), DEF-33. Senza
+    # questo campo l'esecutore ripiegherebbe sul simbolo dell'alert, cioe'
+    # manderebbe al broker il ticker di un future che il broker non ha.
+    # Resta facoltativo: una decisione "NONE" non deve nominare nulla.
+    simbolo: Optional[str] = Field(default=None, alias="symbol")
     # Spiegazione leggibile del perche' di questa azione: finisce in archivio
     # e nel messaggio Telegram.
     motivo: str = ""

@@ -36,6 +36,9 @@ os.environ.update(
         "TELEGRAM_CHAT_ID": "",
         "FILE_BLOCCO": os.path.join(_CARTELLA, "STOP"),
         "SENTINELLA_ATTIVA": "false",
+        # Il ciclo di mercato va a prendere candele vere da internet: nei
+        # collaudi non deve partire mai. Le sue prove usano risposte finte.
+        "FORNITORE_DATI": "nessuno",
     }
 )
 
@@ -1111,6 +1114,40 @@ class ProvaScaricoStorico(BaseCollaudo):
         with self.assertRaises(sc.ScaricoFallito):
             sc.in_barre(self.risposta(self.GIORNO), sc.INTERVALLI[TF.H1])
 
+    def test_il_prezzo_di_adesso_non_e_una_barra(self) -> None:
+        """CASO CRITICO, trovato alla prima esecuzione vera sulle orarie.
+
+        La fonte appende in coda una voce marcata con l'istante corrente
+        invece che con l'inizio di un periodo. Siccome `in_candele` scarta
+        sempre l'ultima voce, quella scartata sarebbe il segnaposto e la
+        candela ANCORA IN FORMAZIONE passerebbe per chiusa, con un orario che
+        non cade nemmeno su un'ora tonda. Lookahead di un periodo intero.
+        """
+        import scarica_storico as sc
+
+        risposta = self.risposta(3_600, quante=6)
+        risultato = risposta["chart"]["result"][0]
+        # ... e in coda il prezzo di adesso, otto minuti dopo l'ultima ora.
+        risultato["timestamp"].append(risultato["timestamp"][-1] + 531)
+        for campo, valore in (("open", 1.0), ("high", 2.0), ("low", 0.5), ("close", 1.5)):
+            risultato["indicators"]["quote"][0][campo].append(valore)
+
+        barre = sc.in_barre(risposta, sc.INTERVALLI[TF.H1])
+        self.assertEqual(len(barre), 6, "il segnaposto non e' una barra")
+        for barra in barre:
+            self.assertEqual(barra["apertura_utc"].minute, barra["apertura_utc"].minute,
+                             "gli orari restano quelli del periodo")
+        ultimo = barre[-1]["apertura_utc"]
+        self.assertEqual((ultimo.minute, ultimo.second), (barre[0]["apertura_utc"].minute,
+                                                          barre[0]["apertura_utc"].second),
+                         "l'ultima barra e' allineata come le altre, non all'istante corrente")
+
+    def test_una_barra_finale_regolare_non_viene_tolta(self) -> None:
+        import scarica_storico as sc
+
+        barre = sc.in_barre(self.risposta(3_600, quante=6), sc.INTERVALLI[TF.H1])
+        self.assertEqual(len(barre), 6)
+
     def test_le_barre_senza_prezzi_si_scartano(self) -> None:
         """Giorni di chiusura e buchi della fonte: niente prezzo, niente candela."""
         import scarica_storico as sc
@@ -1165,6 +1202,186 @@ class ProvaScaricoStorico(BaseCollaudo):
         archiviate = storage.candele_archiviate("GC", "TF_1D")
         self.assertEqual(archiviate[0]["origine"], "yahoo",
                          "la provenienza si registra: non tutti i dati vengono da TradingView")
+
+
+# ==========================================================================
+# 10. Si analizza sul future, si opera sul CFD: anche all'ultimo passo
+# ==========================================================================
+class ProvaSimboloDiEsecuzione(BaseCollaudo):
+    """CASO CRITICO: la decisione nasce sul future e l'ordine deve partire
+    sul CFD. Mandare al broker il ticker del future significa chiedergli un
+    contratto che non quota, e l'ordine muore senza che sia chiaro perche'.
+    """
+
+    def test_la_decisione_porta_il_simbolo_di_esecuzione(self) -> None:
+        from core.motore import Decisione as DecisioneMotore
+        from core.strategy import traduci
+
+        tradotta = traduci(DecisioneMotore(
+            azione="BUY", strumento="XAUUSD", motivo="prova",
+            volume=0.05, livello_stop=1.0, target_finale=2.0,
+            regole_applicate=("SETUP-00",), regole_che_bloccano=(),
+        ))
+        self.assertEqual(tradotta.simbolo, "XAUUSD",
+                         "il motore decide per il CFD: la traduzione non deve perderlo")
+
+    def test_il_suffisso_del_broker_viene_aggiunto(self) -> None:
+        riconfigura(MT5_SUFFISSO_SIMBOLI=".a")
+        try:
+            alert = AlertIn(secret="segreto-di-collaudo", symbol="GC1!", tf="1D",
+                            candle_close_time_utc="2026-03-10T00:00:00Z",
+                            open=1, high=2, low=1, close=2)
+            decisione = Decision(action="BUY", symbol="XAUUSD", volume=0.05)
+            self.assertEqual(main.simbolo_da_eseguire(alert, decisione), "XAUUSD.a")
+        finally:
+            riconfigura(MT5_SUFFISSO_SIMBOLI="")
+
+    def test_senza_simbolo_non_si_ripiega_sull_alert(self) -> None:
+        """Ripiegare su alert.simbolo manderebbe GC1! al broker."""
+        alert = AlertIn(secret="segreto-di-collaudo", symbol="GC1!", tf="1D",
+                        candle_close_time_utc="2026-03-10T00:00:00Z",
+                        open=1, high=2, low=1, close=2)
+        self.assertIsNone(main.simbolo_da_eseguire(alert, Decision(action="BUY", volume=0.05)))
+
+    def test_al_broker_arriva_il_cfd_non_il_future(self) -> None:
+        """Il giro vero, in modalita' auto, con il MetaTrader5 finto."""
+        riconfigura(MODE="auto")
+        finto.ordini_inviati.clear()
+        try:
+            adesso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            alert = AlertIn(secret="segreto-di-collaudo", symbol="GC1!", tf="1D",
+                            candle_close_time_utc=adesso,
+                            open=1, high=2, low=1, close=2)
+            # Senza sl/tp: qui si collauda il simbolo, e una decisione con
+            # livelli verrebbe giustamente bloccata dalla salvaguardia che
+            # vuole la sentinella accesa (provata altrove).
+            decisione = Decision(action="BUY", symbol="XAUUSD", volume=0.05,
+                                 motivo="prova")
+            id_alert, _ = storage.salva_alert(alert)
+            esito, dettaglio, ticket, _ = main._esegui_decisione(alert, decisione, id_alert)
+            self.assertEqual(esito, "eseguito", dettaglio)
+            self.assertEqual(finto.ordini_inviati[-1]["symbol"], "XAUUSD",
+                             "al broker non deve mai arrivare il ticker del future")
+        finally:
+            riconfigura(MODE="dry_run")
+
+
+# ==========================================================================
+# 11. Il bot si prende i dati da solo (nessuna rete: risposte finte)
+# ==========================================================================
+class ProvaMercato(BaseCollaudo):
+    """Niente alert da configurare: e' il bot che va a cercare le candele.
+
+    Le prove che contano sono due: che non si rivaluti il passato dopo uno
+    spegnimento, e che ripassare sulla stessa candela non apra due ordini.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        from core.mercato import Mercato
+
+        self.mercato = Mercato(intervallo_sec=0.0)
+        self.visti: list = []
+        self.mercato.su_candela = self.visti.append
+
+    def cliente(self, quante: int = 6, passo: int = 86_400, base: int = 1_700_000_000):
+        corpo = {"chart": {"result": [{
+            "meta": {"symbol": "GC=F"},
+            "timestamp": [base + i * passo for i in range(quante)],
+            "indicators": {"quote": [{
+                "open": [100.0 + i for i in range(quante)],
+                "high": [110.0 + i for i in range(quante)],
+                "low": [90.0 + i for i in range(quante)],
+                "close": [105.0 + i for i in range(quante)],
+            }]},
+        }]}}
+
+        class ClienteFinto:
+            def get(self, url, params=None):
+                return Oggetto(status_code=200, json=lambda: corpo)
+
+        return ClienteFinto()
+
+    # -- quando ha senso chiedere una serie --------------------------------
+    def test_archivio_vuoto_si_chiede_sempre(self) -> None:
+        adesso = datetime(2026, 3, 10, tzinfo=timezone.utc)
+        self.assertTrue(self.mercato.serie_da_chiedere("GC", TF.D1, adesso))
+
+    def test_serie_appena_aggiornata_non_si_richiede(self) -> None:
+        storage.salva_candele([{
+            "strumento": "GC", "tf": "TF_1D", "chiusura_utc": "2026-03-10T00:00:00Z",
+            "apertura": 1, "massimo": 2, "minimo": 1, "chiusura": 2}], origine="mercato")
+        adesso = datetime(2026, 3, 10, 6, tzinfo=timezone.utc)
+        self.assertFalse(self.mercato.serie_da_chiedere("GC", TF.D1, adesso),
+                         "chiedere di nuovo prima che il periodo sia finito e' rumore")
+
+    def test_serie_scaduta_si_richiede(self) -> None:
+        storage.salva_candele([{
+            "strumento": "GC", "tf": "TF_1D", "chiusura_utc": "2026-03-10T00:00:00Z",
+            "apertura": 1, "massimo": 2, "minimo": 1, "chiusura": 2}], origine="mercato")
+        adesso = datetime(2026, 3, 12, tzinfo=timezone.utc)
+        self.assertTrue(self.mercato.serie_da_chiedere("GC", TF.D1, adesso))
+
+    # -- archiviazione ------------------------------------------------------
+    def test_archivia_le_candele_chiuse(self) -> None:
+        nuove = self.mercato.aggiorna("GC", TF.D1, self.cliente())
+        self.assertEqual(len(nuove), 5, "sei barre, l'ultima e' in formazione")
+        self.assertEqual(len(storage.candele_archiviate("GC", "TF_1D")), 5)
+
+    def test_ripassare_non_riarchivia(self) -> None:
+        self.mercato.aggiorna("GC", TF.D1, self.cliente())
+        self.assertEqual(self.mercato.aggiorna("GC", TF.D1, self.cliente()), [])
+
+    # -- valutazione --------------------------------------------------------
+    def test_dopo_uno_spegnimento_valuta_solo_l_ultima(self) -> None:
+        """CASO CRITICO: cinque candele arretrate non sono cinque ordini."""
+        nuove = self.mercato.aggiorna("GC", TF.D1, self.cliente())
+        self.mercato._valuta_le_ultime(nuove)
+        self.assertEqual(len(self.visti), 1,
+                         "le arretrate entrano in archivio, ma si decide solo sull'ultima")
+        piu_recente = max(n.riga["chiusura_utc"] for n in nuove)
+        self.assertEqual(self.visti[0].chiusura_candela_utc, piu_recente)
+
+    def test_il_dxy_non_innesca_valutazioni(self) -> None:
+        from core.mercato import Nuova
+
+        self.mercato._valuta_le_ultime([Nuova("ICEUS", TF.D1, {
+            "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1,
+            "massimo": 2, "minimo": 1, "chiusura": 2})])
+        self.assertEqual(self.visti, [], "PRIN-08: sul DXY si analizza, non si opera")
+
+    def test_i_timeframe_alti_non_sono_di_ingresso(self) -> None:
+        from core.mercato import Nuova
+
+        self.mercato._valuta_le_ultime([Nuova("GC", TF.M1, {
+            "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1,
+            "massimo": 2, "minimo": 1, "chiusura": 2})])
+        self.assertEqual(self.visti, [], "la mensile aggiorna la bias, non apre nulla")
+
+    # -- il ponte verso il resto dell'impianto ------------------------------
+    def test_l_alert_costruito_e_comprensibile_al_motore(self) -> None:
+        from core.mercato import Nuova, in_alert
+        from core.simboli import future_da_ticker, timeframe_da_intervallo
+
+        for tf in (TF.H1, TF.D1, TF.W1, TF.M1):
+            alert = in_alert(Nuova("GC", tf, {
+                "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1.0,
+                "massimo": 2.0, "minimo": 0.5, "chiusura": 1.5}))
+            self.assertEqual(future_da_ticker(alert.simbolo), "GC")
+            self.assertEqual(timeframe_da_intervallo(alert.tf), tf,
+                             f"il motore deve riconoscere il timeframe {tf.value}")
+
+    def test_la_stessa_candela_non_apre_due_ordini(self) -> None:
+        """L'impronta protegge: il ciclo puo' ripassare quanto vuole."""
+        from core.mercato import Nuova, in_alert
+
+        nuova = Nuova("GC", TF.D1, {
+            "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1.0,
+            "massimo": 2.0, "minimo": 0.5, "chiusura": 1.5})
+        primo = main.processa_alert(in_alert(nuova))
+        secondo = main.processa_alert(in_alert(nuova))
+        self.assertEqual(secondo["esito"], "duplicato")
+        self.assertNotEqual(primo["esito"], "duplicato")
 
 
 if __name__ == "__main__":

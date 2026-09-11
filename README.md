@@ -62,7 +62,10 @@ MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 | `prova_esecuzione.py` | — | Collaudo del percorso dei soldi su conto demo |
 | `core/calendario.py` | `PA-54` | Lettura del calendario news da file |
 | `scarica_storico.py` | — | Semina dell'archivio da una fonte gratuita |
-| `avvio/` | — | Script di avvio e riavvio automatico, e come farlo girare h24 |
+| `avvia.bat` | — | **Si lancia questo.** Prepara, configura, semina e avvia |
+| `configura.py` | — | Configurazione guidata, una volta sola |
+| `core/mercato.py` | `DEF-32` | Il bot va a prendersi le candele da solo |
+| `avvio/` | — | Avvio automatico all'accensione, e come farlo girare h24 |
 | `core/casi.py` | `07` | Esportazione nel formato blocco di `07_casi.md` |
 | `core/statistiche.py` | — | Metriche del forward test |
 | `tests/` | — | 383 prove sul motore |
@@ -138,7 +141,30 @@ guardato per primo.
 
 ---
 
-## Installazione su Windows
+## Partenza rapida
+
+```bat
+avvia.bat
+```
+
+Doppio clic. La prima volta prepara l'ambiente, fa tre domande (Telegram,
+suffisso dei simboli, e basta) e scarica ~25 anni di storico; dalla seconda
+in poi parte e basta. Per farlo ripartire da solo a ogni accensione del PC,
+una volta sola: `avvio\installa_avvio_automatico.bat`.
+
+**Non serve configurare nessun alert.** Con `FORNITORE_DATI=mercato` (il
+default) è il bot che va a prendersi le candele dei future, ogni minuto. Via
+il tunnel, via il dominio, via il segreto del webhook, via i ventotto alert
+da ricreare a ogni riavvio.
+
+L'architettura non cambia: **si analizza sul future, si opera sul CFD**
+(`DEF-32`, `DEF-33`, `DEF-34`). Cambia solo il mezzo con cui i prezzi del
+future arrivano — non più un webhook, ma una richiesta che parte dal bot.
+Nessun prezzo attraversa il confine, quindi `ESCL-12` regge come prima.
+
+---
+
+## Installazione su Windows (a mano, se preferisci)
 
 1. **Python 3.11 o superiore** da [python.org](https://www.python.org/downloads/windows/).
    In fase di installazione spunta **"Add python.exe to PATH"**.

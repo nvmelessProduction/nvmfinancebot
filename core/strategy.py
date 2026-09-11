@@ -64,6 +64,10 @@ def traduci(decisione: Decisione) -> Decision:
 
     return Decision(
         action=decisione.azione,
+        # Il motore ragiona sul future ma decide per il CFD: `strumento` e'
+        # gia' quello di esecuzione. Il suffisso del broker lo aggiunge
+        # l'impianto, perche' e' un fatto del conto e non della strategia.
+        symbol=decisione.strumento,
         motivo=motivo,
         volume=decisione.volume,
         sl=decisione.livello_stop,
