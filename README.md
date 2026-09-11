@@ -66,6 +66,7 @@ MetaTrader 5, sorveglia stop e target, e notifica su Telegram.
 | `configura.py` | — | Configurazione guidata, una volta sola |
 | `core/mercato.py` | `DEF-32` | Il bot va a prendersi le candele da solo |
 | `avvio/` | — | Avvio automatico all'accensione, e come farlo girare h24 |
+| `avvio/VPS.md` | — | Come spostarlo su un VPS, e perché deve essere Windows |
 | `core/casi.py` | `07` | Esportazione nel formato blocco di `07_casi.md` |
 | `core/statistiche.py` | — | Metriche del forward test |
 | `tests/` | — | 383 prove sul motore |
