@@ -442,12 +442,29 @@ def copertura_candele() -> list[dict[str, Any]]:
     return [dict(riga) for riga in righe]
 
 
+def decisione_completa(id_decisione: int) -> Optional[dict[str, Any]]:
+    """Una decisione con l'alert che l'ha innescata, per poterla ridisegnare."""
+    with connessione() as conn:
+        riga = conn.execute(
+            """
+            SELECT d.*, a.simbolo AS alert_simbolo, a.tf AS alert_tf,
+                   a.chiusura_candela_utc, a.chiusura AS alert_chiusura
+              FROM decisione d
+              JOIN alert a ON a.id = d.alert_id
+             WHERE d.id = ?
+            """,
+            (id_decisione,),
+        ).fetchone()
+    return dict(riga) if riga else None
+
+
 def ultime_decisioni(quante: int = 5) -> list[dict[str, Any]]:
     """Le ultime decisioni prese, per capire al volo cosa sta succedendo."""
     with connessione() as conn:
         righe = conn.execute(
             """
-            SELECT d.id, d.creata_utc, a.simbolo, a.tf, d.azione, d.esito, d.dettaglio
+            SELECT d.id, d.creata_utc, a.simbolo, a.tf, d.azione, d.esito,
+                   d.motivo, d.dettaglio
               FROM decisione d
               JOIN alert a ON a.id = d.alert_id
              ORDER BY d.id DESC

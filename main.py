@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 
 from datetime import datetime, timezone
 
@@ -32,6 +33,7 @@ from core import broker, notifier, storage
 from core.config import impostazioni
 from core.log import configura as configura_log
 from core.log import diario
+from core import pannello
 from core.models import AlertIn, Decision, Esito
 from core.mercato import mercato
 from core.sentinella import sentinella
@@ -515,6 +517,36 @@ def webhook(alert: AlertIn) -> dict[str, Any]:
         return processa_alert(alert)
     except ArchiviazioneFallita as errore:
         raise HTTPException(status_code=500, detail=str(errore)) from errore
+
+
+@app.get("/", response_class=HTMLResponse)
+def pannello_principale() -> str:
+    """Il pannello: cosa il bot vede, cosa decide e perche'.
+
+    Il log dice la verita' ma non si guarda; `/salute` e' JSON. Questa e' la
+    pagina che si tiene aperta per capire se la strategia viene interpretata
+    come la si intendeva.
+    """
+    try:
+        decisioni = storage.ultime_decisioni(30)
+    except Exception:
+        log.exception("pannello: impossibile leggere le decisioni")
+        decisioni = []
+    return pannello.pagina_principale(salute(), decisioni)
+
+
+@app.get("/decisione/{id_decisione}", response_class=HTMLResponse)
+def pannello_decisione(id_decisione: int) -> str:
+    """Una decisione sola, con il grafico delle candele che il motore aveva."""
+    decisione = storage.decisione_completa(id_decisione)
+    if decisione is None:
+        raise HTTPException(status_code=404, detail="decisione inesistente")
+    try:
+        candele = pannello.candele_della_decisione(decisione)
+    except Exception:
+        log.exception("pannello: impossibile ricostruire le candele")
+        candele = []
+    return pannello.pagina_decisione(decisione, candele)
 
 
 @app.get("/salute")
