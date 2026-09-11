@@ -52,6 +52,12 @@ mostraLivelli = input.bool(true,  "Key level dei timeframe superiori", group = g
 mostraCrt     = input.bool(true,  "CRT, stop e TP1",                   group = gruppoGrafico)
 mostraOperazione = input.bool(true, "Riquadro dell'operazione (rischio/premio)", group = gruppoGrafico)
 mostraQuadro  = input.bool(true,  "Riepilogo in alto a destra",        group = gruppoGrafico)
+mostraScartati = input.bool(false, "Segna anche i CRT scartati",       group = gruppoGrafico,
+     tooltip = "Una crocetta dove si e' formato un CRT che GEST-01 esclude, " +
+               "per capire perche' un candidato che a occhio c'era non compare.")
+rrMinimo = input.float(1.5, "Rapporto minimo su TP1 (GEST-01)", minval = 0.0, step = 0.1,
+     group = "Regole",
+     tooltip = "Deve coincidere con RR_MINIMO in core/parametri.py: se cambia li', va cambiato anche qui.")
 barreLivello  = input.int(60, "Lunghezza delle linee, in barre", minval = 10, maxval = 500,
      group = gruppoGrafico,
      tooltip = "I key level non si tracciano su tutta la storia: solo sulle ultime " +
@@ -191,6 +197,44 @@ livelloPreso = shortSu2 ? max2 : shortSu1 ? max1 : longSu2 ? min2 : longSu1 ? mi
 stopCrt = eShort ? n2Max : eLong ? n2Min : na
 tp1Crt  = (n1Max + n1Min) / 2
 
+// L'ingresso vero e' l'apertura di N3, che alla chiusura di N2 non esiste
+// ancora; il bot usa il prezzo effettivo al momento dell'ordine (CTX-05).
+// Qui si usa la chiusura di N2, l'unica cosa nota adesso.
+ingressoCrt = n2Chi
+
+// =============================================================================
+//  GEST-01 — Il cancello che rende un CRT un'operazione
+//
+//  Due condizioni, ed e' la parte che separa un setup da una figura.
+//
+//  1. STOP E TARGET DA PARTI OPPOSTE dell'ingresso. Non e' pignoleria: in un
+//     CRT long dove N2 chiude oltre la meta' di N1, il TP1 e' gia' superato
+//     al momento dell'ingresso. GEST-01 scrive la formula con i valori
+//     assoluti e tace sul caso, ma con gli assoluti uscirebbe un rapporto
+//     positivo e plausibile, e la size verrebbe calcolata su quello. E' un
+//     dato incoerente, non un setup sfortunato.
+//
+//  2. RAPPORTO ALMENO PARI A RR_MINIMO. Sotto quella soglia il motore si
+//     astiene comunque: disegnarlo qui vorrebbe dire riempire il grafico di
+//     candidati che il bot butta via.
+//
+//  Senza questo blocco l'indicatore proponeva long con il target SOTTO
+//  l'ingresso, disegnati con il riquadro rovesciato.
+// =============================================================================
+rischioCrt = math.abs(ingressoCrt - stopCrt)
+
+// Il prodotto e' negativo solo se stop e target stanno da parti opposte.
+latiOpposti = (stopCrt - ingressoCrt) * (tp1Crt - ingressoCrt) < 0
+
+rapportoCrt = rischioCrt > 0 and latiOpposti ? math.abs(tp1Crt - ingressoCrt) / rischioCrt : na
+
+crtScartato = (eShort or eLong) and (na(rapportoCrt) or rapportoCrt < rrMinimo)
+motivoScarto = not (eShort or eLong) ? "" : rischioCrt == 0 ? "rischio nullo" : not latiOpposti ? "TP1 gia' superato all'ingresso" : "R sotto " + str.tostring(rrMinimo)
+
+// Da qui in poi "CRT" significa CRT OPERABILE.
+crtShort = eShort and not crtScartato
+crtLong = eLong and not crtScartato
+
 // =============================================================================
 //  Disegno
 //
@@ -223,10 +267,6 @@ var line lnMeta1 = na
 var line lnMax2 = na
 var line lnMin2 = na
 var line lnMeta2 = na
-var label etMax1 = na
-var label etMin1 = na
-var label etMax2 = na
-var label etMin2 = na
 
 muoviLinea(line ln, float prezzo, color colore, int spessore, string stile) =>
     risultato = na(ln) ? line.new(bar_index - barreLivello, prezzo, bar_index + 3, prezzo,
@@ -236,22 +276,11 @@ muoviLinea(line ln, float prezzo, color colore, int spessore, string stile) =>
     line.set_color(risultato, colore)
     risultato
 
-muoviTarga(label et, float prezzo, string testo, color colore) =>
-    risultato = na(et) ? label.new(bar_index + 4, prezzo, testo, style = label.style_label_left,
-         color = color.new(C_FONDO, 20), textcolor = colore, size = size.tiny) : et
-    label.set_xy(risultato, bar_index + 4, prezzo)
-    label.set_text(risultato, testo)
-    label.set_textcolor(risultato, colore)
-    risultato
-
 if mostraLivelli and barstate.islast and timeframeAmmesso
     // Il timeframe piu' alto e' piu' marcato: e' quello che comanda (PREC-02).
     lnMax2  := muoviLinea(lnMax2,  max2,  C_MAX,  2, line.style_solid)
     lnMin2  := muoviLinea(lnMin2,  min2,  C_MIN,  2, line.style_solid)
     lnMeta2 := muoviLinea(lnMeta2, meta2, color.new(C_META, 55), 1, line.style_dotted)
-    etMax2  := muoviTarga(etMax2, max2, tfSuperiore2 + " max", C_MAX)
-    etMin2  := muoviTarga(etMin2, min2, tfSuperiore2 + " min", C_MIN)
-
     // Il timeframe intermedio: piu' sottile, e sparisce se assorbito (DEF-37).
     // Un livello assorbito non si cancella: si rende invisibile. Passare un
     // prezzo `na` a una linea e' il modo piu' rapido per far sparire tutto il
@@ -259,16 +288,19 @@ if mostraLivelli and barstate.islast and timeframeAmmesso
     lnMax1  := muoviLinea(lnMax1,  max1, color.new(C_MAX, max1Vivo ? 45 : 100), 1, line.style_dashed)
     lnMin1  := muoviLinea(lnMin1,  min1, color.new(C_MIN, min1Vivo ? 45 : 100), 1, line.style_dashed)
     lnMeta1 := muoviLinea(lnMeta1, meta1, color.new(C_META, 75), 1, line.style_dotted)
-    etMax1  := muoviTarga(etMax1, max1, max1Vivo ? tfSuperiore1 + " max" : "",
-         color.new(C_MAX, max1Vivo ? 40 : 100))
-    etMin1  := muoviTarga(etMin1, min1, min1Vivo ? tfSuperiore1 + " min" : "",
-         color.new(C_MIN, min1Vivo ? 40 : 100))
+    // Nessuna targa sui livelli: i valori stanno gia' nella tabella, e
+    // quattro etichette in piu' sul bordo destro si accavallano a quelle
+    // dell'operazione rendendo illeggibile proprio la zona che conta.
 
 // -- i CRT: un triangolino, nient'altro ------------------------------------
-plotshape(mostraCrt and eShort, "CRT short", shape.triangledown, location.abovebar,
+plotshape(mostraCrt and crtShort, "CRT short", shape.triangledown, location.abovebar,
      color.new(C_MAX, 0), size = size.tiny)
-plotshape(mostraCrt and eLong, "CRT long", shape.triangleup, location.belowbar,
+plotshape(mostraCrt and crtLong, "CRT long", shape.triangleup, location.belowbar,
      color.new(C_MIN, 0), size = size.tiny)
+// Gli scartati, se li vuoi vedere: serve a capire perche' un candidato che a
+// occhio c'era non compare.
+plotshape(mostraScartati and crtScartato, "CRT scartato", shape.xcross, location.abovebar,
+     color.new(C_TENUE, 35), size = size.tiny)
 
 // -- il riquadro dell'operazione, solo per l'ultimo CRT ---------------------
 //
@@ -290,14 +322,16 @@ var int barraCrt = na
 var float stopVivo = na
 var float tp1Vivo = na
 var float ingressoVivo = na
+var float rapportoVivo = na
 var bool shortVivo = false
 
-if eShort or eLong
+if crtShort or crtLong
     barraCrt := bar_index
     stopVivo := stopCrt
     tp1Vivo := tp1Crt
-    ingressoVivo := n2Chi
-    shortVivo := eShort
+    ingressoVivo := ingressoCrt
+    shortVivo := crtShort
+    rapportoVivo := rapportoCrt
 
 if mostraOperazione and barstate.islast and not na(barraCrt)
     destra = bar_index + 8
@@ -320,19 +354,13 @@ if mostraOperazione and barstate.islast and not na(barraCrt)
     box.set_lefttop(premio, barraCrt, premioAlto)
     box.set_rightbottom(premio, destra, premioBasso)
 
-    // Il rapporto fra quello che punti e quello che rischi. E' la stessa
-    // formula che il bot usa su TP1 (GEST-01), e va guardata: sotto una certa
-    // soglia il setup viene scartato dal motore, non da qui.
-    distanzaStop = math.abs(ingressoVivo - stopVivo)
-    rapporto = distanzaStop > 0 ? math.abs(tp1Vivo - ingressoVivo) / distanzaStop : na
-
     etIngresso := na(etIngresso) ? label.new(destra + 1, ingressoVivo, "",
          style = label.style_label_left, color = color.new(C_FONDO, 15),
          textcolor = C_TESTO, size = size.tiny) : etIngresso
     label.set_xy(etIngresso, destra + 1, ingressoVivo)
     label.set_text(etIngresso, (shortVivo ? "short " : "long ") +
          str.tostring(ingressoVivo, format.mintick) +
-         (na(rapporto) ? "" : "   R " + str.tostring(rapporto, "#.##")))
+         (na(rapportoVivo) ? "" : "   R " + str.tostring(rapportoVivo, "#.##")))
 
     etStop := na(etStop) ? label.new(destra + 1, stopVivo, "",
          style = label.style_label_left, color = color.new(C_FONDO, 15),
@@ -347,7 +375,7 @@ if mostraOperazione and barstate.islast and not na(barraCrt)
     label.set_text(etTp1, "TP1 " + str.tostring(tp1Vivo, format.mintick))
 
 // -- il resoconto, dove si legge senza cercarlo -----------------------------
-var table quadro = table.new(position.top_right, 2, 7,
+var table quadro = table.new(position.top_right, 2, 9,
      bgcolor = color.new(C_FONDO, 8), border_color = C_BORDO, border_width = 1,
      frame_color = C_BORDO, frame_width = 1)
 
@@ -364,22 +392,31 @@ if mostraQuadro and barstate.islast
         riga(2, "usa", "H1, H4, 1D, 1W, 1M", C_TESTO)
     else
         barreFa = na(barraCrt) ? na : bar_index - barraCrt
-        statoTesto = na(barraCrt) ? "nessun CRT" :
-             (shortVivo ? "CRT short" : "CRT long") + (barreFa == 0 ? " — adesso" :
-             " — " + str.tostring(barreFa) + " barre fa")
+        quando = barreFa == 0 ? "adesso" :
+             barreFa == 1 ? "1 barra fa" : str.tostring(barreFa) + " barre fa"
+        statoTesto = na(barraCrt) ? "nessun CRT operabile" :
+             (shortVivo ? "CRT short" : "CRT long") + " — " + quando
         statoColore = na(barraCrt) ? C_TENUE : shortVivo ? C_MAX : C_MIN
 
         riga(0, syminfo.ticker, tfGrafico, C_TESTO)
         riga(1, "stato", statoTesto, statoColore)
-        riga(2, tfSuperiore2 + " max", str.tostring(max2, format.mintick), C_MAX)
-        riga(3, tfSuperiore2 + " min", str.tostring(min2, format.mintick), C_MIN)
-        riga(4, tfSuperiore1 + " max", max1Vivo ? str.tostring(max1, format.mintick) : "assorbito",
-             max1Vivo ? color.new(C_MAX, 35) : C_TENUE)
-        riga(5, tfSuperiore1 + " min", min1Vivo ? str.tostring(min1, format.mintick) : "assorbito",
-             min1Vivo ? color.new(C_MIN, 35) : C_TENUE)
-        riga(6, "stop / TP1", na(barraCrt) ? "—" :
+        riga(2, "ingresso / R", na(barraCrt) ? "—" :
+             str.tostring(ingressoVivo, format.mintick) + "   R " +
+             str.tostring(rapportoVivo, "#.##"),
+             na(barraCrt) ? C_TENUE : C_TESTO)
+        riga(3, "stop / TP1", na(barraCrt) ? "—" :
              str.tostring(stopVivo, format.mintick) + " / " + str.tostring(tp1Vivo, format.mintick),
              na(barraCrt) ? C_TENUE : C_TESTO)
+        riga(4, tfSuperiore2 + " max", str.tostring(max2, format.mintick), C_MAX)
+        riga(5, tfSuperiore2 + " min", str.tostring(min2, format.mintick), C_MIN)
+        riga(6, tfSuperiore1 + " max", max1Vivo ? str.tostring(max1, format.mintick) : "assorbito",
+             max1Vivo ? color.new(C_MAX, 35) : C_TENUE)
+        riga(7, tfSuperiore1 + " min", min1Vivo ? str.tostring(min1, format.mintick) : "assorbito",
+             min1Vivo ? color.new(C_MIN, 35) : C_TENUE)
+        // Quello che da qui NON si vede, perche' non e' roba del grafico.
+        riga(8, crtScartato ? "scartato" : "il bot verifica",
+             crtScartato ? motivoScarto : "bias, news, rischio, size",
+             crtScartato ? C_MAX : C_TENUE)
 
 if conflitto and barstate.isconfirmed
     label.new(bar_index, high, "CONFLITTO: short e long insieme",
@@ -399,7 +436,7 @@ if conflitto and barstate.isconfirmed
 // =============================================================================
 numero(float valore) => str.tostring(valore, format.mintick)
 
-if valutabile and inviaAvvisi and (eShort or eLong) and not conflitto
+if valutabile and inviaAvvisi and (crtShort or crtLong) and not conflitto
     messaggio = '{"secret":"' + segreto + '"' +
          ',"symbol":"' + syminfo.ticker + '"' +
          ',"tf":"' + tfGrafico + '"' +
@@ -410,6 +447,7 @@ if valutabile and inviaAvvisi and (eShort or eLong) and not conflitto
          ',"close":' + numero(close) +
          ',"high_c1":' + numero(n1Max) +
          ',"low_c1":' + numero(n1Min) +
-         ',"nota":"crt ' + (eShort ? "short" : "long") + ' su KL ' + tfDelLivello + '"' +
+         ',"nota":"crt ' + (crtShort ? "short" : "long") + ' su KL ' + tfDelLivello +
+              ' R ' + str.tostring(rapportoCrt, "#.##") + '"' +
          '}'
     alert(messaggio, alert.freq_once_per_bar_close)
