@@ -396,6 +396,34 @@ class TestPonte:
 # ===========================================================================
 # importa_storico.py — semina dell'archivio da TradingView
 # ===========================================================================
+class TestCalendarioVuoto:
+    """Un file con la sola intestazione non e' "oggi non esce niente".
+
+    Questo formato chiede di tenere anche gli eventi a una e due stelle, che
+    CTX-02 poi filtra: una giornata davvero tranquilla ha comunque delle
+    righe. Un file a zero eventi e' quindi un file mai compilato, e
+    accettarlo avrebbe spento in silenzio un filtro obbligatorio — bastava
+    creare il file.
+    """
+
+    def test_solo_intestazione_vale_come_assente(self, tmp_path) -> None:
+        percorso = tmp_path / "news.csv"
+        percorso.write_text("data_ora_utc,valuta,stelle,descrizione\n", encoding="utf-8")
+        eventi, eta, motivo = cal.carica(percorso, datetime.now(timezone.utc))
+        assert eventi is None, "zero eventi = mai compilato, non 'giornata quieta'"
+        assert eta is None
+        assert "vuoto" in motivo
+
+    def test_con_almeno_un_evento_si_usa(self, tmp_path) -> None:
+        percorso = tmp_path / "news.csv"
+        percorso.write_text(
+            "data_ora_utc,valuta,stelle,descrizione\n"
+            "2026-09-11T12:30:00Z,USD,1,Richieste sussidi\n", encoding="utf-8")
+        eventi, eta, _ = cal.carica(percorso, datetime.now(timezone.utc))
+        assert eventi is not None and len(eventi) == 1
+        assert eta is not None
+
+
 class TestImportazione:
     """La stessa trappola del fornitore: TradingView esporta l'orario di
     APERTURA, l'archivio vuole quello di CHIUSURA."""

@@ -60,6 +60,8 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
     if cfg.MODE != "dry_run":
         connesso, messaggio = broker.connetti()
         log.info("MT5: %s - %s", "ok" if connesso else "KO", messaggio)
+        if connesso:
+            _annuncia_il_conto(cfg)
     else:
         log.info("MT5 non contattato (modalita' dry_run)")
 
@@ -169,7 +171,18 @@ def salvaguardia_violata(alert: AlertIn, decisione: Decision) -> Optional[str]:
                 f"MAX_POSIZIONI_APERTE={cfg.MAX_POSIZIONI_APERTE}"
             )
 
-    # 5. La sentinella deve essere in piedi prima di aprire qualcosa: senza,
+    # 5. Il conto e' quello che credi? In auto si inviano ordini veri, e
+    #    dal log non si distingue un demo da un conto con i soldi dentro.
+    #    Il consenso al reale si da' una volta, per iscritto, nel .env.
+    if cfg.MODE == "auto" and decisione.azione in ("BUY", "SELL") and not cfg.CONSENTI_CONTO_REALE:
+        demo, dettaglio = broker.conto_e_demo()
+        if not demo:
+            return (
+                f"{dettaglio}. Per operare davvero su questo conto metti "
+                f"CONSENTI_CONTO_REALE=true nel file .env"
+            )
+
+    # 6. La sentinella deve essere in piedi prima di aprire qualcosa: senza,
     #    stop e target non li guarderebbe nessuno.
     if decisione.azione in ("BUY", "SELL") and (decisione.sl is not None or decisione.tp is not None):
         if not sentinella.attiva():
@@ -277,6 +290,42 @@ def _esegui_decisione(
         return "errore", f"auto: {esito_ordine.messaggio}", None, None
 
     return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket, esito_ordine.prezzo
+
+
+def _annuncia_il_conto(cfg) -> None:
+    """Dice a voce alta su che conto si sta per operare.
+
+    In `auto` il bot invia ordini veri, e nel log degli ordini un conto demo
+    e un conto con i soldi dentro sono identici. Chi accende deve poterlo
+    leggere in chiaro, all'avvio, senza andarlo a cercare su MT5.
+    """
+    demo, dettaglio = broker.conto_e_demo()
+    if cfg.MODE != "auto":
+        log.info("conto: %s (modalita' %s: non si invia nulla)", dettaglio, cfg.MODE)
+        return
+
+    if demo:
+        log.info("conto: %s - modalita' AUTO su conto demo", dettaglio)
+        notifier.invia(f"nvmfinancebot avviato in AUTO su {dettaglio}.")
+        return
+
+    if cfg.CONSENTI_CONTO_REALE:
+        log.warning("=" * 60)
+        log.warning("MODALITA' AUTO SU CONTO REALE: %s", dettaglio)
+        log.warning("CONSENTI_CONTO_REALE=true: gli ordini partiranno davvero.")
+        log.warning("=" * 60)
+        notifier.invia(f"ATTENZIONE: nvmfinancebot in AUTO su CONTO REALE.\n{dettaglio}")
+        return
+
+    log.warning("=" * 60)
+    log.warning("Il conto collegato NON e' un demo: %s", dettaglio)
+    log.warning("In auto gli ordini verranno RIFIUTATI dalla salvaguardia.")
+    log.warning("Se e' voluto, metti CONSENTI_CONTO_REALE=true nel file .env.")
+    log.warning("=" * 60)
+    notifier.invia(
+        f"nvmfinancebot e' in AUTO ma il conto non e' un demo ({dettaglio}).\n"
+        "Gli ordini saranno rifiutati finche' non metti CONSENTI_CONTO_REALE=true."
+    )
 
 
 def _prepara_calendario() -> None:

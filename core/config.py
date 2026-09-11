@@ -82,6 +82,12 @@ class Impostazioni(BaseSettings):
     # rifiuta e basta, se qualcuno chiede un volume fuori scala. 0 disattiva.
     VOLUME_MASSIMO: float = 1.0
 
+    # Consenso esplicito a operare su un conto REALE. Finche' resta False, in
+    # modalita' auto il bot rifiuta di inviare ordini se il conto collegato
+    # non e' un demo. Non e' burocrazia: passare al reale e' una riga nel
+    # .env, e la differenza fra demo e reale non si vede dal log degli ordini.
+    CONSENTI_CONTO_REALE: bool = False
+
     # Quante posizioni il bot puo' tenere aperte contemporaneamente.
     # E' un limite di capienza dell'impianto, non una regola di portafoglio.
     # 0 disattiva.

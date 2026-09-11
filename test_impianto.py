@@ -85,6 +85,10 @@ class FintoMT5(types.ModuleType):
     ACCOUNT_TRADE_MODE_REAL = 2
 
     def azzera(self) -> None:
+        # Quante letture di prezzo tornano vuote prima della prima buona:
+        # e' cosi' che si comporta il terminale con un simbolo appena
+        # aggiunto all'Osservazione del mercato.
+        self.tick_vuoti_iniziali = 0
         self.avviato = False
         self.trading_abilitato = True
         self.modo_conto = 0                 # demo
@@ -129,6 +133,11 @@ class FintoMT5(types.ModuleType):
     def symbol_info_tick(self, simbolo: str):
         if simbolo == "SIMBOLO-INESISTENTE":
             return None
+        # Il terminale vero risponde con bid e ask a zero finche' non ha
+        # ricevuto il primo prezzo di un simbolo appena selezionato.
+        if self.tick_vuoti_iniziali > 0:
+            self.tick_vuoti_iniziali -= 1
+            return Oggetto(bid=0.0, ask=0.0)
         return Oggetto(bid=self.bid, ask=self.ask)
 
     def symbol_info(self, simbolo: str):
@@ -409,6 +418,50 @@ class ProvaSalvaguardie(BaseCollaudo):
         motivo = self._blocco(compra)
         self.assertIn("tetto", motivo or "")
 
+    def test_il_consenso_al_reale_e_spento_di_fabbrica(self) -> None:
+        """E' la proprieta' che conta: chi non ha mai sentito parlare di
+        questa impostazione deve essere protetto lo stesso."""
+        from core.config import Impostazioni
+
+        self.assertFalse(Impostazioni.model_fields["CONSENTI_CONTO_REALE"].default)
+
+    def test_auto_su_conto_non_demo_e_bloccato(self) -> None:
+        """In auto il bot invia ordini veri, e dal log un demo e un conto con
+        i soldi dentro sono identici. Il consenso al reale si da' per
+        iscritto, una volta."""
+        finto.modo_conto = finto.ACCOUNT_TRADE_MODE_REAL
+        riconfigura(MODE="auto", CONSENTI_CONTO_REALE="false")
+        try:
+            alert = AlertIn(**alert_finto())
+            blocco = main.salvaguardia_violata(
+                alert, Decision(action="BUY", symbol="XAUUSD", volume=0.05))
+            self.assertIsNotNone(blocco, "un conto reale non e' un demo")
+            self.assertIn("CONSENTI_CONTO_REALE", blocco,
+                          "il messaggio deve dire come sbloccarlo")
+        finally:
+            finto.modo_conto = finto.ACCOUNT_TRADE_MODE_DEMO
+            riconfigura(MODE="dry_run", CONSENTI_CONTO_REALE="false")
+
+    def test_col_consenso_esplicito_il_reale_passa(self) -> None:
+        finto.modo_conto = finto.ACCOUNT_TRADE_MODE_REAL
+        riconfigura(MODE="auto", CONSENTI_CONTO_REALE="true")
+        try:
+            blocco = main.salvaguardia_violata(
+                AlertIn(**alert_finto()), Decision(action="BUY", symbol="XAUUSD", volume=0.05))
+            self.assertIsNone(blocco, "il consenso e' stato dato: si procede")
+        finally:
+            finto.modo_conto = finto.ACCOUNT_TRADE_MODE_DEMO
+            riconfigura(MODE="dry_run", CONSENTI_CONTO_REALE="false")
+
+    def test_il_demo_non_richiede_consenso(self) -> None:
+        riconfigura(MODE="auto", CONSENTI_CONTO_REALE="false")
+        try:
+            blocco = main.salvaguardia_violata(
+                AlertIn(**alert_finto()), Decision(action="BUY", symbol="XAUUSD", volume=0.05))
+            self.assertIsNone(blocco, "su demo si opera senza cerimonie")
+        finally:
+            riconfigura(MODE="dry_run")
+
     def test_niente_stop_senza_sentinella(self) -> None:
         con_livelli = Decision(action="BUY", volume=0.01, sl=1.09, tp=1.11)
         motivo = self._blocco(con_livelli)
@@ -447,6 +500,28 @@ class ProvaBroker(BaseCollaudo):
         self.assertEqual(finto.ordini_inviati[0]["price"], finto.ask, "un BUY si esegue in ask")
         self.assertNotIn("sl", finto.ordini_inviati[0], "gli stop non vanno mandati al broker")
         self.assertNotIn("tp", finto.ordini_inviati[0])
+
+    def test_la_prima_quotazione_puo_tardare(self) -> None:
+        """Un simbolo appena messo in Osservazione non ha ancora un prezzo:
+        il terminale deve prima riceverlo. La prima lettura torna con bid e
+        ask a zero, che somiglia a "mercato chiuso" ma non lo e'.
+        """
+        finto.tick_vuoti_iniziali = 3
+        try:
+            ok, prezzi, messaggio = broker.prezzo_corrente("EURUSD")
+            self.assertTrue(ok, messaggio)
+            self.assertGreater(prezzi["bid"], 0)
+        finally:
+            finto.tick_vuoti_iniziali = 0
+
+    def test_quotazione_davvero_assente(self) -> None:
+        finto.tick_vuoti_iniziali = 99
+        try:
+            ok, _, messaggio = broker.prezzo_corrente("EURUSD")
+            self.assertFalse(ok)
+            self.assertIn("tentativi", messaggio)
+        finally:
+            finto.tick_vuoti_iniziali = 0
 
     def test_vendita_al_bid(self) -> None:
         broker.invia_ordine("EURUSD", "SELL", 0.10)
