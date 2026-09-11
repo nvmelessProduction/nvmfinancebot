@@ -70,6 +70,8 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         for riga in storage.copertura_candele():
             log.info("  archivio: %s %s, %d candele dal %s",
                      riga["strumento"], riga["tf"], riga["quante"], riga["dalla"][:10])
+    else:
+        log.info("nessun fornitore dati: il motore si asterra' dichiarandolo")
 
     # --- Il bot si prende i dati da solo ----------------------------------
     if cfg.FORNITORE_DATI == "mercato":
@@ -77,8 +79,6 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         mercato.su_candela = processa_alert
         mercato.avvia()
         log.info("nessun alert da configurare: le candele le cerca il bot")
-    else:
-        log.info("nessun fornitore dati: il motore si asterra' dichiarandolo")
 
     # La sentinella serve se c'e' qualcosa da sorvegliare, adesso o fra poco.
     aperte = storage.posizioni_aperte()
@@ -431,7 +431,16 @@ def salute() -> dict[str, Any]:
         "configurato": cfg.FORNITORE_DATI,
         "collegato": strategy.fornitore_collegato(),
     }
-    if cfg.FORNITORE_DATI == "tradingview":
+    if cfg.FORNITORE_DATI == "mercato":
+        fornitore["mercato"] = {
+            "in_funzione": mercato.in_funzione,
+            "intervallo_sec": cfg.MERCATO_INTERVALLO_SEC,
+            "giri": mercato.giri,
+            "candele_raccolte": mercato.candele_nuove,
+            "valutazioni": mercato.valutazioni,
+            "ultimo_errore": mercato.ultimo_errore,
+        }
+    if cfg.FORNITORE_DATI in ("tradingview", "mercato"):
         # La copertura dell'archivio va guardata prima di fidarsi: senza
         # storia sufficiente DEF-26 fa tacere i timeframe, e il bot non opera
         # senza che sia evidente il perche'.

@@ -820,7 +820,12 @@ class ProvaFornitoreTradingView(BaseCollaudo):
             "candle_close_time_utc": "2026-03-10T22:00:00Z",
             "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.5,
         })
-        self.assertIsNone(FornitoreTradingView().costruisci(alert))
+        from core.fornitore_tradingview import FotografiaImpossibile
+
+        with self.assertRaises(FotografiaImpossibile) as caso:
+            FornitoreTradingView().costruisci(alert)
+        self.assertIn("PRIN-08", str(caso.exception),
+                      "il motivo dell'astensione deve arrivare a chi legge l'archivio")
 
     def test_la_catena_completa(self) -> None:
         """Alert sul future -> archivio -> motore -> decisione sul CFD."""

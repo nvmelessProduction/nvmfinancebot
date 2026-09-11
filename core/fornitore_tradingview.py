@@ -67,6 +67,16 @@ from core.stato import Conto, costruisci_fotografia
 
 log = diario("fornitore")
 
+
+class FotografiaImpossibile(RuntimeError):
+    """Non si puo' costruire la Fotografia, e si sa esattamente perche'.
+
+    Restituire `None` e basta costringeva chi guarda l'archivio a leggere
+    "il fornitore non ha potuto costruire la fotografia" senza sapere se
+    mancava il conto, lo storico o il calendario. Il motivo e' la meta' utile
+    del messaggio: senza, un'astensione legittima e un guasto si somigliano.
+    """
+
 # I timeframe che si accumulano dagli alert. TF_3M, TF_6M e TF_12M si
 # aggregano dai mensili: aspettare un alert trimestrale per avere una candela
 # significherebbe aspettare tre mesi.
@@ -272,33 +282,38 @@ class FornitoreTradingView:
         """Da un alert di TradingView alla Fotografia su cui il motore decide."""
         future = future_da_ticker(alert.simbolo)
         if future is None:
-            return None
+            raise FotografiaImpossibile(
+                f"{alert.simbolo} non e' uno strumento di PRIN-08")
 
         tf_trigger = timeframe_da_intervallo(alert.tf)
         if tf_trigger is None:
-            return None
+            raise FotografiaImpossibile(
+                f"il timeframe {alert.tf!r} non e' fra i dieci di DEF-01")
 
         if e_solo_analisi(future):
             # Il DXY aggiorna l'archivio e non innesca nulla: PRIN-08 dice
             # che non si opera mai su di lui.
-            log.info("alert DXY archiviato, nessuna valutazione (PRIN-08)")
-            return None
+            raise FotografiaImpossibile(
+                "PRIN-08: sul DXY si analizza, non si opera")
 
         cfd = cfd_di(future)
         if cfd is None or cfd not in UNIVERSO:
-            return None
+            raise FotografiaImpossibile(
+                f"nessun CFD operativo corrisponde al future {future}")
 
         discrepanza = verifica_allineamento(alert, future, tf_trigger)
         if discrepanza is not None:
             # PRIN-99: se il grafico e l'archivio non concordano, uno dei due
             # e' sbagliato e non si opera su nessuno dei due.
-            log.error("archivio disallineato su %s %s: %s",
-                      future, tf_trigger.value, discrepanza)
-            return None
+            raise FotografiaImpossibile(
+                f"archivio disallineato su {future} {tf_trigger.value}: {discrepanza}")
 
         conto = self.conto(cfd)
         if conto is None:
-            return None
+            raise FotografiaImpossibile(
+                f"MT5 non ha dato conto e prezzo per {cfd}: terminale chiuso, "
+                f"non connesso, oppure simbolo assente (controlla "
+                f"MT5_SUFFISSO_SIMBOLI)")
 
         adesso = datetime.now(timezone.utc)
         eventi, eta, motivo = _calendario(adesso)

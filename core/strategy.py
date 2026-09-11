@@ -91,7 +91,13 @@ def valuta(alert: AlertIn) -> Decision:
             ),
         )
 
-    contesto = _fornitore(alert)
+    try:
+        contesto = _fornitore(alert)
+    except Exception as errore:
+        # Il fornitore sa perche' non ce l'ha fatta, e quel motivo vale piu'
+        # del fatto che non ce l'ha fatta: finisce in archivio e su Telegram.
+        return Decision(action="NONE", motivo=f"PRIN-99: {errore}")
+
     if contesto is None:
         return Decision(
             action="NONE",
