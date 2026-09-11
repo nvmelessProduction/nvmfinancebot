@@ -126,9 +126,20 @@ class Impostazioni(BaseSettings):
     TIMEOUT_HTTP: float = 10.0
 
     @property
+    def destinatari_telegram(self) -> tuple[str, ...]:
+        """Le chat a cui mandare le notifiche.
+
+        Piu' di una si separa con la virgola. Passare l'intera stringa a
+        Telegram come se fosse un numero solo significa non ricevere niente,
+        e accorgersene il giorno in cui la notifica serviva.
+        """
+        grezzo = self.TELEGRAM_CHAT_ID.replace(";", ",").replace(" ", ",")
+        return tuple(pezzo for pezzo in (p.strip() for p in grezzo.split(",")) if pezzo)
+
+    @property
     def telegram_configurato(self) -> bool:
         """True solo se abbiamo sia il token sia la chat di destinazione."""
-        return bool(self.TELEGRAM_TOKEN.strip() and self.TELEGRAM_CHAT_ID.strip())
+        return bool(self.TELEGRAM_TOKEN.strip() and self.destinatari_telegram)
 
     @property
     def webhook_configurato(self) -> bool:

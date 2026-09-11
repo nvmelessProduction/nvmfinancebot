@@ -19,6 +19,7 @@ arrivano sempre dall'esterno.
 """
 
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -215,6 +216,13 @@ def posizioni_broker(simbolo: Optional[str] = None) -> tuple[bool, list[dict[str
     return True, elenco, f"{len(elenco)} posizioni aperte"
 
 
+# Quanti tentativi fare prima di dire che una quotazione non c'e', e quanto
+# aspettare fra uno e l'altro. Un simbolo appena selezionato ci mette qualche
+# decimo di secondo a ricevere il primo prezzo dal server.
+_TENTATIVI_TICK = 6
+_ATTESA_TICK = 0.25
+
+
 def prezzo_corrente(simbolo: str) -> tuple[bool, Optional[dict[str, float]], str]:
     """Legge bid e ask correnti di un simbolo."""
     ok, messaggio = _assicura_connessione()
@@ -226,13 +234,29 @@ def prezzo_corrente(simbolo: str) -> tuple[bool, Optional[dict[str, float]], str
             codice, descrizione = _errore_mt5()
             return False, None, f"simbolo {simbolo} non selezionabile: [{codice}] {descrizione}"
 
-        tick = mt5.symbol_info_tick(simbolo)
+        # Un simbolo appena aggiunto all'Osservazione del mercato non ha
+        # ancora una quotazione: il terminale deve prima riceverla dal server.
+        # Il primo `symbol_info_tick` torna quindi con bid e ask a zero, che
+        # somiglia a "mercato chiuso" ma e' solo "non ancora arrivata".
+        # Succede su tutti i simboli che non stavano gia' in Osservazione, e
+        # sono la maggioranza al primo avvio.
+        tick = None
+        for tentativo in range(_TENTATIVI_TICK):
+            tick = mt5.symbol_info_tick(simbolo)
+            if tick is not None and tick.bid and tick.ask:
+                break
+            if tentativo < _TENTATIVI_TICK - 1:
+                time.sleep(_ATTESA_TICK)
+
         if tick is None:
             codice, descrizione = _errore_mt5()
             return False, None, f"nessun tick per {simbolo}: [{codice}] {descrizione}"
 
         if not tick.bid or not tick.ask:
-            return False, None, f"quotazione non valida per {simbolo} (mercato chiuso?)"
+            return False, None, (
+                f"{simbolo}: nessuna quotazione dopo {_TENTATIVI_TICK} tentativi. "
+                f"Mercato chiuso, oppure il simbolo non e' quotato su questo conto"
+            )
 
         return True, {"bid": float(tick.bid), "ask": float(tick.ask)}, "tick letto"
 

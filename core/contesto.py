@@ -118,11 +118,12 @@ def calendario_utilizzabile(
     se fra due minuti esce un dato a 3 stelle sarebbe peggio che saltare la
     giornata.
 
-    Un calendario **vuoto ma fresco** e' invece informazione valida: significa
-    "oggi non esce niente", e bloccare qui fermerebbe il bot in ogni giornata
-    tranquilla. Chi lo compila tiene anche le righe a una e due stelle proprio
-    per rendere quel "vuoto" distinguibile da un file mai riempito — e chi non
-    lo aggiorna viene fermato dalla freschezza, non dal conteggio delle righe.
+    Qui `eventi` vuoto significa "nessun evento rilevante", ed e' uno stato
+    valido: bloccare su quello fermerebbe il bot in ogni giornata tranquilla.
+    La distinzione fra "giornata tranquilla" e "file mai compilato" non si fa
+    qui ma dove il file si legge — `core/calendario.py` restituisce `None`,
+    non una lista vuota, per un file senza nemmeno una riga — perche' e' li'
+    che si sa se il file esisteva e com'era fatto.
     """
     from core.parametri import ETA_MASSIMA_CALENDARIO_ORE
 

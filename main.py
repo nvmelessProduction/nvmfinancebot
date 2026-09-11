@@ -20,6 +20,8 @@ from typing import Any, AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException
 
+from datetime import datetime, timezone
+
 from core import broker, notifier, storage
 from core.config import impostazioni
 from core.log import configura as configura_log
@@ -72,6 +74,9 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
                      riga["strumento"], riga["tf"], riga["quante"], riga["dalla"][:10])
     else:
         log.info("nessun fornitore dati: il motore si asterra' dichiarandolo")
+
+    # --- Il calendario news, che senza non si opera -----------------------
+    _prepara_calendario()
 
     # --- Il bot si prende i dati da solo ----------------------------------
     if cfg.FORNITORE_DATI == "mercato":
@@ -272,6 +277,48 @@ def _esegui_decisione(
         return "errore", f"auto: {esito_ordine.messaggio}", None, None
 
     return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket, esito_ordine.prezzo
+
+
+def _prepara_calendario() -> None:
+    """Crea il calendario news se manca, e dice a voce alta se e' vuoto.
+
+    Senza calendario il bot non opera (`PA-55`), e il messaggio che dava —
+    "calendario assente" a ogni valutazione — non diceva ne' che bastava un
+    file, ne' dove metterlo. Il file lo creiamo noi; riempirlo resta un
+    lavoro umano, e finche' e' vuoto e' giusto che il bot stia fermo, ma
+    deve saperlo chi lo ha acceso.
+    """
+    from pathlib import Path
+
+    from core import calendario
+    from core.parametri import PERCORSO_CALENDARIO_NEWS
+
+    percorso = Path(PERCORSO_CALENDARIO_NEWS)
+    if not percorso.exists():
+        try:
+            calendario.scrivi_modello(percorso)
+            log.info("creato il calendario news vuoto: %s", percorso)
+        except OSError:
+            log.exception("impossibile creare il calendario news in %s", percorso)
+            return
+
+    eventi, _, motivo = calendario.carica(percorso, datetime.now(timezone.utc))
+    if eventi:
+        log.info("calendario news: %s", motivo)
+        return
+
+    log.warning("=" * 60)
+    log.warning("IL BOT NON OPERERA' finche' il calendario news e' vuoto.")
+    log.warning("Apri %s e aggiungi una riga per ogni notizia, in orario UTC:", percorso)
+    log.warning("   data_ora_utc,valuta,stelle,descrizione")
+    log.warning("   2026-09-11T12:30:00Z,USD,3,Non-Farm Payrolls")
+    log.warning("Mettici anche gli eventi a una e due stelle: servono a")
+    log.warning("distinguere una giornata tranquilla da un file mai compilato.")
+    log.warning("=" * 60)
+    notifier.invia(
+        "nvmfinancebot avviato, ma NON operera': il calendario news e' vuoto.\n"
+        f"Compila {percorso} e riavvia."
+    )
 
 
 class ArchiviazioneFallita(RuntimeError):

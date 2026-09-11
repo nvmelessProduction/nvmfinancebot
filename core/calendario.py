@@ -128,6 +128,19 @@ def carica(
     except OSError as errore:
         return None, None, f"calendario non apribile: {errore!r}"
 
+    if not eventi:
+        # Un file con la sola intestazione non e' "oggi non esce niente": e'
+        # un file mai compilato. La differenza esiste perche' questo formato
+        # chiede di tenere anche gli eventi a una e due stelle (li filtra poi
+        # CTX-02), quindi una giornata davvero tranquilla ha comunque righe.
+        # Trattarlo come vuoto-ma-valido significherebbe spegnere in silenzio
+        # un filtro che CTX-01 #8 e SETUP-15 rendono obbligatorio, e bastava
+        # creare il file per farlo.
+        return None, None, (
+            f"calendario vuoto: {percorso} esiste ma non contiene nemmeno un "
+            f"evento. Finche' non lo compili il bot non opera (PA-55)"
+        )
+
     eta = eta_ore(percorso, adesso)
     return eventi, eta, f"{len(eventi)} eventi, aggiornato {eta:.1f} ore fa" if eta is not None else "eta' ignota"
 

@@ -71,9 +71,9 @@ class TestNews:
     def test_pa55_calendario_assente_o_vecchio(self) -> None:
         assert ctx.calendario_utilizzabile(None, None) is False
         assert ctx.calendario_utilizzabile([], 1.0) is True, (
-            "un calendario vuoto ma fresco significa 'nessuna news oggi', "
-            "che e' informazione valida: bloccare qui fermerebbe il bot in "
-            "ogni giornata tranquilla"
+            "qui la lista vuota significa 'nessun evento rilevante', che e' "
+            "informazione valida. Il file mai compilato viene invece fermato "
+            "da calendario.carica, che per zero righe restituisce None"
         )
         assert ctx.calendario_utilizzabile([news(14, 0)], 100.0) is False, "troppo vecchio"
         assert ctx.calendario_utilizzabile([news(14, 0)], 1.0) is True

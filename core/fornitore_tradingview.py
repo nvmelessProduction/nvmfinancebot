@@ -218,7 +218,8 @@ class FornitoreTradingView:
                 anni = (candele[-1].orario - candele[0].orario).days / 365.0
                 log.info(
                     "%s %s: %.1f anni di storia, DEF-26 ne vuole %d "
-                    "(importa lo storico da TradingView)",
+                    "(sulle orarie la fonte gratuita copre 2 anni: il resto "
+                    "si accumula girando)",
                     future, tf.value, anni, LOOKBACK_ANNI,
                 )
 

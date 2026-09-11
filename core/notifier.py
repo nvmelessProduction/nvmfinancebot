@@ -24,11 +24,18 @@ def _url(metodo: str) -> str:
 
 
 def invia(testo: str) -> tuple[bool, str]:
-    """Invia un messaggio a Telegram, ritentando se la rete fa i capricci.
+    """Invia un messaggio a Telegram, a tutti i destinatari configurati.
 
-    Restituisce (riuscito, dettaglio). Se Telegram non e' configurato stampa
-    a log e restituisce (False, "telegram non configurato"): non e' un
-    errore fatale, e' una funzionalita' spenta.
+    `TELEGRAM_CHAT_ID` puo' contenere piu' di una chat, separate da virgola:
+    serve a chi vuole le notifiche sul telefono e su un gruppo. Scriverne due
+    e vederle sparire tutte e due, perche' la stringa intera viene passata a
+    Telegram come se fosse un numero solo, e' il tipo di errore che non si
+    scopre finche' non serve davvero una notifica.
+
+    Restituisce (riuscito, dettaglio): riuscito se **almeno una** consegna e'
+    andata a buon fine. Se Telegram non e' configurato stampa a log e
+    restituisce (False, ...): non e' un errore fatale, e' una funzionalita'
+    spenta.
 
     Non solleva mai: una notifica persa non deve far cadere un ordine.
     """
@@ -37,6 +44,23 @@ def invia(testo: str) -> tuple[bool, str]:
         log.info("[telegram spento] %s", testo.replace("\n", " | "))
         return False, "telegram non configurato (manca TELEGRAM_TOKEN o TELEGRAM_CHAT_ID)"
 
+    esiti: list[tuple[bool, str]] = [
+        _invia_a(destinatario, testo) for destinatario in cfg.destinatari_telegram
+    ]
+    riusciti = [d for ok, d in esiti if ok]
+    falliti = [d for ok, d in esiti if not ok]
+
+    if not falliti:
+        return True, f"messaggio inviato a {len(riusciti)} destinatari"
+    if riusciti:
+        return True, (f"inviato a {len(riusciti)} destinatari su {len(esiti)}; "
+                      f"falliti: {'; '.join(falliti)}")
+    return False, "; ".join(falliti)
+
+
+def _invia_a(destinatario: str, testo: str) -> tuple[bool, str]:
+    """Una consegna, con i suoi tentativi."""
+    cfg = impostazioni()
     tentativi = max(1, cfg.TELEGRAM_TENTATIVI)
     ultimo_dettaglio = ""
 
@@ -45,7 +69,7 @@ def invia(testo: str) -> tuple[bool, str]:
             risposta = httpx.post(
                 _url("sendMessage"),
                 json={
-                    "chat_id": cfg.TELEGRAM_CHAT_ID,
+                    "chat_id": destinatario,
                     "text": testo,
                     "disable_web_page_preview": True,
                 },
