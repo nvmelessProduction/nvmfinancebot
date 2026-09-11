@@ -13,16 +13,34 @@ finito.
 
 ---
 
-## Deve essere Windows. Non è una preferenza
+## Windows è la strada consigliata, non l'unica
 
-L'API Python di MetaTrader 5 esiste **solo per Windows**: MetaQuotes non
-pubblica una build Linux, e il pacchetto `MetaTrader5` si installa solo lì
-(nel `requirements.txt` c'è già il marcatore `sys_platform == "win32"`).
+Va detto con precisione, perché la versione breve — "deve essere Windows" —
+è **sbagliata**, e chi la legge può pagare una licenza che forse non gli
+serviva.
 
-Questo esclude i VPS gratuiti, che sono tutti Linux — Oracle Cloud Always
-Free, Google Cloud, AWS. Su Oracle per giunta la macchina gratuita è ARM,
-quindi per far girare MT5 servirebbe Wine **più** l'emulazione x86: fragile,
-lento, e una cosa in più che può rompersi mentre una posizione è aperta.
+**Quello che è vero:** il pacchetto Python ufficiale `MetaTrader5` è
+pubblicato solo per Windows. MetaQuotes non fa una build Linux del terminale,
+e nel `requirements.txt` c'è il marcatore `sys_platform == "win32"` proprio
+per questo.
+
+**Quello che è comunque possibile:** su un Linux x86 si può far girare il
+terminale MT5 dentro **Wine**, e raggiungerlo da Python con un ponte
+(`mt5linux` e simili: Wine, un Python per Windows dentro Wine, e RPyC che fa
+da tramite). Funziona. Non è teoria.
+
+**Cosa costa davvero.** Non stai evitando Windows: lo stai emulando. Al posto
+di un processo ne hai tre — Wine, il Python dentro Wine, il ponte — e ognuno
+può rompersi mentre una posizione è aperta. Nessuno dei tre è supportato da
+MetaQuotes, e quando si rompe lo scopri dal fatto che gli ordini non partono.
+
+**Il consiglio resta Windows**, ma è un consiglio: paghi una decina di euro
+al mese per non avere tre pezzi in più fra il bot e il broker. Se quei soldi
+contano più di quei tre pezzi, la strada Linux esiste e la scelta è tua.
+
+Diverso il caso dei VPS **gratuiti**: Oracle Cloud Always Free è ARM, quindi
+lì oltre a Wine servirebbe anche l'emulazione x86. Quello sì lo sconsiglio
+senza riserve.
 
 > **La trappola da evitare.** L'*MQL5 Virtual Hosting* (~12,80 $/mese) è
 > l'opzione più economica che troverai cercando "hosting MT5", ed è pensata
