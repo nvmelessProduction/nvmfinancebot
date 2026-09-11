@@ -13,13 +13,24 @@ Il file esce con una colonna `time` e le quattro OHLC. Il `time` di TradingView
 e' l'**apertura** della barra: questo script lo converte in chiusura come fa
 il fornitore, e scarta l'ultima riga perche' e' la barra in corso.
 
+## Quando serve, adesso che lo storico si scarica da solo
+
+`scarica_storico.py` copre TF_1D, TF_1W, TF_1M (e da li' TF_3M, TF_6M,
+TF_12M) con venticinque anni, e TF_H1 con due. Restano scoperti **TF_H4,
+TF_H6 e TF_H12**, che quella fonte non ha: quelli si possono riempire solo
+da qui, esportandoli da TradingView. E' anche l'unico modo per portare TF_H1
+oltre i due anni.
+
 ## Uso
 
-    python importa_storico.py GC TF_1D dati/GC_giornaliero.csv
-    python importa_storico.py 6E TF_1W dati/6E_settimanale.csv
+    python importa_storico.py GC TF_H4 dati/GC_4ore.csv
+    python importa_storico.py 6E TF_H12 dati/6E_12ore.csv
 
 Lo strumento e' il codice di `PRIN-08` (`GC`, `6E`, `6B`, `6A`, `6S`, `6J`,
-oppure `ICEUS` per il DXY). Il timeframe e' uno di `DEF-01`.
+oppure `ICEUS` per il DXY). Il timeframe e' uno di `DEF-01`: `TF_H1`,
+`TF_H4`, `TF_H6`, `TF_H12`, `TF_1D`, `TF_1W`, `TF_1M`.
+
+Se il percorso del file contiene spazi, mettilo fra virgolette.
 
 Reimportare lo stesso file non duplica niente: la chiave e' (strumento,
 timeframe, chiusura).

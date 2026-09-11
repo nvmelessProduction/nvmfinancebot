@@ -1,16 +1,22 @@
-"""Server dell'impianto: riceve gli alert di TradingView e li fa girare.
+"""Server del bot: raccoglie le candele, decide, esegue, sorveglia.
 
-Due soli endpoint:
-    POST /webhook   riceve l'alert, lo archivia, chiede una decisione
-    GET  /salute    dice in che stato siamo
+Due endpoint:
+    GET  /salute    stato di tutto: conto, archivio, mercato, sentinella
+    POST /webhook   la vecchia porta per gli alert di TradingView, che resta
+                    per chi la vuole ma non serve piu': con
+                    FORNITORE_DATI=mercato le candele se le prende il bot
 
-La catena e' sempre la stessa:
+La catena e' sempre la stessa, da qualunque parte arrivi la candela:
 
-    segreto -> archivio -> strategia -> salvaguardie -> azione -> archivio
+    archivio -> strategia -> salvaguardie -> azione -> archivio
 
-La decisione oggi e' sempre "NONE" perche' la strategia e' ancora uno stub
-(core/strategy.py). Tutto il resto della catena e' vero e funzionante: quando
-la strategia arrivera', non ci sara' altro da costruire.
+La strategia c'e' ed e' quella dei documenti in `docs/`: il motore sta in
+`core/motore.py`, le regole nei moduli attorno. Ogni decisione porta con se'
+gli identificativi delle regole che l'hanno prodotta — sia quelle applicate
+sia quelle che hanno bloccato — e finiscono in archivio e su Telegram, perche'
+un bot che non sa dire perche' ha fatto quello che ha fatto non e' verificabile.
+
+Le salvaguardie, qui, possono solo dire di no: nessuna di loro apre niente.
 """
 
 import hmac
@@ -108,9 +114,18 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="nvmfinancebot - impianto",
-    description="Infrastruttura del bot. La strategia non e' ancora implementata.",
-    version="0.2.0",
+    title="nvmfinancebot",
+    description=(
+        "Bot di trading: si analizza sul future, si opera sul CFD via MT5.\n\n"
+        "Il motore di strategia vive in `core/motore.py` e nei moduli attorno "
+        "(`definizioni`, `setup`, `gestione`, `rischio`, `contesto`, "
+        "`esclusioni`), con le regole tradotte dai documenti in `docs/`. Ogni "
+        "decisione porta con se' gli identificativi delle regole che l'hanno "
+        "prodotta, e finiscono in archivio e su Telegram.\n\n"
+        "Le candele se le procura `core/mercato.py`: non serve configurare "
+        "alert."
+    ),
+    version="1.0.0",
     lifespan=ciclo_di_vita,
 )
 
