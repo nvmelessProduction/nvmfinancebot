@@ -287,7 +287,12 @@ def deriva(strumento: str, tf: TF, cliente: httpx.Client) -> tuple[list[dict], i
         raise ScaricoFallito(f"{tf.value}: non so da cosa derivarlo")
 
     mensili = aggrega_per_mese([_in_candela(r) for r in righe])
-    return [_in_riga(c, strumento, tf) for c in mensili], riparate
+    # Le correzioni agli estremi sono gia' state contate quando si e'
+    # scaricata la serie sorgente: riportarle anche qui le farebbe comparire
+    # due volte nel totale, una per la giornaliera e una per la mensile che
+    # ne deriva. Nel primo avvio vero comparivano infatti "440 con estremi
+    # corretti" sia su GC TF_1D sia su GC TF_1M, che sono le stesse 440.
+    return [_in_riga(c, strumento, tf) for c in mensili], 0
 
 
 def _in_candela(riga: dict) -> Candela:
