@@ -24,3 +24,6 @@ venv/
 # Il modello dati/news.example.csv resta tracciato, cosi' chi scarica il
 # progetto trova la cartella e sa che formato deve avere il file.
 dati/news.csv
+
+# Il backtest scrive qui la sua scansione: e' un intermedio, non un sorgente.
+backtest/segnali.pickle
