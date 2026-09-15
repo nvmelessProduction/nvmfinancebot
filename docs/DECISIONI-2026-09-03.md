@@ -633,3 +633,68 @@ di `N1` — cioè circa il doppio della distanza.
 
 La `Fotografia` porta ora `key_level_correnti` accanto a `key_level_presi`:
 `SETUP-14` non chiede che il livello sia stato spazzato, chiede che esista.
+
+---
+
+## REV-50 — Il CRT non è tre candele dello stesso timeframe
+
+**Classificazione: CORREZIONE DI FONTE.** Non una contraddizione interna:
+`SETUP-01` descriveva un modello diverso da quello di chi il CRT l'ha
+inventato.
+
+**Chi l'ha inventato.** Il Candle Range Theory è di
+[@Romeotpt](https://www.youtube.com/@Romeotpt), ed è l'applicazione del
+**Power of Three** di ICT con ingresso **Turtle Soup** (Linda Raschke, *Street
+Smarts*, 1995). Cinque fonti indipendenti concordano sulla struttura, elencate
+in `docs/CRT-ROMEO-2026-09-15.md` §1.
+
+**Cosa diceva `SETUP-01`.** *«Tre candele consecutive chiuse sullo stesso
+timeframe»*, più — da `SETUP-00` e `DEF-30` — la presa di un key level di un
+timeframe **strettamente superiore**.
+
+**Cosa dice il modello vero.** Il CRT accoppia **due** timeframe. La candela
+di riferimento *è* il range; dentro la candela di riferimento successiva si
+cercano, sul timeframe di esecuzione, la manipolazione e il rientro.
+
+**Perché non è un dettaglio.** Le due letture producono geometrie opposte:
+
+```
+tre candele stesso TF   stop = estremo opposto di N2       -> LARGO
+                        bersaglio = resto del range di N1   -> STRETTO
+                        rapporto misurato:  0,27 R
+
+due timeframe           stop = ombra dello sweep            -> STRETTO
+                        bersaglio = lato opposto del range   -> LARGO
+                        rapporto misurato:  1,85 - 3,92 R
+```
+
+Con la prima, `GEST-01` — che vuole un rapporto di almeno 1,5 — scartava
+**26.235 CRT su 26.285**, e le cinquanta superstiti perdevano. Con la seconda
+`GEST-01` diventa un filtro che *migliora* il risultato, perché un rapporto
+sopra 1,5 è la norma e non l'eccezione. Una regola che scarta il 99,8% dei
+casi non è severa: sta misurando la cosa sbagliata.
+
+**La misura.** `TF_1W` → `TF_1D` con `RR ≥ 1,5`, contro entrate a caso di pari
+geometria:
+
+| | n | netto costi | vantaggio sul caso |
+|---|---:|---:|---:|
+| in campione 2000–2012 | 958 | +0,062 | +0,045 (+0,6 σ) |
+| fuori campione 2013–2026 | 1.024 | +0,069 | +0,128 (+1,6 σ) |
+
+Stesso segno nei due periodi, robusto all'orizzonte da 30 a 400 giorni.
+**Non è un vantaggio dimostrato** — servirebbero tre sigma — ma è la prima
+configurazione che non cambia segno quando la si verifica.
+
+**Cosa NON è stato adottato, e perché.** La letteratura vuole come grilletto
+un *market structure shift* sul timeframe di esecuzione, non il solo rientro.
+Misurato: alza il winrate dal 48% al 73%, ma arriva tardi e distrugge il
+rapporto, e fuori campione cambia segno (+0,011 dentro, −0,023 fuori). Resta
+implementato in `backtest/romeo_completo.py` come opzione, spento.
+
+**Aggiunta obbligatoria: il bersaglio deve stare oltre l'ingresso.** Se il
+prezzo ha già superato sia `CRT_eq` sia il lato opposto, l'operazione non ha
+bersaglio e non esiste. Ometterlo produce operazioni che un backtest chiude in
+profitto sulla barra d'ingresso senza che il mercato paghi nulla: è l'errore
+che ha prodotto il falso positivo documentato in
+`docs/STUDIO-CRT-2026-09-15.md` §4.

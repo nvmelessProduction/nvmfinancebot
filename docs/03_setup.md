@@ -1,6 +1,6 @@
 # 03_setup.md
 
-Versione: 0.5 — sciolti i punti aperti di docs/DECISIONI-2026-09-03.md
+Versione: 0.6 — CRT riportato al modello di @Romeotpt (REV-50)
 Data: 2026-08-12
 Stato: INCOMPLETO. Vedi sezione 9 (Punti aperti).
 
@@ -30,41 +30,99 @@ dove e in quale direzione cercarlo.
 
 ## 2. Struttura CRT
 
-### SETUP-01 — Nomenclatura
+> **Corretto in v0.6 (REV-50).** La versione precedente descriveva il CRT come
+> tre candele consecutive **dello stesso timeframe**, con in più la presa di un
+> key level di un timeframe superiore. Non è il modello di @Romeotpt, che il
+> CRT l'ha inventato, ed è una geometria che non può funzionare: si rischia
+> l'intero range di `N2` per guadagnare quel che resta del range di `N1`,
+> rapporto misurato **0,27 R**. Vedi `docs/CRT-ROMEO-2026-09-15.md` per fonti
+> e misure.
 
-Tre candele consecutive chiuse sullo stesso timeframe:
+### SETUP-01 — Il CRT accoppia due timeframe
+
+Il CRT è l'applicazione del **Power of Three** (accumulazione, manipolazione,
+distribuzione) con ingresso **Turtle Soup**, cioè sul *fallimento* di una
+rottura. Il principio è *«ogni candela è un range»*, e la conseguenza è che
+servono **due** timeframe, non uno:
 
 ```
-N1 = candela di range / accumulazione   (la più vecchia)
-N2 = candela di manipolazione
-N3 = candela di distribuzione           (la più recente)
+TF_riferimento   la candela il cui range si opera
+TF_esecuzione    dove si leggono lo sweep e il rientro
+
+CRT su TF_1M   ->  esecuzione su TF_1D
+CRT su TF_1W   ->  esecuzione su TF_1D
+CRT su TF_1D   ->  esecuzione su TF_H1
+CRT su TF_H4   ->  esecuzione su TF_H1
 ```
+
+La candela di riferimento **è** il range:
+
+```
+CRT_high = high[C_rif]        CRT_low = low[C_rif]
+CRT_eq   = (CRT_high + CRT_low) / 2
+```
+
+Il Power of Three si svolge **dentro la candela di riferimento successiva**.
+Lì si cercano, sul timeframe di esecuzione, la manipolazione e il rientro.
 
 ### SETUP-02A — CRT short
 
 ```
-SE  high[N2] > KL_max di un timeframe superiore a quello del CRT (DEF-38)
-AND high[N2] > high[N1]
-AND close[N2] <= high[N1]
-AND close[N2] < close[N1]
-ALLORA il CRT short è FORMATO alla chiusura di N2
+Dentro la candela di riferimento successiva, sul TF di esecuzione:
+
+SE  una barra fa  high > CRT_high                    (manipolazione)
+AND una barra successiva o la stessa chiude  < CRT_high   (rientro)
+ALLORA il CRT short è FORMATO a quella chiusura
 ALTRIMENTI nessun CRT short
+```
+
+```
+sweep_high = il massimo più alto raggiunto sopra CRT_high
 ```
 
 ### SETUP-02B — CRT long
 
 ```
-SE  low[N2] < KL_min di un timeframe superiore a quello del CRT (DEF-38)
-AND low[N2] < low[N1]
-AND close[N2] >= low[N1]
-AND close[N2] > close[N1]
-ALLORA il CRT long è FORMATO alla chiusura di N2
+SE  una barra fa  low < CRT_low
+AND una barra successiva o la stessa chiude  > CRT_low
+ALLORA il CRT long è FORMATO a quella chiusura
 ALTRIMENTI nessun CRT long
 ```
 
-Il key level preso deve appartenere a un timeframe **strettamente superiore** a
-quello su cui si forma il CRT (DEF-30). Un key level mensile abilita trigger da
-`TF_1W` in giù; un key level settimanale abilita trigger da `TF_1D` in giù.
+```
+sweep_low = il minimo più basso raggiunto sotto CRT_low
+```
+
+**La stessa barra può spazzare e richiudere.** È il caso più comune — la
+candela con l'ombra oltre il livello — e non va escluso.
+
+**Un solo setup per candela di riferimento e per direzione.** Il primo rientro
+è il segnale; quelli successivi sono la stessa storia raccontata due volte.
+
+### SETUP-02C — Stop e bersaglio
+
+Qui sta la differenza che conta, e la ragione per cui `GEST-01` ha senso:
+
+```
+stop      = sweep_high  (short)   /  sweep_low  (long)
+bersaglio = il primo fra CRT_eq e il lato opposto del range che stia
+            ancora OLTRE il prezzo di ingresso
+```
+
+```
+short:  bersaglio = CRT_eq   se CRT_eq < ingresso,  altrimenti CRT_low
+long:   bersaglio = CRT_eq   se CRT_eq > ingresso,  altrimenti CRT_high
+        se nessuno dei due sta oltre l'ingresso -> NESSUN SETUP
+```
+
+Lo stop è l'ombra dello sweep, quindi **stretto**; il bersaglio è il lato
+opposto di un range di timeframe superiore, quindi **largo**. Rapporto
+misurato: **da 1,85 a 3,92 R**, contro lo 0,27 della versione precedente.
+
+L'ultima riga non è un dettaglio: se il prezzo è già oltre entrambi i livelli,
+l'operazione non ha bersaglio e non esiste. Ometterla produce operazioni che
+un backtest chiude in profitto sulla barra d'ingresso senza che il mercato
+abbia pagato nulla (`REV-50`).
 
 ---
 
