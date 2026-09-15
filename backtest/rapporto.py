@@ -2,14 +2,14 @@
 
 Due letture affiancate, perche' dicono cose diverse:
 
-  senza GEST-08  il target finale resta TP1, la posizione si chiude tutta li'.
-                 E' la misura conservativa: non dipende da quanto lontano un
-                 key level superiore porti il residuo, e non produce mai un
+  tutto a TP1    il target finale coincide con TP1 e la posizione si chiude
+                 tutta li'. E' il comportamento che il motore aveva prima di
+                 REV-49, tenuto come termine di paragone: non produce mai un
                  pareggio, perche' il pareggio esiste solo se c'e' un residuo
                  da proteggere.
-  con GEST-08    il target si estende alla chiusura di ogni TF superiore che
-                 conferma il pattern. E' la regola vera, e produce code lunghe:
-                 un residuo del 75% puo' correre per settimane.
+  SETUP-14       il 75% residuo punta al key level del timeframe del CRT, e
+                 GEST-08 lo estende alla chiusura di ogni TF superiore che
+                 conferma il pattern. E' la regola vera.
 """
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def main() -> int:
         print(f"{quante:8d}  {voce}")
 
     for estendi in (False, True):
-        etichetta = "CON GEST-08 (target esteso)" if estendi else "SENZA GEST-08 (tutto a TP1)"
+        etichetta = "SETUP-14 + GEST-08 (la regola vera)" if estendi else "TUTTO A TP1 (com'era prima di REV-49)"
         print("\n" + "=" * 86)
         print(f"ESITI A RR_MINIMO = 1.5 — {etichetta}")
         print("=" * 86)
@@ -109,7 +109,7 @@ def main() -> int:
         print("-" * len(INTESTAZIONE))
         print(riga("TOTALE", tutti))
 
-        if not estendi:
+        if estendi:
             print("\nElenco delle operazioni:")
             for esito in sorted(tutti, key=lambda e: e.segnale.istante):
                 s = esito.segnale
@@ -118,11 +118,11 @@ def main() -> int:
                       f"{esito.erre:+6.2f}  ({esito.barre} barre {esito.tf_marcia.value})")
 
     print("\n" + "=" * 86)
-    print("SE SI ABBASSA RR_MINIMO — senza GEST-08, per confrontare mele con mele")
+    print("SE SI ABBASSA RR_MINIMO — con SETUP-14 attivo")
     print("=" * 86)
     print(f"{'RR min':>7s}" + INTESTAZIONE[10:] + f"{'op./sett.':>11s}")
     for soglia in SOGLIE:
-        tutti = esegui(raccolto, arc, soglia, estendi=False)
+        tutti = esegui(raccolto, arc, soglia, estendi=True)
         print(f"{soglia:7.1f}" + riga("", tutti)[10:] + f"{len(tutti)/SETTIMANE_ORARIE:>11.2f}")
     return 0
 

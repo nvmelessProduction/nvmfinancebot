@@ -125,14 +125,20 @@ def simula(
                 indice += 1
             prossima[tf] = indice
 
-        colpito = _colpito(barra, direzione, posizione.livello_stop, posizione.target_finale)
+        # Il livello che si sta aspettando cambia dopo il parziale: prima di
+        # TP1 si guarda TP1, dopo si guarda il target finale. Guardare sempre
+        # il target finale — come faceva questa funzione finche' i due valori
+        # coincidevano — significa non accorgersi mai del parziale, e quindi
+        # non chiudere mai il 25% e non portare mai lo stop a pareggio.
+        obiettivo = posizione.tp1 if not posizione.tp1_raggiunto else posizione.target_finale
+        colpito = _colpito(barra, direzione, posizione.livello_stop, obiettivo)
 
         if not posizione.tp1_raggiunto:
             if colpito == "stop":
                 return Esito(segnale, STOP, -1.0, passo, marcia)
             if colpito == "target":
-                # Il TP1 e' stato toccato. Se il target finale non e' mai stato
-                # esteso coincide con TP1 e la posizione si chiude tutta qui.
+                # Se il target finale coincide con TP1 non c'e' residuo da
+                # gestire: la posizione si chiude tutta qui.
                 if posizione.target_finale == posizione.tp1:
                     return Esito(segnale, PRIMO, erre_tp1, passo, marcia)
                 posizione, _ = applica_tp1(posizione, spread=0.0)
