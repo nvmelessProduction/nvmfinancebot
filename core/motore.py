@@ -87,6 +87,10 @@ class Fotografia:
     # Key level presi e sbilanciamenti, per timeframe
     key_level_presi: Sequence[KeyLevel] = ()
     sbilanciamenti: Mapping[TF, Bias] = field(default_factory=dict)
+    # Tutti i key level attivi, presi o no. Servono a SETUP-14 per il target
+    # del 75% residuo: quello non richiede che il livello sia stato spazzato,
+    # richiede che esista.
+    key_level_correnti: Sequence[KeyLevel] = ()
 
     # Gap. Sono due ruoli diversi e DEF-15bis vieta di confonderli: il gap
     # attivo sul timeframe piu' alto (DEF-13) e' un TARGET, le zone di
@@ -280,7 +284,9 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     )
     stop = gest.stop_aggressivo(crt.n2, crt.direzione)
     obiettivo_1 = gest.tp1(crt.n1)
-    applicate.extend(["GEST-02", "GEST-07"])
+    bersaglio = stp.target_iniziale(crt, foto.key_level_correnti)
+    applicate.extend(["GEST-02", "GEST-07", "SETUP-14"])
+
 
     # Il prezzo di ingresso e' l'apertura di N3, che non esiste ancora: si usa
     # il prezzo corrente, che e' cio' che CTX-05 chiede di fare ("sui prezzi
@@ -382,6 +388,20 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
     applicate.append("PREC-05")
 
+    # --- 7bis. Un bersaglio deve esistere (SETUP-14, PRIN-99) --------------
+    # Sta DOPO i divieti e non prima: PREC-05 vuole le esclusioni come ultimo
+    # controllo, e un'astensione che le scavalcasse nasconderebbe il motivo
+    # vero per cui quell'ordine non andava mandato.
+    if bersaglio is None:
+        return _non_operare(
+            foto.strumento, ["PRIN-99"],
+            f"SETUP-14: nessun key level su {crt.tf.value} o superiore a cui "
+            "portare il 75% residuo",
+            applicate,
+            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
+            rapporto_su_tp1=rapporto,
+        )
+
     # --- 8. Ordine ---------------------------------------------------------
     applicate.extend(["SETUP-03", "SETUP-04"])
     return Decisione(
@@ -391,7 +411,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         volume=esito_size.lotti,
         livello_stop=stop,
         tp1=obiettivo_1,
-        target_finale=obiettivo_1,   # esteso poi da GEST-08 alla chiusura dei TF superiori
+        target_finale=bersaglio,     # esteso poi da GEST-08 alla chiusura dei TF superiori
         tf_crt=crt.tf,
         doppio_ingresso=da_gap,
         regole_applicate=tuple(dict.fromkeys(applicate)),

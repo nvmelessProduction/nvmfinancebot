@@ -584,3 +584,52 @@ confine giornaliero della fonte d'inverno e sbagliano di un'ora durante l'ora
 legale americana. Dal vivo le `TF_H4` vere arrivano dagli alert di
 TradingView e prendono il posto di queste; chi vuole i confini esatti fin da
 subito importa lo storico dal CSV di TradingView.
+
+---
+
+## REV-49 — Il target del 75% residuo non è TP1
+
+**Classificazione: RICOSTRUZIONE.** `SETUP-14` dice esattamente qual è, e lo
+dice con un esempio numerico.
+
+**Il problema.** `motore.valuta` costruiva l'ordine con
+`target_finale = TP1`. Ma `TP1` è il livello a cui `GEST-07` chiude il **25%**
+della posizione. Con i due valori uguali il 75% residuo si chiude nello stesso
+istante del parziale, e quattro regole diventano lettera morta:
+
+- `GEST-04` chiude un quarto e porta a break even un residuo che non esiste;
+- `GEST-05` protegge quel residuo;
+- `GEST-08` e `SETUP-14` estendono un target già consumato.
+
+**Cosa dice il documento.** `SETUP-14`: *«Il target del 75% residuo è il key
+level del timeframe più alto disponibile nella direzione dell'operazione»*, e
+l'esempio conforme dice da dove parte: *«CRT su `TF_H4`, ingresso short.
+**Target iniziale sul key level `TF_H4`**. Alla chiusura di `TF_1D`, se il
+giornaliero conferma il pattern, il target si estende al minimo `TF_1D`»*.
+
+**La misura che l'ha fatto emergere.** Il backtest del 15 settembre: 50
+operazioni, **zero** pareggi e **una** sola estensione del target. Le
+posizioni morivano nella barra successiva all'ingresso, perché stop e
+bersaglio erano entrambi dentro il range immediato. Un pareggio richiede un
+residuo da proteggere, e il residuo non esisteva mai.
+
+**La decisione.** Aggiunta `setup.target_iniziale`, che restituisce il key
+level del timeframe del CRT nel verso dell'operazione — `KL_min` per una
+short, `KL_max` per una long. Per un CRT su `TF_H1`, che non ha key level
+propri (`DEF-36`, `REV-48`), si sale di un gradino: è quanto `DEF-46`
+prescrive per `TF_H1`. Se nessuno dei due esiste non si apre: `PRIN-99`, una
+posizione senza bersaglio non ha ragione di esistere.
+
+Il controllo sta **dopo** `verifica_divieti`, non prima: `PREC-05` vuole le
+esclusioni come ultimo controllo, e un'astensione che le scavalcasse
+nasconderebbe il motivo vero per cui quell'ordine non andava mandato.
+
+**Cosa cambia e cosa no.** Non cambia nessun ingresso: gli stessi CRT passano
+gli stessi filtri, `GEST-01` continua a misurarsi su `TP1` come vuole la sua
+formula, il winrate sui primi obiettivi resta quello. Cambia solo la **coda
+destra**: dove prima ogni vincita valeva `R(TP1)`, ora un quarto vale
+`R(TP1)` e tre quarti corrono fino al key level, che su uno short è il minimo
+di `N1` — cioè circa il doppio della distanza.
+
+La `Fotografia` porta ora `key_level_correnti` accanto a `key_level_presi`:
+`SETUP-14` non chiede che il livello sia stato spazzato, chiede che esista.

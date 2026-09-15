@@ -396,6 +396,7 @@ def costruisci_fotografia(
         target_raggiunto_per_tf=dict(target_raggiunto_per_tf or {}),
         bias_dxy=bias_dxy,
         key_level_presi=key_level_presi(storico, istante),
+        key_level_correnti=key_level_correnti(storico, istante),
         sbilanciamenti=sbilanciamenti_per_timeframe(storico, istante),
         gap_attivo=gap_target(storico, istante),
         gap_reazione=gap_di_reazione(storico, istante, comando),

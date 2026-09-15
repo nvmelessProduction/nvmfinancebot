@@ -410,6 +410,53 @@ def doppio_ingresso(crt: Crt, gap: Optional[Gap]) -> bool:
 # ===========================================================================
 
 
+def target_iniziale(crt: Crt, key_level_correnti: Sequence[KeyLevel]) -> Optional[float]:
+    """SETUP-14 — Il target del 75% residuo, prima di ogni estensione.
+
+    *"Il target del 75% residuo e' il key level del timeframe piu' alto
+    disponibile nella direzione dell'operazione"*, e l'esempio conforme dice
+    da dove parte: *"CRT su TF_H4, ingresso short. **Target iniziale sul key
+    level TF_H4**. Alla chiusura di TF_1D, se il giornaliero conferma il
+    pattern, il target si estende al minimo TF_1D"*. Da li' in poi comanda
+    `GEST-08`.
+
+    ## Perche' non e' TP1 (REV-49)
+
+    Il motore usava `TP1` anche come target finale. Con i due valori uguali il
+    75% residuo si chiude nello stesso istante del 25%, e allora:
+
+    - `GEST-04` chiude un quarto e porta il resto a break even... di niente;
+    - `GEST-05` protegge un residuo che non esiste;
+    - `GEST-08` e `SETUP-14` non hanno nulla da estendere.
+
+    Misurato sull'archivio reale: 50 operazioni, **zero** pareggi e **una**
+    sola estensione del target, perche' le posizioni morivano nella barra
+    successiva all'ingresso. Meta' dell'apparato di gestione era lettera
+    morta.
+
+    ## Quale key level
+
+    Quello del timeframe del CRT, nel verso dell'operazione: `KL_min` per una
+    short, `KL_max` per una long. `TF_H1` non produce key level propri
+    (DEF-36, REV-48), quindi per un CRT orario si usa quello del timeframe
+    immediatamente superiore, che e' quanto `DEF-46` prescrive per `TF_H1`.
+
+    `None` se nessuno dei due esiste: chi chiama applica `PRIN-99`, perche'
+    una posizione senza bersaglio non ha ragione di essere aperta.
+    """
+    from core.parametri import TARGET_DI
+
+    cercato = TipoKeyLevel.MIN if crt.direzione is Bias.SHORT else TipoKeyLevel.MAX
+    superiore = TARGET_DI.get(crt.tf)
+    for tf in (crt.tf, superiore):
+        if tf is None:
+            continue
+        for livello in key_level_correnti:
+            if livello.tf is tf and livello.tipo is cercato:
+                return livello.valore
+    return None
+
+
 def esclusioni_setup(
     crt: Optional[Crt],
     comando: Bias,

@@ -36,6 +36,7 @@ class Segnale:
     stop: float
     tp1: float
     rapporto: float
+    target: float = 0.0
 
 
 def _chiave_contesto(tempi, istante: datetime) -> tuple:
@@ -121,4 +122,5 @@ def scansiona(
             stop=decisione.livello_stop,        # type: ignore[arg-type]
             tp1=decisione.tp1,                  # type: ignore[arg-type]
             rapporto=decisione.rapporto_su_tp1, # type: ignore[arg-type]
+            target=decisione.target_finale,     # type: ignore[arg-type]
         )

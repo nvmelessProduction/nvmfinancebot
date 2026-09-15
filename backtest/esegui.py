@@ -81,7 +81,7 @@ def scansiona(strumento: str, future: str, storico, tempi):
             strumento=strumento, tf_trigger=tf, istante=istante,
             direzione=decisione.direzione, ingresso=foto.prezzo_cfd,
             stop=decisione.livello_stop, tp1=decisione.tp1,
-            rapporto=decisione.rapporto_su_tp1,
+            rapporto=decisione.rapporto_su_tp1, target=decisione.target_finale,
         ))
     return segnali, funnel
 

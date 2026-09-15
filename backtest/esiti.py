@@ -99,7 +99,10 @@ def simula(
     posizione = Posizione(
         strumento=segnale.strumento, direzione=direzione, prezzo_ingresso=ingresso,
         tf_crt=segnale.tf_trigger, livello_stop=stop, tp1=obiettivo_1,
-        target_finale=obiettivo_1,
+        # SETUP-14: il bersaglio del 75% residuo lo dichiara la decisione, e
+        # non coincide con TP1 (REV-49). `estendi=False` lo riporta a TP1 per
+        # avere la misura conservativa.
+        target_finale=(segnale.target if estendi else obiettivo_1),
     )
 
     marcia = serie_di_marcia(segnale, storico, tempi)

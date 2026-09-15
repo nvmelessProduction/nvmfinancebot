@@ -40,6 +40,12 @@ N1 = cand(massimo=110, minimo=100, chiusura=110, apertura=100, ore=4)
 N2 = cand(massimo=111, minimo=108, chiusura=109, apertura=110, ore=0)
 KL_SETTIMANALE = KeyLevel(TF.W1, TipoKeyLevel.MAX, 110.5)
 
+# I key level di TF_H4, cioe' quelli calcolati su N1 (DEF-36: la C1 del
+# timeframe). SETUP-14 porta li' il 75% residuo: su uno short, al minimo di
+# N1. E' oltre TP1, che sta a meta' del range — ed e' il punto di REV-49.
+KL_H4_MIN = KeyLevel(TF.H4, TipoKeyLevel.MIN, 100.0)
+KL_H4_MAX = KeyLevel(TF.H4, TipoKeyLevel.MAX, 110.0)
+
 
 def foto(**modifiche: object) -> Fotografia:
     argomenti: dict = {
@@ -49,6 +55,7 @@ def foto(**modifiche: object) -> Fotografia:
         "bias_per_tf": {TF.M3: Bias.SHORT},
         "target_raggiunto_per_tf": {},
         "key_level_presi": [KL_SETTIMANALE],
+        "key_level_correnti": [KL_SETTIMANALE, KL_H4_MAX, KL_H4_MIN],
         # Il CRT di queste prove e' short: nasce da massimi spazzati verso
         # l'alto, quindi i due superiori risultano LONG (SETUP-05, REV-46).
         "sbilanciamenti": {TF.D1: Bias.LONG, TF.W1: Bias.LONG},
@@ -297,6 +304,55 @@ class TestUltimaRigaDiDifesa:
         decisione = m.valuta(foto(), TF.H4)
         assert decisione.azione == "NONE"
         assert "ESCL-04" in decisione.regole_che_bloccano
+
+
+# ===========================================================================
+# Il target del residuo (SETUP-14, REV-49)
+# ===========================================================================
+class TestTargetFinale:
+    """Il 75% residuo ha un bersaglio proprio, e non e' TP1.
+
+    Finche' `target_finale` valeva `TP1`, il residuo si chiudeva nello stesso
+    istante del parziale: `GEST-04`, `GEST-05`, `GEST-08` e `SETUP-14`
+    diventavano lettera morta. Misurato sull'archivio reale: zero pareggi e
+    una sola estensione del target su cinquanta operazioni.
+    """
+
+    def test_setup14_il_target_e_il_key_level_non_tp1(self) -> None:
+        decisione = m.valuta(foto(), TF.H4)
+        assert decisione.azione == "SELL"
+        assert decisione.target_finale == KL_H4_MIN.valore
+        assert decisione.target_finale != decisione.tp1
+
+    def test_il_target_sta_oltre_tp1(self) -> None:
+        """Su uno short il bersaglio e' sotto il parziale: altrimenti il
+        residuo non avrebbe strada davanti."""
+        decisione = m.valuta(foto(), TF.H4)
+        assert decisione.tp1 is not None and decisione.target_finale is not None
+        assert decisione.target_finale < decisione.tp1 < decisione.livello_stop
+
+    def test_senza_key_level_non_si_apre(self) -> None:
+        """PRIN-99: una posizione senza bersaglio non ha ragione di esistere."""
+        decisione = m.valuta(foto(key_level_correnti=[KL_SETTIMANALE]), TF.H4)
+        assert decisione.azione == "NONE"
+        assert "PRIN-99" in decisione.regole_che_bloccano
+        assert "SETUP-14" in decisione.motivo
+
+    def test_una_long_punta_al_massimo(self) -> None:
+        from core.definizioni import Bias as B
+        from core.setup import Crt, target_iniziale
+
+        crt = Crt(B.LONG, TF.H4, N1, N2, KL_SETTIMANALE)
+        assert target_iniziale(crt, [KL_H4_MAX, KL_H4_MIN]) == KL_H4_MAX.valore
+
+    def test_def46_per_tf_h1_si_sale_di_un_gradino(self) -> None:
+        """`TF_H1` non ha key level propri (DEF-36, REV-48): il bersaglio e'
+        quello del timeframe immediatamente superiore, come vuole DEF-46."""
+        from core.definizioni import Bias as B
+        from core.setup import Crt, target_iniziale
+
+        crt = Crt(B.SHORT, TF.H1, N1, N2, KL_SETTIMANALE)
+        assert target_iniziale(crt, [KL_H4_MAX, KL_H4_MIN]) == KL_H4_MIN.valore
 
 
 # ===========================================================================
