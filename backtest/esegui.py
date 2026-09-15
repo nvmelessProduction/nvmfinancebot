@@ -20,6 +20,7 @@ from dataclasses import replace
 from archivio import FUTURE, carica, finestra, indice_temporale
 from esiti import APERTA, PAREGGIO, PRIMO, STOP, TARGET, simula
 from fasi import Sorveglianza, mitigazione_del_gap
+from memoria import memoizza_gap
 from scansione import FINESTRA, Segnale, _chiave_contesto
 from core import motore
 from core.definizioni import Bias
@@ -35,6 +36,10 @@ def scansiona(strumento: str, future: str, storico, tempi):
         ((c.orario, tf) for tf in TRIGGER for c in storico.get(tf, ())),
         key=lambda x: (x[0], x[1].value),
     )
+    # I gap dipendono solo dai timeframe di contesto: calcolarli a ogni
+    # chiusura H4 significa rifare sei volte al giorno lo stesso lavoro.
+    memoizza_gap(lambda istante: _chiave_contesto(tempi, istante))
+
     chiave = None
     contesto = None
     mitig = None
