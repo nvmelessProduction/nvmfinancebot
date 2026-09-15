@@ -29,6 +29,20 @@ attiva, più quelli che servono a misurare cosa cambierebbe abbassandola.
 | `esiti.py` | dal segnale all'esito: stop, TP1, break even o target |
 | `raccogli.py` | la scansione completa sui sei strumenti |
 | `rapporto.py` | le tabelle: imbuto, esiti, sensibilità a `RR_MINIMO` |
+| `costi.py` | spread, commissioni e size minima del broker |
+| `placebo.py` | il CRT contro entrate a caso con la stessa geometria |
+
+## Il test che conta più di tutti
+
+`placebo.py` non misura la strategia: misura se la strategia dice qualcosa.
+Confronta ogni segnale con venti entrate **a caso** nello stesso strumento,
+stesso periodo, stessa direzione e — soprattutto — stesse distanze relative
+di stop e bersaglio. Se i due tassi di successo coincidono, il pattern non
+aggiunge informazione e tutto quello che si stava misurando era la forma del
+bersaglio.
+
+Va rifatto per primo ogni volta che si cambia la regola d'ingresso. Ottimizzare
+un segnale che non batte il caso produce backtest belli e conti vuoti.
 
 ## Le approssimazioni, tutte in un posto
 
