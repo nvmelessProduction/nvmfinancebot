@@ -88,8 +88,11 @@ class Fotografia:
     key_level_presi: Sequence[KeyLevel] = ()
     sbilanciamenti: Mapping[TF, Bias] = field(default_factory=dict)
 
-    # Gap
+    # Gap. Sono due ruoli diversi e DEF-15bis vieta di confonderli: il gap
+    # attivo sul timeframe piu' alto (DEF-13) e' un TARGET, le zone di
+    # ingresso sono i gap sui timeframe inferiori al suo (REV-47).
     gap_attivo: Optional[Gap] = None
+    gap_reazione: Optional[Gap] = None
     gap_fase: int = 0
     mitigazione: Mitigazione = Mitigazione.NON_ATTESA
 
@@ -257,7 +260,24 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     applicate.append("SETUP-02A" if crt.direzione is Bias.SHORT else "SETUP-02B")
 
     # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, GEST-08) --------
-    da_gap = foto.gap_attivo is not None and stp.doppio_ingresso(crt, foto.gap_attivo)
+    # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):
+    #
+    #   1. la zona e' una zona di REAZIONE, non il gap target. DEF-15bis
+    #      assegna al gap piu' alto il ruolo di bersaglio e vieta di usarlo
+    #      con un ruolo diverso;
+    #   2. il prezzo vi sta INTERAGENDO. E' la prima riga di SETUP-09
+    #      ("si applica quando il prezzo interagisce con una zona_gap") ed e'
+    #      quello che dice `gap_fase > 0`: la fase 0 significa che il prezzo
+    #      quella zona non l'ha mai toccata.
+    #
+    # `doppio_ingresso` da solo confronta timeframe, e un CRT su TF_H1 non e'
+    # mai piu' alto di un gap su TF_1D: senza le due condizioni sopra ogni CRT
+    # risultava "a supporto di un gap" e SETUP-09 lo bloccava per sempre.
+    da_gap = (
+        foto.gap_reazione is not None
+        and foto.gap_fase > 0
+        and stp.doppio_ingresso(crt, foto.gap_reazione)
+    )
     stop = gest.stop_aggressivo(crt.n2, crt.direzione)
     obiettivo_1 = gest.tp1(crt.n1)
     applicate.extend(["GEST-02", "GEST-07"])

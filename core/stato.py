@@ -51,6 +51,7 @@ from core.parametri import (
     ORDINE_SCANSIONE_TARGET,
     TF,
     TF_BIAS,
+    TF_KEY_LEVEL,
     ordine_scansione_gap,
 )
 
@@ -123,9 +124,14 @@ def key_level_correnti(storico: Storico, istante: datetime) -> list[KeyLevel]:
     producono lo stesso identico valore resta solo quello piu' alto: non e'
     un caso raro, il minimo di una mensile e' per costruzione identico a
     quello di una delle sue settimanali.
+
+    I timeframe sono quelli di `TF_KEY_LEVEL`, cioe' i sei di DEF-36 piu'
+    `TF_H4` (REV-48): senza key level su `TF_H4` la riga `TF_H1` di SETUP-05
+    non e' soddisfabile e `TF_H1` non puo' essere il timeframe di trigger che
+    PRIN-10 dice che e'.
     """
     grezzi: list[KeyLevel] = []
-    for tf in TF_BIAS:
+    for tf in TF_KEY_LEVEL:
         visibili = candele_visibili(storico.get(tf, ()), istante)
         if len(visibili) < 2:
             continue                              # serve C1
@@ -234,6 +240,41 @@ def gap_target(storico: Storico, istante: datetime) -> Optional[Gap]:
     return min(candidati, key=lambda g: ordine.index(g.tf))
 
 
+def gap_di_reazione(storico: Storico, istante: datetime, bias: Bias) -> Optional[Gap]:
+    """DEF-15bis — La zona in cui cercare l'ingresso, che non e' il target.
+
+    DEF-15bis assegna al gap **due ruoli distinti** e chiude dicendo che
+    *«nessuna regola puo' usare un gap con un ruolo diverso da quello qui
+    assegnato»*:
+
+    - il gap attivo sul timeframe **piu' alto** (DEF-13) e' un **target**;
+    - i gap sui timeframe **inferiori a quello del gap target** sono le zone
+      in cui cercare l'ingresso, e li' la polarita' conta: la zona si usa solo
+      se concorda con la bias operativa in corso.
+
+    `SETUP-09` lo ripete nella sua prima riga: *«si applica quando il prezzo
+    interagisce con una zona_gap di timeframe inferiore a quello del gap
+    target»*. E' questa la zona che il modello a fasi di DEF-43 sorveglia, e
+    quella a cui `SETUP-10` riferisce il doppio ingresso.
+
+    Restituisce `None` quando non c'e' nessuna zona utilizzabile: e' il caso
+    ordinario, e significa ingresso unico a rischio pieno, non astensione.
+    """
+    bersaglio = gap_target(storico, istante)
+    ordine = ordine_scansione_gap()
+    limite = ordine.index(bersaglio.tf) if bersaglio is not None else -1
+    sotto = {
+        tf: gap
+        for tf, gap in gap_per_timeframe(storico, istante).items()
+        if ordine.index(tf) > limite
+    }
+    if bias is Bias.LONG:
+        return gap_attivo(sotto, Polarita.RIALZISTA)
+    if bias is Bias.SHORT:
+        return gap_attivo(sotto, Polarita.RIBASSISTA)
+    return None
+
+
 # ===========================================================================
 # Livelli strutturali e target
 # ===========================================================================
@@ -339,20 +380,25 @@ def costruisci_fotografia(
     """
     from core.definizioni import Mitigazione
     from core.motore import Fotografia
+    from core.setup import bias_comando
 
     if mitigazione is None:
         mitigazione = Mitigazione.NON_ATTESA
+
+    per_tf = bias_per_timeframe(storico, istante)
+    comando, _ = bias_comando(per_tf, dict(target_raggiunto_per_tf or {}))
 
     return Fotografia(
         istante=istante,
         strumento=strumento,
         candele_per_tf={tf: tuple(candele) for tf, candele in storico.items()},
-        bias_per_tf=bias_per_timeframe(storico, istante),
+        bias_per_tf=per_tf,
         target_raggiunto_per_tf=dict(target_raggiunto_per_tf or {}),
         bias_dxy=bias_dxy,
         key_level_presi=key_level_presi(storico, istante),
         sbilanciamenti=sbilanciamenti_per_timeframe(storico, istante),
         gap_attivo=gap_target(storico, istante),
+        gap_reazione=gap_di_reazione(storico, istante, comando),
         gap_fase=gap_fase,
         mitigazione=mitigazione,
         equity=conto.equity,

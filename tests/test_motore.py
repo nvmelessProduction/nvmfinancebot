@@ -303,30 +303,68 @@ class TestUltimaRigaDiDifesa:
 # Gap
 # ===========================================================================
 class TestGap:
+    """Il gap come ZONA DI REAZIONE (DEF-15bis), che e' cosa diversa dal target.
+
+    Le prove passano `gap_reazione`, non `gap_attivo`: dopo REV-47 il gap
+    target non abilita ne' SETUP-09 ne' il doppio ingresso di SETUP-10. Un
+    test che usasse `gap_attivo` misurerebbe di nuovo la confusione fra i due
+    ruoli che DEF-15bis vieta.
+    """
+
     GAP = Gap(Polarita.RIBASSISTA, 112.0, 118.0, 125.0, TF.W1, ADESSO - timedelta(days=7))
 
 
     def test_ingresso_da_gap_solo_in_fase_tre(self) -> None:
         for fase in (1, 2):
-            decisione = m.valuta(foto(gap_attivo=self.GAP, gap_fase=fase), TF.H4)
+            decisione = m.valuta(foto(gap_reazione=self.GAP, gap_fase=fase), TF.H4)
             assert decisione.azione == "NONE"
             assert "SETUP-09" in decisione.regole_che_bloccano
 
     def test_fase_tre_passa(self) -> None:
-        decisione = m.valuta(foto(gap_attivo=self.GAP, gap_fase=3), TF.H4)
+        decisione = m.valuta(foto(gap_reazione=self.GAP, gap_fase=3), TF.H4)
         assert decisione.azione == "SELL" and decisione.doppio_ingresso is True
 
     def test_def42_non_determinata_blocca_l_ingresso_da_gap(self) -> None:
         decisione = m.valuta(
-            foto(gap_attivo=self.GAP, gap_fase=3, mitigazione=Mitigazione.NON_DETERMINATA), TF.H4
+            foto(gap_reazione=self.GAP, gap_fase=3, mitigazione=Mitigazione.NON_DETERMINATA), TF.H4
         )
         assert decisione.azione == "NONE" and "DEF-42" in decisione.regole_che_bloccano
 
     def test_risk04_il_doppio_ingresso_dimezza_la_size(self) -> None:
         singolo = m.valuta(foto(), TF.H4)
-        doppio = m.valuta(foto(gap_attivo=self.GAP, gap_fase=3), TF.H4)
+        doppio = m.valuta(foto(gap_reazione=self.GAP, gap_fase=3), TF.H4)
         assert singolo.volume is not None and doppio.volume is not None
         assert doppio.volume < singolo.volume
+
+    def test_rev47_fase_zero_significa_che_il_prezzo_non_ha_toccato_la_zona(self) -> None:
+        """SETUP-09 si applica *quando il prezzo interagisce* con la zona.
+
+        In fase 0 non ci ha mai interagito: il CRT e' un CRT normale, non un
+        ingresso da gap, e SETUP-09 non ha nulla da dire. E' l'altra meta' di
+        REV-47 — senza questa condizione bastava un gap qualunque su un
+        timeframe superiore, ovunque si trovasse, per bloccare tutto.
+        """
+        decisione = m.valuta(foto(gap_reazione=self.GAP, gap_fase=0), TF.H4)
+        assert "SETUP-09" not in decisione.regole_che_bloccano
+        assert decisione.azione == "SELL"
+        assert decisione.doppio_ingresso is False, "senza interazione niente doppio ingresso"
+
+    def test_rev47_il_gap_target_non_e_una_zona_di_ingresso(self) -> None:
+        """DEF-15bis — il gap piu' alto e' un bersaglio, non un posto in cui entrare.
+
+        Prima di REV-47 il motore passava a SETUP-09 e SETUP-10 il gap
+        restituito da `gap_target`. Poiche' un gap su TF_12M esiste quasi
+        sempre e il prezzo non entra quasi mai nella sua zona, `gap_fase`
+        restava 0 e SETUP-09 bloccava **ogni** operazione: misurato
+        sull'archivio reale, 3.237 CRT su 3.237.
+
+        Qui il gap target c'e' ed e' in fase 0, come nella realta'. Se
+        SETUP-09 scattasse, saremmo tornati a confondere i due ruoli.
+        """
+        decisione = m.valuta(foto(gap_attivo=self.GAP, gap_fase=0), TF.H4)
+        assert "SETUP-09" not in decisione.regole_che_bloccano
+        assert decisione.azione == "SELL"
+        assert decisione.doppio_ingresso is False
 
 
 # ===========================================================================

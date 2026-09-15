@@ -505,3 +505,82 @@ che la catena reale non può produrre. Aggiunta
 `test_setup05_il_crt_produce_davvero_lo_stato_richiesto`, che parte da un CRT
 vero e verifica quale stato ne discende, collegando le due regole invece di
 assumerle.
+
+---
+
+## REV-47 — Il gap target non è una zona di ingresso
+
+**Classificazione: RICOSTRUZIONE.** `DEF-15bis` assegna al gap due ruoli e
+chiude vietando di confonderli. Il motore li confondeva.
+
+**Il problema.** `motore.valuta` passava a `SETUP-09` e `SETUP-10` il gap
+restituito da `gap_target`, cioè il gap attivo sul **timeframe più alto**
+(`DEF-13`). Ma `DEF-15bis` dice che quel gap è un **target**, e che le zone in
+cui cercare l'ingresso sono i gap sui timeframe **inferiori** al suo.
+`SETUP-09` lo ripete nella sua prima riga: *«si applica quando il prezzo
+interagisce con una `zona_gap` di timeframe inferiore a quello del gap
+target»*.
+
+**La conseguenza, misurata.** `doppio_ingresso` è un semplice confronto fra
+timeframe: un CRT su `TF_H1` non è mai più alto di un gap su `TF_12M`, quindi
+risultava «a supporto del gap» **sempre**. E poiché il prezzo non entra quasi
+mai nella zona di un gap annuale, `gap_fase` restava 0 e `SETUP-09` bloccava
+l'ingresso. Sull'archivio reale dell'oro: **3.237 CRT formati, 3.237
+bloccati**. Nessuna operazione possibile, su nessuno strumento, mai.
+
+**La decisione, in due parti.**
+
+1. Aggiunta `stato.gap_di_reazione`, che seleziona con le regole di `DEF-13`
+   fra i soli gap di timeframe **strettamente inferiore** a quello del gap
+   target, e solo con la polarità concorde alla bias operativa — come
+   `DEF-15bis` prescrive. La `Fotografia` porta ora due campi distinti:
+   `gap_attivo` (il bersaglio) e `gap_reazione` (la zona). `SETUP-09` e
+   `SETUP-10` leggono il secondo.
+2. `SETUP-09` si applica solo se il prezzo **sta interagendo** con quella
+   zona, cioè `gap_fase > 0`. È la prima riga della regola, e non era mai
+   stata verificata: `doppio_ingresso` confronta timeframe, non posizioni del
+   prezzo. In fase 0 la zona non è stata toccata, il CRT è un CRT normale e
+   non c'è nessun doppio ingresso da dimezzare (`RISK-04` parla di un CRT
+   *«a supporto di un gap»*, non di un CRT che ha un gap da qualche parte
+   sopra di sé).
+
+Nessuna soglia toccata. Il modello a fasi di `DEF-43` resta obbligatorio dove
+serve davvero: quando si entra *dentro* una zona di reazione.
+
+---
+
+## REV-48 — Senza key level su `TF_H4`, `TF_H1` non è eseguibile
+
+**Classificazione: CONTRADDIZIONE FRA DOCUMENTI.** Tre regole che non stanno
+insieme, e una lettura che le tiene tutte.
+
+**Il problema.**
+
+- `DEF-36` elenca i timeframe che hanno key level e si ferma a `TF_1D`:
+  `TF_12M`, `TF_6M`, `TF_3M`, `TF_1M`, `TF_1W`, `TF_1D`.
+- `SETUP-05` scrive però una riga esplicita per `TF_H1`, che per operare
+  pretende lo sbilanciamento di un key level di **`TF_H4`**.
+- `PRIN-10` mette `TF_H4` e `TF_H1` fra i timeframe di **esecuzione**.
+
+Un timeframe che non ha key level non può sbilanciarne uno. Quindi la riga
+`TF_H1` di `SETUP-05` non è soddisfabile, e `TF_H1` non è eseguibile —
+contraddicendo `PRIN-10`. È la stessa forma di `REV-46`, un piano più in
+basso: una regola scritta per un oggetto che la regola vicina non produce.
+
+**La decisione.** I key level si calcolano anche su `TF_H4`, con la stessa
+formula di `DEF-36` applicata alla sua `C1` (`TF_KEY_LEVEL` in
+`parametri.py`). È il cambiamento più piccolo fra quelli possibili: l'altro
+sarebbe stato dichiarare `TF_H1` non operabile, cioè cancellare una riga di
+`SETUP-05` e mezza riga di `PRIN-10`.
+
+`TF_H12` e `TF_H6` restano fuori (`DEF-31`, `REV-11`) e `TF_H1` non produce
+key level propri: sotto di lui non c'è nessun trigger da servire.
+
+**Conseguenza operativa.** Serve davvero avere le candele `TF_H4`. La fonte
+gratuita non le serve, quindi `scarica_storico.py` le costruisce dalle orarie
+(`aggregazione.aggrega_orarie`) e `core/mercato.py` le tiene aggiornate. Sono
+blocchi ancorati all'orologio UTC, non alla sessione: coincidono con il
+confine giornaliero della fonte d'inverno e sbagliano di un'ora durante l'ora
+legale americana. Dal vivo le `TF_H4` vere arrivano dagli alert di
+TradingView e prendono il posto di queste; chi vuole i confini esatti fin da
+subito importa lo storico dal CSV di TradingView.

@@ -61,15 +61,20 @@ log = diario("mercato")
 # gentilezza verso il fornitore e meno rumore nel diario.
 DURATA: dict[TF, timedelta] = {
     TF.H1: timedelta(hours=1),
+    TF.H4: timedelta(hours=4),
     TF.D1: timedelta(days=1),
     TF.W1: timedelta(days=7),
     TF.M1: timedelta(days=28),
 }
 
-# I timeframe su cui il bot puo' cercare un ingresso. Il fornitore gratuito
-# non ha TF_H4, TF_H6 e TF_H12: quelli restano vuoti e le regole che li
-# richiedono tacciono, dichiarandolo.
-TF_OPERATIVI: tuple[TF, ...] = (TF.H1, TF.D1)
+# I timeframe su cui il bot puo' cercare un ingresso.
+#
+# `TF_H4` c'e' e non e' un di piu': SETUP-05 non autorizza un ingresso su
+# `TF_H1` senza sapere cosa ha fatto `TF_H4` (REV-48). La fonte gratuita non
+# serve barre a quattro ore, quindi si costruiscono dalle orarie
+# (`DERIVATI`). `TF_H6` e `TF_H12` restano vuoti: DEF-31 li usa solo per i
+# gap e le regole che li richiedono tacciono, dichiarandolo.
+TF_OPERATIVI: tuple[TF, ...] = (TF.H1, TF.H4, TF.D1)
 
 # Il ticker con cui il resto dell'impianto riconosce il future.
 def ticker_di(future: str) -> str:

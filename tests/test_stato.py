@@ -108,6 +108,35 @@ class TestKeyLevel:
         sbil = st.sbilanciamenti_per_timeframe(self.storico(), INIZIO + timedelta(days=20))
         assert sbil.get(TF.W1) is Bias.LONG
 
+    def test_rev48_tf_h4_ha_key_level_propri(self) -> None:
+        """Senza key level su TF_H4, la riga TF_H1 di SETUP-05 e' lettera morta.
+
+        SETUP-05 pretende che `TF_H4` abbia sbilanciato un key level perche'
+        si possa operare su `TF_H1`, e PRIN-10 mette `TF_H1` fra i timeframe
+        di esecuzione. DEF-36 pero' elenca solo i sei timeframe da `TF_12M` a
+        `TF_1D`. Adottata la lettura che le tiene insieme (REV-48).
+        """
+        storico = {TF.H4: [
+            c(100, 105, 95, 102, 0),
+            c(102, 110, 100, 108, 1),      # <- C1
+            c(108, 115, 107, 112, 2),      # <- C0, prende il massimo di C1
+        ]}
+        adesso = INIZIO + timedelta(days=5)
+        assert any(l.tf is TF.H4 for l in st.key_level_correnti(storico, adesso))
+        assert st.sbilanciamenti_per_timeframe(storico, adesso).get(TF.H4) is Bias.LONG
+
+    def test_rev48_tf_h1_e_tf_h6_non_producono_key_level(self) -> None:
+        """L'estensione si ferma a TF_H4: sotto non c'e' nessun trigger da
+        servire, e DEF-31 riserva TF_H12 e TF_H6 ai soli gap (REV-11)."""
+        for tf in (TF.H1, TF.H6, TF.H12):
+            storico = {tf: [
+                c(100, 105, 95, 102, 0),
+                c(102, 110, 100, 108, 1),
+                c(108, 115, 107, 112, 2),
+            ]}
+            livelli = st.key_level_correnti(storico, INIZIO + timedelta(days=5))
+            assert livelli == [], f"{tf.value} non deve produrre key level"
+
     def test_chi_spazza_entrambi_i_lati_non_sbilancia(self) -> None:
         """Come DEF-16 passo 1: rompere sopra e sotto non dice nulla."""
         storico = {TF.W1: [
@@ -472,3 +501,59 @@ class TestAggregazione:
         assert orari_di_chiusura([10, 11, 12, 13]) == (11, 12, 13)
         assert orari_di_chiusura([10]) == ()
         assert orari_di_chiusura([]) == ()
+
+
+# ===========================================================================
+# TF_H4 costruito dalle orarie (REV-48)
+# ===========================================================================
+class TestQuattroOre:
+    """`aggrega_orarie` esiste perche' SETUP-05 non puo' autorizzare un
+    ingresso su `TF_H1` senza sapere cosa ha fatto `TF_H4`."""
+
+    def orarie(self, ore: tuple[int, ...], giorno: int = 5):
+        """Barre orarie marcate sulla CHIUSURA, come vuole DEF-02."""
+        return [
+            Candela(datetime(2026, 1, giorno, ora, tzinfo=timezone.utc),
+                    100 + ora, 110 + ora, 90 + ora, 105 + ora)
+            for ora in ore
+        ]
+
+    def test_quattro_orarie_fanno_una_candela(self) -> None:
+        from core.aggregazione import aggrega_orarie
+
+        blocchi = aggrega_orarie(self.orarie((1, 2, 3, 4)))
+        assert len(blocchi) == 1
+        blocco = blocchi[0]
+        assert blocco.apertura == 101, "apre con la prima oraria"
+        assert blocco.chiusura == 109, "chiude con l'ultima"
+        assert blocco.massimo == 114 and blocco.minimo == 91
+        assert blocco.orario.hour == 4, "l'orario e' la chiusura dell'ultima"
+
+    def test_il_confine_e_la_chiusura_non_l_apertura(self) -> None:
+        """La barra che chiude alle 04:00 appartiene al blocco 01-04, non al
+        successivo: e' l'errore che sposterebbe ogni candela di un blocco."""
+        from core.aggregazione import aggrega_orarie
+
+        blocchi = aggrega_orarie(self.orarie((1, 2, 3, 4, 5, 6, 7, 8)))
+        assert len(blocchi) == 2
+        assert [b.orario.hour for b in blocchi] == [4, 8]
+
+    def test_il_blocco_incompleto_non_e_una_candela(self) -> None:
+        """ESCL-13: tre orarie su quattro sono una candela in formazione."""
+        from core.aggregazione import aggrega_orarie
+
+        assert aggrega_orarie(self.orarie((1, 2, 3))) == ()
+        assert len(aggrega_orarie(self.orarie((1, 2, 3, 4, 5)))) == 1
+
+    def test_un_buco_nei_dati_non_inventa_una_candela(self) -> None:
+        from core.aggregazione import aggrega_orarie
+
+        assert aggrega_orarie(self.orarie((1, 2, 4))) == ()
+
+    def test_non_mescola_due_giorni(self) -> None:
+        from core.aggregazione import aggrega_orarie
+
+        blocchi = aggrega_orarie(self.orarie((1, 2, 3, 4), giorno=5)
+                                 + self.orarie((1, 2, 3, 4), giorno=6))
+        assert len(blocchi) == 2
+        assert {b.orario.day for b in blocchi} == {5, 6}

@@ -130,6 +130,59 @@ def aggrega_per_mese(giornaliere: Sequence[Candela]) -> tuple[Candela, ...]:
     return tuple(mensili)
 
 
+def aggrega_orarie(orarie: Sequence[Candela], quante: int = 4) -> tuple[Candela, ...]:
+    """Costruisce `TF_H4` dalle orarie, in blocchi allineati alla giornata.
+
+    Serve perche' SETUP-05 non puo' autorizzare un ingresso su `TF_H1` senza
+    sapere cosa ha fatto `TF_H4` (REV-48), e la fonte gratuita dello storico
+    non serve barre a quattro ore.
+
+    **Il confine, e il suo limite.** `DEF-03` vuole i confini della sessione
+    dell'exchange, non quelli dell'orologio. Questi blocchi sono ancorati
+    all'orologio UTC, e vanno dichiarati per quello che sono: sulla fonte
+    gratuita la giornaliera dei future di `PRIN-08` chiude alle 04:00 UTC in
+    inverno — multiplo di quattro, e allora i blocchi coincidono con la
+    sessione — ma alle 05:00 UTC durante l'ora legale americana, e li' il
+    taglio cade un'ora dopo l'apertura della sessione.
+
+    Non e' una `TF_H4` di TradingView e non va spacciata per tale. Serve a
+    dare a SETUP-05 uno storico su cui misurarsi quando il bot parte da zero;
+    dal vivo le `TF_H4` vere arrivano dagli alert e prendono il posto di
+    queste. Chi volesse l'ancoraggio esatto deve importare lo storico dal CSV
+    di TradingView (`importa_storico.py`), che porta i confini giusti.
+
+    **Il blocco incompleto si scarta**: senza tutte e `quante` le orarie e' o
+    una candela in formazione o un buco nei dati, e in nessuno dei due casi e'
+    una candela (`ESCL-13`).
+    """
+    ordinate = sorted(orarie, key=lambda c: c.orario)
+    gruppi: dict[tuple, list[Candela]] = {}
+    for candela in ordinate:
+        # `orario` e' la CHIUSURA (DEF-02): l'ora di appartenenza e' quella che
+        # precede, altrimenti la barra che chiude alle 04:00 finirebbe nel
+        # blocco successivo invece che in quello che l'ha vista formarsi.
+        appartenenza = candela.orario - timedelta(microseconds=1)
+        gruppi.setdefault(
+            (appartenenza.date(), appartenenza.hour // quante), []
+        ).append(candela)
+
+    aggregate: list[Candela] = []
+    for chiave in sorted(gruppi):
+        gruppo = gruppi[chiave]
+        if len(gruppo) < quante:
+            continue                     # blocco incompleto: non e' una candela
+        aggregate.append(
+            Candela(
+                orario=gruppo[-1].orario,
+                apertura=gruppo[0].apertura,
+                massimo=max(c.massimo for c in gruppo),
+                minimo=min(c.minimo for c in gruppo),
+                chiusura=gruppo[-1].chiusura,
+            )
+        )
+    return tuple(aggregate)
+
+
 def costruisci_superiori(mensili: Sequence[Candela]) -> dict[TF, tuple[Candela, ...]]:
     """I tre timeframe che MT5 non fornisce, dalle sue mensili."""
     return {tf: aggrega(mensili, quanti) for tf, quanti in MENSILI_PER_TIMEFRAME.items()}

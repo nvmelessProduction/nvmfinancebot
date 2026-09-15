@@ -47,7 +47,7 @@ from typing import Optional
 import httpx
 
 from core import storage
-from core.aggregazione import aggrega_per_mese
+from core.aggregazione import aggrega_orarie, aggrega_per_mese
 from core.definizioni import Candela
 from core.log import configura as configura_log
 from core.parametri import TF
@@ -120,11 +120,13 @@ INTERVALLI: dict[TF, Intervallo] = {
 # trimestre che lo contiene e con lui l'anno, e `TF_12M` resta vuoto per
 # sempre. Le giornaliere invece sono complete su tutti gli strumenti (misurato:
 # 314 mesi su 314), quindi le mensili si costruiscono da li'.
-DERIVATI: dict[TF, TF] = {TF.M1: TF.D1}
+# `TF_H4` si costruisce dalle orarie per lo stesso motivo: la fonte non ha
+# barre a quattro ore, e senza `TF_H4` la riga `TF_H1` di SETUP-05 non e'
+# soddisfabile (REV-48), cioe' il bot non potrebbe mai operare su `TF_H1`.
+DERIVATI: dict[TF, TF] = {TF.M1: TF.D1, TF.H4: TF.H1}
 
 # I timeframe di DEF-01 che questa fonte non offre.
 NON_OFFERTI: dict[TF, str] = {
-    TF.H4: "la fonte non ha barre a 4 ore",
     TF.H6: "la fonte non ha barre a 6 ore",
     TF.H12: "la fonte non ha barre a 12 ore",
     TF.M3: "si costruisce dalle mensili (core/aggregazione.py)",
@@ -278,11 +280,16 @@ def scarica(ticker: str, intervallo: Intervallo, cliente: httpx.Client) -> list[
 
 def deriva(strumento: str, tf: TF, cliente: httpx.Client) -> tuple[list[dict], int]:
     """Costruisce un timeframe che la fonte serve male, partendo da uno che
-    serve bene. Oggi vale solo per le mensili, costruite dalle giornaliere.
+    serve bene: le mensili dalle giornaliere, `TF_H4` dalle orarie.
     """
     sorgente = DERIVATI[tf]
     barre = scarica(TICKER_FONTE[strumento], INTERVALLI[sorgente], cliente)
     righe, riparate = in_candele(barre, strumento, sorgente)
+
+    if tf is TF.H4:
+        quattro_ore = aggrega_orarie([_in_candela(r) for r in righe])
+        return [_in_riga(c, strumento, tf) for c in quattro_ore], 0
+
     if tf is not TF.M1:
         raise ScaricoFallito(f"{tf.value}: non so da cosa derivarlo")
 
@@ -335,7 +342,7 @@ def _serie_richieste(strumento: Optional[str], timeframe: Optional[str], orari: 
             raise SystemExit(f"{tf.value}: non scaricabile da questa fonte")
         tempi = [tf]
     else:
-        tempi = [TF.D1, TF.M1, TF.W1] + ([TF.H1] if orari else [])
+        tempi = [TF.D1, TF.M1, TF.W1] + ([TF.H1, TF.H4] if orari else [])
 
     return [(s, t) for s in strumenti for t in tempi]
 
@@ -345,9 +352,9 @@ def main() -> int:
     argomenti.add_argument("strumento", nargs="?",
                            help=f"codice di PRIN-08: {', '.join(strumenti_noti())}")
     argomenti.add_argument("timeframe", nargs="?",
-                           help="TF_1M, TF_1W, TF_1D, TF_H1")
+                           help="TF_1M, TF_1W, TF_1D, TF_H4, TF_H1")
     argomenti.add_argument("--orari", action="store_true",
-                           help="scarica anche TF_H1 (la fonte copre ~2 anni)")
+                           help="scarica anche TF_H1 e TF_H4 (la fonte copre ~2 anni)")
     argomenti.add_argument("--pausa", type=float, default=1.5,
                            help="secondi fra una richiesta e l'altra (default 1.5)")
     scelte = argomenti.parse_args()

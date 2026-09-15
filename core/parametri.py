@@ -61,6 +61,18 @@ TF_BIAS: Final[tuple[TF, ...]] = (TF.M12, TF.M6, TF.M3, TF.M1, TF.W1, TF.D1)
 TF_SOLO_GAP: Final[tuple[TF, ...]] = (TF.H12, TF.H6)
 TF_ESECUZIONE: Final[tuple[TF, ...]] = (TF.D1, TF.H4, TF.H1)
 
+# DEF-36 elenca sei timeframe per i key level e si ferma a `TF_1D`. SETUP-05
+# pero' scrive una riga per `TF_H1` che pretende lo sbilanciamento di un key
+# level di `TF_H4`, e PRIN-10 mette `TF_H1` fra i timeframe di esecuzione.
+# Le tre cose insieme non stanno in piedi: senza key level su `TF_H4` quella
+# riga non e' soddisfabile e `TF_H1` non e' eseguibile (REV-48).
+#
+# Adottata la lettura che le tiene tutte: i key level si calcolano anche su
+# `TF_H4`, con la stessa formula di DEF-36 sulla sua `C1`. `TF_H12` e `TF_H6`
+# restano fuori (DEF-31, REV-11) e `TF_H1` non ne produce di propri, perche'
+# sotto di lui non c'e' nessun trigger.
+TF_KEY_LEVEL: Final[tuple[TF, ...]] = TF_BIAS + (TF.H4,)
+
 # DEF-22 passo 1: ordine di scansione per il target direzionale globale.
 # Nota: salta TF_H12 e TF_H6, coerentemente con DEF-28.
 ORDINE_SCANSIONE_TARGET: Final[tuple[TF, ...]] = (
