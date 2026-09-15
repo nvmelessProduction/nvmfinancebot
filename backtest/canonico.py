@@ -68,6 +68,29 @@ def _dentro(valore: float, basso: float, alto: float) -> bool:
     return basso <= valore <= alto
 
 
+def bersaglio_valido(direzione: Bias, ingresso: float, livelli: Sequence[float]) -> Optional[float]:
+    """Il primo livello che sta ancora OLTRE l'ingresso, o None.
+
+    Senza questo controllo si producono operazioni impossibili: entrando sulla
+    rottura dell'estremo di `C2` capita spessissimo — misurato: **77% delle
+    volte** — che il 50% di `C1` sia gia' stato superato. Un simulatore che non
+    lo verifica le chiude in profitto sulla barra d'ingresso, e inventa un
+    guadagno che il mercato non ha mai pagato.
+
+    E' esattamente l'errore che ha prodotto il falso positivo del 15 settembre
+    (vedi `docs/STUDIO-CRT-2026-09-15.md` §7). La lettura canonica e' quella
+    scritta qui: *«targets the midpoint, opposite side, or next liquidity
+    pool»* — si prende il primo bersaglio ancora davanti, e se non ce n'e'
+    nessuno non c'e' operazione.
+    """
+    for livello in livelli:
+        if direzione is Bias.SHORT and livello < ingresso:
+            return livello
+        if direzione is Bias.LONG and livello > ingresso:
+            return livello
+    return None
+
+
 def trova(serie: Sequence[Candela], conferma: bool, filtro_chiusura: bool) -> list[Segnale]:
     """I CRT canonici della serie.
 
@@ -90,8 +113,11 @@ def trova(serie: Sequence[Candela], conferma: bool, filtro_chiusura: bool) -> li
                 if conferma:
                     ingresso = c2.minimo if c3.minimo <= c2.minimo else None
                 if ingresso is not None and c2.massimo > ingresso:
-                    fuori.append(Segnale(i + 1, Bias.SHORT, ingresso,
-                                         c2.massimo, liv_50(c1), c1.minimo))
+                    obiettivo = bersaglio_valido(Bias.SHORT, ingresso,
+                                                 (liv_50(c1), c1.minimo))
+                    if obiettivo is not None:
+                        fuori.append(Segnale(i + 1, Bias.SHORT, ingresso,
+                                             c2.massimo, obiettivo, c1.minimo))
 
         # --- long: a specchio ---------------------------------------------
         if c2.minimo < c1.minimo and _dentro(c2.chiusura, c1.minimo, c1.massimo):
@@ -100,8 +126,11 @@ def trova(serie: Sequence[Candela], conferma: bool, filtro_chiusura: bool) -> li
                 if conferma:
                     ingresso = c2.massimo if c3.massimo >= c2.massimo else None
                 if ingresso is not None and c2.minimo < ingresso:
-                    fuori.append(Segnale(i + 1, Bias.LONG, ingresso,
-                                         c2.minimo, liv_50(c1), c1.massimo))
+                    obiettivo = bersaglio_valido(Bias.LONG, ingresso,
+                                                 (liv_50(c1), c1.massimo))
+                    if obiettivo is not None:
+                        fuori.append(Segnale(i + 1, Bias.LONG, ingresso,
+                                             c2.minimo, obiettivo, c1.massimo))
     return fuori
 
 

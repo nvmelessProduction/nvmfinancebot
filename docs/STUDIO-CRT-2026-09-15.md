@@ -1,9 +1,15 @@
 # Che cos'è davvero il CRT — studio delle fonti e misura
 
 Nato da un'obiezione precisa: *«il problema è strutturale nell'analisi del
-grafico, il bot non interpreta il CRT come dovrebbe»*. L'obiezione era
-fondata. Questo documento dice in cosa, con le fonti, e lo dimostra con una
-misura fuori campione.
+grafico, il bot non interpreta il CRT come dovrebbe»*. **L'obiezione è
+fondata**: il motore diverge dal CRT della letteratura in tre punti, e il §3
+li elenca con le fonti.
+
+**Ma correggerli non basta.** Il CRT canonico, implementato bene, batte
+un'entrata a caso di +0,031 R a 2,5 sigma — un vantaggio che non regge fra i
+due periodi e che resta molto sotto quello che serve. Il §4 è un errata: una
+versione precedente di questo documento riportava +0,195 R a 20 sigma, e quel
+numero era prodotto da un difetto del simulatore.
 
 ## 1. Il punto di partenza: non c'era niente contro cui verificare
 
@@ -55,85 +61,88 @@ definizione di **`DEF-25`** (livello strutturale), non di `DEF-36`, il quale
 limita i key level alla sola `C1`. Le due letture differiscono di tre ordini
 di grandezza nel numero di livelli.
 
-## 4. La misura: il pattern canonico porta informazione
+## 4. ERRATA — il primo risultato era un artefatto
 
-Metodo identico a quello già usato: ogni configurazione contro il **suo**
-placebo — entrate a caso, stesso strumento, stessa direzione, stesse distanze
-relative. Nessun filtro di contesto: si isola il pattern.
+**Questa sezione corregge una versione precedente di questo documento, che
+riportava un vantaggio di +0,195 R a 20 sigma e un risultato netto positivo
+fuori campione. Quel risultato era falso.** Resta scritto qui invece di
+sparire, perche' l'errore e' istruttivo e perche' il numero sbagliato e' stato
+comunicato.
 
-| Timeframe | conferma `C3` | filtro chiusura | n | vantaggio sul caso |
-|---|---|---|---:|---:|
-| `TF_1D` | no | no | 14.039 | +0,050 (+2,8 σ) |
-| `TF_1D` | no | sì | 6.748 | +0,074 (+4,4 σ) |
-| `TF_1D` | **sì** | no | 8.142 | +0,088 (+12,8 σ) |
-| `TF_1D` | **sì** | **sì** | 4.580 | **+0,138 (+16,4 σ)** |
-| `TF_1W` | sì | sì | 1.200 | +0,121 (+7,5 σ) |
-| `TF_H4` | sì | sì | 2.890 | +0,080 (+7,2 σ) |
-| `TF_H1` | sì | sì | 11.240 | +0,110 (+20,8 σ) |
+**Cosa era successo.** Entrando sulla rottura dell'estremo di `C2`, il 50% di
+`C1` e' gia' stato superato **nel 77% dei casi** (misurato: 3.527 segnali su
+4.580). Il simulatore calcolava il guadagno come `|TP1 - ingresso| / rischio`
+senza verificare che `TP1` stesse **oltre** l'ingresso, e la condizione di
+raggiungimento risultava vera sulla prima barra. Tremilacinquecento operazioni
+venivano chiuse in profitto sulla barra d'ingresso, con una vincita che il
+mercato non ha mai pagato.
 
-**La conferma su `C3` raddoppia il vantaggio ovunque.** È il pezzo mancante
-più grosso: il motore entra all'apertura di `C3` senza aspettare che `C3`
-rompa l'estremo di `C2`.
+Il sintomo era visibile e non l'ho riconosciuto: winrate dell'81% con vincite
+medie da 0,31 R. Un profilo del genere, su un pattern di reversione, andava
+verificato prima di essere pubblicato, non dopo.
 
-## 5. Quale uscita
+La correzione e' in `backtest/canonico.bersaglio_valido`, con il test che la
+fissa.
 
-| Uscita | `TF_1D` netto costi | `TF_H1` netto costi |
+## 5. La misura corretta
+
+Il bersaglio e' il primo livello del range di `C1` ancora **oltre**
+l'ingresso: prima l'EQ, poi il lato opposto. Se entrambi sono gia' stati
+superati non c'e' operazione. E' la lettura canonica — *«targets the midpoint,
+opposite side, or next liquidity pool»* — non uno scarto arbitrario.
+
+| Timeframe | conferma `C3` | filtro chiusura | n | CRT | a caso | vantaggio | netto costi | winrate |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| `TF_1D` | no | no | 13.375 | −0,155 | −0,171 | +0,016 (+1,1 σ) | −0,190 | 50,7% |
+| `TF_1D` | no | sì | 6.253 | −0,138 | −0,163 | +0,025 (+1,8 σ) | −0,162 | 60,0% |
+| `TF_1D` | sì | no | 6.691 | −0,153 | −0,156 | +0,003 (+0,4 σ) | −0,167 | 66,7% |
+| `TF_1D` | **sì** | **sì** | 3.636 | −0,106 | −0,138 | **+0,031 (+2,5 σ)** | −0,120 | 70,4% |
+| `TF_1W` | sì | sì | 1.000 | −0,127 | −0,124 | −0,002 (−0,1 σ) | −0,132 | 69,8% |
+
+E la verifica fuori campione **non regge**:
+
+| | n | vantaggio |
 |---|---:|---:|
-| **tutto a TP1 (50% di `C1`)** | **+0,048** | −0,081 |
-| parziale senza break even | +0,026 | −0,083 |
-| parziale con break even | −0,059 | −0,177 |
-| tutto al lato opposto | −0,082 | −0,183 |
+| 2000–2012 (in campione) | 1.653 | **−0,024 (−1,2 σ)** |
+| 2013–2026 (fuori campione) | 1.983 | +0,086 (+5,9 σ) |
 
-Due cose:
+Negativo in un periodo, positivo nell'altro: e' la firma del rumore, non di un
+vantaggio.
 
-- **il vantaggio vive nel movimento fino al 50%, non oltre.** Il lato opposto
-  del range ha un vantaggio di soli +0,035 contro +0,195 del 50%;
-- **`TF_H1` non è operabile**: il costo di un giro vale 0,081 R contro 0,013 R
-  del giornaliero, e si mangia tutto. Gli stop orari sono troppo stretti
-  rispetto allo spread.
+## 6. Perche' la geometria non funziona comunque
 
-## 6. Validazione fuori campione
+Anche prendendo per buono il +0,031, il pattern perde **0,106 R per
+operazione** in assoluto. Il motivo e' strutturale e si legge dai numeri:
 
-La configurazione è stata scelta guardando 64 combinazioni, quindi va
-verificata su dati che non hanno partecipato alla scelta. Taglio al 2013.
+```
+winrate 70,4%   →   0,704 x vincita - 0,296 x 1 = -0,106
+                →   vincita media = +0,27 R
+                →   per pareggiare servirebbe +0,42 R
+```
 
-| | n | CRT | a caso | vantaggio | netto costi | winrate |
-|---|---:|---:|---:|---:|---:|---:|
-| 2000–2012 (in campione) | 2.091 | +0,064 | −0,094 | +0,158 (+9,6 σ) | +0,054 | 80,9% |
-| **2013–2026 (fuori campione)** | 2.489 | +0,058 | −0,172 | **+0,230 (+19,9 σ)** | **+0,043** | 81,0% |
+Entrare sulla rottura di un estremo di `C2` mettendo lo stop all'estremo
+opposto significa rischiare **l'intero range di `C2`** per guadagnare quel che
+resta del range di `C1`. Il rapporto e' sfavorevole per costruzione, e nessun
+filtro lo cambia: i filtri spostano il winrate, non la geometria.
 
-E regge su **tutti e sei gli strumenti**, presi uno per uno fuori campione:
+## 7. Cosa resta valido di questo studio
 
-| Strumento | n | vantaggio | netto costi |
-|---|---:|---:|---:|
-| XAUUSD | 249 | +0,252 (+6,5 σ) | +0,071 |
-| EURUSD | 466 | +0,243 (+9,6 σ) | +0,065 |
-| GBPUSD | 402 | +0,232 (+7,9 σ) | +0,059 |
-| USDCHF | 477 | +0,240 (+9,4 σ) | +0,051 |
-| AUDUSD | 477 | +0,193 (+7,3 σ) | +0,025 |
-| USDJPY | 418 | +0,191 (+6,6 σ) | +0,000 |
+Le tre divergenze del §3 restano documentate e reali, e la conferma su `C3`
+resta la piu' utile delle tre: alza il winrate dal 50,7% al 70,4% e porta il
+vantaggio da +0,016 a +0,031. Semplicemente non basta.
 
-## 7. Il conflitto con le regole scritte
+Restano vere anche le due osservazioni sui documenti:
 
-Il profilo è **alto winrate, basso R**: 81% di successi con vincite da circa
-**0,31 R** e perdite da 1 R.
+- `07_casi.md` e' vuoto — **zero casi su 75 richiesti** — quindi non esiste
+  niente contro cui verificare l'interpretazione;
+- `SETUP-00` chiama key level *«ogni massimo e minimo di candela chiusa»*, che
+  e' la definizione di `DEF-25`, mentre cita `DEF-36`, che li limita alla sola
+  `C1`. Tre ordini di grandezza di differenza.
 
-Questo confligge frontalmente con `GEST-01`, che rifiuta ogni setup con
-rapporto su TP1 sotto 1,5. **`GEST-01` scarterebbe il 100% di queste 4.580
-operazioni.** È la stessa regola che, nella configurazione precedente,
-riduceva 26.285 CRT a 50.
+## 8. Cosa servirebbe per andare avanti
 
-Non è una regola da correggere di nascosto: è una scelta di impostazione, e
-va presa sapendo cosa comporta. Un sistema a 0,31 R per vincita non tollera
-slippage: tre vincite le cancella una perdita, e lo slippage su un ordine stop
-non è modellato qui.
-
-## 8. Cosa resta da verificare prima di operare
-
-- **slippage sull'ordine di ingresso.** L'ingresso canonico è una rottura
-  dell'estremo di `C2`, cioè un ordine stop: si riempie peggio del prezzo
-  richiesto, e con vincite da 0,31 R il margine è sottile;
-- `TF_1D` produce circa **180 operazioni l'anno su sei strumenti**, il che con
-  `RISK-02` significa posizioni spesso sovrapposte;
-- il capitale minimo resta quello di `BACKTEST-2026-09-15.md` §8: circa
-  **1.220 $** per coprire i sei strumenti a regola.
+Non altre varianti misurate sugli stessi dati: ne ho gia' provate un centinaio
+fra uscite, filtri e timeframe, e a forza di provarne una uscira' positiva per
+caso. Servono **casi reali annotati** — i 75 di `07_casi.md` — perche' senza
+non c'e' modo di distinguere "il bot legge male il grafico" da "il pattern non
+funziona".
