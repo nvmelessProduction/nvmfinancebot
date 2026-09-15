@@ -459,3 +459,49 @@ Verificato contro la tabella 2026 di `CTX-04`: le dodici date coincidono.
 | `PA-38` | Perdita del flusso dati: architettura, non regola. Va deciso quando il motore gira davvero |
 | `PA-50`, `PA-52` | Passaggio fra le fasi e vincoli prop: fuori dal motore |
 | `REV-21` | `PRIN-16` contro `SETUP-04`: risolto sul piano tecnico da `PA-51`, ma la decisione se usare `semi` sotto `TF_1D` resta tua |
+
+---
+
+## REV-46 — SETUP-05: la direzione confrontata è quella dello spazzamento
+
+**Classificazione: RICOSTRUZIONE.** La risposta era nei documenti: bastava
+leggere insieme `SETUP-02A` e `DEF-38`.
+
+**Il problema.** `SETUP-05` scrive che i due timeframe immediatamente
+superiori devono aver sbilanciato un key level *«nella direzione
+dell'operazione»*. Tradotto alla lettera — `sbilanciamento == direzione` — il
+cancello non si apre mai, e si dimostra:
+
+- `SETUP-02A` costruisce un CRT short sopra un `KL_max`, che `N2` supera
+  verso l'**alto**;
+- `DEF-38` chiama quella una presa a **rialzo**, che
+  `sbilanciamenti_per_timeframe` registra come `LONG`;
+- `DUE_TF_SUPERIORI` garantisce che il timeframe che ha generato quel livello
+  sia uno dei due interrogati da `SETUP-05`.
+
+Quindi la condizione chiede che `LONG` sia uguale a `SHORT`.
+
+**La misura.** Sui prezzi reali archiviati — sei strumenti, 11.005 CRT
+formati, 298 sopravvissuti a `GEST-01` — la condizione letterale si è
+verificata **zero volte**. Non è una rarità statistica: è una
+contraddizione.
+
+**La decisione.** Il confronto avviene con la direzione dello **spazzamento**,
+che è l'opposto dell'operazione. I due timeframe superiori devono aver
+spazzato dalla stessa parte, e l'operazione è la reazione contraria a quello
+spazzamento — che è il meccanismo stesso del CRT.
+
+Il valore della regola resta intatto: *i due superiori devono essere
+d'accordo*. Cambia il verso del confronto, non il vincolo. Nessuna soglia è
+stata toccata: `RR_MINIMO` resta 1.5, `GEST-01` resta com'è, il CRT conserva
+tutte e quattro le condizioni.
+
+**Risultato misurato dopo la correzione:** 56 setup operabili su sei
+strumenti in 2,4 anni di dati orari, circa **due al mese** in totale.
+
+**Perché i test non lo avevano visto.** Le prove su `allineamento_soddisfatto`
+costruivano `sbilanciamenti` a mano, già concordi con l'operazione: uno stato
+che la catena reale non può produrre. Aggiunta
+`test_setup05_il_crt_produce_davvero_lo_stato_richiesto`, che parte da un CRT
+vero e verifica quale stato ne discende, collegando le due regole invece di
+assumerle.

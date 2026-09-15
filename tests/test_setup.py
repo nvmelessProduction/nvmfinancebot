@@ -183,18 +183,77 @@ class TestBiasComando:
 # SETUP-05 — allineamento
 # ===========================================================================
 class TestAllineamento:
+    """SETUP-05, con la direzione dello SPAZZAMENTO (REV-46).
+
+    Una short nasce da un massimo preso verso l'alto: i due timeframe
+    superiori devono aver sbilanciato LONG, e l'operazione e' la reazione
+    contraria. Le fixture di queste prove prima costruivano lo stato opposto,
+    che la catena reale non puo' produrre — ed e' per questo che passavano
+    mentre il motore, sui prezzi veri, non operava mai.
+    """
+
     def test_setup05_servono_entrambi_i_superiori(self) -> None:
         assert s.allineamento_soddisfatto(
-            TF.H1, {TF.H4: Bias.SHORT, TF.D1: Bias.SHORT}, Bias.SHORT
-        ) is True
+            TF.H1, {TF.H4: Bias.LONG, TF.D1: Bias.LONG}, Bias.SHORT
+        ) is True, "massimi spazzati in alto da entrambi: si cerca la short"
         assert s.allineamento_soddisfatto(
-            TF.H1, {TF.H4: Bias.SHORT}, Bias.SHORT
+            TF.H1, {TF.H4: Bias.LONG}, Bias.SHORT
         ) is False, "uno solo non basta"
 
     def test_setup05_devono_essere_nella_stessa_direzione(self) -> None:
         assert s.allineamento_soddisfatto(
-            TF.H1, {TF.H4: Bias.SHORT, TF.D1: Bias.LONG}, Bias.SHORT
+            TF.H1, {TF.H4: Bias.LONG, TF.D1: Bias.SHORT}, Bias.SHORT
         ) is False
+
+    def test_setup05_lo_sbilanciamento_concorde_all_operazione_non_vale(self) -> None:
+        """CASO CRITICO: e' la lettura che ha tenuto fermo il motore.
+
+        Chiedere che lo sbilanciamento coincida con la direzione
+        dell'operazione e' autocontraddittorio, perche' il timeframe che
+        genera il key level lo spazza sempre nel verso opposto. Misurato sui
+        prezzi reali: zero occorrenze su 298 candidati in ventisei anni.
+        """
+        assert s.allineamento_soddisfatto(
+            TF.H1, {TF.H4: Bias.SHORT, TF.D1: Bias.SHORT}, Bias.SHORT
+        ) is False
+        assert s.allineamento_soddisfatto(
+            TF.H1, {TF.H4: Bias.LONG, TF.D1: Bias.LONG}, Bias.LONG
+        ) is False
+
+    def test_setup05_lo_spazzamento_e_sempre_l_opposto(self) -> None:
+        assert s.direzione_dello_spazzamento(Bias.SHORT) is Bias.LONG
+        assert s.direzione_dello_spazzamento(Bias.LONG) is Bias.SHORT
+
+    def test_setup05_il_crt_produce_davvero_lo_stato_richiesto(self) -> None:
+        """La prova che le fixture da sole non davano: si parte dal CRT.
+
+        Si costruisce un CRT short vero, si guarda in che direzione DEF-38
+        registra la presa del suo key level, e si verifica che quello sia
+        esattamente lo stato che SETUP-05 pretende. E' il collegamento fra le
+        due regole che mancava.
+        """
+        from core.definizioni import Candela, KeyLevel, Presa, TipoKeyLevel, presa_key_level
+        from datetime import datetime, timezone
+
+        def c(o, a, b, ch, giorno):
+            return Candela(datetime(2026, 3, giorno, tzinfo=timezone.utc), o, a, b, ch)
+
+        livello = KeyLevel(TF.D1, TipoKeyLevel.MAX, 100.0)
+        n1 = c(95.0, 99.0, 94.0, 98.0, 10)
+        n2 = c(98.0, 101.0, 95.0, 96.0, 11)          # spazza 100, richiude sotto
+        crt = s.crt_short(n1, n2, TF.H1, livello)
+        assert crt is not None, "il CRT deve formarsi, altrimenti la prova non dice nulla"
+
+        presa = presa_key_level(n2, livello)
+        assert presa is Presa.RIALZO, "il massimo e' stato preso verso l'alto"
+        sbilanciamento = Bias.LONG if presa is Presa.RIALZO else Bias.SHORT
+        assert sbilanciamento is not crt.direzione, (
+            "lo sbilanciamento e' l'opposto dell'operazione: e' il motivo per cui "
+            "la lettura letterale di SETUP-05 non puo' mai essere vera"
+        )
+        assert s.allineamento_soddisfatto(
+            TF.H1, {TF.H4: sbilanciamento, TF.D1: sbilanciamento}, crt.direzione
+        ) is True
 
     def test_setup05_salta_h12_e_h6(self) -> None:
         """Sopra TF_H1 stanno TF_H4 e TF_1D, non TF_H6 e TF_H12."""
@@ -209,8 +268,8 @@ class TestAllineamento:
 
     def test_setup05_catena_completa(self) -> None:
         assert s.allineamento_soddisfatto(
-            TF.D1, {TF.W1: Bias.LONG, TF.M1: Bias.LONG}, Bias.LONG
-        ) is True
+            TF.D1, {TF.W1: Bias.SHORT, TF.M1: Bias.SHORT}, Bias.LONG
+        ) is True, "minimi spazzati in basso da entrambi: si cerca la long"
 
 
 # ===========================================================================
@@ -302,7 +361,9 @@ class TestEsclusioni:
             "crt": crt,
             "comando": Bias.SHORT,
             "key_level_preso": True,
-            "sbilanciamenti": {TF.W1: Bias.SHORT, TF.M1: Bias.SHORT},
+            # Il CRT di base e' short, quindi nasce da massimi spazzati verso
+            # l'alto: i due superiori devono risultare LONG (REV-46).
+            "sbilanciamenti": {TF.W1: Bias.LONG, TF.M1: Bias.LONG},
             "posizioni_aperte_strumento": 0,
             "limite_rischio_raggiunto": False,
             "dentro_finestra_news": False,

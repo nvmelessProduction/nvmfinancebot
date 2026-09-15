@@ -272,7 +272,7 @@ def allineamento_soddisfatto(
     """SETUP-05 — Regola dei due timeframe immediatamente superiori.
 
     Per operare su un timeframe, i **due** timeframe immediatamente superiori
-    devono aver sbilanciato un key level nella direzione dell'operazione.
+    devono aver sbilanciato un key level nella stessa direzione.
 
     SETUP-05 contiene due blocchi diversi con lo stesso ID. Questo e' il
     secondo, quello introdotto da "Numero minimo", ed e' il cancello a cui si
@@ -282,6 +282,36 @@ def allineamento_soddisfatto(
 
     `TF_H12` e `TF_H6` non compaiono nella tabella: non sono timeframe di
     allineamento, ed e' la ragione per cui un CRT non puo' nascere li'.
+
+    ## La direzione confrontata e' quella dello SPAZZAMENTO (REV-46)
+
+    Il documento scrive "nella direzione dell'operazione". Preso alla lettera
+    e' **autocontraddittorio**, e si dimostra dalla meccanica del CRT:
+
+    - `SETUP-02A` costruisce un CRT short sopra un `KL_max`, che `N2` supera
+      verso l'ALTO. `DEF-38` chiama quella una presa a RIALZO, e
+      `sbilanciamenti_per_timeframe` la registra come `LONG`.
+    - Quindi il timeframe che ha generato il key level ha sempre sbilanciato
+      nel verso OPPOSTO all'operazione.
+    - `DUE_TF_SUPERIORI` garantisce che quel timeframe sia uno dei due che
+      questa funzione interroga (`SETUP-00` vuole il key level da un
+      timeframe strettamente superiore, e la tabella elenca proprio i due
+      immediatamente sopra).
+
+    Pretendere `sbilanciamento == direzione` chiede quindi che LONG sia
+    uguale a SHORT: mai vero. Misurato sui prezzi reali, sei strumenti su
+    ventisei anni, la condizione non si e' verificata **nemmeno una volta** su
+    298 candidati che avevano superato tutto il resto.
+
+    La lettura corretta e' l'unica che rende la regola applicabile, e
+    corrisponde a come un CRT funziona: i due timeframe superiori devono aver
+    spazzato **dalla stessa parte**, e l'operazione e' la reazione contraria a
+    quello spazzamento. Il valore della regola — i due superiori devono essere
+    d'accordo — resta intatto: cambia il verso, non il vincolo.
+
+    I test precedenti non lo avevano visto perche' costruivano
+    `sbilanciamenti` a mano, gia' concordi con l'operazione: uno stato che la
+    catena reale non puo' produrre.
     """
     from core.parametri import DUE_TF_SUPERIORI
 
@@ -292,7 +322,19 @@ def allineamento_soddisfatto(
         # Nessuna riga per questo timeframe: la condizione non e' definita,
         # quindi non e' soddisfabile. Vale per TF_H12, TF_H6 e TF_12M.
         return False
-    return all(sbilanciamenti.get(tf) is direzione for tf in coppia)
+    atteso = direzione_dello_spazzamento(direzione)
+    return all(sbilanciamenti.get(tf) is atteso for tf in coppia)
+
+
+def direzione_dello_spazzamento(direzione: Bias) -> Bias:
+    """Il verso in cui il key level e' stato spazzato, data l'operazione.
+
+    Un'operazione short nasce da un massimo preso verso l'alto, una long da un
+    minimo preso verso il basso: lo spazzamento e' sempre l'opposto
+    dell'operazione. Sta in una funzione sua perche' e' il perno di REV-46 e
+    va potuto citare da un test.
+    """
+    return Bias.LONG if direzione is Bias.SHORT else Bias.SHORT
 
 
 # ===========================================================================

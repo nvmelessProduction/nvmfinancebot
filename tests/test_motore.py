@@ -49,7 +49,9 @@ def foto(**modifiche: object) -> Fotografia:
         "bias_per_tf": {TF.M3: Bias.SHORT},
         "target_raggiunto_per_tf": {},
         "key_level_presi": [KL_SETTIMANALE],
-        "sbilanciamenti": {TF.D1: Bias.SHORT, TF.W1: Bias.SHORT},
+        # Il CRT di queste prove e' short: nasce da massimi spazzati verso
+        # l'alto, quindi i due superiori risultano LONG (SETUP-05, REV-46).
+        "sbilanciamenti": {TF.D1: Bias.LONG, TF.W1: Bias.LONG},
         "equity": 10000.0,
         "prezzo_cfd": 109.0,
         "valore_punto": 1.0,
@@ -389,7 +391,7 @@ class TestOperativitaDomenicale:
                 istante=self.DOMENICA,
                 candele_per_tf=self.candele_domenicali(),
                 key_level_presi=[KeyLevel(TF.M1, TipoKeyLevel.MAX, 110.5)],
-                sbilanciamenti={TF.M1: Bias.SHORT, TF.M3: Bias.SHORT},
+                sbilanciamenti={TF.M1: Bias.LONG, TF.M3: Bias.LONG},
             ),
             TF.W1,
         )

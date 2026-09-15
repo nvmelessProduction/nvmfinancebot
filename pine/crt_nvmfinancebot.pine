@@ -296,11 +296,19 @@ latiOpposti  = (stopCrt - ingressoCrt) * (tp1Crt - ingressoCrt) < 0
 rapporto     = rischio > 0 and latiOpposti ? math.abs(tp1Crt - ingressoCrt) / rischio : na
 
 // =============================================================================
-//  SETUP-05 — I due timeframe immediatamente superiori devono aver sbilanciato
-//             nella direzione dell'operazione
-//  SETUP-06 + DEF-17 — Il CRT non puo' andare contro la bias di comando
+//  SETUP-05 — I due timeframe superiori devono aver spazzato dalla stessa parte
+//
+//  La direzione confrontata e' quella dello SPAZZAMENTO, non dell'operazione
+//  (REV-46). Un CRT short nasce sopra un massimo superato verso l'alto: quel
+//  timeframe ha sbilanciato LONG, e l'operazione e' la reazione contraria.
+//  Pretendere che lo sbilanciamento coincida con l'operazione chiede che LONG
+//  sia uguale a SHORT, e sui prezzi reali non si e' verificato nemmeno una
+//  volta in ventisei anni.
+//
+//  SETUP-06 + DEF-17 — Il CRT non puo' andare contro la bias di comando.
 // =============================================================================
-allineato = sbil1 == verso and sbil2 == verso and verso != 0
+spazzamento = -verso
+allineato = verso != 0 and sbil1 == spazzamento and sbil2 == spazzamento
 concorde  = comando != 0 and comando == verso
 
 // =============================================================================
@@ -312,7 +320,7 @@ scarto = not figura ? "" :
      rischio == 0 ? "rischio nullo (RISK-03)" :
      not latiOpposti ? "TP1 gia' superato all'ingresso (GEST-01)" :
      rapporto < rrMinimo ? "R " + str.tostring(rapporto, "#.##") + " sotto " + str.tostring(rrMinimo) + " (GEST-01)" :
-     applicaAllineamento and not allineato ? "i due TF superiori non hanno sbilanciato nella stessa direzione (SETUP-05)" :
+     applicaAllineamento and not allineato ? "i due TF superiori non hanno spazzato dalla stessa parte (SETUP-05)" :
      applicaComando and not concorde ? "contro la bias di comando " + tfComando + " (SETUP-06, DEF-17)" :
      ""
 
@@ -449,7 +457,9 @@ if vediQuadro and barstate.islast
              nomeBias(bias2) + " / " + nomeBias(bias1), C_TESTO)
 
         // SETUP-05: la condizione vera del cancello.
-        riga(3, "sbilanciamento", nomeBias(sbil2) + " / " + nomeBias(sbil1),
+        // Lo spazzamento e' l'opposto dell'operazione che ne nasce: se qui
+        // leggi "long / long", il setup che cerchi e' una SHORT.
+        riga(3, "spazzamento", nomeBias(sbil2) + " / " + nomeBias(sbil1),
              allineato ? coloreBias(verso) : C_TENUE)
 
         // DEF-36 e DEF-38: i livelli, e quali sono gia' stati presi.
