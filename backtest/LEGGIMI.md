@@ -31,6 +31,7 @@ attiva, più quelli che servono a misurare cosa cambierebbe abbassandola.
 | `rapporto.py` | le tabelle: imbuto, esiti, sensibilità a `RR_MINIMO` |
 | `costi.py` | spread, commissioni e size minima del broker |
 | `placebo.py` | il CRT contro entrate a caso con la stessa geometria |
+| `trailing.py` | uscita a trailing stop senza TP, e il suo placebo |
 
 ## Il test che conta più di tutti
 
