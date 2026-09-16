@@ -54,6 +54,11 @@ def foto(**modifiche: object) -> Fotografia:
         "candele_per_tf": {TF.H4: [N1, N2]},
         "bias_per_tf": {TF.M3: Bias.SHORT},
         "target_raggiunto_per_tf": {},
+        # SETUP-19: il CRT di queste prove e' short sul future, cioe' SELL su
+        # EURUSD e BUY su USDJPY/USDCHF. La riga LONG della tabella del DXY
+        # dice esattamente questo su tutte e cinque le coppie, quindi una sola
+        # bias basta per tutti gli strumenti provati qui.
+        "bias_dxy": Bias.LONG,
         "key_level_presi": [KL_SETTIMANALE],
         "key_level_correnti": [KL_SETTIMANALE, KL_H4_MAX, KL_H4_MIN],
         # Il CRT di queste prove e' short: nasce da massimi spazzati verso
@@ -383,6 +388,74 @@ class TestSegnoInvertito:
         assert abs(invertito.livello_stop - 109.0) / 109.0 == pytest.approx(
             r / (1 + r)
         )
+
+
+# ===========================================================================
+# Il filtro DXY (SETUP-19, RISK-05, PRIN-09)
+# ===========================================================================
+class TestFiltroDxy:
+    """SETUP-19 e RISK-05 — cinque coppie su sei derivano la direzione dal DXY.
+
+    Fino a REV-53 `bias_dxy` restava `NESSUNA` e il motore non lo leggeva
+    affatto: si operava sulla sola bias propria dello strumento, quindi su
+    strumenti che la strategia non avrebbe nemmeno selezionato. E' la stessa
+    classe di difetto di DEF-33 — regola implementata, collaudata, mai
+    chiamata.
+    """
+
+    def test_bias_dxy_concorde_lascia_passare(self) -> None:
+        """DXY LONG vuole SELL su EURUSD, e il CRT e' short."""
+        assert m.valuta(foto(bias_dxy=Bias.LONG), TF.H4).azione == "SELL"
+
+    def test_bias_dxy_discorde_blocca(self) -> None:
+        """DXY SHORT vuole BUY su EURUSD: il CRT short non si esegue."""
+        decisione = m.valuta(foto(bias_dxy=Bias.SHORT), TF.H4)
+        assert decisione.azione == "NONE"
+        assert "RISK-05" in decisione.regole_che_bloccano
+
+    def test_bias_dxy_nessuna_blocca_ogni_coppia(self) -> None:
+        """*"Con bias DXY NESSUNA non si opera su alcuna coppia."*"""
+        for strumento in ("EURUSD", "GBPUSD", "AUDUSD", "USDCHF", "USDJPY"):
+            decisione = m.valuta(
+                foto(strumento=strumento, bias_dxy=Bias.NESSUNA), TF.H4
+            )
+            assert decisione.azione == "NONE", strumento
+            assert "RISK-05" in decisione.regole_che_bloccano, strumento
+
+    def test_la_doppia_trasformazione(self) -> None:
+        """SETUP-19 passo per passo, sull'esempio scritto nel documento.
+
+        *"DXY in bias LONG. Da questa tabella `USDJPY` va BUY. Sul future `6J`
+        la direzione corrispondente e' SELL, perche' `6J` ha segno invertito.
+        Quindi il CRT da cercare su `6J` e' short, e produce un ordine BUY su
+        `USDJPY`."*
+
+        Il CRT di queste prove e' short. Con DXY LONG deve passare, con DXY
+        SHORT deve fermarsi — cioe' l'opposto di EURUSD a parita' di CRT. E'
+        il punto dove confondere le due trasformazioni si vede.
+        """
+        passa = m.valuta(foto(strumento="USDJPY", bias_dxy=Bias.LONG), TF.H4)
+        assert passa.azione == "BUY"
+        assert passa.direzione is Bias.SHORT, "il CRT sul future resta short"
+
+        ferma = m.valuta(foto(strumento="USDJPY", bias_dxy=Bias.SHORT), TF.H4)
+        assert ferma.azione == "NONE"
+        assert "RISK-05" in ferma.regole_che_bloccano
+
+        # A parita' di CRT, EURUSD e USDJPY sono abilitati da bias DXY opposte.
+        eurusd_con_long = m.valuta(foto(strumento="EURUSD", bias_dxy=Bias.LONG), TF.H4)
+        assert eurusd_con_long.azione == "SELL"
+
+    def test_xauusd_non_deriva_dal_dxy(self) -> None:
+        """PRIN-09 e PA-05 — l'oro ha bias propria, e passa anche con DXY NESSUNA.
+
+        Qui interessa solo che il blocco non sia RISK-05: l'oro puo' fermarsi
+        per altre regole (i key level della fotografia sono quelli del forex),
+        ma non per il filtro valutario.
+        """
+        for bias in (Bias.NESSUNA, Bias.LONG, Bias.SHORT):
+            decisione = m.valuta(foto(strumento="XAUUSD", bias_dxy=bias), TF.H4)
+            assert "RISK-05" not in decisione.regole_che_bloccano, bias
 
 
 # ===========================================================================

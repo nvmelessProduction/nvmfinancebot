@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from core.config import impostazioni
+from core.simboli import cfd_da_simbolo_esecuzione
 from core.log import diario
 from core.models import OrderResult
 
@@ -587,9 +588,26 @@ def posizioni_per_strumento() -> tuple[bool, dict[str, int], str]:
     ok, posizioni, messaggio = posizioni_broker()
     if not ok:
         return False, {}, messaggio
+
+    # MT5 restituisce il nome **suffissato** (`EURUSD.a`). Chi legge questo
+    # dizionario — `motore.valuta` per ESCL-11 e `rischio.posizioni_nel_gruppo`
+    # per RISK-02 — lo interroga coi nomi nudi dell'UNIVERSO. Con un suffisso
+    # configurato e nessuna conversione il conteggio risultava sempre vuoto:
+    # il tetto delle quattro posizioni non scattava mai e RISK-02 applicava
+    # sempre l'1,00% pieno, senza che nulla comparisse nei log.
+    suffisso = impostazioni().MT5_SUFFISSO_SIMBOLI
     conteggi: dict[str, int] = {}
+    ignorate = 0
     for posizione in posizioni:
-        conteggi[posizione["simbolo"]] = conteggi.get(posizione["simbolo"], 0) + 1
+        strumento = cfd_da_simbolo_esecuzione(posizione["simbolo"], suffisso)
+        if strumento is None:
+            # Posizione aperta a mano su uno strumento fuori da PRIN-08: non
+            # entra nei conteggi delle regole, che parlano dell'UNIVERSO.
+            ignorate += 1
+            continue
+        conteggi[strumento] = conteggi.get(strumento, 0) + 1
+    if ignorate:
+        messaggio = f"{messaggio}, {ignorate} fuori dall'UNIVERSO"
     return True, conteggi, messaggio
 
 

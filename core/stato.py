@@ -112,6 +112,29 @@ def bias_per_timeframe(storico: Storico, istante: datetime) -> dict[TF, Bias]:
     }
 
 
+def bias_comando_dxy(storico_dxy: Storico, istante: datetime) -> Bias:
+    """SETUP-19 — La bias di comando del DXY, da cui derivano cinque coppie.
+
+    *"`bias_comando` sul DXY si calcola con SETUP-06 applicato al DXY"*: e'
+    la stessa funzione che il motore usa sullo strumento operativo, applicata
+    a un altro storico. Non c'e' nulla di speciale nel DXY se non quale
+    archivio si legge.
+
+    `target_raggiunto_per_tf` resta vuoto, come sullo strumento: il target di
+    DEF-46 non e' calcolato in produzione (vedi `costruisci_fotografia`), e
+    passarne uno finto qui sarebbe peggio che non passarne nessuno.
+
+    Con archivio del DXY assente o troppo corto, `bias_per_timeframe` torna
+    `NESSUNA` per DEF-26 e `bias_comando` torna `NESSUNA`: e SETUP-19 dice
+    che con bias DXY NESSUNA **non si opera su alcuna coppia**. E'
+    l'astensione giusta, non un caso degenere da aggirare.
+    """
+    from core.setup import bias_comando
+
+    comando, _ = bias_comando(bias_per_timeframe(storico_dxy, istante), {})
+    return comando
+
+
 # ===========================================================================
 # Key level
 # ===========================================================================

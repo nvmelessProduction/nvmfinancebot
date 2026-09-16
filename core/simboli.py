@@ -97,3 +97,29 @@ def simbolo_esecuzione(cfd: str, suffisso: str = "") -> str:
     scopre con `python prova_esecuzione.py` e si mette in `MT5_SUFFISSO_SIMBOLI`.
     """
     return f"{cfd}{suffisso}" if suffisso else cfd
+
+
+def cfd_da_simbolo_esecuzione(simbolo: str, suffisso: str = "") -> Optional[str]:
+    """L'inversa di `simbolo_esecuzione`: dal nome del broker al CFD di PRIN-08.
+
+    Serve a rileggere cio' che torna dal broker. MT5 restituisce le posizioni
+    col nome **suffissato** (`EURUSD.a`), mentre RISK-02, RISK-06 ed ESCL-11
+    contano posizioni per strumento dell'`UNIVERSO`, che e' scritto coi nomi
+    nudi. Senza questa conversione, con un suffisso configurato:
+
+    - `posizioni_aperte_per_strumento[strumento]` e' sempre 0, quindi il tetto
+      di RISK-06 e il divieto ESCL-11 non scattano mai;
+    - `n` dentro il gruppo di correlazione e' sempre 1, quindi RISK-02 applica
+      sempre l'1,00% pieno e la scala 0,75/0,45 non entra mai in funzione.
+
+    Nessuna delle due cose lascia traccia nei log: il conteggio e' semplicemente
+    vuoto, e il motore lo legge come "nessuna posizione aperta".
+
+    None se il nome non corrisponde ad alcuno strumento dell'`UNIVERSO`: puo'
+    succedere legittimamente, se sul conto c'e' una posizione aperta a mano su
+    uno strumento che il bot non tratta. Chi chiama la scarta.
+    """
+    nudo = simbolo
+    if suffisso and simbolo.endswith(suffisso):
+        nudo = simbolo[: -len(suffisso)]
+    return nudo if nudo in UNIVERSO else None

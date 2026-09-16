@@ -265,6 +265,38 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
     applicate.append("SETUP-02A" if crt.direzione is Bias.SHORT else "SETUP-02B")
 
+    # --- 4bis. Il filtro DXY (SETUP-19, RISK-05, PRIN-09, PA-05) ----------
+    #
+    # SETUP-19 e' scritta in direzioni **CFD**, il CRT e' rilevato sul future:
+    # le due si confrontano solo dopo DEF-33. La regola descrive tre passi e
+    # qui ci sono tutti e tre.
+    #
+    # `XAUUSD` non deriva dal DXY (PRIN-09): `direzione_da_dxy` torna None e
+    # `strumento_eleggibile` lascia passare il setup proprio (PA-05).
+    #
+    # Con bias DXY NESSUNA, SETUP-19 dice "nessuna operazione su alcuna
+    # coppia": `direzione_da_dxy` torna None e `strumento_eleggibile` blocca.
+    applicate.extend(["SETUP-19", "RISK-05"])
+    verso_del_setup = direzione_cfd(crt.direzione, foto.strumento)   # passo 2
+    verso_dal_dxy = stp.direzione_da_dxy(foto.bias_dxy, foto.strumento)  # passo 1
+    if not risk.strumento_eleggibile(                                # passo 3
+        strumento=foto.strumento,
+        direzione_dal_dxy=verso_dal_dxy.value if verso_dal_dxy else None,
+        ha_setup_proprio=True,
+        direzione_del_setup=verso_del_setup.value,
+    ):
+        motivo = (
+            f"bias DXY {foto.bias_dxy.value}: SETUP-19 non abilita alcuna "
+            f"operazione su {foto.strumento}"
+            if verso_dal_dxy is None else
+            f"bias DXY {foto.bias_dxy.value} vuole {verso_dal_dxy.value} su "
+            f"{foto.strumento}, il CRT porta a {verso_del_setup.value}"
+        )
+        return _non_operare(
+            foto.strumento, ["RISK-05"] + indipendenti, motivo, applicate,
+            direzione=crt.direzione, tf_crt=crt.tf,
+        )
+
     # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, GEST-08) --------
     # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):
     #
@@ -446,7 +478,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # e' stato letto e con quel segno vanno interpretate le regole di setup.
     # Verso il broker parte `azione`, ed e' l'unica cosa che si converte qui:
     # i tre livelli sono gia' passati sulla scala del CFD al punto 4bis.
-    verso_cfd = direzione_cfd(crt.direzione, foto.strumento)
+    verso_cfd = verso_del_setup      # gia' convertito al punto 4bis
     return Decisione(
         azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
         strumento=foto.strumento,

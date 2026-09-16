@@ -57,13 +57,14 @@ from core.models import AlertIn
 from core.motore import Fotografia
 from core.parametri import LOOKBACK_ANNI, TF, UNIVERSO
 from core.simboli import (
+    DXY_FUTURE,
     cfd_di,
     e_solo_analisi,
     future_da_ticker,
     simbolo_esecuzione,
     timeframe_da_intervallo,
 )
-from core.stato import Conto, costruisci_fotografia
+from core.stato import Conto, bias_comando_dxy, costruisci_fotografia
 
 log = diario("fornitore")
 
@@ -325,11 +326,23 @@ class FornitoreTradingView:
         # prezzi scambiati fra una chiusura e l'altra. Con soli alert a
         # chiusura di candela restano a zero, e SETUP-09 blocca gli ingressi
         # da gap: prudente, e dichiarato.
+        # SETUP-19 e RISK-05 — la bias del DXY. L'archivio del DXY viene
+        # aggiornato a ogni giro da `mercato.py` e fin qui non lo leggeva
+        # nessuno: `bias_dxy` restava al suo valore di partenza NESSUNA e il
+        # motore non lo guardava affatto, quindi si operava sulla sola bias
+        # propria dello strumento su cinque coppie su sei.
+        #
+        # Se l'archivio del DXY e' assente o troppo corto la bias torna
+        # NESSUNA, e SETUP-19 dice che allora non si opera su alcuna coppia.
+        # E' astensione, non guasto: il motivo compare nella decisione.
+        bias_dxy = bias_comando_dxy(self.storico(DXY_FUTURE), adesso)
+
         foto = costruisci_fotografia(
             istante=adesso,
             strumento=cfd,
             storico=self.storico(future),
             conto=conto,
+            bias_dxy=bias_dxy,
             eventi_news=eventi or (),
             eta_calendario_ore=eta,
         )
