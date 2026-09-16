@@ -32,6 +32,13 @@ backtest/segnali.pickle
 # sono uno per giorno per strumento — decine di migliaia. Si riscaricano da
 # soli (`python importa_dukascopy.py`, `core/duka_minuti.py`), e la cache su
 # disco li rende gratuiti dopo la prima volta.
-dukascopy/
-dukascopy_min/
+# Senza la barra finale la regola vale anche per un file o un collegamento
+# con quel nome — ed e' la forma che serve: un collegamento simbolico
+# `dukascopy` era finito nel repository, e su Windows git lo scarica come un
+# FILE di testo. `Path("dukascopy").mkdir(exist_ok=True)` allora fallisce con
+# WinError 183, perche' qualcosa con quel nome esiste gia' e non e' una
+# cartella.
+dukascopy
+dukascopy_min
 duka_serie.pickle
+*.bi5

@@ -63,6 +63,29 @@ def scala_di(simbolo: str) -> float:
     return SCALA.get(simbolo, 1e5)
 
 
+def _assicura_deposito() -> None:
+    """La cartella della cache esiste, e se al suo posto c'e' altro lo dice.
+
+    `mkdir(exist_ok=True)` fallisce con `WinError 183` quando esiste gia'
+    qualcosa con quel nome che NON e' una cartella. E' successo davvero: un
+    collegamento simbolico `dukascopy` era finito nel repository, e git su
+    Windows lo scarica come un file di testo col percorso dentro.
+
+    Il messaggio di `mkdir` in quel caso dice "impossibile creare un file
+    quando quel file esiste gia'", che manda a cercare nella direzione
+    sbagliata. Qui si dice cosa c'e' e cosa fare.
+    """
+    if DEPOSITO.is_dir():
+        return
+    if DEPOSITO.exists():
+        raise SystemExit(
+            f"'{DEPOSITO}' esiste ma NON e' una cartella. Cancellalo e "
+            f"rilancia:\n    del {DEPOSITO}      (Windows)\n"
+            f"    rm {DEPOSITO}       (Linux, macOS)"
+        )
+    DEPOSITO.mkdir(parents=True, exist_ok=True)
+
+
 def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
     """Con cache su disco e attesa crescente. `None` = non c'e' nulla da avere.
 
@@ -74,7 +97,7 @@ def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
     if cache.exists():
         dati = cache.read_bytes()
         return dati or None
-    DEPOSITO.mkdir(exist_ok=True)
+    _assicura_deposito()
 
     attesa = 1.0
     for _ in range(tentativi):
