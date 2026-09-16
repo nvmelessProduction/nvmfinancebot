@@ -432,6 +432,11 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # che il cambio di consegna si vede — sul timeframe del range non c'e'
     # ancora nulla da vedere.
     tf_ingresso = COPPIE_CRT.get(crt.tf)
+    # Il responso deve esistere SEMPRE: e' cio' che il trader discrezionale
+    # legge, e un dossier senza le conferme di Romeo e' un dossier su cui non
+    # si puo' giudicare. Vuoto solo se il timeframe del CRT non ha una coppia
+    # in CRT-04, nel qual caso non c'e' un timeframe di ingresso da guardare.
+    responso_romeo: dict[str, Optional[bool]] = {}
     if tf_ingresso is not None:
         serie_ingresso = candele_visibili(
             foto.candele_per_tf.get(tf_ingresso, ()), foto.istante
@@ -450,12 +455,13 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             crt_per_tf=foto.crt_per_tf,
         )
         if not ok_romeo:
-            return _non_operare(
+            fermata = _non_operare(
                 foto.strumento, list(blocchi_romeo) + indipendenti,
                 "conferme di Romeo non soddisfatte: "
                 + ", ".join(SPIEGAZIONE_CRT.get(b, b) for b in blocchi_romeo),
                 applicate, direzione=crt.direzione, tf_crt=crt.tf,
             )
+            return replace(fermata, responso_romeo=responso_romeo)
 
     # --- 4bis. Il filtro DXY (SETUP-19, RISK-05, PRIN-09, PA-05) ----------
     #
@@ -753,4 +759,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         motivo="tutte le condizioni soddisfatte",
         rapporto_su_tp1=rapporto,
         rapporto_giud01=rapporto_kl_gap,
+        # Le conferme di Romeo viaggiano fino al giudice anche qui: senza,
+        # meta' dei setup gli arriverebbe senza il quadro su cui decidere.
+        responso_romeo=responso_romeo,
     )

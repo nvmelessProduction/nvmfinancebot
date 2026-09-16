@@ -464,59 +464,61 @@ INGRESSO_ROMEO: Final[bool] = True
 #
 # Chi spegne una voce sa cosa sta spegnendo. Chi le lascia tutte accese ha la
 # strategia di Romeo per intero, e paga quello che le misure dicono che costa.
-# Cercato su tutti i 128 sottoinsiemi (`backtest/confronto_conferme.py`). Il
-# risultato e' netto e va contro cio' che mi aspettavo:
+# ===========================================================================
+# Le conferme di Romeo: TUTTE si applicano, ma non tutte sono veti
+# ===========================================================================
 #
-#   6 regole, senza CRT-17    n=43   R netto +0,2897   sigma +1,3   <-- QUESTA
-#   solo CISD + ombre         n=136  R netto +0,1008   sigma +0,9
-#   tutte e sette accese      n=12   R netto -0,3126   sigma -0,8
-#   nessuna conferma          n=413  R netto -0,0557   sigma -0,8
+# ATTENZIONE, perche' il nome precedente di questa tabella traeva in inganno.
 #
-# Sei conferme su sette si possono tenere, e rendono quasi il TRIPLO della
-# coppia CISD+ombre. Le regole delle fonti lavorano meglio insieme che da
-# sole: `CRT-12` da sola da' +0,0982, ma `CRT-10 + CRT-11 + CRT-12` da'
-# +0,3002. E' il contrario di quello che avevo concluso misurandole una
-# per una, ed e' il motivo per cui una misura a una variabile alla volta
-# non basta su regole che le fonti descrivono come confluenze.
-CONFERME_ROMEO: Final[dict[str, bool]] = {
-    # --- ACCESA: misurata, e da sola e' la migliore ------------------------
-    # Con l'ingresso di CRT-13 il filtro sulle ombre porta il winrate dal
-    # 57,4% al 62,4% e il netto da +0,1992 a +0,3613 R.
-    "CRT-20": True,
-
-    # --- INTRINSECA all'ingresso: accenderla non cambia nulla --------------
-    # Il CISD e' il PRIMO PASSO della sequenza di CRT-13. Applicarlo anche
-    # come filtro a monte da' esattamente lo stesso campione (n=226 in
-    # entrambi i casi): e' gia' applicato, dentro l'ingresso.
-    "CRT-11": False,
-
-    # --- SPENTE: non misurate INSIEME all'ingresso di CRT-13 ---------------
-    # Non sono spente perche' Romeo abbia torto. Sono spente perche' le ho
-    # misurate con l'ingresso VECCHIO — quello alla chiusura del range — e
-    # quel numero non dice niente su come si comportino con l'ingresso vero.
-    #
-    # Misurato: con tutte accese, su 360 valutazioni dell'archivio reale si
-    # trovano 18 CRT e se ne bloccano 18. Il bot tace del tutto.
-    #
-    # Vanno riaccese UNA PER UNA, misurando ciascuna con l'ingresso di
-    # CRT-13. E' il lavoro che resta, ed e' scritto qui perche' non venga
-    # scambiato per una bocciatura.
+# **Tutte e otto le regole di Romeo vengono valutate su OGNI setup, sempre.**
+# Il loro verdetto — si, no, non valutabile — finisce nel `responso`, che
+# viaggia nella Decisione fino al dossier, e il dossier e' cio' che arriva al
+# trader discrezionale. Nessuna regola e' spenta e nessuna viene saltata.
+#
+# Questa tabella dice un'altra cosa: **quali possono uccidere l'operazione DA
+# SOLE**, prima che qualcuno la guardi.
+#
+# Applicarle tutte come veti automatici in AND non e' la strategia di Romeo:
+# e' una caricatura. `CRT-14` dice testualmente *"non si prende ogni istanza,
+# il contesto decide quali istanze valgono"* — cioe' che le conferme vanno
+# pesate insieme, non subite una per una.
+#
+# E la misura lo conferma: come veti in AND, su 360 valutazioni dell'archivio
+# reale si trovano 18 CRT e se ne bloccano 18. Il bot tace del tutto. Non e'
+# rigore, e' paralisi.
+#
+# `CRT-20` e' l'unico veto automatico perche' e' l'unico misurato come tale:
+# con l'ingresso di CRT-13 porta il winrate dal 57,4% al 62,4%. Le altre
+# parlano al giudice, che e' il posto dove Romeo stesso le mette.
+CONFERME_CHE_BLOCCANO_DA_SOLE: Final[dict[str, bool]] = {
+    "CRT-20": True,   # peso delle ombre di N2 — misurato come veto
     "CRT-06": False,  # tre modelli CRT allineati
     "CRT-10": False,  # Double Purge Sweep
+    "CRT-11": False,  # CISD — gia' INTRINSECO all'ingresso di CRT-13
     "CRT-12": False,  # divergenza SMT
     "CRT-15": False,  # finestre orarie di New York
-    "CRT-17": False,  # tenuta della meta' del range — e' l'unica con un
-                      # motivo proprio: blocca 281 segnali su 413 e la sua
-                      # prima misura era un lookahead
+    "CRT-17": False,  # tenuta della meta' del range
     "CRT-18": False,  # punto medio dell'ombra
 }
 
+# Il vecchio nome, perche' il codice che lo usa continui a funzionare.
+CONFERME_ROMEO = CONFERME_CHE_BLOCCANO_DA_SOLE
 
-def conferma_attiva(regola: str) -> bool:
-    """Questa conferma di Romeo si applica?"""
-    if regola not in CONFERME_ROMEO:
+
+def blocca_da_sola(regola: str) -> bool:
+    """Questa conferma puo' fermare l'operazione SENZA che nessuno la valuti?
+
+    Non e' "la regola si applica": quello lo fanno tutte, sempre. E' "questa
+    regola e' un veto automatico". Le altre parlano al giudice.
+    """
+    if regola not in CONFERME_CHE_BLOCCANO_DA_SOLE:
         raise ValueError(f"conferma non riconosciuta: {regola}")
-    return CONFERME_ROMEO[regola]
+    return CONFERME_CHE_BLOCCANO_DA_SOLE[regola]
+
+
+# Il vecchio nome. Diceva "attiva" per una cosa che significa "blocca", ed e'
+# la ragione per cui sembrava che meta' delle regole fosse spenta.
+conferma_attiva = blocca_da_sola
 
 # ===========================================================================
 # CRT-04 — le coppie di timeframe canoniche
