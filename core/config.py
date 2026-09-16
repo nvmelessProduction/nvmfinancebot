@@ -33,6 +33,15 @@ class Impostazioni(BaseSettings):
     # auto:    esegue davvero sul broker
     MODE: Modalita = "dry_run"
 
+    # --- Il trader discrezionale (Claude) ------------------------------------
+    # Con GIUDIZIO_ATTIVO=true ogni setup gia' approvato dalle regole passa da
+    # Claude, che puo' solo RIFIUTARLO. Non puo' autorizzare cio' che le regole
+    # vietano: quello sarebbe un bug con una buona spiegazione.
+    #
+    # Serve ANTHROPIC_API_KEY nell'ambiente. Senza chiave il giudizio si
+    # astiene e non parte nulla: fallisce chiuso, come PRIN-99 impone.
+    GIUDIZIO_ATTIVO: bool = False
+
     # --- Webhook TradingView -------------------------------------------------
     # Parola segreta condivisa con l'alert di TradingView. Se resta vuota
     # l'endpoint rifiuta tutto: meglio non ricevere nulla che accettare chiunque.

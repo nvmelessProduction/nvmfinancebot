@@ -15,3 +15,9 @@ MetaTrader5>=5.0.45 ; sys_platform == "win32"
 pandas>=2.0
 numpy>=1.24
 pytest>=8.0
+
+# --- Il trader discrezionale (GIUDIZIO_ATTIVO=true) --------------------------
+# Claude giudica ogni setup gia' approvato dalle regole e puo' solo rifiutarlo.
+# Senza questa libreria il bot funziona lo stesso: si astiene dal giudicare, e
+# con GIUDIZIO_ATTIVO=true quell'astensione ferma l'ordine (PRIN-99).
+anthropic>=0.40

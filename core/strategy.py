@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+from core.config import impostazioni
 from core.log import diario
 from core.models import AlertIn, Decision
 from core.motore import Decisione, Fotografia
@@ -119,7 +120,60 @@ def valuta(alert: AlertIn) -> Decision:
         )
 
     fotografia, tf_trigger = contesto
-    return traduci(valuta_motore(fotografia, tf_trigger))
+    decisione = valuta_motore(fotografia, tf_trigger)
+    return traduci(_passa_dal_giudizio(decisione, fotografia, tf_trigger))
+
+
+def _passa_dal_giudizio(
+    decisione: Decisione, fotografia: Fotografia, tf_trigger: TF
+) -> Decisione:
+    """Il trader discrezionale, come ULTIMO cancello prima del broker.
+
+    Gira solo su un'operazione che le regole hanno gia' approvato, e puo' fare
+    una cosa sola: trasformarla in NONE. Non tocca direzione, size, stop o
+    bersaglio — quelli non sono in discussione.
+
+    Un'astensione del giudizio e' un'astensione come le altre: porta la sua
+    regola (`GIUD-02`) e il suo motivo, cosi' l'archivio sa distinguere "il
+    giudizio ha detto no" da "il giudizio non era raggiungibile", che sono
+    due fatti diversi e vanno misurati separatamente.
+    """
+    from dataclasses import replace
+
+    if decisione.azione not in ("BUY", "SELL"):
+        return decisione
+    if not getattr(impostazioni(), "GIUDIZIO_ATTIVO", False):
+        return decisione
+
+    from core.dossier import costruisci
+    from core.giudizio_claude import giudica
+
+    try:
+        verdetto = giudica(costruisci(fotografia, decisione, tf_trigger))
+    except Exception as errore:
+        # Il giudizio non deve poter far saltare la valutazione, ma nemmeno
+        # lasciar passare un ordine che non ha giudicato: si astiene.
+        log.exception("giudizio fallito")
+        return replace(
+            decisione, azione="NONE",
+            regole_che_bloccano=("GIUD-02", "PRIN-99"),
+            motivo=f"GIUD-02: giudizio non eseguibile ({errore!r}), astensione",
+        )
+
+    if verdetto.accetta:
+        log.info("giudizio ACCETTA %s: %s", decisione.strumento, verdetto.motivo)
+        return replace(
+            decisione,
+            regole_applicate=decisione.regole_applicate + ("GIUD-02",),
+            motivo=f"{decisione.motivo} | giudizio: {verdetto.motivo}",
+        )
+
+    log.info("giudizio RIFIUTA %s: %s", decisione.strumento, verdetto.motivo)
+    return replace(
+        decisione, azione="NONE", volume=None,
+        regole_che_bloccano=("GIUD-02",),
+        motivo=f"GIUD-02: {verdetto.registrabile}",
+    )
 
 
 def gestisci_aperte(alert: AlertIn) -> tuple:
