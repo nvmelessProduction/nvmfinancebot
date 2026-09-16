@@ -43,12 +43,13 @@ import struct
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import httpx
 
 from core.definizioni import Candela
 from core.log import diario
+from core.parametri import TF
 
 log = diario("duka_minuti")
 
@@ -86,15 +87,24 @@ def _assicura_deposito() -> None:
     DEPOSITO.mkdir(parents=True, exist_ok=True)
 
 
-def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
+def _scarica(
+    percorso: str, tentativi: int = 5, fresco: bool = False
+) -> Optional[bytes]:
     """Con cache su disco e attesa crescente. `None` = non c'e' nulla da avere.
 
     Un 404 e' una risposta (quel giorno non esiste); una connessione caduta e'
     un guasto. Il file vuoto in cache e' la memoria del 404, cosi' non si
     richiede mille volte un giorno che non esistera' mai.
+
+    `fresco` esiste per il **giorno in corso**, e la cache li' e' un veleno:
+    Dukascopy pubblica il file di oggi man mano, quindi il primo scaricamento
+    della giornata prende un file troncato. Metterlo in cache lo
+    cristallizzerebbe — il bot leggerebbe per sempre una giornata che si
+    ferma all'ora in cui e' partito, senza che nulla protesti. Con `fresco`
+    la cache non si legge **e non si scrive**.
     """
     cache = DEPOSITO / percorso.replace("/", "_")
-    if cache.exists():
+    if cache.exists() and not fresco:
         dati = cache.read_bytes()
         return dati or None
     _assicura_deposito()
@@ -109,10 +119,12 @@ def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
             attesa *= 2
             continue
         if r.status_code == 404:
-            cache.write_bytes(b"")          # il giorno non esiste: ricordalo
+            if not fresco:
+                cache.write_bytes(b"")      # il giorno non esiste: ricordalo
             return None
         if r.status_code == 200:
-            cache.write_bytes(r.content)
+            if not fresco:
+                cache.write_bytes(r.content)
             return r.content or None
         time.sleep(attesa)
         attesa *= 2
@@ -120,14 +132,18 @@ def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
 
 
 def minuti_del_giorno(
-    simbolo: str, giorno: date, lato: str = "BID"
+    simbolo: str, giorno: date, lato: str = "BID", fresco: bool = False
 ) -> tuple[Candela, ...]:
-    """Le candele al minuto di un giorno. Vuoto se chiuso o non disponibile."""
+    """Le candele al minuto di un giorno. Vuoto se chiuso o non disponibile.
+
+    `fresco` salta la cache: lo usa il ciclo di mercato per il giorno in
+    corso, che cambia mentre lo si guarda.
+    """
     percorso = (
         f"{simbolo}/{giorno.year}/{giorno.month - 1:02d}/{giorno.day:02d}"
         f"/{lato}_candles_min_1.bi5"
     )
-    grezzo = _scarica(percorso)
+    grezzo = _scarica(percorso, fresco=fresco)
     if not grezzo:
         return ()
     try:
@@ -162,3 +178,59 @@ def minuti(simbolo: str, da: date, a: date, lato: str = "BID") -> tuple[Candela,
         fuori.extend(minuti_del_giorno(simbolo, giorno, lato))
         giorno += timedelta(days=1)
     return tuple(fuori)
+
+
+# Quanti blocchi da un minuto fa ciascun timeframe intraday.
+BLOCCHI: dict[TF, int] = {TF.MIN1: 1, TF.MIN5: 5, TF.MIN15: 15}
+
+
+def aggrega(
+    minuti: Sequence[Candela], quanti: int, fino_a: Optional[datetime] = None
+) -> list[Candela]:
+    """Da candele al minuto a candele di `quanti` minuti.
+
+    Sta qui, e non nello script di semina, perche' lo usano in due: la semina
+    e il ciclo di mercato. Se le due aggregazioni divergessero, il bot
+    valuterebbe candele di 15 minuti costruite in un modo e ne avrebbe in
+    archivio di costruite in un altro — e la storia su cui il motore cerca il
+    CISD non sarebbe piu' la stessa serie che gli arriva ora.
+
+    Il raggruppamento e' su **minuti assoluti**, non su `(data, ora, minuto //
+    quanti)`: quella forma, per blocchi da sessanta minuti in su, da' sempre
+    zero e collassa tutto a un'ora. E' un errore che non produce eccezioni —
+    produce candele sbagliate che sembrano giuste.
+
+    I minuti senza scambi mancano gia' (volume zero, scartati a monte): un
+    blocco puo' averne meno di `quanti`, ed e' giusto cosi'. Inventare i
+    minuti mancanti inventerebbe prezzi.
+
+    `fino_a` e' l'istante fino al quale i minuti sono noti, e serve a **non
+    produrre l'ultima candela in formazione**. Alle 10:07 i minuti arrivano a
+    10:06: senza questo filtro il blocco 10:00-10:15 uscirebbe lo stesso,
+    fatto di sette minuti e datato 10:06. Sarebbe una candela da un quarto
+    d'ora che non e' mai esistita, con un massimo e un minimo piu' stretti
+    del vero, e finirebbe in archivio come le altre — `ESCL-13` vieta
+    esattamente questo. Un blocco esce solo se il suo istante di chiusura e'
+    gia' passato.
+    """
+    if quanti <= 0:
+        return []
+    gruppi: dict[int, list[Candela]] = {}
+    for c in minuti:
+        apertura = c.orario - timedelta(minutes=1)   # l'orario e' la CHIUSURA
+        gruppi.setdefault(int(apertura.timestamp()) // 60 // quanti, []).append(c)
+
+    fuori: list[Candela] = []
+    for chiave in sorted(gruppi):
+        if fino_a is not None:
+            chiusura = datetime.fromtimestamp(
+                (chiave + 1) * quanti * 60, tz=timezone.utc)
+            if chiusura > fino_a:
+                continue                     # blocco ancora aperto
+        pezzi = gruppi[chiave]
+        fuori.append(Candela(
+            pezzi[-1].orario, pezzi[0].apertura,
+            max(p.massimo for p in pezzi), min(p.minimo for p in pezzi),
+            pezzi[-1].chiusura,
+        ))
+    return fuori

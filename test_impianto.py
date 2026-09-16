@@ -678,12 +678,30 @@ class ProvaSimboli(BaseCollaudo):
         self.assertIs(timeframe_da_intervallo("1D"), TF.D1)
         self.assertIs(timeframe_da_intervallo("W"), TF.W1)
 
-    def test_intervallo_fuori_da_def01(self) -> None:
-        """Un alert a 5 minuti non innesca nulla: DEF-01 non lo prevede."""
+    def test_gli_intraday_di_crt04_sono_riconosciuti(self) -> None:
+        """5 e 15 minuti sono timeframe di INGRESSO, non piu' scarti.
+
+        Questa prova diceva il contrario, ed era il contrario giusto finche'
+        valeva `DEF-01`. `CRT-04` accoppia quattro range a un ingresso sotto
+        l'ora e quel vincolo e' stato sollevato: senza questi tre, quattro
+        coppie di Romeo su sei non possono scattare.
+        """
+        from core.parametri import TF
         from core.simboli import timeframe_da_intervallo
 
-        self.assertIsNone(timeframe_da_intervallo("5"))
-        self.assertIsNone(timeframe_da_intervallo("15"))
+        self.assertIs(timeframe_da_intervallo("1"), TF.MIN1)
+        self.assertIs(timeframe_da_intervallo("5"), TF.MIN5)
+        self.assertIs(timeframe_da_intervallo("15"), TF.MIN15)
+        # La forma che manda il ciclo di mercato, non TradingView.
+        self.assertIs(timeframe_da_intervallo("M15"), TF.MIN15)
+
+    def test_intervallo_sconosciuto(self) -> None:
+        """Un timeframe che il bot non tratta resta uno scarto."""
+        from core.simboli import timeframe_da_intervallo
+
+        self.assertIsNone(timeframe_da_intervallo("3"))
+        self.assertIsNone(timeframe_da_intervallo("45"))
+        self.assertIsNone(timeframe_da_intervallo("2H"))
 
     def test_suffisso_del_broker(self) -> None:
         from core.simboli import simbolo_esecuzione
@@ -743,12 +761,20 @@ class ProvaArchivioCandele(BaseCollaudo):
         self.assertFalse(archiviata)
         self.assertIn("PRIN-08", motivo)
 
-    def test_timeframe_fuori_da_def01_non_archiviato(self) -> None:
+    def test_timeframe_sconosciuto_non_archiviato(self) -> None:
         from core.fornitore_tradingview import archivia_candela
 
-        archiviata, motivo = archivia_candela(self.alert_candela(tf="5"))
+        archiviata, motivo = archivia_candela(self.alert_candela(tf="3"))
         self.assertFalse(archiviata)
         self.assertIn("DEF-01", motivo)
+
+    def test_il_quarto_d_ora_ora_si_archivia(self) -> None:
+        """Il timeframe di ingresso di `4h -> 15m` deve poter entrare."""
+        from core.fornitore_tradingview import archivia_candela
+
+        archiviata, motivo = archivia_candela(self.alert_candela(tf="15"))
+        self.assertTrue(archiviata, motivo)
+        self.assertEqual(len(storage.candele_archiviate("GC", "TF_M15")), 1)
 
     def test_il_webhook_archivia_la_candela(self) -> None:
         """Il giro vero: alert dal webhook, candela in archivio."""

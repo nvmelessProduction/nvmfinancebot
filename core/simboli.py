@@ -38,6 +38,19 @@ SOLO_ANALISI: frozenset[str] = frozenset({DXY_FUTURE, "DXY", "DX"})
 # Intervallo dell'alert TradingView -> timeframe di DEF-01.
 # `{{interval}}` restituisce i minuti per gli intraday, e D/W/M per gli altri.
 INTERVALLO_A_TF: dict[str, TF] = {
+    # I tre intraday di CRT-04. Mancavano, e la conseguenza non era un
+    # errore: `timeframe_da_intervallo` tornava None, il fornitore alzava
+    # FotografiaImpossibile e la decisione diventava un PRIN-99 fra i tanti.
+    # Cioe' le quattro coppie di Romeo che entrano sotto l'ora — `4h -> 15m`,
+    # `1h -> 5m`, `15m -> 1m` — non potevano scattare **per nessuna via**,
+    # nemmeno con i minuti in archivio.
+    #
+    # Le forme ammesse sono due perche' due sono i mittenti: TradingView
+    # manda i minuti come numero nudo (`{{interval}}` -> "15"), il ciclo di
+    # mercato manda il nome del timeframe senza prefisso ("M15").
+    "1": TF.MIN1, "M1MIN": TF.MIN1,
+    "5": TF.MIN5, "M5": TF.MIN5,
+    "15": TF.MIN15, "M15": TF.MIN15,
     "60": TF.H1, "1H": TF.H1, "H1": TF.H1,
     "240": TF.H4, "4H": TF.H4, "H4": TF.H4,
     "360": TF.H6, "6H": TF.H6, "H6": TF.H6,
@@ -83,9 +96,13 @@ def future_di(cfd: str) -> Optional[str]:
 def timeframe_da_intervallo(intervallo: str) -> Optional[TF]:
     """Il timeframe di DEF-01 a partire da `{{interval}}` di TradingView.
 
-    None se l'intervallo non e' fra i dieci ammessi: `DEF-01` dice che nessun
-    altro timeframe puo' essere citato da nessuna regola, quindi un alert a
-    cinque minuti non innesca e non archivia nulla.
+    None se l'intervallo non e' riconosciuto: un alert su un timeframe che il
+    bot non tratta non innesca e non archivia nulla.
+
+    I dieci di `DEF-01` non bastano piu': `CRT-04` accoppia quattro range a un
+    timeframe di ingresso sotto l'ora, e quel vincolo e' stato sollevato
+    esplicitamente — la strategia di Romeo viene prima dei documenti che la
+    descrivevano male. I tre intraday stanno qui per questo.
     """
     return INTERVALLO_A_TF.get(intervallo.strip().upper())
 

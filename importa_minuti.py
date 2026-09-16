@@ -42,45 +42,16 @@ from typing import Sequence
 
 from core import storage
 from core.definizioni import Candela
-from core.duka_minuti import minuti_del_giorno
+from core.duka_minuti import BLOCCHI, aggrega, minuti_del_giorno
 from core.log import configura as configura_log
 from core.parametri import TF
 
 SIMBOLI = ["EURUSD", "GBPUSD", "AUDUSD", "USDCHF", "USDJPY", "XAUUSD"]
 ORIGINE = "dukascopy"
 
-# Quanti blocchi da un minuto fa ciascun timeframe.
-BLOCCHI: dict[TF, int] = {TF.MIN1: 1, TF.MIN5: 5, TF.MIN15: 15}
-
-
-def aggrega(minuti: Sequence[Candela], quanti: int) -> list[Candela]:
-    """Da candele al minuto a candele di `quanti` minuti.
-
-    Il raggruppamento e' su **minuti assoluti**, non su `(data, ora, minuto //
-    quanti)`: quella forma, per blocchi da sessanta minuti in su, da' sempre
-    zero e collassa tutto a un'ora. E' un errore che non produce eccezioni —
-    produce candele sbagliate che sembrano giuste.
-
-    I minuti senza scambi mancano gia' (volume zero, scartati a monte): un
-    blocco puo' averne meno di `quanti`, ed e' giusto cosi'. Inventare i
-    minuti mancanti inventerebbe prezzi.
-    """
-    if quanti <= 0:
-        return []
-    gruppi: dict[int, list[Candela]] = {}
-    for c in minuti:
-        apertura = c.orario - timedelta(minutes=1)   # l'orario e' la CHIUSURA
-        gruppi.setdefault(int(apertura.timestamp()) // 60 // quanti, []).append(c)
-
-    fuori: list[Candela] = []
-    for chiave in sorted(gruppi):
-        pezzi = gruppi[chiave]
-        fuori.append(Candela(
-            pezzi[-1].orario, pezzi[0].apertura,
-            max(p.massimo for p in pezzi), min(p.minimo for p in pezzi),
-            pezzi[-1].chiusura,
-        ))
-    return fuori
+# `BLOCCHI` e `aggrega` stanno in `core/duka_minuti.py`: li usa anche il
+# ciclo di mercato, e due copie divergerebbero proprio sulla serie su cui
+# il motore cerca il CISD.
 
 
 def giorni_di(da: date, a: date) -> list[date]:
@@ -117,9 +88,15 @@ def importa(simbolo: str, da: date, a: date, paralleli: int = 16) -> None:
     # l'ultima riga di un file appena scritto puo' essere incompleta. ESCL-13
     # vieta di valutare una candela in formazione.
     chiusi = minuti[:-1]
+    if not chiusi:
+        print("    un solo minuto, nessuna candela chiusa")
+        return
 
     for tf, quanti in BLOCCHI.items():
-        candele = aggrega(chiusi, quanti)
+        # `fino_a` scarta il blocco ancora aperto in coda: l'ultimo giorno e'
+        # quello in corso, e senza questo filtro uscirebbe un quarto d'ora
+        # fatto di tre minuti (ESCL-13).
+        candele = aggrega(chiusi, quanti, fino_a=chiusi[-1].orario)
         if not candele:
             continue
         righe = [{
