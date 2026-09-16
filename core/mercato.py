@@ -51,7 +51,7 @@ import httpx
 from core import storage
 from core.log import diario
 from core.models import AlertIn
-from core.parametri import TF
+from core.parametri import TF, gerarchia
 from core.simboli import DXY_FUTURE, FUTURE_A_CFD
 
 log = diario("mercato")
@@ -102,6 +102,10 @@ class Mercato:
     giri: int = field(default=0, init=False)
     candele_nuove: int = field(default=0, init=False)
     valutazioni: int = field(default=0, init=False)
+    # Valutazioni saltate perche' un timeframe superiore non si era
+    # aggiornato (CTX-10). Se questo numero cresce, l'archivio non sta
+    # stando dietro alla fonte e va guardato.
+    saltate_per_ctx10: int = field(default=0, init=False)
     ultimo_errore: Optional[str] = field(default=None, init=False)
 
     # -- ciclo di vita ----------------------------------------------------
@@ -139,6 +143,10 @@ class Mercato:
         adesso = adesso or datetime.now(timezone.utc)
         self.giri += 1
         raccolte: list[Nuova] = []
+        # CTX-10 — quali serie non si sono potute aggiornare in questo giro.
+        # Serve a non valutare un timeframe basso su un archivio superiore
+        # rimasto indietro: vedi `_valuta_le_ultime`.
+        falliti: set[tuple[str, TF]] = set()
 
         with httpx.Client(headers=_INTESTAZIONI, timeout=30.0, follow_redirects=True) as cliente:
             for future in _strumenti():
@@ -148,11 +156,12 @@ class Mercato:
                     try:
                         raccolte.extend(self.aggiorna(future, tf, cliente))
                     except Exception as errore:
+                        falliti.add((future, tf))
                         self.ultimo_errore = f"{future} {tf.value}: {errore!r}"
                         log.warning("aggiornamento fallito su %s %s: %s",
                                     future, tf.value, errore)
 
-        self._valuta_le_ultime(raccolte)
+        self._valuta_le_ultime(raccolte, falliti)
         return raccolte
 
     def serie_da_chiedere(self, future: str, tf: TF, adesso: datetime) -> bool:
@@ -201,7 +210,29 @@ class Mercato:
         log.info("%s %s: %d candele nuove in archivio", future, tf.value, len(mancanti))
         return [Nuova(future=future, tf=tf, riga=r) for r in mancanti]
 
-    def _valuta_le_ultime(self, raccolte: list[Nuova]) -> None:
+    @staticmethod
+    def _superiori_non_aggiornati(
+        future: str, tf: TF, falliti: set[tuple[str, TF]]
+    ) -> tuple[TF, ...]:
+        """CTX-10 — quali timeframe superiori a `tf` non si sono aggiornati.
+
+        "Superiore" e' nel senso della gerarchia di DEF-01, dove il primo
+        elemento e' il piu' alto. Si guardano solo le serie che questo ciclo
+        chiede davvero (`DURATA`): una serie che non viene mai scaricata non
+        puo' essere in ritardo.
+        """
+        ordine = gerarchia()
+        if tf not in ordine:
+            return ()
+        posizione = ordine.index(tf)
+        return tuple(
+            superiore for superiore in ordine[:posizione]
+            if superiore in DURATA and (future, superiore) in falliti
+        )
+
+    def _valuta_le_ultime(
+        self, raccolte: list[Nuova], falliti: Optional[set[tuple[str, TF]]] = None
+    ) -> None:
         """Una valutazione per serie, sulla candela piu' recente.
 
         Non si rivaluta il passato: se il bot e' stato spento, le candele
@@ -211,6 +242,7 @@ class Mercato:
         """
         if self.su_candela is None:
             return
+        falliti = falliti or set()
         ultime: dict[tuple[str, TF], Nuova] = {}
         for nuova in raccolte:
             chiave = (nuova.future, nuova.tf)
@@ -223,6 +255,23 @@ class Mercato:
                 continue                 # PRIN-08: si analizza, non si opera
             if tf not in TF_OPERATIVI:
                 continue                 # non e' un timeframe d'ingresso
+
+            # CTX-10 — *"l'analisi del timeframe appena chiuso va
+            # ricalcolata prima di operare sui timeframe inferiori"*.
+            # Se lo scarico di una serie SUPERIORE e' fallito in questo
+            # giro, la bias e i key level che il motore leggerebbe sono
+            # quelli di prima: l'eccezione veniva loggata e la valutazione
+            # proseguiva lo stesso, su un archivio stantio, senza che
+            # niente se ne accorgesse.
+            mancanti = self._superiori_non_aggiornati(future, tf, falliti)
+            if mancanti:
+                log.warning(
+                    "CTX-10: %s %s non valutato, i superiori %s non si sono "
+                    "aggiornati in questo giro",
+                    future, tf.value, ", ".join(t.value for t in mancanti),
+                )
+                self.saltate_per_ctx10 += 1
+                continue
             self.valutazioni += 1
             try:
                 self.su_candela(in_alert(nuova))

@@ -81,6 +81,7 @@ def traduci(decisione: Decisione) -> Decision:
         tp1=decisione.tp1,
         tf_crt=decisione.tf_crt.value if decisione.tf_crt else None,
         spread=decisione.spread,
+        rischio=decisione.rischio,
     )
 
 

@@ -382,3 +382,102 @@ class TestPurezza:
         pos = posizione()
         with pytest.raises(Exception):
             pos.livello_stop = 0.0     # type: ignore[misc]
+
+
+# ===========================================================================
+# RISK-02 — il ridimensionamento (REV-42, PA-63)
+# ===========================================================================
+class TestRidimensionamento:
+    """*"A ogni nuova apertura tutte le posizioni gia' aperte vengono
+    ridimensionate al nuovo rischio_operazione."*
+
+    Senza questo passo l'esposizione reale segue la curva alta — ciascuna
+    posizione conserva il rischio del proprio ingresso — invece di quella
+    dichiarata: 2,65% su quattro posizioni invece di 1,80%.
+    """
+
+    @staticmethod
+    def riga(id_: int, volume: float, rischio: float) -> dict:
+        return {
+            "id": id_, "ticket": 1000 + id_, "simbolo": "EURUSD",
+            "volume": volume, "rischio_corrente": rischio,
+        }
+
+    def test_la_seconda_apertura_porta_la_prima_da_1_a_0_75(self) -> None:
+        esiti, blocco = r.ridimensionamenti(
+            "EURUSD", [self.riga(1, 1.00, 0.01)], passo_broker=0.01
+        )
+        assert blocco is None
+        assert len(esiti) == 1
+        # 1.00 lotti all'1,00% diventano 0.75 allo 0,75%.
+        assert esiti[0].volume_bersaglio == pytest.approx(0.75)
+        assert esiti[0].rischio_nuovo == pytest.approx(0.0075)
+        assert esiti[0].da_chiudere == pytest.approx(0.25)
+
+    def test_la_terza_apertura_porta_tutte_a_0_45(self) -> None:
+        esiti, blocco = r.ridimensionamenti(
+            "EURUSD",
+            [self.riga(1, 0.75, 0.0075), self.riga(2, 0.75, 0.0075)],
+            passo_broker=0.01,
+        )
+        assert blocco is None
+        assert len(esiti) == 2
+        for esito in esiti:
+            assert esito.volume_bersaglio == pytest.approx(0.45)
+
+    def test_non_si_ridimensiona_verso_l_alto(self) -> None:
+        """`n` cresce a ogni apertura e il rischio scende: non sale mai.
+
+        Se salisse bisognerebbe AGGIUNGERE volume a una posizione aperta, che
+        ESCL-06 e GEST-14 vietano in ogni forma.
+        """
+        esiti, _ = r.ridimensionamenti(
+            "EURUSD", [self.riga(1, 0.45, 0.0045)], passo_broker=0.01
+        )
+        assert esiti == ()
+
+    def test_pa63_sotto_il_passo_non_si_apre_la_nuova(self) -> None:
+        """*"Se adeguare una posizione esistente producesse un volume sotto il
+        passo minimo, la nuova posizione non si apre."*
+
+        0.01 lotti all'1,00% andrebbero a 0.0075 allo 0,75%, che al passo
+        0.01 e' zero.
+        """
+        esiti, blocco = r.ridimensionamenti(
+            "EURUSD", [self.riga(1, 0.01, 0.01)], passo_broker=0.01
+        )
+        assert esiti == ()
+        assert blocco is not None and "PA-63" in blocco
+
+    def test_una_posizione_senza_rischio_registrato_si_lascia_stare(self) -> None:
+        """Aperta prima che la colonna esistesse: non si sa da dove partiva,
+        e indovinarlo significherebbe cambiarle il volume su un numero
+        inventato."""
+        riga = self.riga(1, 1.00, 0.01)
+        riga["rischio_corrente"] = None
+        esiti, blocco = r.ridimensionamenti("EURUSD", [riga], passo_broker=0.01)
+        assert esiti == ()
+        assert blocco is None
+
+    def test_i_valori_esatti_non_si_perdono_per_virgola_mobile(self) -> None:
+        """`0.29 / 0.01` vale 28.999999999999996, non 29.
+
+        Senza tolleranza `floor` restituisce 28 e la size scende a 0,28: una
+        perdita del 3,4% su un valore che cadeva esattamente sul passo. Vale
+        per `calcola_size` come per il ridimensionamento.
+        """
+        for esatto in (0.29, 0.58, 0.87, 1.16, 2.9):
+            assert r._arrotonda_per_difetto(esatto, 0.01) == pytest.approx(esatto)
+
+    def test_sotto_il_passo_resta_sotto(self) -> None:
+        """La tolleranza corregge la virgola mobile, non arrotonda per eccesso."""
+        assert r._arrotonda_per_difetto(0.289, 0.01) == pytest.approx(0.28)
+        assert r._arrotonda_per_difetto(0.009, 0.01) == 0.0
+
+    def test_il_volume_si_arrotonda_per_difetto(self) -> None:
+        """Meglio rischiare un filo meno di quanto RISK-02 dice che di piu'."""
+        esiti, _ = r.ridimensionamenti(
+            "EURUSD", [self.riga(1, 0.33, 0.01)], passo_broker=0.01
+        )
+        # 0.33 x 0.75 = 0.2475, per difetto al passo 0.01 = 0.24
+        assert esiti[0].volume_bersaglio == pytest.approx(0.24)

@@ -295,6 +295,18 @@ def _esegui_decisione(
         notifier.invia(f"{testo}\n\n{dettaglio}")
         return "errore", dettaglio, None, None
 
+    # RISK-02 — il ridimensionamento va deciso PRIMA di aprire, perche' PA-63
+    # puo' imporre di non aprire affatto: se adeguare una posizione esistente
+    # producesse un volume sotto il passo del broker, aprire comunque darebbe
+    # un'esposizione fuori scala e non dichiarata.
+    adeguamenti, blocco_risk02 = _ridimensionamenti_del_gruppo(
+        decisione.simbolo or "", simbolo_ordine
+    )
+    if blocco_risk02 is not None:
+        log.warning("apertura annullata: %s", blocco_risk02)
+        notifier.invia(f"{testo}\n\nBLOCCATO: {blocco_risk02}")
+        return "bloccato", blocco_risk02, None, None
+
     esito_ordine = broker.invia_ordine(
         simbolo=simbolo_ordine,
         direzione=decisione.azione,
@@ -306,7 +318,91 @@ def _esegui_decisione(
     if not esito_ordine.ok:
         return "errore", f"auto: {esito_ordine.messaggio}", None, None
 
+    # Aperta la nuova, `n` e' cambiato: le vecchie scendono al nuovo rischio.
+    # Va dopo l'apertura e non prima, perche' un'apertura fallita non deve
+    # lasciare il gruppo ridimensionato per una posizione che non esiste.
+    _applica_ridimensionamenti(adeguamenti)
+
     return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket, esito_ordine.prezzo
+
+
+def _ridimensionamenti_del_gruppo(
+    strumento: str, simbolo_broker: str
+) -> tuple[tuple, Optional[str]]:
+    """RISK-02 — Cosa va ridimensionato nel gruppo di correlazione, e se si apre.
+
+    Non solleva: un guasto qui non deve impedire un'apertura che tutte le
+    regole hanno gia' approvato. Si annota e si prosegue senza ridimensionare,
+    che e' il comportamento che il bot aveva finora.
+    """
+    try:
+        from core.parametri import UNIVERSO
+        from core.rischio import gruppo_di, ridimensionamenti
+        from core.simboli import cfd_da_simbolo_esecuzione
+
+        if strumento not in UNIVERSO:
+            return (), None
+
+        ok_spec, specifiche, _ = broker.specifiche_simbolo(simbolo_broker)
+        if not ok_spec or specifiche is None:
+            return (), None
+
+        suffisso = impostazioni().MT5_SUFFISSO_SIMBOLI
+        gruppo = gruppo_di(strumento)
+        nel_gruppo = []
+        for riga in storage.posizioni_aperte():
+            altro = cfd_da_simbolo_esecuzione(str(riga["simbolo"]), suffisso)
+            if altro is not None and gruppo_di(altro) == gruppo:
+                nel_gruppo.append(riga)
+
+        return ridimensionamenti(
+            strumento, nel_gruppo, float(specifiche["volume_step"])
+        )
+    except Exception:
+        log.exception("calcolo del ridimensionamento RISK-02 fallito")
+        return (), None
+
+
+def _applica_ridimensionamenti(adeguamenti: tuple) -> None:
+    """Riduce il volume delle posizioni gia' aperte, una per una.
+
+    Una riduzione fallita non annulla le altre e non annulla l'apertura: la
+    posizione resta al rischio vecchio, e lo si dice. Annullare a meta' un
+    ridimensionamento parziale lascerebbe il gruppo in uno stato peggiore di
+    quello di partenza.
+    """
+    for adeguamento in adeguamenti:
+        if adeguamento.ticket is None:
+            continue
+        try:
+            esito = broker.chiudi_posizione(
+                int(adeguamento.ticket), volume=adeguamento.da_chiudere
+            )
+            if not esito.ok:
+                log.error(
+                    "RISK-02: ridimensionamento della posizione %s fallito: %s",
+                    adeguamento.id_posizione, esito.messaggio,
+                )
+                notifier.invia(
+                    f"ATTENZIONE: RISK-02 chiede di ridurre la posizione "
+                    f"{adeguamento.ticket} a {adeguamento.volume_bersaglio} lotti "
+                    f"ma la riduzione e' fallita: {esito.messaggio}"
+                )
+                continue
+            storage.ridimensiona_posizione(
+                adeguamento.id_posizione,
+                adeguamento.volume_bersaglio,
+                adeguamento.rischio_nuovo,
+            )
+            log.info(
+                "RISK-02: posizione %s ridotta da %s a %s lotti (rischio %.2f%%)",
+                adeguamento.id_posizione, adeguamento.volume_attuale,
+                adeguamento.volume_bersaglio, adeguamento.rischio_nuovo * 100,
+            )
+        except Exception:
+            log.exception(
+                "ridimensionamento della posizione %s fallito", adeguamento.id_posizione
+            )
 
 
 def _annuncia_il_conto(cfg) -> None:
@@ -571,6 +667,7 @@ def processa_alert(alert: AlertIn) -> dict[str, Any]:
                     tp1=decisione.tp1,
                     tf_crt=decisione.tf_crt,
                     spread_ingresso=decisione.spread,
+                    rischio_corrente=decisione.rischio,
                 )
             except Exception as errore:
                 log.exception("posizione aperta ma NON registrata in archivio")

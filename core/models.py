@@ -139,6 +139,8 @@ class Decision(BaseModel):
     # Lo spread al momento dell'ingresso: e' il buffer del break even (PA-46),
     # che e' un multiplo dello spread e non un numero per strumento.
     spread: Optional[float] = None
+    # RISK-02: quanto rischia questa posizione, per il ridimensionamento.
+    rischio: Optional[float] = None
 
 
 class OrderResult(BaseModel):

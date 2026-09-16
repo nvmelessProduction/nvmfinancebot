@@ -88,6 +88,10 @@ CREATE TABLE IF NOT EXISTS posizione (
     volume_iniziale     REAL,
     tp1_raggiunto       INTEGER NOT NULL DEFAULT 0,
     spread_ingresso     REAL,
+    -- RISK-02: la frazione di equity che questa posizione rischia ORA.
+    -- Cambia a ogni nuova apertura nel gruppo di correlazione, perche'
+    -- il ridimensionamento porta tutte allo stesso rischio.
+    rischio_corrente    REAL,
     aperta_utc          TEXT    NOT NULL,
     chiusa_utc          TEXT,
     prezzo_uscita       REAL,
@@ -178,6 +182,7 @@ def _migra(conn: sqlite3.Connection) -> None:
             ("volume_iniziale", "REAL"),
             ("tp1_raggiunto", "INTEGER NOT NULL DEFAULT 0"),
             ("spread_ingresso", "REAL"),
+            ("rischio_corrente", "REAL"),
         ):
             if nome not in posizione:
                 log.warning("archivio da aggiornare: aggiungo posizione.%s", nome)
@@ -302,6 +307,7 @@ def registra_posizione(
     tp1: Optional[float] = None,
     tf_crt: Optional[str] = None,
     spread_ingresso: Optional[float] = None,
+    rischio_corrente: Optional[float] = None,
 ) -> int:
     """Annota una posizione aperta dal bot.
 
@@ -317,8 +323,8 @@ def registra_posizione(
             INSERT INTO posizione (
                 ticket, decisione_id, simbolo, direzione, volume,
                 prezzo_ingresso, sl, tp, tp1, tf_crt, volume_iniziale,
-                tp1_raggiunto, spread_ingresso, aperta_utc, stato
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'aperta')
+                tp1_raggiunto, spread_ingresso, rischio_corrente, aperta_utc, stato
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'aperta')
             """,
             (
                 ticket,
@@ -333,6 +339,7 @@ def registra_posizione(
                 tf_crt,
                 volume,
                 spread_ingresso,
+                rischio_corrente,
                 adesso_utc(),
             ),
         )
@@ -406,6 +413,23 @@ def aggiorna_target(id_posizione: int, nuovo_target: float) -> None:
         conn.execute(
             "UPDATE posizione SET tp = ? WHERE id = ? AND stato = 'aperta'",
             (nuovo_target, id_posizione),
+        )
+
+
+def ridimensiona_posizione(
+    id_posizione: int, volume: float, rischio_corrente: float
+) -> None:
+    """RISK-02 — Adegua volume e rischio di una posizione gia' aperta.
+
+    Il ridimensionamento non tocca stop, TP1 ne' target: cambia quanto si
+    rischia, non dove si esce. E non tocca `volume_iniziale`, perche' quello
+    e' la base su cui GEST-04 calcola il 25%.
+    """
+    with connessione(scrittura=True) as conn:
+        conn.execute(
+            "UPDATE posizione SET volume = ?, rischio_corrente = ? "
+            "WHERE id = ? AND stato = 'aperta'",
+            (volume, rischio_corrente, id_posizione),
         )
 
 

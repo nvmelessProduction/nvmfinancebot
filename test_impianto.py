@@ -1522,6 +1522,31 @@ class ProvaMercato(BaseCollaudo):
         self.mercato.aggiorna("GC", TF.D1, self.cliente())
         self.assertEqual(self.mercato.aggiorna("GC", TF.D1, self.cliente()), [])
 
+    # -- CTX-10: non si valuta su un archivio superiore stantio -------------
+    def test_ctx10_un_superiore_fallito_ferma_la_valutazione(self) -> None:
+        """CTX-10 — l'analisi del timeframe chiuso va ricalcolata PRIMA di
+        operare sui timeframe inferiori.
+
+        Se lo scarico di TF_1D fallisce, la bias e i key level che il motore
+        leggerebbe valutando TF_H1 sono quelli di prima. L'eccezione veniva
+        loggata e la valutazione proseguiva lo stesso.
+        """
+        orarie = self.mercato.aggiorna("GC", TF.H1, self.cliente(passo=3600))
+        self.mercato._valuta_le_ultime(orarie, falliti={("GC", TF.D1)})
+        self.assertEqual(self.visti, [], "TF_1D non aggiornato: TF_H1 non si valuta")
+        self.assertEqual(self.mercato.saltate_per_ctx10, 1)
+
+    def test_ctx10_un_inferiore_fallito_non_ferma_nulla(self) -> None:
+        """Il vincolo e' a senso unico: guarda in su, non in giu'."""
+        giornaliere = self.mercato.aggiorna("GC", TF.D1, self.cliente())
+        self.mercato._valuta_le_ultime(giornaliere, falliti={("GC", TF.H1)})
+        self.assertEqual(len(self.visti), 1)
+
+    def test_ctx10_un_altro_strumento_non_ferma_nulla(self) -> None:
+        giornaliere = self.mercato.aggiorna("GC", TF.D1, self.cliente())
+        self.mercato._valuta_le_ultime(giornaliere, falliti={("6E", TF.M1)})
+        self.assertEqual(len(self.visti), 1)
+
     # -- valutazione --------------------------------------------------------
     def test_dopo_uno_spegnimento_valuta_solo_l_ultima(self) -> None:
         """CASO CRITICO: cinque candele arretrate non sono cinque ordini."""

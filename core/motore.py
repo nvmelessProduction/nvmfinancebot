@@ -153,6 +153,10 @@ class Decisione:
     # buffer del break even di GEST-04, che PA-46 vuole multiplo dello spread
     # e non numero per strumento.
     spread: float = 0.0
+    # La frazione di equity che questa posizione rischia (RISK-02). Serve
+    # al ridimensionamento: senza sapere da quale rischio ciascuna
+    # posizione e' partita non si sa di quanto ridurla.
+    rischio: Optional[float] = None
     regole_applicate: tuple[str, ...] = ()
     regole_che_bloccano: tuple[str, ...] = ()
     motivo: str = ""
@@ -445,7 +449,17 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         prezzo_ingresso=prezzo_ingresso,
         posizioni_aperte_strumento=posizioni_qui,
         target_comando_raggiunto=foto.target_raggiunto_per_tf.get(tf_comando or TF.M12, False),
-        indicatori_usati=("RSI",),
+        # ESCL-15 controlla che ogni indicatore dichiarato sia fra quelli
+        # ammessi. Qui si dichiarava `("RSI",)` per un indicatore che nessuno
+        # calcola: `definizioni.rsi` e `definizioni.divergenza_rsi` hanno zero
+        # chiamanti in produzione, e PA-39 ha deciso che l'RSI resta
+        # statistica e non entra in nessuna decisione.
+        #
+        # Una dichiarazione falsa qui non e' cosmetica: e' la riga che
+        # renderebbe silenzioso un uso vero e non ammesso, perche' ESCL-15
+        # validerebbe un elenco scritto a mano invece di quello reale. Il
+        # motore non usa alcun indicatore: lo dice.
+        indicatori_usati=(),
     )
     divieti = esc.verifica_divieti(proposta)
     if divieti:
@@ -495,6 +509,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         tf_crt=crt.tf,
         doppio_ingresso=da_gap,
         spread=foto.spread,
+        rischio=esito_size.rischio_percentuale,
         regole_applicate=tuple(dict.fromkeys(applicate)),
         motivo="tutte le condizioni soddisfatte",
         rapporto_su_tp1=rapporto,

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from core.parametri import (
     LIMITE_GIORNALIERO,
@@ -120,11 +120,22 @@ def _arrotonda_per_difetto(lotti: float, passo: float) -> float:
 
     Sempre per difetto: se produce zero, l'operazione non viene eseguita.
     Arrotondare per eccesso significherebbe rischiare piu' del dichiarato.
+
+    ## La tolleranza, e perche' serve
+
+    `0.29 / 0.01` in virgola mobile vale `28.999999999999996`, non 29:
+    `floor` restituisce 28 e la size scende a 0,28 lotti. Non e' un caso
+    raro — succede su 0.29, 0.58, 1.16 e altri — ed e' una perdita del 3,4%
+    della size **su un valore che cadeva esattamente sul passo**.
+
+    La tolleranza di un miliardesimo di passo corregge questo e nient'altro:
+    un valore davvero sotto il passo successivo non ci arriva nemmeno vicino,
+    quindi non si arrotonda mai per eccesso qualcosa che non lo meritava.
     """
     if passo <= 0:
         raise ValueError(f"passo del broker non valido: {passo}")
     decimali = max(0, len(f"{passo:.10f}".rstrip("0").split(".")[-1]))
-    return round(math.floor(lotti / passo) * passo, decimali)
+    return round(math.floor(lotti / passo + 1e-9) * passo, decimali)
 
 
 def calcola_size(
@@ -281,3 +292,81 @@ def limiti_raggiunti(
 def stop_obbligatorio(livello_stop: Optional[float]) -> bool:
     """RISK-11 ed ESCL-10 — Nessuna posizione puo' esistere senza stop loss."""
     return livello_stop is not None
+
+
+@dataclass(frozen=True)
+class Ridimensionamento:
+    """Cosa fare a una posizione gia' aperta quando `n` cambia."""
+
+    id_posizione: int
+    ticket: Optional[int]
+    volume_attuale: float
+    volume_bersaglio: float
+    rischio_nuovo: float
+
+    @property
+    def da_chiudere(self) -> float:
+        """Quanto va chiuso per portarla al volume bersaglio."""
+        return round(self.volume_attuale - self.volume_bersaglio, 8)
+
+
+def ridimensionamenti(
+    strumento: str,
+    aperte_nel_gruppo: Sequence[Mapping[str, Any]],
+    passo_broker: float,
+) -> tuple[tuple[Ridimensionamento, ...], Optional[str]]:
+    """RISK-02 (REV-42) — Il ridimensionamento a ogni nuova apertura.
+
+    *"A ogni nuova apertura tutte le posizioni gia' aperte vengono
+    ridimensionate al nuovo `rischio_operazione`, cosi' che ciascuna rischi
+    sempre la stessa percentuale."*
+
+    Senza questo passo l'esposizione reale segue la curva alta — ciascuna
+    posizione conserva il rischio del proprio ingresso — invece di quella
+    dichiarata: 2,65% su quattro posizioni invece di 1,80%.
+
+    `aperte_nel_gruppo` sono le righe di `storage.posizioni_aperte()` gia'
+    filtrate sul gruppo di correlazione, con `volume` e `rischio_corrente`.
+
+    Restituisce (ridimensionamenti, motivo_di_astensione). Il motivo non e'
+    None quando PA-63 impone di **non aprire la nuova**: se adeguare una
+    posizione esistente producesse un volume sotto il passo minimo del
+    broker, aprire comunque darebbe un'esposizione fuori scala e non
+    dichiarata, e PRIN-99 dice di astenersi.
+
+    Il ridimensionamento va solo **verso il basso**: `n` cresce a ogni
+    apertura e il rischio per posizione scende. Se una riga non ha
+    `rischio_corrente` — posizione aperta prima che la colonna esistesse — la
+    si lascia stare: non si sa da quale rischio partiva, e indovinarlo
+    significherebbe cambiarle il volume su un numero inventato.
+    """
+    n = len(aperte_nel_gruppo) + 1                  # piu' quella in valutazione
+    nuovo = rischio_per_posizione(n, strumento)
+
+    esiti: list[Ridimensionamento] = []
+    for riga in aperte_nel_gruppo:
+        corrente = riga.get("rischio_corrente")
+        if not corrente:
+            continue
+        volume = float(riga["volume"])
+        if volume <= 0 or nuovo >= float(corrente):
+            continue                                 # nulla da ridurre
+        bersaglio = volume * (nuovo / float(corrente))
+        if not ridimensionamento_eseguibile(bersaglio, passo_broker):
+            return (), (
+                f"PA-63: ridimensionare la posizione {riga.get('id')} a "
+                f"{bersaglio:.4f} lotti darebbe zero al passo {passo_broker}; "
+                "RISK-02 non e' applicabile e la nuova posizione non si apre"
+            )
+        # Al passo del broker, per difetto: meglio rischiare un filo meno.
+        arrotondato = _arrotonda_per_difetto(bersaglio, passo_broker)
+        if arrotondato >= volume:
+            continue                                 # differenza sotto il passo
+        esiti.append(Ridimensionamento(
+            id_posizione=int(riga["id"]),
+            ticket=riga.get("ticket"),
+            volume_attuale=volume,
+            volume_bersaglio=arrotondato,
+            rischio_nuovo=nuovo,
+        ))
+    return tuple(esiti), None
