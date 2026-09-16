@@ -267,6 +267,157 @@ class BaseCollaudo(unittest.TestCase):
 
 
 # ==========================================================================
+# 0bis. La catena dal ciclo Dukascopy al motore
+# ==========================================================================
+class ProvaCatenaDukascopy(BaseCollaudo):
+    """L'alert che il ciclo costruisce arriva davvero fino a una decisione?
+
+    Per settimane non ci e' arrivato. `mercato_duka` costruiva `AlertIn` con
+    i nomi sbagliati, pydantic rifiutava, un `except Exception` inghiottiva
+    l'errore e il contatore `valutazioni` di /salute cresceva lo stesso. Da
+    fuori si vedeva un bot al lavoro che non trovava setup; dentro, il motore
+    non aveva mai ricevuto una candela.
+
+    Nessuna prova esistente poteva accorgersene: erano tutte sull'alert di
+    TradingView, che quella strada non la percorre.
+    """
+
+    ORIGINE = "dukascopy"
+
+    def semina(self, strumento: str, tf, quante: int = 40,
+               base: float = 100.0, passo: float = 1.0) -> None:
+        """Una serie che sale in accettazione: DEF-16 ci legge una bias LONG."""
+        from datetime import timedelta as td
+
+        inizio = datetime.now(timezone.utc).replace(
+            minute=0, second=0, microsecond=0) - td(hours=quante)
+        righe = []
+        for n in range(quante):
+            apertura = base + n * passo
+            righe.append({
+                "strumento": strumento, "tf": tf.value,
+                "chiusura_utc": (inizio + td(hours=n)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "apertura": apertura,
+                "massimo": apertura + passo * 1.5,
+                "minimo": apertura - passo * 0.2,
+                "chiusura": apertura + passo * 1.2,
+            })
+        storage.salva_candele(righe, origine=self.ORIGINE)
+
+    def semina_calendario(self) -> None:
+        """PA-55 vuole un calendario compilato, o il motore si astiene prima
+        ancora di guardare il grafico. Qui serve solo che ci sia: gli eventi
+        stanno lontani dall'istante della prova."""
+        from datetime import timedelta as td
+        from pathlib import Path
+
+        from core.parametri import PERCORSO_CALENDARIO_NEWS
+
+        percorso = Path(PERCORSO_CALENDARIO_NEWS)
+        percorso.parent.mkdir(parents=True, exist_ok=True)
+        adesso = datetime.now(timezone.utc)
+        righe = ["data_ora_utc,valuta,stelle,descrizione"]
+        for giorni in (-3, -1, 4, 9):
+            quando = adesso + td(days=giorni)
+            righe.append(f"{quando:%Y-%m-%dT%H:%M:%SZ},USD,3,evento di collaudo")
+        percorso.write_text("\n".join(righe) + "\n", encoding="utf-8")
+        self.addCleanup(lambda: percorso.unlink(missing_ok=True))
+
+    def semina_tutto(self) -> None:
+        from core.duka_dxy import NOME_ARCHIVIO as DXY
+        from core.mercato import TF_INGRESSO_OPERATIVI, TF_OPERATIVI
+        from core.parametri import TF
+
+        tutti = set(TF_OPERATIVI) | set(TF_INGRESSO_OPERATIVI) | {TF.W1}
+        for tf in tutti:
+            self.semina("EURUSD", tf)
+            self.semina(DXY, tf, base=103.0, passo=0.05)
+
+    def test_l_alert_del_ciclo_e_leggibile(self) -> None:
+        """I tre campi che mancavano: apertura, massimo, minimo."""
+        from core.definizioni import Candela
+        from core.mercato_duka import _alert
+        from core.parametri import TF
+        from core.simboli import future_da_ticker, timeframe_da_intervallo
+
+        candela = Candela(datetime(2026, 9, 16, 10, 15, tzinfo=timezone.utc),
+                          1.10, 1.15, 1.05, 1.12)
+        alert = _alert("EURUSD", TF.MIN15, candela, "segreto-di-collaudo")
+        self.assertEqual((alert.apertura, alert.massimo, alert.minimo,
+                          alert.chiusura), (1.10, 1.15, 1.05, 1.12))
+        self.assertEqual(future_da_ticker(alert.simbolo), "6E")
+        self.assertIs(timeframe_da_intervallo(alert.tf), TF.MIN15)
+
+    def test_la_catena_arriva_al_motore(self) -> None:
+        """Nessun timeframe deve fermarsi su PRIN-99: sarebbe un guasto, non
+        un'astensione."""
+        from core import strategy
+        from core.definizioni import Candela
+        from core.fornitore_tradingview import collega
+        from core.mercato import TF_INGRESSO_OPERATIVI, TF_OPERATIVI
+        from core.mercato_duka import _alert
+
+        riconfigura(FORNITORE_DATI="dukascopy")
+        try:
+            self.semina_calendario()
+            self.semina_tutto()
+            collega()
+            candela = Candela(datetime.now(timezone.utc), 140.0, 141.5, 139.8, 141.2)
+
+            for tf in sorted(set(TF_OPERATIVI) | set(TF_INGRESSO_OPERATIVI),
+                             key=lambda x: x.value):
+                alert = _alert("EURUSD", tf, candela, "segreto-di-collaudo")
+                decisione = strategy.valuta(alert)
+                self.assertNotIn(
+                    "PRIN-99", decisione.motivo or "",
+                    f"{tf.value}: la catena si e' rotta, non astenuta -- "
+                    f"{decisione.motivo}")
+                self.assertNotIn("livello dati non collegato", decisione.motivo or "")
+        finally:
+            riconfigura(FORNITORE_DATI="tradingview")
+
+    def test_senza_dxy_setup19_non_abilita_nulla(self) -> None:
+        """Il blocco che teneva fermo il bot su cinque coppie su sei."""
+        from core.fornitore_tradingview import FornitoreTradingView
+        from core.duka_dxy import NOME_ARCHIVIO as DXY
+        from core.stato import bias_comando_dxy
+
+        riconfigura(FORNITORE_DATI="dukascopy")
+        try:
+            fornitore = FornitoreTradingView()
+            vuoto = bias_comando_dxy(fornitore.storico(DXY),
+                                     datetime.now(timezone.utc))
+            self.assertEqual(vuoto.value, "NESSUNA",
+                             "senza archivio del DXY la bias non puo' che mancare")
+
+            self.semina_tutto()
+            pieno = bias_comando_dxy(fornitore.storico(DXY),
+                                     datetime.now(timezone.utc))
+            self.assertNotEqual(
+                pieno.value, "NESSUNA",
+                "con l'archivio del DXY seminato la bias deve esserci, "
+                "altrimenti SETUP-19 blocca comunque tutto")
+        finally:
+            riconfigura(FORNITORE_DATI="tradingview")
+
+    def test_l_archivio_si_legge_col_nome_con_cui_e_scritto(self) -> None:
+        """Dukascopy scrive `EURUSD`, l'analisi chiede `6E`: la traduzione
+        deve esserci, o l'archivio risulta vuoto e DEF-26 fa tacere tutto."""
+        from core.fornitore_tradingview import FornitoreTradingView
+        from core.parametri import TF
+
+        riconfigura(FORNITORE_DATI="dukascopy")
+        try:
+            self.semina("EURUSD", TF.D1)
+            fornitore = FornitoreTradingView()
+            self.assertEqual(fornitore.nome_in_archivio("6E"), "EURUSD")
+            self.assertTrue(fornitore.storico("6E")[TF.D1],
+                            "lo storico del future deve trovare le candele CFD")
+        finally:
+            riconfigura(FORNITORE_DATI="tradingview")
+
+
+# ==========================================================================
 # 1. Sicurezza del webhook
 # ==========================================================================
 class ProvaSicurezza(BaseCollaudo):
