@@ -391,6 +391,59 @@ class TestSegnoInvertito:
 
 
 # ===========================================================================
+# Il dato che deve chiudere PA-44 (GIUD-01, 07_casi.md §3.1)
+# ===========================================================================
+class TestRapportoGiud01:
+    """Si REGISTRA, non si decide.
+
+    `core/statistiche.py` non era importato da alcun modulo di produzione e
+    `Decisione.rapporto_giud01` era dichiarato e mai valorizzato: il dato che
+    deve chiudere PA-44 non veniva prodotto, quindi il punto aperto non
+    avrebbe potuto chiudersi coi numeri nemmeno fra dieci anni.
+    """
+
+    @staticmethod
+    def con_gap():
+        """Abbastanza candele per l'ATR, e un gap attivo da cui misurare."""
+        candele = [
+            cand(massimo=110 + i * 0.1, minimo=100 + i * 0.1,
+                 chiusura=105 + i * 0.1, apertura=104 + i * 0.1, ore=4 * (20 - i))
+            for i in range(19)
+        ] + [N1, N2]
+        return foto(
+            candele_per_tf={TF.H4: candele},
+            gap_attivo=Gap(Polarita.RIBASSISTA, 95.0, 97.0, 97.5, TF.D1, N1.orario),
+        )
+
+    def test_il_rapporto_viene_prodotto(self) -> None:
+        decisione = m.valuta(self.con_gap(), TF.H4)
+        assert decisione.azione == "SELL"
+        assert decisione.rapporto_giud01 is not None
+        assert decisione.rapporto_giud01 > 0
+        assert "GIUD-01" in decisione.regole_applicate
+
+    def test_senza_gap_non_si_inventa_un_numero(self) -> None:
+        """Senza gap attivo non c'e' distanza da misurare. Un rapporto
+        inventato inquinerebbe proprio i dati che devono chiudere PA-44."""
+        assert m.valuta(foto(), TF.H4).rapporto_giud01 is None
+
+    def test_senza_storia_per_l_atr_non_si_inventa_un_numero(self) -> None:
+        decisione = m.valuta(
+            foto(gap_attivo=Gap(Polarita.RIBASSISTA, 95.0, 97.0, 97.5, TF.D1, N1.orario)),
+            TF.H4,
+        )
+        assert decisione.rapporto_giud01 is None, "due candele non fanno un ATR(14)"
+
+    def test_non_cambia_la_decisione(self) -> None:
+        """GIUD-01 risponde sempre C, e C significa "il target resta al key
+        level". Il rapporto si registra e basta."""
+        con = m.valuta(self.con_gap(), TF.H4)
+        senza = m.valuta(foto(), TF.H4)
+        assert con.azione == senza.azione
+        assert con.target_finale == senza.target_finale
+
+
+# ===========================================================================
 # Il filtro DXY (SETUP-19, RISK-05, PRIN-09)
 # ===========================================================================
 class TestFiltroDxy:

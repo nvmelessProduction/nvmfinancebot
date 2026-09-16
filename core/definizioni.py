@@ -44,6 +44,7 @@ from enum import Enum
 from typing import Iterable, Optional, Sequence
 
 from core.parametri import (
+    ATR_PERIODO,
     MINIMO_CANDELE_CHIUSE_PER_TF,
     ORDINE_SCANSIONE_TARGET,
     RSI_PERIODO,
@@ -939,3 +940,53 @@ def livello_cfd(
     if UNIVERSO[strumento].segno_invertito:
         return prezzo_cfd / fattore
     return prezzo_cfd * fattore
+
+
+def atr(candele: Sequence[Candela], periodo: int = ATR_PERIODO) -> Optional[float]:
+    """ESCL-15 b — ATR(14), **solo come unita' di misura**.
+
+    *"ATR(14), ammesso ESCLUSIVAMENTE come unita' di misura per normalizzare
+    distanze (GIUD-01, 07_casi.md §3.1). L'ATR non puo' mai generare un
+    segnale, filtrare un ingresso, determinare uno stop ne' dimensionare una
+    posizione."*
+
+    Il divieto e' netto e questa funzione non lo puo' far rispettare da sola:
+    lo fa il posto da cui viene chiamata. Oggi ce n'e' uno solo — il calcolo
+    del `rapporto` di `07_casi.md` §3.1, che finisce in archivio e non tocca
+    alcuna decisione. Se un giorno comparisse una seconda chiamata,
+    `audit_regole.py` la mostrera' e andra' guardata con sospetto.
+
+    ## Come si calcola
+
+    True Range di Wilder (*New Concepts in Technical Trading Systems*, 1978):
+    per ogni candela il massimo fra l'escursione della candela e le due
+    distanze dalla chiusura precedente, che e' cio' che rende il TR sensibile
+    ai gap di apertura.
+
+        TR = max(massimo - minimo,
+                 |massimo - chiusura_precedente|,
+                 |minimo   - chiusura_precedente|)
+
+    La media e' **semplice** sulle ultime `periodo` candele, non la media
+    esponenziale di Wilder. Le due differiscono di poco, e la semplice non
+    dipende da quanta storia le si dia: due archivi di lunghezza diversa danno
+    lo stesso numero sullo stesso periodo finale. Per un denominatore che deve
+    rendere confrontabili strumenti e timeframe diversi, e' la proprieta' che
+    conta di piu'.
+
+    `None` con meno di `periodo + 1` candele: il primo TR ha bisogno della
+    chiusura precedente, e un ATR calcolato su meno storia di quella
+    dichiarata sarebbe un numero diverso col nome di questo.
+    """
+    if periodo <= 0 or len(candele) < periodo + 1:
+        return None
+
+    ultime = candele[-(periodo + 1):]
+    intervalli: list[float] = []
+    for precedente, corrente in zip(ultime, ultime[1:]):
+        intervalli.append(max(
+            corrente.massimo - corrente.minimo,
+            abs(corrente.massimo - precedente.chiusura),
+            abs(corrente.minimo - precedente.chiusura),
+        ))
+    return sum(intervalli) / len(intervalli)

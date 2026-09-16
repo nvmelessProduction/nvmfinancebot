@@ -68,7 +68,11 @@ CREATE TABLE IF NOT EXISTS decisione (
     tp              REAL,
     esito           TEXT    NOT NULL,
     dettaglio       TEXT,
-    ticket          INTEGER
+    ticket          INTEGER,
+    -- 07_casi.md §3.1: distanza key level/gap normalizzata sull'ATR. Si
+    -- registra per ogni decisione e non entra in nessun calcolo: e' il dato
+    -- che deve chiudere PA-44 coi numeri invece che a occhio.
+    rapporto_giud01 REAL
 );
 
 CREATE TABLE IF NOT EXISTS posizione (
@@ -187,6 +191,11 @@ def _migra(conn: sqlite3.Connection) -> None:
             if nome not in posizione:
                 log.warning("archivio da aggiornare: aggiungo posizione.%s", nome)
                 conn.execute(f"ALTER TABLE posizione ADD COLUMN {nome} {tipo}")
+
+    decisione = {riga["name"] for riga in conn.execute("PRAGMA table_info(decisione)")}
+    if decisione and "rapporto_giud01" not in decisione:
+        log.warning("archivio da aggiornare: aggiungo decisione.rapporto_giud01")
+        conn.execute("ALTER TABLE decisione ADD COLUMN rapporto_giud01 REAL")
         if "volume_iniziale" not in posizione:
             # Le righe vecchie non hanno mai avuto parziali: il volume attuale
             # e' anche quello di partenza.
@@ -273,8 +282,8 @@ def salva_decisione(
             """
             INSERT INTO decisione (
                 alert_id, creata_utc, azione, motivo,
-                volume, sl, tp, esito, dettaglio, ticket
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                volume, sl, tp, esito, dettaglio, ticket, rapporto_giud01
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 alert_id,
@@ -287,6 +296,7 @@ def salva_decisione(
                 esito,
                 dettaglio,
                 ticket,
+                decisione.rapporto_giud01,
             ),
         )
         id_decisione = cur.lastrowid

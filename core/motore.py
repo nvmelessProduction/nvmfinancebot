@@ -35,6 +35,7 @@ from datetime import datetime
 from typing import Mapping, Optional, Sequence
 
 from core import contesto as ctx
+from core import definizioni as dfn
 from core import esclusioni as esc
 from core import gestione as gest
 from core import rischio as risk
@@ -198,6 +199,34 @@ def _non_operare(
 # ===========================================================================
 # Valutazione
 # ===========================================================================
+
+
+def _rapporto_giud01(
+    foto: Fotografia, crt, bersaglio_future: Optional[float]
+) -> Optional[float]:
+    """07_casi.md §3.1 — `distanza_kl_gap / atr_tf`, da registrare e basta.
+
+    None quando manca uno dei due ingredienti, ed e' il caso normale: senza
+    gap attivo non c'e' distanza da misurare, e con meno di quindici candele
+    non c'e' ATR. Un rapporto inventato inquinerebbe proprio i dati che devono
+    chiudere PA-44.
+
+    La distanza si misura dal bordo del gap **rivolto verso il key level**,
+    che e' quello che il prezzo incontrerebbe per primo venendo dal target.
+    Entrambi sono livelli del future, quindi la loro differenza e' una
+    quantita' del future, e l'ATR che la normalizza pure: il rapporto e'
+    adimensionale e non richiede la conversione di REV-52.
+    """
+    if bersaglio_future is None or foto.gap_attivo is None:
+        return None
+
+    misura = dfn.atr(candele_visibili(foto.candele_per_tf.get(crt.tf, ()), foto.istante))
+    if misura is None:
+        return None
+
+    gap = foto.gap_attivo
+    bordo = gap.zona_inf if bersaglio_future < gap.zona_inf else gap.zona_sup
+    return stp.rapporto_giud01(abs(bersaglio_future - bordo), misura)
 
 
 def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
@@ -485,6 +514,20 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             rapporto_su_tp1=rapporto,
         )
 
+    # --- 7ter. Il dato che deve chiudere PA-44 (GIUD-01, 07_casi.md §3.1) --
+    #
+    # Si REGISTRA, non si decide: `giud01_scelta_target` risponde sempre C —
+    # "il target resta al key level" — perche' la soglia fra "vicini" e
+    # "distanti" non esiste, e inventarla sarebbe la cosa peggiore, perche'
+    # sembrerebbe funzionare.
+    #
+    # Il `rapporto` e' distanza key level/gap normalizzata sull'ATR. L'ATR e'
+    # ammesso qui e solo qui (ESCL-15 b), come unita' di misura e mai come
+    # generatore di segnali. Senza questo campo PA-44 non potrebbe chiudersi
+    # coi numeri: resterebbe un punto aperto per sempre, che e' dove stava.
+    rapporto_kl_gap = _rapporto_giud01(foto, crt, bersaglio_future)
+    applicate.append("GIUD-01")
+
     # --- 8. Ordine ---------------------------------------------------------
     applicate.extend(["SETUP-03", "SETUP-04", "DEF-33"])
 
@@ -513,4 +556,5 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         regole_applicate=tuple(dict.fromkeys(applicate)),
         motivo="tutte le condizioni soddisfatte",
         rapporto_su_tp1=rapporto,
+        rapporto_giud01=rapporto_kl_gap,
     )

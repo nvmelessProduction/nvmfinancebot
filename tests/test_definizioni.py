@@ -678,3 +678,53 @@ class TestPurezza:
                 moduli.add(nodo.module.split(".")[0])
         vietati = {"httpx", "requests", "socket", "urllib", "sqlite3", "os", "pathlib", "time"}
         assert not (moduli & vietati), moduli & vietati
+
+
+# ===========================================================================
+# ESCL-15 b — ATR, unita' di misura e nient'altro
+# ===========================================================================
+class TestAtr:
+    """*"ATR(14), ammesso ESCLUSIVAMENTE come unita' di misura per
+    normalizzare distanze. L'ATR non puo' mai generare un segnale, filtrare un
+    ingresso, determinare uno stop ne' dimensionare una posizione."*
+
+    Il divieto lo fa rispettare il posto da cui si chiama, non questa
+    funzione. Oggi la chiamata di produzione e' una sola: il `rapporto` di
+    07_casi.md §3.1, che finisce in archivio e non tocca alcuna decisione.
+    """
+
+    @staticmethod
+    def serie(quante: int, alto: float = 102.0, basso: float = 98.0):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [
+            Candela(base + timedelta(hours=i), 100.0, alto, basso, 100.0)
+            for i in range(quante)
+        ]
+
+    def test_su_candele_identiche_e_l_escursione(self) -> None:
+        assert d.atr(self.serie(20)) == pytest.approx(4.0)
+
+    def test_storia_insufficiente_da_none(self) -> None:
+        """Servono periodo + 1 candele: il primo True Range ha bisogno della
+        chiusura precedente. Un ATR su meno storia di quella dichiarata
+        sarebbe un numero diverso col nome di questo."""
+        assert d.atr(self.serie(14)) is None
+        assert d.atr(self.serie(15)) is not None
+
+    def test_il_gap_di_apertura_entra_nel_true_range(self) -> None:
+        """E' la ragione per cui Wilder usa il True Range e non il range:
+        una candela stretta che apre lontano ha comunque escursione vera."""
+        candele = self.serie(15)
+        base = candele[-1].orario + timedelta(hours=1)
+        # Candela stretta (range 1) ma 20 punti sopra la chiusura precedente.
+        candele.append(Candela(base, 120.0, 121.0, 120.0, 120.5))
+        stretta = d.atr(candele[-15:])
+        assert stretta is not None and stretta > 4.0
+
+    def test_non_dipende_da_quanta_storia_le_si_da(self) -> None:
+        """Media semplice, non esponenziale: due archivi di lunghezza diversa
+        danno lo stesso numero sullo stesso periodo finale. Per un
+        denominatore che deve rendere confrontabili strumenti e timeframe
+        diversi e' la proprieta' che conta di piu'."""
+        lunga = self.serie(200)
+        assert d.atr(lunga) == pytest.approx(d.atr(lunga[-15:]))

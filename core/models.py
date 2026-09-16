@@ -141,6 +141,8 @@ class Decision(BaseModel):
     spread: Optional[float] = None
     # RISK-02: quanto rischia questa posizione, per il ridimensionamento.
     rischio: Optional[float] = None
+    # 07_casi.md §3.1: si registra e non decide (GIUD-01, PA-44).
+    rapporto_giud01: Optional[float] = None
 
 
 class OrderResult(BaseModel):
