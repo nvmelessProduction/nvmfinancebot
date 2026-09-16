@@ -220,6 +220,106 @@ class ProvaAlert(unittest.TestCase):
             self.assertEqual(cfd_di(future_da_ticker(alert.simbolo)), cfd)
 
 
+class ProvaGruppoInFormazione(unittest.TestCase):
+    """La giornata in corso non e' una candela giornaliera.
+
+    `salva_candele` fa `INSERT OR IGNORE`: la prima versione scritta vince e
+    non viene piu' corretta. Archiviare il gruppo in formazione significava
+    congelare una giornata a com'era mezz'ora dopo la sua apertura.
+    """
+
+    def orarie(self, da: datetime, quante: int) -> list[Candela]:
+        return [
+            Candela(da + timedelta(hours=n + 1), 1.0, 1.0 + n / 100, 0.9, 1.0)
+            for n in range(quante)
+        ]
+
+    def test_la_giornata_in_corso_non_entra(self) -> None:
+        # Da mercoledi' 22:00 (chiusura della giornata di martedi') in avanti:
+        # due giornate intere e tre ore della terza.
+        orarie = self.orarie(datetime(2026, 9, 15, 22, 0, tzinfo=UTC), 51)
+        serie = md.costruisci(orarie)
+        giorni = serie[TF.D1]
+        self.assertEqual(len(giorni), 2, "la terza giornata e' ancora aperta")
+
+    def test_il_massimo_della_giornata_e_quello_intero(self) -> None:
+        orarie = self.orarie(datetime(2026, 9, 15, 22, 0, tzinfo=UTC), 51)
+        giorni = md.costruisci(orarie)[TF.D1]
+        # La prima giornata sono le 24 ore da 22:00 a 22:00: il massimo e'
+        # quello dell'ultima delle sue ore, non della prima.
+        self.assertAlmostEqual(giorni[0].massimo, 1.0 + 23 / 100, places=9)
+
+    def test_stessa_regola_della_semina(self) -> None:
+        """Se le due aggregazioni divergessero, archivio e vivo non coinciderebbero."""
+        import importa_dukascopy as semina
+
+        orarie = self.orarie(datetime(2026, 9, 15, 22, 0, tzinfo=UTC), 51)
+        dal_vivo = md.costruisci(orarie)[TF.D1]
+        seminate = semina.costruisci(orarie)[TF.D1]
+        self.assertEqual([c.orario for c in dal_vivo], [c.orario for c in seminate])
+        self.assertEqual([c.massimo for c in dal_vivo], [c.massimo for c in seminate])
+
+
+class ProvaDXY(unittest.TestCase):
+    """SETUP-19 senza DXY non abilita nulla, e `USDIDX` di Dukascopy e' inerte."""
+
+    def tassi(self) -> dict:
+        return {"EURUSD": 1.0850, "USDJPY": 148.20, "GBPUSD": 1.2700,
+                "USDCAD": 1.3550, "USDSEK": 10.40, "USDCHF": 0.8800}
+
+    def test_la_formula_da_un_valore_plausibile(self) -> None:
+        from core.duka_dxy import indice
+
+        self.assertAlmostEqual(indice(self.tassi()), 103.613, places=2)
+
+    def test_il_dollaro_forte_alza_l_indice(self) -> None:
+        """Il segno dei pesi: EURUSD giu' e USDJPY su spingono entrambi in alto."""
+        from core.duka_dxy import indice
+
+        base = indice(self.tassi())
+        euro_giu = dict(self.tassi(), EURUSD=1.0500)
+        yen_su = dict(self.tassi(), USDJPY=152.00)
+        self.assertGreater(indice(euro_giu), base)
+        self.assertGreater(indice(yen_su), base)
+
+    def test_l_involucro_contiene_apertura_e_chiusura(self) -> None:
+        from core.duka_dxy import candela_dxy, indice
+
+        pezzi = {
+            s: Candela(datetime(2026, 9, 16, 10, tzinfo=UTC),
+                       v, v * 1.002, v * 0.998, v * 1.001)
+            for s, v in self.tassi().items()
+        }
+        c = candela_dxy(pezzi)
+        self.assertIsNotNone(c)
+        self.assertGreaterEqual(c.massimo, max(c.apertura, c.chiusura))
+        self.assertLessEqual(c.minimo, min(c.apertura, c.chiusura))
+        self.assertAlmostEqual(c.apertura, indice(self.tassi()), places=9)
+
+    def test_senza_un_costituente_non_si_inventa_nulla(self) -> None:
+        from core.duka_dxy import candela_dxy
+
+        pezzi = {
+            s: Candela(datetime(2026, 9, 16, 10, tzinfo=UTC), v, v, v, v)
+            for s, v in self.tassi().items() if s != "USDSEK"
+        }
+        self.assertIsNone(candela_dxy(pezzi))
+
+    def test_componi_tiene_solo_le_ore_comuni(self) -> None:
+        from core.duka_dxy import PESI, componi
+
+        t0 = datetime(2026, 9, 16, 10, tzinfo=UTC)
+        t1 = datetime(2026, 9, 16, 11, tzinfo=UTC)
+        serie = {}
+        for s, v in self.tassi().items():
+            ore = [Candela(t0, v, v, v, v)]
+            if s != "USDSEK":                    # a USDSEK manca l'ora delle 11
+                ore.append(Candela(t1, v, v, v, v))
+            serie[s] = ore
+        self.assertEqual(len(componi(serie)), 1)
+        self.assertEqual(set(serie), set(PESI))
+
+
 class ProvaValutazione(unittest.TestCase):
     """Il secondo tempo di CRT-04 deve essere valutato, non solo archiviato."""
 

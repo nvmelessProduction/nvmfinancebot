@@ -35,6 +35,7 @@ from typing import Callable, Optional
 
 from core import storage
 from core.definizioni import Candela
+from core import duka_dxy
 from core.duka_minuti import BLOCCHI, aggrega, minuti_del_giorno
 from core.fonte_dukascopy import orarie_del_mese
 from core.log import diario
@@ -104,12 +105,29 @@ def _giorno_di(momento: datetime) -> datetime:
 
 
 def _raggruppa(candele: list[Candela], chiave: Callable) -> list[Candela]:
-    """Aggrega candele per una chiave, tenendo l'ordine del tempo."""
+    """Aggrega candele per una chiave, scartando l'ultimo gruppo in formazione.
+
+    Lo scarto dell'ultimo gruppo non e' prudenza: senza, il ciclo archiviava
+    la giornata **in corso** come se fosse chiusa. E `salva_candele` fa
+    `INSERT OR IGNORE`, quindi la prima versione scritta vinceva e non veniva
+    piu' aggiornata: una candela giornaliera vista per la prima volta alle
+    00:30 restava per sempre quella di trenta minuti di scambi, con il suo
+    massimo e il suo minimo sbagliati, e su quella serie il motore calcolava
+    bias, key level e range del CRT.
+
+    Un gruppo e' chiuso quando ne esiste uno successivo. Nel fine settimana
+    l'ultimo gruppo del venerdi' resta in sospeso fino alla riapertura della
+    domenica sera, cioe' prima che si valuti qualunque ora del lunedi'.
+
+    E' la stessa regola di `importa_dukascopy._raggruppa`: se le due
+    divergessero, le candele seminate e quelle prese dal vivo sarebbero
+    costruite in due modi diversi sulla stessa serie.
+    """
     gruppi: dict = {}
     for candela in candele:
         gruppi.setdefault(chiave(candela), []).append(candela)
     fuori = []
-    for k in sorted(gruppi):
+    for k in sorted(gruppi)[:-1]:
         pezzi = gruppi[k]
         fuori.append(Candela(
             pezzi[-1].orario, pezzi[0].apertura,
@@ -204,6 +222,15 @@ class MercatoDukascopy:
         adesso = adesso or datetime.now(timezone.utc)
         self.giri += 1
         nuove_per_strumento: dict[str, dict[TF, Candela]] = {}
+
+        # Il DXY per primo, e fuori dal giro degli strumenti: non si opera
+        # (PRIN-08) ma cinque coppie su sei dipendono dalla sua bias, e
+        # CTX-10 vuole che chi comanda sia aggiornato prima di chi segue.
+        try:
+            self._aggiorna_dxy(adesso)
+        except Exception as errore:
+            self.ultimo_errore = f"DXY: {errore!r}"
+            log.warning("aggiornamento del DXY fallito: %r", errore)
 
         for strumento in UNIVERSO:
             if self._stop.is_set():
@@ -384,6 +411,37 @@ class MercatoDukascopy:
         indietro = (oggi - ultima.date()).days
         indietro = max(0, min(indietro, GIORNI_MINUTI_MASSIMI))
         return [oggi - timedelta(days=n) for n in range(indietro, -1, -1)]
+
+    def _aggiorna_dxy(self, adesso: datetime) -> None:
+        """Il dollar index, calcolato dai suoi sei costituenti.
+
+        Non produce valutazioni: sul DXY si analizza e non si opera mai
+        (`PRIN-08`). Produce la serie da cui `SETUP-19` ricava la bias di
+        comando, e senza quella il motore si astiene su tutte le coppie
+        tranne l'oro.
+
+        Due dei sei costituenti — `USDCAD` e `USDSEK` — non stanno
+        nell'`UNIVERSO` e si scaricano solo per questo. Sono due file al
+        mese: il prezzo di non avere un bot fermo.
+        """
+        chiave = (duka_dxy.NOME_ARCHIVIO, "ore")
+        if self._in_riposo(chiave, adesso):
+            return
+        if not self.serie_da_chiedere(duka_dxy.NOME_ARCHIVIO, TF.H1, adesso):
+            return
+
+        mesi = self._mesi_da_chiedere(duka_dxy.NOME_ARCHIVIO, adesso)
+        serie = {
+            simbolo: [c for anno, mese in mesi
+                      for c in orarie_del_mese(simbolo, anno, mese)]
+            for simbolo in duka_dxy.PESI
+        }
+        dxy = duka_dxy.componi(serie)
+        if not dxy:
+            self._guasto(chiave, adesso)
+            return
+        self._riuscito(chiave)
+        self._archivia(duka_dxy.NOME_ARCHIVIO, costruisci(dxy))
 
     def _archivia(
         self, strumento: str, per_tf: dict[TF, list[Candela]]
