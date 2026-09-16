@@ -749,6 +749,56 @@ def pannello_decisione(id_decisione: int) -> str:
     return pannello.pagina_decisione(decisione, candele)
 
 
+# ===========================================================================
+# Il trader discrezionale via Cowork
+# ===========================================================================
+
+
+@app.get("/cowork/in-attesa")
+def cowork_in_attesa() -> dict[str, Any]:
+    """I setup che aspettano il giudizio. E' cio' che una sessione Cowork legge.
+
+    Ogni voce porta il dossier completo — gli stessi numeri che riceve il
+    giudizio automatico — e quanti secondi mancano alla scadenza. Oltre quella
+    il setup decade e non si esegue (SETUP-04, SETUP-16).
+    """
+    from core import cowork
+
+    cowork.scadi_i_vecchi()
+    attesa = cowork.in_attesa()
+    return {
+        "quanti": len(attesa),
+        "scadenza_minuti": cowork.SCADENZA_MINUTI,
+        "setup": [s.come_json() for s in attesa],
+    }
+
+
+@app.post("/cowork/verdetto/{id_decisione}")
+def cowork_verdetto(id_decisione: int, corpo: dict[str, Any]) -> dict[str, Any]:
+    """Cowork risponde: `{"accetta": true|false, "motivo": "..."}`.
+
+    Il verdetto si registra sempre, anche su un setup scaduto: serve a
+    misurare, fra sei mesi, se il giudizio abbia aggiunto valore. Ma un
+    setup scaduto non si esegue.
+
+    Come per il giudizio automatico, Cowork puo' **solo rifiutare** cio' che
+    le regole hanno approvato. Non arriva mai qui un setup che le regole
+    abbiano gia' fermato.
+    """
+    from core import cowork
+
+    accetta = bool(corpo.get("accetta"))
+    motivo = str(corpo.get("motivo", ""))[:500]
+    if not motivo:
+        return {"ok": False, "dettaglio": "serve un motivo: un verdetto senza "
+                "ragione non si puo' misurare"}
+
+    eseguibile, spiegazione = cowork.registra_verdetto(id_decisione, accetta, motivo)
+    log.info("Cowork su %s: %s — %s", id_decisione,
+             "ACCETTA" if accetta else "RIFIUTA", motivo)
+    return {"ok": True, "eseguibile": eseguibile, "dettaglio": spiegazione}
+
+
 @app.get("/salute")
 def salute() -> dict[str, Any]:
     """Stato dell'impianto: modalita', broker, equity, posizioni, salvaguardie."""
