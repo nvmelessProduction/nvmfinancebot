@@ -130,9 +130,14 @@ def importa(simbolo: str, da: int, a: int) -> None:
         print(f"  {tf.value:6s} {len(candele):7d} candele  ({nuove} nuove)")
 
     if sp:
-        punti = sp["mediano"] * (1e5 if scala_di(simbolo) == 1e5 else 1e3)
-        print(f"  spread mediano misurato: {punti:.2f} "
-              f"{'pip' if scala_di(simbolo) == 1e5 else 'punti'} "
+        # Il pip e' la QUARTA cifra decimale sulle coppie a cinque decimali
+        # (EURUSD 1.0854|3) e la SECONDA su quelle a tre (USDJPY 150.12|3).
+        # Moltiplicare per la scala del simbolo da' i **punti**, che sono
+        # dieci volte i pip: e' l'errore per cui avevo riportato "10 pip"
+        # dove ce n'era 1, e qui avrebbe dato 4 pip dove ce n'e' 0,4.
+        per_pip = 1e4 if scala_di(simbolo) == 1e5 else 1e2
+        print(f"  spread mediano misurato: {sp['mediano'] * per_pip:.2f} pip "
+              f"({sp['mediano'] * scala_di(simbolo):.1f} punti) "
               f"su {sp['campione']:,} ore")
 
 

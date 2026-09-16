@@ -27,8 +27,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Optional, Sequence
 
-from core.definizioni import Bias, Candela, Gap, KeyLevel, Mitigazione, TipoKeyLevel
+from core.definizioni import (
+    Bias, Candela, Gap, KeyLevel, Mitigazione, TipoKeyLevel, cisd, peso_ombre,
+)
 from core.parametri import (
+    PESO_OMBRE_MINIMO,
     DIREZIONE_DA_BIAS_DXY,
     MAX_POSIZIONI_PER_STRUMENTO,
     TF,
@@ -619,3 +622,51 @@ def modelli_allineati(
     if prima is Bias.NESSUNA or any(d is not prima for d in direzioni):
         return Bias.NESSUNA, 0
     return prima, len(direzioni)
+
+
+# ===========================================================================
+# CRT-11 e CRT-19/CRT-20 — le due conferme misurate
+# ===========================================================================
+
+
+def conferme_di_romeo(
+    n2: Candela,
+    candele_ingresso: Sequence[Candela],
+    direzione: Bias,
+    peso_ombre_minimo: float = PESO_OMBRE_MINIMO,
+) -> tuple[bool, tuple[str, ...]]:
+    """CRT-11 e CRT-19/20 — le due conferme di Romeo che reggono alla misura.
+
+    Restituisce (ammesso, regole_che_bloccano).
+
+    ## CRT-11 — il CISD
+
+    *«Dopo il raid serve un CISD sul timeframe basso.»* E' l'unica conferma
+    delle fonti che sopravvive alla misura: con CISD il CRT rende +0,089 R,
+    senza rende **negativo** (-0,045 R). Positivo in tutte e sei le epoche
+    misurate su due coppie indipendenti, placebo a zero.
+
+    Il codice usava l'**MSS** al suo posto, che chiede la rottura di uno swing
+    invece della serie di consegna. Lo swing sta piu' lontano: l'MSS arriva
+    sempre dopo, a prezzo peggiore, e a volte mai.
+
+    ## CRT-19 e CRT-20 — le ombre
+
+    *«Ombre grandi su C2 favoriscono la mean-reversion.»* Il CRT **e'**
+    mean-reversion, e la misura lo conferma dal lato negativo: le ombre
+    piccole danno 33,6% di winrate contro il 59,6% della base. Uno sweep
+    "pulito", con poca coda, e' un cattivo segno.
+
+    La soglia 0,6 non e' ottimizzata finemente: e' il taglio piu' grossolano
+    che separa le due popolazioni, ed e' bene che si sappia.
+    """
+    blocchi: list[str] = []
+
+    peso = peso_ombre(n2)
+    if peso is None or peso < peso_ombre_minimo:
+        blocchi.append("CRT-20")
+
+    if cisd(candele_ingresso, direzione) is None:
+        blocchi.append("CRT-11")
+
+    return not blocchi, tuple(blocchi)

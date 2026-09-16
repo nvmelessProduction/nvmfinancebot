@@ -27,3 +27,8 @@ dati/news.csv
 
 # Il backtest scrive qui la sua scansione: e' un intermedio, non un sorgente.
 backtest/segnali.pickle
+
+# I file .bi5 di Dukascopy: 2.966 file, centinaia di MB di dati grezzi.
+# Si riscaricano da soli con `python importa_dukascopy.py`.
+dukascopy/
+duka_serie.pickle

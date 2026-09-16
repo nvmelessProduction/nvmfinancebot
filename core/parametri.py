@@ -395,6 +395,12 @@ def gruppo_di(strumento: str) -> str:
 # ordinario lo e'. Non e' ottimizzata su dati, ed e' bene che si sappia.
 FINESTRA_SMT: Final[int] = 20
 
+# CRT-19/CRT-20 — quanto devono pesare le ombre di N2 perche' il CRT valga.
+# Le ombre piccole danno 33,6% di winrate contro il 59,6% della base: uno
+# sweep "pulito" e' un cattivo segno per un'operazione di mean-reversion.
+# Taglio grossolano, non ottimizzato finemente.
+PESO_OMBRE_MINIMO: Final[float] = 0.6
+
 # ===========================================================================
 # CRT-04 — le coppie di timeframe canoniche
 # ===========================================================================

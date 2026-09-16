@@ -75,7 +75,11 @@ DURATA: dict[TF, timedelta] = {
 # serve barre a quattro ore, quindi si costruiscono dalle orarie
 # (`DERIVATI`). `TF_H6` e `TF_H12` restano vuoti: DEF-31 li usa solo per i
 # gap e le regole che li richiedono tacciono, dichiarandolo.
-TF_OPERATIVI: tuple[TF, ...] = (TF.H1, TF.H4, TF.D1)
+# I timeframe su cui si cerca un CRT. `TF_1M` c'e' perche' `M1 -> D1` e' la
+# coppia canonica di CRT-04 e la sola configurazione che risulta positiva al
+# netto dello spread reale: su stop larghi il costo pesa 0,071 R invece dei
+# 0,15-0,35 R delle coppie orarie. Vedi OPERATIVO.md.
+TF_OPERATIVI: tuple[TF, ...] = (TF.M1, TF.H1, TF.H4, TF.D1)
 
 # Il ticker con cui il resto dell'impianto riconosce il future.
 def ticker_di(future: str) -> str:

@@ -43,7 +43,7 @@ from core import setup as stp
 from core.definizioni import (
     Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd, livello_cfd,
 )
-from core.parametri import MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO
+from core.parametri import COPPIE_CRT, MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO
 
 # ===========================================================================
 # Ingresso dei dati: l'unica porta, e quella che vieta il lookahead
@@ -302,6 +302,31 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             applicate,
         )
     applicate.append("SETUP-02A" if crt.direzione is Bias.SHORT else "SETUP-02B")
+
+    # --- 4ter. Le due conferme di Romeo che reggono (CRT-11, CRT-20) -------
+    #
+    # Il CISD si cerca sul timeframe di INGRESSO della coppia di CRT-04: per
+    # un CRT mensile e' il giornaliero, per uno giornaliero l'orario. E' li'
+    # che il cambio di consegna si vede — sul timeframe del range non c'e'
+    # ancora nulla da vedere.
+    tf_ingresso = COPPIE_CRT.get(crt.tf)
+    if tf_ingresso is not None:
+        serie_ingresso = candele_visibili(
+            foto.candele_per_tf.get(tf_ingresso, ()), foto.istante
+        )
+        applicate.extend(["CRT-11", "CRT-20"])
+        ok_romeo, blocchi_romeo = stp.conferme_di_romeo(
+            crt.n2, serie_ingresso[-12:], crt.direzione
+        )
+        if not ok_romeo:
+            return _non_operare(
+                foto.strumento, list(blocchi_romeo) + indipendenti,
+                "conferme di Romeo non soddisfatte: "
+                + ("CISD assente sul timeframe di ingresso" if "CRT-11" in blocchi_romeo else "")
+                + ("; " if len(blocchi_romeo) > 1 else "")
+                + ("ombre di N2 troppo strette" if "CRT-20" in blocchi_romeo else ""),
+                applicate, direzione=crt.direzione, tf_crt=crt.tf,
+            )
 
     # --- 4bis. Il filtro DXY (SETUP-19, RISK-05, PRIN-09, PA-05) ----------
     #
