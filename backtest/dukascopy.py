@@ -79,15 +79,23 @@ def _assicura_deposito() -> None:
     DEPOSITO.mkdir(parents=True, exist_ok=True)
 
 
-def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
+# L'attesa fra un tentativo e l'altro raddoppia, ma con un tetto. Senza
+# tetto, cinque tentativi facevano 1+2+4+8+16 = 31 secondi per OGNI file che
+# Dukascopy non serviva — e su duemilanovecento file diventano ore in cui il
+# programma sembra bloccato e invece sta solo aspettando.
+ATTESA_MASSIMA_SEC = 4.0
+
+
+def _scarica(percorso: str, tentativi: int = 4) -> Optional[bytes]:
     """Un file, con attesa crescente sui 503. None se non esiste davvero."""
     cache = DEPOSITO / percorso.replace("/", "_")
     if cache.exists():
         return cache.read_bytes() or None
     _assicura_deposito()
-    for n in range(tentativi):
+    attesa = 0.5
+    for _ in range(tentativi):
         try:
-            r = httpx.get(f"{BASE}/{percorso}", headers=CAPO, timeout=90,
+            r = httpx.get(f"{BASE}/{percorso}", headers=CAPO, timeout=60,
                           follow_redirects=True)
             if r.status_code == 200:
                 cache.write_bytes(r.content)
@@ -97,7 +105,8 @@ def _scarica(percorso: str, tentativi: int = 5) -> Optional[bytes]:
                 return None
         except Exception:
             pass
-        time.sleep(1.0 * (2 ** n))
+        time.sleep(attesa)
+        attesa = min(attesa * 2, ATTESA_MASSIMA_SEC)
     return None
 
 
@@ -129,12 +138,26 @@ def orarie(simbolo: str, da: int, a: int) -> tuple[tuple[Candela, ...], tuple[Ca
     quindi si somma un'ora: per le barre a passo fisso e' esatto, e non serve
     la scorciatoia di `orari_di_chiusura` che vale sui periodi irregolari.
     """
+    # In parallelo, e dicendo a che punto e'. La versione sequenziale e muta
+    # impiegava ore e non stampava NULLA fra un simbolo e l'altro: chi
+    # guardava lo schermo non aveva modo di distinguere "sta lavorando" da
+    # "si e' piantato", e infatti e' stato interrotto credendolo bloccato.
+    import concurrent.futures as cf
+
     fuori = {}
+    mesi = [(anno, m) for anno in range(da, a + 1) for m in range(1, 13)]
     for lato in ("BID", "ASK"):
         righe = []
-        for anno in range(da, a + 1):
-            for m in range(1, 13):
-                righe.extend(mese(simbolo, anno, m, lato))
+        fatti = 0
+        with cf.ThreadPoolExecutor(max_workers=12) as pool:
+            lavori = {pool.submit(mese, simbolo, anno, m, lato): (anno, m)
+                      for anno, m in mesi}
+            for compito in cf.as_completed(lavori):
+                righe.extend(compito.result())
+                fatti += 1
+                if fatti % 24 == 0 or fatti == len(mesi):
+                    print(f"    {lato} {fatti:3d}/{len(mesi)} mesi, "
+                          f"{len(righe):,} ore", flush=True)
         righe.sort(key=lambda r: r[0])
         fuori[lato] = tuple(
             Candela(orario=t + timedelta(hours=1), apertura=o,
