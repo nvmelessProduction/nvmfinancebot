@@ -27,7 +27,7 @@ python -c "from core import storage; storage.inizializza(); [print(f\"{r['strume
 ```
 
 Devono esserci **sei strumenti** — EURUSD, GBPUSD, AUDUSD, USDCHF, USDJPY,
-XAUUSD — e per ciascuno:
+XAUUSD — **piu' ICEUS**, che e' il dollar index, e per ciascuno:
 
 | timeframe | atteso | da dove |
 |---|---:|---|
@@ -40,6 +40,15 @@ XAUUSD — e per ciascuno:
 | `TF_M5` | ~18.000 | idem |
 | `TF_M1min` | ~90.000 | idem |
 
+E per `ICEUS`, che non ha intraday perche' serve solo alla bias:
+
+| timeframe | atteso | da dove |
+|---|---:|---|
+| `TF_H1` | ~31.000 | `importa_dxy.py` |
+| `TF_1D` | ~1.300 | idem |
+| `TF_1W` | ~260 | idem |
+| `TF_1M` | ~60 | idem |
+
 **Se mancano dei mesi** nei timeframe alti: rilancia `python
 importa_dukascopy.py`. Un mese fallito per 503 **non viene messo in cache**,
 quindi il secondo giro riprova solo quelli. Ripeti finché i numeri smettono
@@ -47,6 +56,30 @@ di crescere.
 
 **Se mancano i tre intraday**: `python importa_minuti.py`. Senza di essi la
 coppia `4h → 15m` — quella col risultato migliore misurato — non può girare.
+
+**Se manca `ICEUS`**: `python importa_dxy.py`. È il dollar index, e senza di
+esso `SETUP-19` **non abilita alcuna operazione** su cinque coppie su sei —
+resta libero solo `XAUUSD`, che `PRIN-09` esenta. Dukascopy pubblica un
+`USDIDX` che sembra servire e non serve: è un file inerte, volume zero e un
+solo valore ripetuto per tutto il mese. L'indice si calcola dai suoi sei
+costituenti, e quanto quella costruzione si discosta da quella vera è
+misurato in `docs/DXY-INVOLUCRO-2026-09-17.md` — 96,1% di accordo sulla bias
+giornaliera, e sbaglia sempre per astensione, mai per direzione.
+
+### La prova che dice se la catena regge
+
+```powershell
+python prova_giro.py
+```
+
+Percorre la catena **una volta** — archivio, DXY, alert, fotografia, motore —
+e stampa a quale anello si ferma ogni strumento e ogni timeframe. Non apre
+nulla e non scrive nulla.
+
+Serve perché un bot che non opera e un bot che opera e si astiene hanno lo
+stesso aspetto da fuori: `/salute` mostra contatori che salgono e nessun
+errore. Una riga `[ NO ]` è un guasto; un `NONE` con un motivo che cita una
+regola è un'astensione vera.
 
 ### MetaTrader 5
 
