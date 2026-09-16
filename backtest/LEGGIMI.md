@@ -30,8 +30,24 @@ attiva, più quelli che servono a misurare cosa cambierebbe abbassandola.
 | `raccogli.py` | la scansione completa sui sei strumenti |
 | `rapporto.py` | le tabelle: imbuto, esiti, sensibilità a `RR_MINIMO` |
 | `costi.py` | spread, commissioni e size minima del broker |
+| `dukascopy.py` | prezzi veri con BID e ASK separati, un file al mese |
+| `spot.py` | prezzi spot di Yahoo — **feed indicativo, vedi l'avvertenza** |
 | `placebo.py` | il CRT contro entrate a caso con la stessa geometria |
 | `trailing.py` | uscita a trailing stop senza TP, e il suo placebo |
+
+## Un'avvertenza sulle fonti
+
+`spot.py` scarica il feed spot di Yahoo. **Non usarlo per misurare una
+strategia a stop**: i suoi massimi e minimi giornalieri sono campionati, non i
+veri estremi scambiati (misurato: il 77–94% di quelli del future). Uno stop è
+un livello che deve essere *toccato*, e con estremi attenuati viene toccato
+molto meno. Il 37,7% degli esiti cambia — vedi
+`docs/SPOT-CONTRO-FUTURE-2026-09-16.md`.
+
+Resta nel repository perché la misura che lo smonta è utile, non perché serva.
+
+`dukascopy.py` è la fonte buona: il book di un broker, con BID e ASK separati.
+Gli estremi sono quelli toccati e lo spread si misura invece di assumerlo.
 
 ## Il test che conta più di tutti
 
