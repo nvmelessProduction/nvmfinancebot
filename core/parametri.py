@@ -402,6 +402,51 @@ FINESTRA_SMT: Final[int] = 20
 PESO_OMBRE_MINIMO: Final[float] = 0.6
 
 # ===========================================================================
+# Le conferme di Romeo: quali si applicano
+# ===========================================================================
+#
+# Ogni voce e' una regola delle fonti. Tutte accese significa "la strategia
+# per intero", ed e' il valore predefinito perche' e' cio' che la strategia
+# chiede.
+#
+# La colonna che conta e' la MISURA, presa su prezzi veri Dukascopy con BID e
+# ASK (docs/MISURA-REGOLE-MANCANTI-2026-09-16.md):
+#
+#   CRT-11  CISD              +3,0 sigma sopra la base.  REGGE.
+#   CRT-20  ombre di N2       le piccole danno 33,6% di winrate contro 59,6%.
+#                             Il filtro evita le peggiori. REGGE dal lato
+#                             negativo: serve a non fare la cosa sbagliata.
+#   CRT-12  divergenza SMT    +0,5 / -0,6 sigma. Le fonti la dichiarano non
+#                             negoziabile, i dati non mostrano nulla.
+#   CRT-10  double purge      88,7% di winrate e R NEGATIVA. La variante
+#                             concorde e' PEGGIO della base (-1,4 sigma).
+#   CRT-15  finestre orarie   nessuna differenza (+0,0 / -0,2 sigma).
+#   CRT-17  meta' del range   la prima misura era un lookahead; corretta,
+#                             sparisce sotto i 30 campioni.
+#   CRT-18  meta' dell'ombra  mai misurata da sola.
+#   CRT-06  modelli allineati mai misurata.
+#
+# Chi spegne una voce sa cosa sta spegnendo. Chi le lascia tutte accese ha la
+# strategia di Romeo per intero, e paga quello che le misure dicono che costa.
+CONFERME_ROMEO: Final[dict[str, bool]] = {
+    "CRT-06": True,   # tre modelli CRT allineati
+    "CRT-10": True,   # Double Purge Sweep
+    "CRT-11": True,   # CISD sul timeframe di ingresso
+    "CRT-12": True,   # divergenza SMT fra strumenti correlati
+    "CRT-15": True,   # finestre orarie di New York
+    "CRT-17": True,   # tenuta della meta' del range
+    "CRT-18": True,   # il punto medio dell'ombra come livello
+    "CRT-20": True,   # peso delle ombre di N2
+}
+
+
+def conferma_attiva(regola: str) -> bool:
+    """Questa conferma di Romeo si applica?"""
+    if regola not in CONFERME_ROMEO:
+        raise ValueError(f"conferma non riconosciuta: {regola}")
+    return CONFERME_ROMEO[regola]
+
+# ===========================================================================
 # CRT-04 — le coppie di timeframe canoniche
 # ===========================================================================
 #

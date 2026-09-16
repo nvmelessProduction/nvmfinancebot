@@ -388,6 +388,7 @@ def costruisci_fotografia(
     eta_calendario_ore: Optional[float] = None,
     target_raggiunto_per_tf: Optional[Mapping[TF, bool]] = None,
     dati_coerenti: bool = True,
+    storici_compagni: Optional[Mapping[str, Storico]] = None,
 ):
     """Assembla la `Fotografia` che `motore.valuta()` si aspetta.
 
@@ -425,6 +426,8 @@ def costruisci_fotografia(
         gap_reazione=gap_di_reazione(storico, istante, comando),
         gap_fase=gap_fase,
         mitigazione=mitigazione,
+        candele_compagne=_compagne_per_smt(strumento, storici_compagni, istante),
+        crt_per_tf=_crt_sulle_altre_coppie(storico, istante),
         equity=conto.equity,
         prezzo_cfd=conto.prezzo_cfd,
         valore_punto=conto.valore_punto,
@@ -441,3 +444,57 @@ def costruisci_fotografia(
         eta_calendario_ore=eta_calendario_ore,
         dati_coerenti=dati_coerenti,
     )
+
+
+# ===========================================================================
+# CRT-12 e CRT-06 — i dati che le due conferme richiedono
+# ===========================================================================
+
+
+def _compagne_per_smt(
+    strumento: str,
+    storici: Optional[Mapping[str, "Storico"]],
+    istante: datetime,
+) -> dict[str, tuple]:
+    """CRT-12 — le candele degli strumenti correlati, per la divergenza SMT.
+
+    Solo quelle di `COMPAGNE_SMT`, e solo quelle di cui si hanno davvero i
+    dati. Un dizionario vuoto significa "la divergenza non si puo' valutare",
+    e in `conferme_di_romeo` quel caso **non blocca**: trasformare "non lo so"
+    in "no" spegnerebbe il bot senza dirlo.
+
+    Il timeframe e' quello di `TF_1M`, la coppia di CRT-04 su cui il bot
+    opera: la divergenza si cerca sullo stesso orizzonte del CRT, non su uno
+    qualunque.
+    """
+    from core.parametri import COMPAGNE_SMT
+
+    if not storici:
+        return {}
+    fuori: dict[str, tuple] = {}
+    for compagna in COMPAGNE_SMT.get(strumento, ()):
+        serie = (storici.get(compagna) or {}).get(TF.M1, ())
+        visibili = candele_visibili(serie, istante)
+        if visibili:
+            fuori[compagna] = tuple(visibili)
+    return fuori
+
+
+def _crt_sulle_altre_coppie(storico: "Storico", istante: datetime) -> dict:
+    """CRT-06 — i CRT formati sulle ALTRE coppie di CRT-04.
+
+    *"Tre modelli CRT allineati danno l'accuratezza massima."* Qui si
+    raccolgono; il confronto lo fa `conferme_di_romeo`, che blocca solo su un
+    disaccordo esplicito — l'assenza di CRT altrove non e' un disaccordo.
+    """
+    from core.parametri import COPPIE_CRT
+    from core.setup import cerca_crt
+
+    presi = key_level_presi(storico, istante)
+    fuori: dict = {}
+    for tf in COPPIE_CRT:
+        candele = candele_visibili(storico.get(tf, ()), istante)
+        if len(candele) < 2:
+            continue
+        fuori[tf] = cerca_crt(candele[-2], candele[-1], tf, presi)
+    return fuori

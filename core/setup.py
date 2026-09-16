@@ -25,13 +25,17 @@ due elenchi e' normativo da solo.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, Optional, Sequence
+from datetime import datetime
+from typing import Any, Mapping, Optional, Sequence
 
 from core.definizioni import (
-    Bias, Candela, Gap, KeyLevel, Mitigazione, TipoKeyLevel, cisd, peso_ombre,
+    Bias, Candela, Gap, KeyLevel, Mitigazione, TipoKeyLevel, cisd,
+    divergenza_smt, double_purge, meta_ombra, meta_tenuta, peso_ombre,
+    verso_del_double_purge,
 )
 from core.parametri import (
     PESO_OMBRE_MINIMO,
+    conferma_attiva,
     DIREZIONE_DA_BIAS_DXY,
     MAX_POSIZIONI_PER_STRUMENTO,
     TF,
@@ -630,43 +634,123 @@ def modelli_allineati(
 
 
 def conferme_di_romeo(
+    n1: Candela,
     n2: Candela,
     candele_ingresso: Sequence[Candela],
     direzione: Bias,
+    istante: datetime,
+    tf_crt: TF,
+    candele_compagne: Optional[Mapping[str, Sequence[Candela]]] = None,
+    candele_strumento: Optional[Sequence[Candela]] = None,
+    strumento: str = "",
+    crt_per_tf: Optional[Mapping[TF, Any]] = None,
     peso_ombre_minimo: float = PESO_OMBRE_MINIMO,
 ) -> tuple[bool, tuple[str, ...]]:
-    """CRT-11 e CRT-19/20 — le due conferme di Romeo che reggono alla misura.
+    """TUTTE le conferme di Romeo, ciascuna accendibile da `CONFERME_ROMEO`.
 
     Restituisce (ammesso, regole_che_bloccano).
 
-    ## CRT-11 — il CISD
+    Ogni voce e' una regola delle fonti, e ognuna e' **misurata**. Il
+    commento accanto dice cosa ha detto la misura, perche' chi legge questo
+    codice deve poter distinguere una regola che funziona da una che le fonti
+    celebrano e i dati non confermano. Vedi
+    `docs/MISURA-REGOLE-MANCANTI-2026-09-16.md`.
 
-    *«Dopo il raid serve un CISD sul timeframe basso.»* E' l'unica conferma
-    delle fonti che sopravvive alla misura: con CISD il CRT rende +0,089 R,
-    senza rende **negativo** (-0,045 R). Positivo in tutte e sei le epoche
-    misurate su due coppie indipendenti, placebo a zero.
-
-    Il codice usava l'**MSS** al suo posto, che chiede la rottura di uno swing
-    invece della serie di consegna. Lo swing sta piu' lontano: l'MSS arriva
-    sempre dopo, a prezzo peggiore, e a volte mai.
-
-    ## CRT-19 e CRT-20 — le ombre
-
-    *«Ombre grandi su C2 favoriscono la mean-reversion.»* Il CRT **e'**
-    mean-reversion, e la misura lo conferma dal lato negativo: le ombre
-    piccole danno 33,6% di winrate contro il 59,6% della base. Uno sweep
-    "pulito", con poca coda, e' un cattivo segno.
-
-    La soglia 0,6 non e' ottimizzata finemente: e' il taglio piu' grossolano
-    che separa le due popolazioni, ed e' bene che si sappia.
+    Il principio: **se una conferma non e' valutabile, non blocca**. Mancano i
+    dati della compagna? La divergenza SMT non si pronuncia. Non c'e' ancora
+    storia per il CISD? Non si pronuncia. Trasformare "non lo so" in "no"
+    spegnerebbe il bot senza dirlo, ed e' diverso dal fallimento chiuso del
+    giudizio, dove l'astensione e' il punto.
     """
     blocchi: list[str] = []
 
-    peso = peso_ombre(n2)
-    if peso is None or peso < peso_ombre_minimo:
-        blocchi.append("CRT-20")
+    # --- CRT-20 — il peso delle ombre di N2 -------------------------------
+    # MISURATA: le ombre piccole danno 33,6% di winrate contro il 59,6% della
+    # base. Uno sweep "pulito" e' un cattivo segno per la mean-reversion.
+    if conferma_attiva("CRT-20"):
+        peso = peso_ombre(n2)
+        if peso is not None and peso < peso_ombre_minimo:
+            blocchi.append("CRT-20")
 
-    if cisd(candele_ingresso, direzione) is None:
-        blocchi.append("CRT-11")
+    # --- CRT-11 — il CISD sul timeframe di ingresso -----------------------
+    # MISURATA: +3,0 sigma sopra la base. Senza CISD il CRT rende NEGATIVO.
+    # E' l'unica conferma delle fonti che regge alla misura.
+    if conferma_attiva("CRT-11") and candele_ingresso:
+        if cisd(candele_ingresso, direzione) is None:
+            blocchi.append("CRT-11")
+
+    # --- CRT-12 — la divergenza SMT ---------------------------------------
+    # MISURATA: +0,5 / -0,6 sigma, cioe' nulla. Le fonti la dichiarano una
+    # delle tre confluenze NON NEGOZIABILI; i dati a granularita' oraria non
+    # la vedono. Resta accesa perche' e' la strategia, e chi la spegne deve
+    # saperlo. Puo' darsi che serva il minuto su cui Romeo lavora.
+    if conferma_attiva("CRT-12") and candele_compagne and candele_strumento:
+        verso_sweep = Bias.LONG if direzione is Bias.SHORT else Bias.SHORT
+        giudizi = []
+        for compagna, serie in candele_compagne.items():
+            esito = divergenza_smt(
+                strumento, candele_strumento, serie, compagna, verso_sweep)
+            if esito is not None:
+                giudizi.append(esito)
+        # Serve almeno una compagna che si pronunci, e almeno una divergenza.
+        if giudizi and not any(giudizi):
+            blocchi.append("CRT-12")
+
+    # --- CRT-10 — il Double Purge Sweep -----------------------------------
+    # MISURATA, e il risultato e' scomodo: 88,7% di winrate e R NEGATIVA —
+    # tante vittorie piccole e poche perdite grandi. La variante CONCORDE,
+    # quella che segue il verso della regola, e' PEGGIO della base (-1,4
+    # sigma). Qui si applica come le fonti la scrivono: se la candela e' un
+    # double purge, il verso lo decide il lato piu' respinto, e un CRT che va
+    # dall'altra parte non si esegue.
+    if conferma_attiva("CRT-10") and double_purge(n1, n2):
+        verso = verso_del_double_purge(n2)
+        if verso is not Bias.NESSUNA and verso is not direzione:
+            blocchi.append("CRT-10")
+
+    # --- CRT-15 — le finestre orarie di New York --------------------------
+    # MISURATA: nessuna differenza (+0,0 / -0,2 sigma). Su D1 -> H1 quasi
+    # tutti i segnali cadono FUORI: sono pensate per timeframe d'ingresso piu'
+    # bassi di quelli che il bot puo' usare. Dove non c'e' finestra non
+    # blocca — `None` non e' `False`.
+    if conferma_attiva("CRT-15"):
+        from core.contesto import dentro_finestra_crt
+
+        dentro = dentro_finestra_crt(istante, tf_crt)
+        if dentro is False:
+            blocchi.append("CRT-15")
+
+    # --- CRT-17 — la tenuta della meta' del range -------------------------
+    # La prima misura dava 85,7% di winrate e +15,3 sigma: era un LOOKAHEAD,
+    # filtravo con le candele successive a N2. Corretta guardando solo cio'
+    # che si vede all'ingresso, sparisce sotto i 30 campioni. Qui si guarda
+    # dentro N2, sul timeframe di ingresso: e' l'unica cosa nota.
+    if conferma_attiva("CRT-17") and candele_ingresso:
+        tenuta = meta_tenuta(n1, candele_ingresso)
+        if tenuta is not None and tenuta is not Bias.NESSUNA and tenuta is not direzione:
+            blocchi.append("CRT-17")
+
+    # --- CRT-18 — il punto medio dell'ombra come livello ------------------
+    # *"Tenerlo favorisce la continuazione, attraversarlo invalida."* La
+    # chiusura di N2 deve stare dalla parte giusta della meta' dell'ombra
+    # dello sweep. Mai misurata da sola.
+    if conferma_attiva("CRT-18"):
+        meta = meta_ombra(n2, superiore=(direzione is Bias.SHORT))
+        if meta is not None:
+            if direzione is Bias.SHORT and n2.chiusura > meta:
+                blocchi.append("CRT-18")
+            elif direzione is Bias.LONG and n2.chiusura < meta:
+                blocchi.append("CRT-18")
+
+    # --- CRT-06 — tre modelli CRT allineati -------------------------------
+    # *"Tre modelli CRT allineati danno l'accuratezza massima."* Mai
+    # misurata. Blocca solo su un DISACCORDO esplicito: se su un'altra coppia
+    # esiste un CRT che punta dall'altra parte, i modelli non sono allineati.
+    # L'assenza di CRT altrove non e' un disaccordo.
+    if conferma_attiva("CRT-06") and crt_per_tf:
+        altri = [c.direzione for t, c in crt_per_tf.items()
+                 if c is not None and t is not tf_crt]
+        if altri and any(d is not direzione for d in altri):
+            blocchi.append("CRT-06")
 
     return not blocchi, tuple(blocchi)

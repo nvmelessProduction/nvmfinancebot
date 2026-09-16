@@ -55,7 +55,7 @@ from core.definizioni import Bias, Candela
 from core.log import diario
 from core.models import AlertIn
 from core.motore import Fotografia
-from core.parametri import LOOKBACK_ANNI, TF, UNIVERSO
+from core.parametri import COMPAGNE_SMT, LOOKBACK_ANNI, TF, UNIVERSO
 from core.simboli import (
     DXY_FUTURE,
     cfd_di,
@@ -343,6 +343,13 @@ class FornitoreTradingView:
             storico=self.storico(future),
             conto=conto,
             bias_dxy=bias_dxy,
+            # CRT-12 — senza gli storici delle compagne la divergenza SMT non
+            # si puo' valutare, e una conferma che non si valuta e' una
+            # conferma morta: e' la classe di DEF-33.
+            storici_compagni={
+                c: self.storico(cfd_di(c) or c)
+                for c in COMPAGNE_SMT.get(cfd, ())
+            },
             eventi_news=eventi or (),
             eta_calendario_ore=eta,
         )

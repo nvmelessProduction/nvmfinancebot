@@ -75,7 +75,7 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         log.info("MT5 non contattato (modalita' dry_run)")
 
     # --- Fornitore dei dati di analisi ------------------------------------
-    if cfg.FORNITORE_DATI in ("tradingview", "mercato"):
+    if cfg.FORNITORE_DATI in ("tradingview", "mercato", "dukascopy"):
         from core.fornitore_tradingview import collega
 
         collega(suffisso_broker=cfg.MT5_SUFFISSO_SIMBOLI)

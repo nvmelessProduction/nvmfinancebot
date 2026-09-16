@@ -43,7 +43,23 @@ from core import setup as stp
 from core.definizioni import (
     Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd, livello_cfd,
 )
-from core.parametri import COPPIE_CRT, MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO
+from core.parametri import (
+    CONFERME_ROMEO, COPPIE_CRT, MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO,
+)
+
+# Perche' ciascuna conferma di Romeo ha fermato l'operazione. Finisce nel
+# motivo della decisione, quindi in archivio e su Telegram: senza, l'utente
+# leggerebbe "CRT-17" e dovrebbe andarsi a cercare cosa vuol dire.
+SPIEGAZIONE_CRT: dict[str, str] = {
+    "CRT-06": "i CRT delle altre coppie puntano altrove",
+    "CRT-10": "double purge col verso opposto",
+    "CRT-11": "CISD assente sul timeframe di ingresso",
+    "CRT-12": "nessuna divergenza SMT sulle compagne",
+    "CRT-15": "fuori dalle finestre orarie di New York",
+    "CRT-17": "la meta' del range non tiene in questa direzione",
+    "CRT-18": "chiusura oltre la meta' dell'ombra dello sweep",
+    "CRT-20": "ombre di N2 troppo strette",
+}
 
 # ===========================================================================
 # Ingresso dei dati: l'unica porta, e quella che vieta il lookahead
@@ -94,6 +110,13 @@ class Fotografia:
     # del 75% residuo: quello non richiede che il livello sia stato spazzato,
     # richiede che esista.
     key_level_correnti: Sequence[KeyLevel] = ()
+
+    # CRT-12 — le candele degli strumenti correlati, sullo stesso timeframe
+    # del CRT. Servono alla divergenza SMT e a nient'altro: senza di esse la
+    # regola non si pronuncia, e non pronunciarsi non blocca.
+    candele_compagne: Mapping[str, Sequence[Candela]] = field(default_factory=dict)
+    # CRT-06 — i CRT trovati sulle ALTRE coppie di CRT-04, per l'allineamento.
+    crt_per_tf: Mapping[TF, object] = field(default_factory=dict)
 
     # Gap. Sono due ruoli diversi e DEF-15bis vieta di confonderli: il gap
     # attivo sul timeframe piu' alto (DEF-13) e' un TARGET, le zone di
@@ -314,17 +337,24 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         serie_ingresso = candele_visibili(
             foto.candele_per_tf.get(tf_ingresso, ()), foto.istante
         )
-        applicate.extend(["CRT-11", "CRT-20"])
+        applicate.extend(sorted(CONFERME_ROMEO))
         ok_romeo, blocchi_romeo = stp.conferme_di_romeo(
-            crt.n2, serie_ingresso[-12:], crt.direzione
+            n1=crt.n1,
+            n2=crt.n2,
+            candele_ingresso=serie_ingresso[-12:],
+            direzione=crt.direzione,
+            istante=foto.istante,
+            tf_crt=crt.tf,
+            candele_compagne=foto.candele_compagne,
+            candele_strumento=candele,
+            strumento=foto.strumento,
+            crt_per_tf=foto.crt_per_tf,
         )
         if not ok_romeo:
             return _non_operare(
                 foto.strumento, list(blocchi_romeo) + indipendenti,
                 "conferme di Romeo non soddisfatte: "
-                + ("CISD assente sul timeframe di ingresso" if "CRT-11" in blocchi_romeo else "")
-                + ("; " if len(blocchi_romeo) > 1 else "")
-                + ("ombre di N2 troppo strette" if "CRT-20" in blocchi_romeo else ""),
+                + ", ".join(SPIEGAZIONE_CRT.get(b, b) for b in blocchi_romeo),
                 applicate, direzione=crt.direzione, tf_crt=crt.tf,
             )
 
