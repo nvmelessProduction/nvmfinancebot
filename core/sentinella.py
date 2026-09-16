@@ -24,7 +24,10 @@ from typing import Any, Optional
 
 from core import broker, notifier, storage
 from core.config import impostazioni
+from core.definizioni import Bias
+from core.gestione import livello_break_even
 from core.log import diario
+from core.parametri import FRAZIONE_CHIUSA_A_TP1
 
 log = diario("sentinella")
 
@@ -64,6 +67,67 @@ def livello_toccato(
     if colpito_tp:
         return "tp"
     return None
+
+
+def tp1_toccato(
+    direzione: str,
+    bid: float,
+    ask: float,
+    tp1: Optional[float],
+) -> bool:
+    """GEST-04 — Il prezzo ha raggiunto TP1?
+
+    Stessa aritmetica di `livello_toccato` sul ramo del target, e per la
+    stessa ragione: si guarda il prezzo a cui si **uscirebbe**, perche' e' a
+    quel prezzo che il quarto di posizione viene effettivamente chiuso.
+
+    E' separata da `livello_toccato` perche' TP1 non e' un'uscita: e' un
+    parziale che lascia in vita il 75% della posizione. Mescolare i due
+    significherebbe che un TP1 raggiunto chiude tutto, che e' l'opposto di
+    quello che GEST-07 chiede.
+    """
+    if tp1 is None:
+        return False
+    direzione = direzione.upper()
+    if direzione == "BUY":
+        return bid >= tp1
+    if direzione == "SELL":
+        return ask <= tp1
+    return False
+
+
+def volume_del_parziale(
+    volume_iniziale: float,
+    volume_attuale: float,
+    passo_broker: float,
+) -> Optional[float]:
+    """GEST-04 — Quanto chiudere a TP1, arrotondato a cio' che il broker accetta.
+
+    Il 25% si calcola sul volume **iniziale**, non su quello attuale: sono
+    uguali finche' non ci sono stati parziali, e GEST-07 dice che di parziali
+    ce n'e' uno solo, ma calcolarlo sull'iniziale e' l'unica lettura che regge
+    se un giorno ne comparisse un secondo.
+
+    None quando il parziale non e' eseguibile, e sono due casi distinti che
+    qui hanno la stessa risposta:
+
+    - il 25% arrotondato per difetto al passo del broker da' zero. Succede
+      sulle posizioni alla size minima, dove un quarto di lotto minimo non
+      esiste. Non si chiude nulla e non si tocca lo stop: applicare il break
+      even senza aver incassato il parziale cambierebbe l'operazione in una
+      che le regole non descrivono.
+    - il parziale consumerebbe tutta la posizione. Sarebbe una chiusura
+      totale a TP1, che e' proprio cio' che GEST-07 esclude ("il restante 75%
+      non ha ulteriori parziali" presuppone che un restante ci sia).
+    """
+    if passo_broker <= 0 or volume_iniziale <= 0 or volume_attuale <= 0:
+        return None
+    grezzo = volume_iniziale * FRAZIONE_CHIUSA_A_TP1
+    passi = int(grezzo / passo_broker + 1e-9)
+    quota = round(passi * passo_broker, 8)
+    if quota <= 0 or quota >= volume_attuale:
+        return None
+    return quota
 
 
 class Sentinella:
@@ -194,7 +258,8 @@ class Sentinella:
         # 2. Ci sono livelli da sorvegliare?
         sl = posizione["sl"]
         tp = posizione["tp"]
-        if sl is None and tp is None:
+        tp1 = posizione.get("tp1")
+        if sl is None and tp is None and tp1 is None:
             return False
 
         # 3. Il prezzo li ha toccati?
@@ -204,7 +269,15 @@ class Sentinella:
             return False
 
         colpito = livello_toccato(direzione, tick["bid"], tick["ask"], sl, tp)
+
+        # 3bis. TP1 (GEST-04, GEST-07). Si guarda **dopo** stop e target e
+        #       solo se nessuno dei due e' stato toccato: fra due letture il
+        #       prezzo puo' aver attraversato TP1 e poi essere tornato fino
+        #       allo stop, e fra due letture possibili si sceglie la peggiore.
+        #       Lo stesso principio di `livello_toccato` quando sl e tp
+        #       risultano toccati insieme.
         if colpito is None:
+            self._parziale_a_tp1(posizione, tick)
             return False
 
         livello = sl if colpito == "sl" else tp
@@ -235,6 +308,101 @@ class Sentinella:
         notifier.invia(
             f"{colpito.upper()} su {simbolo} {direzione} (ticket {ticket})\n"
             f"livello {livello}, chiusa a {esito.prezzo}"
+        )
+        return True
+
+    def _parziale_a_tp1(
+        self, posizione: dict[str, Any], tick: dict[str, float]
+    ) -> bool:
+        """GEST-04 e GEST-07 — Chiude il 25% a TP1 e porta il resto a break even.
+
+        Una volta sola per posizione: `tp1_raggiunto` in archivio e' il solo
+        stato che sopravvive a un riavvio (GEST-12), e GEST-05 vieta di
+        muovere ancora lo stop dopo il break even.
+
+        Le due azioni — parziale e spostamento dello stop — sono un fatto solo
+        e vengono scritte insieme. Se il broker esegue il parziale ma la
+        scrittura fallisce, la posizione resta col volume ridotto e lo stop
+        vecchio: e' rumoroso di proposito, perche' e' l'unico caso in cui
+        l'archivio e il broker divergono e va visto subito.
+
+        True se il parziale e' stato eseguito.
+        """
+        if posizione.get("tp1_raggiunto"):
+            return False                                  # GEST-05: una volta sola
+
+        tp1 = posizione.get("tp1")
+        if not tp1_toccato(str(posizione["direzione"]), tick["bid"], tick["ask"], tp1):
+            return False
+
+        id_posizione = int(posizione["id"])
+        ticket = int(posizione["ticket"])
+        simbolo = str(posizione["simbolo"])
+        direzione = str(posizione["direzione"])
+
+        ok_spec, specifiche, messaggio = broker.specifiche_simbolo(simbolo)
+        if not ok_spec or specifiche is None:
+            log.warning("niente specifiche per %s: %s", simbolo, messaggio)
+            return False
+
+        volume_attuale = float(posizione["volume"])
+        volume_iniziale = float(posizione.get("volume_iniziale") or volume_attuale)
+        quota = volume_del_parziale(
+            volume_iniziale, volume_attuale, float(specifiche["volume_step"])
+        )
+        if quota is None:
+            # Size minima: un quarto non e' eseguibile. Non si chiude nulla e
+            # NON si sposta lo stop — un break even senza parziale incassato e'
+            # un'operazione che le regole non descrivono. Si dice una volta e
+            # si smette, marcando TP1 come gestito.
+            log.info(
+                "TP1 su %s (ticket %s): il 25%% di %s non e' eseguibile al passo "
+                "%s, la posizione prosegue intera con lo stop iniziale",
+                simbolo, ticket, volume_iniziale, specifiche["volume_step"],
+            )
+            storage.applica_parziale_tp1(
+                id_posizione, volume_attuale, float(posizione["sl"])
+            )
+            notifier.invia(
+                f"TP1 raggiunto su {simbolo} (ticket {ticket}) ma il parziale del "
+                f"25% non e' eseguibile alla size minima. La posizione resta "
+                f"intera con lo stop iniziale."
+            )
+            return False
+
+        esito = broker.chiudi_posizione(ticket, volume=quota)
+        if not esito.ok:
+            log.error("parziale su %s fallito: %s", ticket, esito.messaggio)
+            notifier.invia(
+                f"ATTENZIONE: TP1 toccato su {simbolo} (ticket {ticket}) ma il "
+                f"parziale e' fallito: {esito.messaggio}\nRiprovo al prossimo giro."
+            )
+            return False
+
+        # Break even col buffer di PA-46: multiplo dello spread, e lo spread
+        # e' quello REGISTRATO ALL'INGRESSO, non quello di adesso. Il buffer
+        # deve coprire il costo gia' pagato per entrare, che e' un fatto
+        # passato: usare lo spread corrente farebbe muovere un livello che
+        # GEST-05 vuole immobile, e in una news lo farebbe muovere molto.
+        spread = posizione.get("spread_ingresso")
+        if spread is None:
+            spread = tick["ask"] - tick["bid"]
+        nuovo_stop = livello_break_even(
+            float(posizione["prezzo_ingresso"]),
+            Bias.LONG if direzione.upper() == "BUY" else Bias.SHORT,
+            float(spread),
+        )
+
+        residuo = round(volume_attuale - quota, 8)
+        storage.applica_parziale_tp1(id_posizione, residuo, nuovo_stop)
+        log.info(
+            "TP1 su %s (ticket %s): chiusi %s a %s, restano %s con stop a %s",
+            simbolo, ticket, quota, esito.prezzo, residuo, nuovo_stop,
+        )
+        notifier.invia(
+            f"TP1 su {simbolo} {direzione} (ticket {ticket})\n"
+            f"chiuso il 25% ({quota} lotti) a {esito.prezzo}\n"
+            f"restano {residuo} lotti, stop a pareggio {nuovo_stop}"
         )
         return True
 

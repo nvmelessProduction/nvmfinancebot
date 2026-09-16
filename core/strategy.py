@@ -72,6 +72,12 @@ def traduci(decisione: Decisione) -> Decision:
         volume=decisione.volume,
         sl=decisione.livello_stop,
         tp=decisione.target_finale,
+        # GEST-04, GEST-08 e GEST-12: senza questi tre l'impianto riceve una
+        # posizione che sa solo morire allo stop o al target, e il parziale
+        # del 25% non ha nulla su cui appoggiarsi.
+        tp1=decisione.tp1,
+        tf_crt=decisione.tf_crt.value if decisione.tf_crt else None,
+        spread=decisione.spread,
     )
 
 

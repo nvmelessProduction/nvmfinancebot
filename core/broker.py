@@ -400,8 +400,33 @@ def invia_ordine(
     )
 
 
-def chiudi_posizione(ticket: int, deviazione: Optional[int] = None) -> OrderResult:
-    """Chiude a mercato la posizione con il ticket indicato."""
+# GEST-11 — "Non esiste una deviazione massima oltre la quale rinunciare alla
+# chiusura". `MT5_DEVIAZIONE` e' la tolleranza di slippage con cui si **apre**:
+# li' rinunciare e' legittimo, perche' un ingresso a un prezzo peggiore e' un
+# ingresso che non conviene piu'. In chiusura no. Una chiusura rifiutata per
+# slippage lascia aperta una posizione il cui stop e' gia' stato superato, ed
+# e' il caso peggiore possibile: la perdita continua a correre e nessuno la
+# ferma. Questo valore e' abbastanza grande da non rifiutare mai in pratica.
+DEVIAZIONE_CHIUSURA: int = 1_000_000
+
+
+def chiudi_posizione(
+    ticket: int,
+    deviazione: Optional[int] = None,
+    volume: Optional[float] = None,
+) -> OrderResult:
+    """Chiude a mercato la posizione con il ticket indicato.
+
+    `volume` chiude solo una parte: serve al parziale del 25% di GEST-04, che
+    il broker non sa fare da solo. MT5 esegue una chiusura parziale mandando
+    l'ordine opposto con un volume inferiore a quello della posizione; il
+    ticket resta lo stesso e il volume residuo si aggiorna. Con `volume`
+    assente o pari al volume aperto si chiude tutto, come prima.
+
+    Il volume richiesto viene limitato a quello realmente aperto: chiedere di
+    piu' farebbe rifiutare l'ordine intero, e una chiusura rifiutata e' il
+    caso che GEST-11 vieta.
+    """
     ok, messaggio = _assicura_connessione()
     if not ok or mt5 is None:
         return OrderResult(ok=False, messaggio=messaggio)
@@ -426,21 +451,31 @@ def chiudi_posizione(ticket: int, deviazione: Optional[int] = None) -> OrderResu
         tipo = mt5.ORDER_TYPE_SELL if in_acquisto else mt5.ORDER_TYPE_BUY
         prezzo = tick["bid"] if in_acquisto else tick["ask"]
 
+        da_chiudere = posizione.volume
+        if volume is not None:
+            da_chiudere = min(float(volume), posizione.volume)
+            if da_chiudere <= 0:
+                return OrderResult(
+                    ok=False,
+                    messaggio=f"volume di chiusura non valido: {volume}",
+                )
+
+        parziale = da_chiudere < posizione.volume
         richiesta: dict[str, Any] = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": posizione.symbol,
-            "volume": posizione.volume,
+            "volume": da_chiudere,
             "type": tipo,
             "position": posizione.ticket,
             "price": prezzo,
-            "deviation": deviazione if deviazione is not None else impostazioni().MT5_DEVIAZIONE,
+            "deviation": deviazione if deviazione is not None else DEVIAZIONE_CHIUSURA,
             "magic": impostazioni().MT5_MAGIC,
-            "comment": "chiusura bot",
+            "comment": "parziale bot" if parziale else "chiusura bot",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": _modalita_riempimento(posizione.symbol),
         }
 
-        log.info("chiusura posizione %s", ticket)
+        log.info("chiusura posizione %s, volume %s", ticket, da_chiudere)
         try:
             risultato = mt5.order_send(richiesta)
         except Exception as errore:

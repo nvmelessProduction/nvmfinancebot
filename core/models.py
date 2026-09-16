@@ -129,6 +129,16 @@ class Decision(BaseModel):
     volume: Optional[float] = None
     sl: Optional[float] = None
     tp: Optional[float] = None
+    # Lo stato che GEST-12 vuole ricostruibile dopo un riavvio, e che senza
+    # questi tre campi si perdeva qui: il motore calcolava TP1 e il timeframe
+    # del CRT, la traduzione li lasciava cadere, e a valle non esisteva piu'
+    # niente con cui fare il parziale del 25% (GEST-04) ne' l'estensione del
+    # target (GEST-08). Meta' dell'apparato di gestione moriva su questa riga.
+    tp1: Optional[float] = None
+    tf_crt: Optional[str] = None
+    # Lo spread al momento dell'ingresso: e' il buffer del break even (PA-46),
+    # che e' un multiplo dello spread e non un numero per strumento.
+    spread: Optional[float] = None
 
 
 class OrderResult(BaseModel):

@@ -148,6 +148,11 @@ class Decisione:
     target_finale: Optional[float] = None
     tf_crt: Optional[TF] = None
     doppio_ingresso: bool = False
+    # Lo spread al momento della decisione. Non serve a decidere (CTX-03 dice
+    # esplicitamente che non si filtra sullo spread): serve piu' tardi, come
+    # buffer del break even di GEST-04, che PA-46 vuole multiplo dello spread
+    # e non numero per strumento.
+    spread: float = 0.0
     regole_applicate: tuple[str, ...] = ()
     regole_che_bloccano: tuple[str, ...] = ()
     motivo: str = ""
@@ -489,6 +494,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         target_finale=bersaglio,     # esteso poi da GEST-08 alla chiusura dei TF superiori
         tf_crt=crt.tf,
         doppio_ingresso=da_gap,
+        spread=foto.spread,
         regole_applicate=tuple(dict.fromkeys(applicate)),
         motivo="tutte le condizioni soddisfatte",
         rapporto_su_tp1=rapporto,

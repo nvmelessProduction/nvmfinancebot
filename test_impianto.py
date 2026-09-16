@@ -174,8 +174,21 @@ class FintoMT5(types.ModuleType):
         if self.ordine_fallisce:
             return Oggetto(retcode=10004, comment="Requote", order=0, price=0.0)
 
-        if "position" in richiesta:  # chiusura
-            self.posizioni = [p for p in self.posizioni if p.ticket != richiesta["position"]]
+        if "position" in richiesta:  # chiusura, totale o parziale
+            # MT5 vero: una chiusura con volume inferiore a quello aperto e'
+            # un PARZIALE. Il ticket resta, il volume residuo si aggiorna. Il
+            # finto lo imita, altrimenti il parziale del 25% di GEST-04 non
+            # sarebbe collaudabile qui dentro.
+            residue = []
+            for p in self.posizioni:
+                if p.ticket != richiesta["position"]:
+                    residue.append(p)
+                    continue
+                resto = round(p.volume - richiesta["volume"], 8)
+                if resto > 0:
+                    p.volume = resto
+                    residue.append(p)
+            self.posizioni = residue
             return Oggetto(
                 retcode=self.TRADE_RETCODE_DONE, order=richiesta["position"],
                 price=richiesta["price"], comment="chiusa",
@@ -1020,6 +1033,103 @@ class ProvaSentinella(BaseCollaudo):
         finally:
             finto.ordine_fallisce = False
         self.assertEqual(self.sentinella.giro()["chiuse"], 1, "al giro dopo la chiusura riesce")
+
+    # -- TP1: il parziale del 25% e il break even (GEST-04, GEST-07) -------
+
+    def _apri_con_tp1(self, direzione: str = "BUY", volume: float = 0.40) -> int:
+        esito = broker.invia_ordine("EURUSD", direzione, volume)
+        segno = 1 if direzione == "BUY" else -1
+        return storage.registra_posizione(
+            "EURUSD", direzione, volume, ticket=esito.ticket,
+            prezzo_ingresso=1.10000,
+            sl=1.10000 - segno * 0.00200,
+            tp=1.10000 + segno * 0.00500,
+            tp1=1.10000 + segno * 0.00200,
+            tf_crt="TF_H4",
+            spread_ingresso=0.00010,
+        )
+
+    def test_tp1_chiude_un_quarto_e_porta_a_pareggio(self) -> None:
+        id_posizione = self._apri_con_tp1()
+        finto.bid, finto.ask = 1.10250, 1.10260     # oltre TP1, sotto il target
+        self.assertEqual(self.sentinella.giro()["chiuse"], 0, "TP1 non chiude tutto")
+
+        aperte = storage.posizioni_aperte()
+        self.assertEqual(len(aperte), 1)
+        riga = aperte[0]
+        self.assertAlmostEqual(riga["volume"], 0.30, places=6)
+        self.assertEqual(riga["tp1_raggiunto"], 1)
+        # Break even col buffer di PA-46: ingresso + k x spread d'ingresso.
+        self.assertGreater(riga["sl"], 1.10000, "lo stop va sopra l'ingresso, non sotto")
+        self.assertLess(riga["sl"], 1.10100)
+        # E il broker ha davvero ridotto il volume, non chiuso tutto.
+        self.assertEqual(len(finto.posizioni), 1)
+        self.assertAlmostEqual(finto.posizioni[0].volume, 0.30, places=6)
+
+    def test_tp1_avviene_una_volta_sola(self) -> None:
+        """GEST-05 — dopo il break even lo stop non si muove piu'."""
+        self._apri_con_tp1()
+        finto.bid, finto.ask = 1.10250, 1.10260
+        self.sentinella.giro()
+        stop_dopo = storage.posizioni_aperte()[0]["sl"]
+
+        finto.bid, finto.ask = 1.10400, 1.10410     # sale ancora
+        self.sentinella.giro()
+        riga = storage.posizioni_aperte()[0]
+        self.assertAlmostEqual(riga["volume"], 0.30, places=6, msg="nessun secondo parziale")
+        self.assertEqual(riga["sl"], stop_dopo, "lo stop non si muove piu'")
+
+    def test_dopo_tp1_lo_stop_a_pareggio_chiude_il_residuo(self) -> None:
+        self._apri_con_tp1()
+        finto.bid, finto.ask = 1.10250, 1.10260
+        self.sentinella.giro()
+        finto.bid, finto.ask = 1.09990, 1.10000     # torna indietro sul pareggio
+        self.assertEqual(self.sentinella.giro()["chiuse"], 1)
+        self.assertEqual(len(storage.posizioni_aperte()), 0)
+
+    def test_short_il_parziale_guarda_lask(self) -> None:
+        self._apri_con_tp1(direzione="SELL")
+        finto.bid, finto.ask = 1.09740, 1.09810     # bid sotto TP1, ask sopra
+        self.sentinella.giro()
+        self.assertEqual(storage.posizioni_aperte()[0]["tp1_raggiunto"], 0,
+                         "e' l'ask che ci fa uscire da uno short")
+        finto.bid, finto.ask = 1.09740, 1.09790
+        self.sentinella.giro()
+        riga = storage.posizioni_aperte()[0]
+        self.assertEqual(riga["tp1_raggiunto"], 1)
+        self.assertLess(riga["sl"], 1.10000, "su uno short il pareggio sta sotto l'ingresso")
+
+    def test_stop_vince_su_tp1_nello_stesso_giro(self) -> None:
+        """Fra due letture possibili si sceglie la peggiore."""
+        self._apri_con_tp1()
+        finto.bid, finto.ask = 1.09700, 1.09710     # sotto lo stop
+        self.assertEqual(self.sentinella.giro()["chiuse"], 1)
+
+    def test_size_minima_non_fa_parziale_ne_pareggio(self) -> None:
+        """Un quarto di 0.01 lotti non esiste: la posizione prosegue intera.
+
+        Applicare il break even senza aver incassato il parziale cambierebbe
+        l'operazione in una che le regole non descrivono.
+        """
+        esito = broker.invia_ordine("EURUSD", "BUY", 0.01)
+        storage.registra_posizione(
+            "EURUSD", "BUY", 0.01, ticket=esito.ticket, prezzo_ingresso=1.10000,
+            sl=1.09800, tp=1.10500, tp1=1.10200, spread_ingresso=0.00010,
+        )
+        finto.bid, finto.ask = 1.10250, 1.10260
+        self.sentinella.giro()
+        riga = storage.posizioni_aperte()[0]
+        self.assertAlmostEqual(riga["volume"], 0.01, places=6)
+        self.assertEqual(riga["sl"], 1.09800, "lo stop resta quello iniziale")
+        self.assertEqual(riga["tp1_raggiunto"], 1, "ma non ci si riprova a ogni giro")
+
+    def test_posizione_vecchia_senza_tp1_si_comporta_come_prima(self) -> None:
+        """Le posizioni aperte prima della migrazione non hanno TP1: devono
+        continuare a vivere con stop e target soli."""
+        self._apri_in_archivio(sl=1.09900, tp=1.10500)
+        finto.bid, finto.ask = 1.10200, 1.10210
+        self.assertEqual(self.sentinella.giro()["chiuse"], 0)
+        self.assertEqual(len(storage.posizioni_aperte()), 1)
 
     def test_un_giro_fallito_non_uccide_il_ciclo(self) -> None:
         self._apri_in_archivio(sl=1.09900, tp=None)

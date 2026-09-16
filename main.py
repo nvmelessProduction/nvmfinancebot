@@ -481,6 +481,13 @@ def processa_alert(alert: AlertIn) -> dict[str, Any]:
                     prezzo_ingresso=prezzo,
                     sl=decisione.sl,
                     tp=decisione.tp,
+                    # Lo stato di GEST-12. Senza questi tre la sentinella
+                    # riceve una posizione che sa solo morire allo stop o al
+                    # target: nessun parziale del 25%, nessun break even,
+                    # nessuna estensione del bersaglio.
+                    tp1=decisione.tp1,
+                    tf_crt=decisione.tf_crt,
+                    spread_ingresso=decisione.spread,
                 )
             except Exception as errore:
                 log.exception("posizione aperta ma NON registrata in archivio")

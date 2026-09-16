@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS posizione (
     prezzo_ingresso     REAL,
     sl                  REAL,
     tp                  REAL,
+    -- Stato di GEST-12: quanto serve a ricostruire una `gestione.Posizione`
+    -- dopo un riavvio, senza chiedere nulla al broker.
+    tp1                 REAL,
+    tf_crt              TEXT,
+    volume_iniziale     REAL,
+    tp1_raggiunto       INTEGER NOT NULL DEFAULT 0,
+    spread_ingresso     REAL,
     aperta_utc          TEXT    NOT NULL,
     chiusa_utc          TEXT,
     prezzo_uscita       REAL,
@@ -155,6 +162,33 @@ def _migra(conn: sqlite3.Connection) -> None:
     if "ritardo_sec" not in colonne:
         log.warning("archivio da aggiornare: aggiungo alert.ritardo_sec")
         conn.execute("ALTER TABLE alert ADD COLUMN ritardo_sec REAL")
+
+    # Lo stato che GEST-12 vuole ricostruibile dopo un riavvio. Finche' queste
+    # colonne non c'erano, TP1 veniva calcolato dal motore e buttato via un
+    # passaggio dopo: nessun parziale, nessun break even, e nessun modo di
+    # farli. Vanno tutte con un default, perche' le posizioni gia' aperte
+    # quando l'archivio si aggiorna non hanno questo stato e non devono
+    # sparire: `sentinella` le riconosce e le lascia alla vecchia gestione
+    # (stop e target soli), che e' esattamente cio' che erano.
+    posizione = {riga["name"] for riga in conn.execute("PRAGMA table_info(posizione)")}
+    if posizione:
+        for nome, tipo in (
+            ("tp1", "REAL"),
+            ("tf_crt", "TEXT"),
+            ("volume_iniziale", "REAL"),
+            ("tp1_raggiunto", "INTEGER NOT NULL DEFAULT 0"),
+            ("spread_ingresso", "REAL"),
+        ):
+            if nome not in posizione:
+                log.warning("archivio da aggiornare: aggiungo posizione.%s", nome)
+                conn.execute(f"ALTER TABLE posizione ADD COLUMN {nome} {tipo}")
+        if "volume_iniziale" not in posizione:
+            # Le righe vecchie non hanno mai avuto parziali: il volume attuale
+            # e' anche quello di partenza.
+            conn.execute(
+                "UPDATE posizione SET volume_iniziale = volume "
+                "WHERE volume_iniziale IS NULL"
+            )
 
 
 def inizializza() -> None:
@@ -265,19 +299,26 @@ def registra_posizione(
     prezzo_ingresso: Optional[float] = None,
     sl: Optional[float] = None,
     tp: Optional[float] = None,
+    tp1: Optional[float] = None,
+    tf_crt: Optional[str] = None,
+    spread_ingresso: Optional[float] = None,
 ) -> int:
     """Annota una posizione aperta dal bot.
 
     Serve alla sentinella: sul broker non ci sono ordini pendenti, quindi la
-    memoria dei livelli di stop e target vive solo qui.
+    memoria dei livelli di stop e target vive solo qui. Da REV-54 ci vive
+    anche lo stato che GEST-12 vuole ricostruibile dopo un riavvio: `tp1`,
+    il timeframe del CRT di origine, il volume iniziale e lo spread al
+    momento dell'ingresso, che serve al buffer di break even di PA-46.
     """
     with connessione(scrittura=True) as conn:
         cur = conn.execute(
             """
             INSERT INTO posizione (
                 ticket, decisione_id, simbolo, direzione, volume,
-                prezzo_ingresso, sl, tp, aperta_utc, stato
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aperta')
+                prezzo_ingresso, sl, tp, tp1, tf_crt, volume_iniziale,
+                tp1_raggiunto, spread_ingresso, aperta_utc, stato
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'aperta')
             """,
             (
                 ticket,
@@ -288,6 +329,10 @@ def registra_posizione(
                 prezzo_ingresso,
                 sl,
                 tp,
+                tp1,
+                tf_crt,
+                volume,
+                spread_ingresso,
                 adesso_utc(),
             ),
         )
@@ -314,6 +359,53 @@ def chiudi_posizione(
              WHERE id = ? AND stato = 'aperta'
             """,
             (adesso_utc(), prezzo_uscita, motivo_chiusura, id_posizione),
+        )
+
+
+def applica_parziale_tp1(
+    id_posizione: int,
+    volume_residuo: float,
+    nuovo_stop: float,
+) -> None:
+    """GEST-04 — Registra il parziale del 25% e lo stop portato a break even.
+
+    Le due scritture stanno in una transazione sola perche' sono un fatto
+    solo: una posizione col volume ridotto e lo stop ancora all'estremo di N2
+    rischierebbe la distanza piena su un quarto di size, e una posizione a
+    break even col volume intero direbbe che il parziale e' avvenuto quando
+    non e' avvenuto.
+
+    `tp1_raggiunto` a 1 e' cio' che rende l'operazione irripetibile: GEST-05
+    vieta di muovere ancora lo stop, e questo flag e' il solo modo che la
+    sentinella ha di saperlo dopo un riavvio (GEST-12).
+
+    La clausola `tp1_raggiunto = 0` rende la scrittura idempotente: se il giro
+    successivo della sentinella rileggesse la stessa posizione prima che la
+    memoria si aggiorni, non chiuderebbe un secondo quarto.
+    """
+    with connessione(scrittura=True) as conn:
+        conn.execute(
+            """
+            UPDATE posizione
+               SET volume = ?,
+                   sl = ?,
+                   tp1_raggiunto = 1
+             WHERE id = ? AND stato = 'aperta' AND tp1_raggiunto = 0
+            """,
+            (volume_residuo, nuovo_stop, id_posizione),
+        )
+
+
+def aggiorna_target(id_posizione: int, nuovo_target: float) -> None:
+    """GEST-08 — Estende il target finale del 75% residuo.
+
+    L'estensione e' a senso unico (GEST-08): chi chiama ha gia' verificato che
+    il nuovo target sia piu' lontano del precedente. Qui si scrive e basta.
+    """
+    with connessione(scrittura=True) as conn:
+        conn.execute(
+            "UPDATE posizione SET tp = ? WHERE id = ? AND stato = 'aperta'",
+            (nuovo_target, id_posizione),
         )
 
 
