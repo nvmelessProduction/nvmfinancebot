@@ -428,13 +428,35 @@ PESO_OMBRE_MINIMO: Final[float] = 0.6
 #
 # Chi spegne una voce sa cosa sta spegnendo. Chi le lascia tutte accese ha la
 # strategia di Romeo per intero, e paga quello che le misure dicono che costa.
+# Cercato su tutti i 128 sottoinsiemi (`backtest/confronto_conferme.py`). Il
+# risultato e' netto e va contro cio' che mi aspettavo:
+#
+#   6 regole, senza CRT-17    n=43   R netto +0,2897   sigma +1,3   <-- QUESTA
+#   solo CISD + ombre         n=136  R netto +0,1008   sigma +0,9
+#   tutte e sette accese      n=12   R netto -0,3126   sigma -0,8
+#   nessuna conferma          n=413  R netto -0,0557   sigma -0,8
+#
+# Sei conferme su sette si possono tenere, e rendono quasi il TRIPLO della
+# coppia CISD+ombre. Le regole delle fonti lavorano meglio insieme che da
+# sole: `CRT-12` da sola da' +0,0982, ma `CRT-10 + CRT-11 + CRT-12` da'
+# +0,3002. E' il contrario di quello che avevo concluso misurandole una
+# per una, ed e' il motivo per cui una misura a una variabile alla volta
+# non basta su regole che le fonti descrivono come confluenze.
 CONFERME_ROMEO: Final[dict[str, bool]] = {
-    "CRT-06": True,   # tre modelli CRT allineati
+    "CRT-06": True,   # tre modelli CRT allineati — MAI MISURATA da sola
     "CRT-10": True,   # Double Purge Sweep
     "CRT-11": True,   # CISD sul timeframe di ingresso
     "CRT-12": True,   # divergenza SMT fra strumenti correlati
     "CRT-15": True,   # finestre orarie di New York
-    "CRT-17": True,   # tenuta della meta' del range
+    # L'UNICA spenta, e con un motivo preciso. Blocca 281 segnali su 413 —
+    # quasi tutto — e la sua prima misura (85,7% di winrate, +15,3 sigma) era
+    # un LOOKAHEAD: filtravo con le candele successive a N2. Corretta, non
+    # mostra nulla. Accesa insieme alle altre porta il risultato da +0,2897 a
+    # -0,3126, cioe' e' lei sola a rovesciare il segno della strategia.
+    #
+    # Le fonti la scrivono e io non ho una lettura migliore della mia. Chi
+    # vuole la strategia alla lettera la rimetta a True sapendo questo.
+    "CRT-17": False,  # tenuta della meta' del range
     "CRT-18": True,   # il punto medio dell'ombra come livello
     "CRT-20": True,   # peso delle ombre di N2
 }

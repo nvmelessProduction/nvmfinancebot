@@ -2,39 +2,51 @@
 
 ## 1. La configurazione operativa
 
-Questa è la configurazione che ha dato il miglior risultato **al netto dello
-spread reale**, cercata su 36 combinazioni di coppia di timeframe, bersaglio e
-filtri (`backtest/` — la ricerca, non un test):
+Cercata su **tutti i 128 sottoinsiemi** delle conferme di Romeo
+(`backtest/confronto_conferme.py`), sui prezzi veri Dukascopy con BID e ASK.
 
 ```
-coppia          M1 → D1        (candela mensile come range, giornaliera per l'ingresso)
-bersaglio       3R             (invece del 50% fisso del range)
-filtro          CISD presente sul timeframe basso
-filtro          peso delle ombre di N2 ≥ 0,6
+coppia          M1 → D1        (CRT-04, coppia canonica delle fonti)
+bersaglio       3R
+conferme        CRT-10, CRT-11, CRT-12, CRT-15, CRT-18, CRT-20   (sei su sette)
+spenta          CRT-17
 ```
 
-| | |
-|---|---:|
-| operazioni in 20 anni | 136 |
-| costo medio dello spread | 0,071 R |
-| **R netto per operazione** | **+0,1008** |
-| σ | +0,9 |
+| configurazione | n | R netto | σ |
+|---|---:|---:|---:|
+| **sei conferme, senza CRT-17** | **43** | **+0,2897** | **+1,3** |
+| solo CISD + ombre | 136 | +0,1008 | +0,9 |
+| tutte e sette accese | 12 | −0,3126 | −0,8 |
+| nessuna conferma | 413 | −0,0557 | −0,8 |
 
-**Cosa significa σ = 0,9.** È il migliore che esiste nei dati, non è
-statisticamente stabilito. Con 136 operazioni in vent'anni — circa 7 all'anno —
-servono anni per distinguerlo dal caso. Va operato su demo abbastanza a lungo
-da raccogliere operazioni vere, e la configurazione va rivista con quelle.
+### Perché CRT-17 è l'unica spenta
 
-Le tre cose che l'hanno resa positiva, in ordine di peso:
+Blocca **281 segnali su 413** — quasi tutto — e da sola rovescia il segno
+della strategia, da +0,2897 a −0,3126.
 
-1. **Il CISD.** Senza, il CRT rende negativo. È l'unica conferma di Romeo che
-   regge alla misura (`docs/MISURA-REGOLE-MANCANTI-2026-09-16.md`).
-2. **Il bersaglio a 3R invece del 50%.** Il 50% del range è vicino, e su un
-   bersaglio vicino il costo pesa. A 3R le vittorie pagano il costo.
-3. **`M1 → D1`.** Stop larghi: lo spread è 0,071 R invece dei 0,15–0,35 R che
-   avevo riportato per le coppie orarie. Il costo non è una costante della
-   strategia, dipende dalla coppia — ed è l'errore che mi aveva fatto
-   dichiarare la strategia impraticabile.
+La sua prima misura dava 85,7% di winrate e +15,3σ. Era un **lookahead**:
+filtravo con le candele del timeframe alto *successive* a N2, cioè col futuro.
+Corretta guardando solo ciò che si vede all'ingresso, non mostra nulla.
+
+Le fonti la scrivono, e io non ho una lettura migliore della mia. Chi vuole la
+strategia alla lettera la rimetta a `True` in `CONFERME_ROMEO` sapendo questo.
+
+### La cosa che non mi aspettavo
+
+Le regole di Romeo **lavorano meglio insieme che da sole**. Misurate una per
+una `CRT-10` e `CRT-12` sembravano inutili; insieme a `CRT-11` danno +0,3002
+contro il +0,0024 del solo CISD.
+
+È il motivo per cui una misura a una variabile alla volta non basta su regole
+che le fonti descrivono come **confluenze**. Avevo bocciato la divergenza SMT
+e il Double Purge misurandoli isolati, e mi sbagliavo.
+
+### Cosa significa n = 43
+
+Circa **due operazioni all'anno**. σ = +1,3 vuol dire che è il migliore che
+esiste nei dati, non che sia statisticamente stabilito: servono anni di
+operazioni vere per distinguerlo dal caso. Va operato su demo abbastanza a
+lungo da raccoglierne, e la configurazione va rivista con quelle.
 
 ## 2. Configurazione del file `.env`
 
