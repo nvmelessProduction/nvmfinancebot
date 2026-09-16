@@ -40,7 +40,7 @@ Le tre cose che l'hanno resa positiva, in ordine di peso:
 
 ```ini
 MODE=dry_run                 # dry_run -> semi -> auto, in quest'ordine
-FORNITORE_DATI=mercato       # il bot si prende le candele da solo
+FORNITORE_DATI=dukascopy     # candele vere: estremi toccati, spread misurato
 SENTINELLA_ATTIVA=true       # sorveglia stop e target: non spegnerla mai
 
 GIUDIZIO_ATTIVO=true         # Claude giudica ogni setup
@@ -60,9 +60,55 @@ CONSENTI_CONTO_REALE=false   # lasciala false finché non hai dati tuoi
 
 ```bash
 pip install -r requirements.txt
-python prova_esecuzione.py        # verifica broker, simboli, suffisso
+
+# 1. Semina l'archivio con vent'anni di candele vere (una volta sola,
+#    riprende da dove era se lo rilanci).
+python importa_dukascopy.py
+
+# 2. Verifica broker, simboli e suffisso.
+python prova_esecuzione.py
+
+# 3. Accendi.
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
+
+### Da dove vengono le candele
+
+**Dukascopy**, il book della banca svizzera. File `.bi5`, uno per mese,
+compressi LZMA. Due cose che nessun'altra fonte gratuita dà:
+
+- **gli estremi sono quelli davvero toccati**, non campionati. Su una fonte
+  aggregata il **37,7% degli esiti cambiava** e un vantaggio inesistente
+  sembrava reale (`docs/SPOT-CONTRO-FUTURE-2026-09-16.md`);
+- **BID e ASK separati**, quindi lo spread si *misura* invece di assumerlo.
+
+Verificato: EURUSD 1,00 pip nel 2006 → 1,50 nel 2008 (crisi finanziaria) →
+0,20–0,30 oggi. È la storia reale dello spread.
+
+Sono gli **stessi dati su cui ogni misura di questo progetto è stata fatta**.
+Far girare il bot su dati diversi da quelli su cui è stato misurato è il modo
+più silenzioso di invalidare la misura: nessun test fallisce, nessun log
+protesta, e i numeri promessi non arrivano.
+
+**Uno scostamento dichiarato.** Dukascopy serve il book di un broker, non il
+future CME. È della stessa famiglia del CFD su cui `DEF-34` fa eseguire, e per
+questo le candele si archiviano sotto il nome del CFD (`EURUSD`) e non del
+future (`6E`). È uno scostamento da `DEF-32`, che vuole l'analisi sul future:
+si rinuncia al future e si guadagnano estremi veri e spread misurato.
+Misurando, la seconda cosa pesa di più — ma resta una scelta, non un fatto.
+
+### Come si aggiornano
+
+Due meccanismi distinti:
+
+| | |
+|---|---|
+| **Storico** | `python importa_dukascopy.py`, a mano, quando vuoi. Non riscrive ciò che c'è già. |
+| **Tempo reale** | `core/mercato_duka.py`, un ciclo che gira da solo ogni 15 minuti, scarica gli ultimi due mesi di orarie, costruisce i cinque timeframe e fa scattare una valutazione a ogni candela chiusa. |
+
+L'ultima candela oraria si scarta sempre: Dukascopy pubblica il mese corrente
+man mano e l'ultima riga può essere incompleta. `ESCL-13` vieta di valutare
+una candela in formazione.
 
 Il bot scarica le candele da solo, valuta a ogni chiusura, sorveglia le
 posizioni aperte ogni 5 secondi.

@@ -117,7 +117,7 @@ class Impostazioni(BaseSettings):
     #                accumulano in archivio; MT5 serve solo al conto e
     #                all'esecuzione sul CFD. E' l'architettura di DEF-32,
     #                DEF-33 e DEF-34.
-    FORNITORE_DATI: Literal["nessuno", "tradingview", "mercato"] = "mercato"
+    FORNITORE_DATI: Literal["nessuno", "tradingview", "mercato", "dukascopy"] = "dukascopy"
     # Ogni quanto il bot va a cercare candele nuove, in secondi. Non serve
     # scendere: una serie viene chiesta solo quando puo' essersi chiusa
     # qualcosa, quindi girare spesso non moltiplica le richieste.

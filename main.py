@@ -36,6 +36,7 @@ from core.log import diario
 from core import pannello
 from core.models import AlertIn, Decision, Esito
 from core.mercato import mercato
+from core.mercato_duka import mercato_duka
 from core.sentinella import sentinella
 from core.simboli import simbolo_esecuzione
 from core.strategy import valuta
@@ -94,6 +95,15 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         mercato.su_candela = processa_alert
         mercato.avvia()
         log.info("nessun alert da configurare: le candele le cerca il bot")
+    elif cfg.FORNITORE_DATI == "dukascopy":
+        # Gli stessi dati su cui ogni misura del progetto e' stata fatta:
+        # estremi toccati e non campionati, BID e ASK separati. Su una
+        # fonte aggregata il 37,7% degli esiti cambiava.
+        mercato_duka.intervallo_sec = cfg.MERCATO_INTERVALLO_SEC
+        mercato_duka.su_candela = processa_alert
+        mercato_duka.segreto = cfg.WEBHOOK_SECRET or ""
+        mercato_duka.avvia()
+        log.info("candele da Dukascopy: prezzi scambiati, spread misurato")
 
     # La sentinella serve se c'e' qualcosa da sorvegliare, adesso o fra poco.
     aperte = storage.posizioni_aperte()
@@ -764,6 +774,15 @@ def salute() -> dict[str, Any]:
         "configurato": cfg.FORNITORE_DATI,
         "collegato": strategy.fornitore_collegato(),
     }
+    if cfg.FORNITORE_DATI == "dukascopy":
+        fornitore["dukascopy"] = {
+            "in_funzione": mercato_duka.in_funzione,
+            "intervallo_sec": cfg.MERCATO_INTERVALLO_SEC,
+            "giri": mercato_duka.giri,
+            "candele_raccolte": mercato_duka.candele_nuove,
+            "valutazioni": mercato_duka.valutazioni,
+            "ultimo_errore": mercato_duka.ultimo_errore,
+        }
     if cfg.FORNITORE_DATI == "mercato":
         fornitore["mercato"] = {
             "in_funzione": mercato.in_funzione,

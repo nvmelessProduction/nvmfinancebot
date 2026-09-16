@@ -1565,13 +1565,32 @@ class ProvaMercato(BaseCollaudo):
             "massimo": 2, "minimo": 1, "chiusura": 2})])
         self.assertEqual(self.visti, [], "PRIN-08: sul DXY si analizza, non si opera")
 
-    def test_i_timeframe_alti_non_sono_di_ingresso(self) -> None:
+    def test_la_mensile_ora_e_un_timeframe_di_ingresso(self) -> None:
+        """CRT-04 — `M1 -> D1` e' la coppia canonica di Romeo.
+
+        Fino a oggi la mensile aggiornava solo la bias e non innescava nulla.
+        E' cambiato di proposito: `M1 -> D1` e' l'unica configurazione che
+        risulta positiva al netto dello spread reale (+0,1008 R contro un
+        costo di 0,071 R), perche' su stop larghi lo spread pesa molto meno
+        che sulle coppie orarie.
+        """
         from core.mercato import Nuova
 
         self.mercato._valuta_le_ultime([Nuova("GC", TF.M1, {
             "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1,
             "massimo": 2, "minimo": 1, "chiusura": 2})])
-        self.assertEqual(self.visti, [], "la mensile aggiorna la bias, non apre nulla")
+        self.assertEqual(len(self.visti), 1, "la chiusura mensile innesca")
+        self.assertEqual(self.visti[0].tf, "1M")
+
+    def test_i_timeframe_di_sola_bias_non_innescano(self) -> None:
+        """`TF_1W` e i trimestrali danno la bias di comando (SETUP-06) ma non
+        sono coppie di CRT-04: non aprono nulla."""
+        from core.mercato import Nuova
+
+        self.mercato._valuta_le_ultime([Nuova("GC", TF.W1, {
+            "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1,
+            "massimo": 2, "minimo": 1, "chiusura": 2})])
+        self.assertEqual(self.visti, [], "la settimanale aggiorna la bias, non apre")
 
     # -- il ponte verso il resto dell'impianto ------------------------------
     def test_l_alert_costruito_e_comprensibile_al_motore(self) -> None:
