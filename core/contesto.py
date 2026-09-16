@@ -21,11 +21,15 @@ dati. Il caricamento e' compito di `motore.py` (PA-54).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
+
 from datetime import date, datetime, timedelta
 from typing import Mapping, Optional, Sequence
 
 from core.definizioni import Bias
 from core.parametri import (
+    FINESTRE_CRT_NY,
+    FUSO_NEW_YORK,
     FINESTRA_NEWS_MINUTI_DOPO,
     gerarchia,
     FINESTRA_NEWS_MINUTI_PRIMA,
@@ -373,3 +377,32 @@ PRECEDENZE: Mapping[str, str] = {
     "PREC-04": "In conflitto: CONTESTO batte SETUP",
     "PREC-05": "In conflitto: ESCLUSIONI batte tutto",
 }
+
+
+def dentro_finestra_crt(istante: datetime, tf_crt: TF) -> Optional[bool]:
+    """CRT-15 — L'istante cade in una finestra oraria di Romeo?
+
+    *«CRT orario: 2-4, 7-9, 8-10, 20-22 ora di New York. CRT a 4 ore: 1-9 e
+    13-21.»*
+
+    L'ora e' quella di **New York** e va convertita adesso, non una volta per
+    tutte: il fuso cambia rispetto a UTC due volte l'anno, e una tabella in
+    UTC sarebbe sbagliata per meta' anno.
+
+    `None` per i timeframe su cui le fonti non danno finestre. `None` **non e'
+    False**: non significa "fuori finestra", significa "non c'e' una finestra
+    da rispettare". Chi chiama deve distinguere, altrimenti un timeframe senza
+    regola diventerebbe un timeframe sempre bloccato.
+
+    ## Attenzione: questa regola contraddice PRIN-12
+
+    `PRIN-12` dichiara il sistema attivo 24 ore su 24 e non ha fasce escluse.
+    Se le finestre di CRT-15 entrano nel motore, `PRIN-12` va riscritta — non
+    aggirata. Finche' quella decisione non e' presa, questa funzione esiste
+    per **misurare**, e il motore non la chiama.
+    """
+    finestre = FINESTRE_CRT_NY.get(tf_crt)
+    if not finestre:
+        return None
+    ora = istante.astimezone(ZoneInfo(FUSO_NEW_YORK)).hour
+    return any(inizio <= ora < fine for inizio, fine in finestre)

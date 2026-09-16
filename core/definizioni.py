@@ -45,6 +45,7 @@ from typing import Iterable, Optional, Sequence
 
 from core.parametri import (
     ATR_PERIODO,
+    FINESTRA_SMT,
     MINIMO_CANDELE_CHIUSE_PER_TF,
     ORDINE_SCANSIONE_TARGET,
     RSI_PERIODO,
@@ -53,6 +54,7 @@ from core.parametri import (
     TF,
     TF_SOLO_GAP,
     UNIVERSO,
+    correlazione_positiva,
     gerarchia,
     ordine_scansione_gap,
     soglia_corpo_indecisione,
@@ -990,3 +992,300 @@ def atr(candele: Sequence[Candela], periodo: int = ATR_PERIODO) -> Optional[floa
             abs(corrente.minimo - precedente.chiusura),
         ))
     return sum(intervalli) / len(intervalli)
+
+
+# ===========================================================================
+# CRT-12 — divergenza SMT
+# ===========================================================================
+
+
+def nuovo_estremo(
+    candele: Sequence[Candela],
+    verso: Bias,
+    quante: int,
+) -> bool:
+    """L'ultima candela ha fatto un nuovo estremo sulle ultime `quante`?
+
+    `verso` LONG chiede un nuovo massimo, SHORT un nuovo minimo. Il confronto
+    e' **stretto**: pareggiare un massimo non e' farne uno nuovo, ed e'
+    proprio il caso in cui il prezzo si ferma sulla liquidita' senza prenderla.
+
+    False con meno di due candele: senza un precedente non c'e' "nuovo".
+    """
+    if len(candele) < 2 or quante < 1:
+        return False
+    finestra = candele[-(quante + 1):]
+    ultima, precedenti = finestra[-1], finestra[:-1]
+    if not precedenti:
+        return False
+    if verso is Bias.LONG:
+        return ultima.massimo > max(c.massimo for c in precedenti)
+    if verso is Bias.SHORT:
+        return ultima.minimo < min(c.minimo for c in precedenti)
+    return False
+
+
+def divergenza_smt(
+    strumento: str,
+    candele_strumento: Sequence[Candela],
+    candele_compagna: Sequence[Candela],
+    compagna: str,
+    verso_sweep: Bias,
+    quante: int = FINESTRA_SMT,
+) -> Optional[bool]:
+    """CRT-12 — Divergenza SMT fra due strumenti correlati.
+
+    *«Uno strumento fa un nuovo estremo, il correlato no.»* Le fonti la
+    dichiarano una delle **tre confluenze non negoziabili** del CRT, insieme
+    alla PD Array del timeframe alto e al Turtle Soup.
+
+    ## Cosa dice, e perche' e' un'informazione
+
+    Uno sweep e' il prezzo che va a prendere gli stop oltre un estremo. Se
+    **tutti** gli strumenti correlati vanno a prenderli insieme, e' movimento
+    di mercato: la spinta e' vera e probabilmente continua. Se lo fa uno solo
+    mentre il correlato resta indietro, quel nuovo estremo non e' sostenuto da
+    nulla — e' la firma di una manipolazione, cioe' la fase M del Power of
+    Three.
+
+    Per questo la divergenza **conferma** un CRT e la sua assenza lo indebolisce.
+
+    ## Il verso, che e' meta' del lavoro
+
+    `verso_sweep` e' la direzione dello sweep **sullo strumento operato**: uno
+    sweep dei massimi e' LONG, uno dei minimi e' SHORT. Sulla compagna si
+    cerca l'estremo corrispondente, che dipende dalla correlazione:
+
+    - **correlazione positiva** (`EURUSD`/`GBPUSD`): stesso verso. Se `EURUSD`
+      fa un nuovo massimo, la controparte e' un nuovo massimo di `GBPUSD`.
+    - **correlazione negativa** (`EURUSD`/`USDCHF`): verso opposto. La
+      controparte di un nuovo massimo su `EURUSD` e' un nuovo **minimo** su
+      `USDCHF`.
+
+    Sbagliare questo segno non produce un errore: produce un segnale che
+    dice esattamente il contrario, su meta' delle coppie.
+
+    ## Cosa restituisce
+
+    - `True` — c'e' divergenza: lo strumento ha fatto il nuovo estremo, la
+      compagna no. **Conferma.**
+    - `False` — nessuna divergenza: sono andati insieme, oppure lo strumento
+      non ha fatto alcun nuovo estremo.
+    - `None` — non si sa: storia insufficiente, o i due non sono confrontabili.
+      `None` **non e' False**: chi chiama deve distinguere "sono andati
+      insieme" da "non l'ho potuto guardare", altrimenti una serie mancante
+      diventa silenziosamente un giudizio.
+    """
+    if strumento not in UNIVERSO or compagna not in UNIVERSO:
+        return None
+    if len(candele_strumento) < quante + 1 or len(candele_compagna) < quante + 1:
+        return None
+    if verso_sweep is Bias.NESSUNA:
+        return None
+
+    if not nuovo_estremo(candele_strumento, verso_sweep, quante):
+        # Senza un nuovo estremo da questo lato non c'e' niente da confrontare.
+        return False
+
+    atteso = (
+        verso_sweep if correlazione_positiva(strumento, compagna)
+        else verso_sweep.opposta()
+    )
+    return not nuovo_estremo(candele_compagna, atteso, quante)
+
+
+# ===========================================================================
+# CRT-10 — Double Purge Sweep
+# ===========================================================================
+
+
+def double_purge(n1: Candela, n2: Candela) -> bool:
+    """CRT-10 — `N2` rompe **entrambi** i lati di `N1` e richiude dentro.
+
+    Le fonti la descrivono come la forma piu' forte del pattern: il prezzo va
+    a prendere la liquidita' sopra **e** sotto il range prima di sceglierne
+    una. Chi ha mosso il prezzo ha raccolto da tutti e due i lati.
+
+    Il codice non la riconosceva affatto: `cerca_crt` chiede uno sweep solo,
+    e una candela che ne fa due passa come una che ne fa uno, perdendo
+    l'informazione che le fonti dicono valere di piu'.
+
+    La richiusura dentro vale per entrambi i lati: una candela che rompe sopra
+    e sotto ma chiude fuori non ha richiuso niente, ha solo un range grande.
+    """
+    rompe_sopra = n2.massimo > n1.massimo
+    rompe_sotto = n2.minimo < n1.minimo
+    richiude = n1.minimo <= n2.chiusura <= n1.massimo
+    return rompe_sopra and rompe_sotto and richiude
+
+
+def verso_del_double_purge(n2: Candela) -> Bias:
+    """CRT-10 — Da che parte va un Double Purge.
+
+    Rotti entrambi i lati, la direzione la dice **quale dei due e' stato
+    rifiutato di piu'**: la spinta piu' lunga e poi respinta e' quella su cui
+    stavano gli stop veri, e il prezzo va dall'altra parte.
+
+    Si misurano le due ombre dalla chiusura, non dal corpo: quello che conta
+    e' quanta strada e' stata percorsa e restituita.
+
+    `NESSUNA` a parita' esatta, che e' una candela senza informazione
+    direzionale: chi chiama si astiene.
+    """
+    respinta_sopra = n2.massimo - n2.chiusura
+    respinta_sotto = n2.chiusura - n2.minimo
+    if respinta_sopra > respinta_sotto:
+        return Bias.SHORT
+    if respinta_sotto > respinta_sopra:
+        return Bias.LONG
+    return Bias.NESSUNA
+
+
+# ===========================================================================
+# CRT-18, CRT-19, CRT-20 — analisi delle ombre
+# ===========================================================================
+
+
+def meta_ombra(candela: Candela, superiore: bool) -> Optional[float]:
+    """CRT-18 — Il punto medio dell'ombra, come livello.
+
+    *«Tenerlo favorisce la continuazione, attraversarlo invalida.»* E' lo
+    stesso ragionamento del 50% del range di DEF-36, applicato all'ombra
+    invece che alla candela: meta' della strada percorsa e restituita.
+
+    `None` se l'ombra non esiste (massimo o minimo coincidenti col corpo):
+    un livello a meta' di niente non e' un livello.
+    """
+    alto_corpo = max(candela.apertura, candela.chiusura)
+    basso_corpo = min(candela.apertura, candela.chiusura)
+    if superiore:
+        if candela.massimo <= alto_corpo:
+            return None
+        return (candela.massimo + alto_corpo) / 2
+    if candela.minimo >= basso_corpo:
+        return None
+    return (candela.minimo + basso_corpo) / 2
+
+
+def peso_ombre(candela: Candela) -> Optional[float]:
+    """CRT-19 e CRT-20 — Quanto pesano le ombre su questa candela.
+
+    La somma delle due ombre divisa per l'escursione totale. Zero significa
+    marubozu — nessuna ombra, tutta espansione. Uno significa doji con ombre
+    lunghe da entrambe le parti — tutto rifiuto.
+
+    `None` su escursione nulla: una candela senza range non ha ombre da pesare.
+
+    ## Perche' questo numero, e perche' va misurato nei due versi
+
+    Le fonti dicono due cose che insieme fanno un problema:
+
+    - `CRT-19`: **ombre piccole** su C2 favoriscono l'**espansione**;
+    - `CRT-20`: **ombre grandi** su C2 favoriscono la **mean-reversion**.
+
+    Il CRT **e'** un'operazione di mean-reversion: si entra contro lo sweep e
+    si punta al 50% del range. Se `CRT-20` e' vera, allora le ombre **grandi**
+    dovrebbero dare i CRT migliori.
+
+    Il filtro "sweep efficiente" che avevo scritto teneva le ombre **piccole**
+    e scartava le grandi: se le fonti hanno ragione, misurava il contrario di
+    quello che serviva. Questa funzione restituisce il numero senza dire quale
+    verso sia buono — lo decide `backtest/ombre.py`, misurandolo in entrambi.
+    """
+    escursione = candela.massimo - candela.minimo
+    if escursione <= 0:
+        return None
+    return (ombra_superiore(candela) + ombra_inferiore(candela)) / escursione
+
+
+# ===========================================================================
+# CRT-11 — CISD (Change In State Of Delivery)
+# ===========================================================================
+
+
+def cisd(
+    candele: Sequence[Candela],
+    verso: Bias,
+    massimo_consegne: int = 10,
+) -> Optional[float]:
+    """CRT-11 — Il livello di Change In State Of Delivery.
+
+    *«Dopo il raid serve un CISD sul timeframe basso.»*
+
+    ## Che cos'e', e in cosa differisce dall'MSS
+
+    "Consegna" e' la serie di candele che chiudono nella stessa direzione: e'
+    il mercato che consegna prezzo da un lato. Il CISD e' il livello superato
+    il quale quella consegna si e' interrotta — l'**apertura della prima
+    candela** dell'ultima serie contraria.
+
+    L'MSS (Market Structure Shift) chiede invece la rottura di uno **swing
+    strutturale**, cioe' di un massimo o minimo formato. Sono parenti e non
+    sono la stessa cosa: lo swing e' piu' lontano della serie di consegna,
+    quindi **l'MSS arriva sempre dopo il CISD**, a volte molto dopo.
+
+    Avevo implementato l'MSS dove le fonti chiedono il CISD. Su un ingresso
+    che vive dentro una candela di timeframe superiore, "dopo" significa a
+    prezzo peggiore, e a volte significa mai.
+
+    ## Il livello
+
+    Per un CISD **rialzista** (`verso` LONG, dopo uno sweep dei minimi): si
+    risale la serie di candele ribassiste in fondo, e il livello e'
+    l'apertura della prima. Chiudere sopra di essa e' il cambio di stato.
+
+    Simmetrico per il ribassista.
+
+    `None` se non c'e' alcuna serie contraria in coda — il mercato sta gia'
+    consegnando nella direzione cercata e non c'e' nessun cambio da attendere.
+    """
+    if verso is Bias.NESSUNA or not candele:
+        return None
+
+    # La consegna contraria e' ribassista per un CISD rialzista, e viceversa.
+    def contraria(c: Candela) -> bool:
+        return c.chiusura < c.apertura if verso is Bias.LONG else c.chiusura > c.apertura
+
+    serie: list[Candela] = []
+    for candela in reversed(candele[-massimo_consegne:]):
+        if not contraria(candela):
+            break
+        serie.append(candela)
+    if not serie:
+        return None
+    return serie[-1].apertura      # la PRIMA della serie, in ordine di tempo
+
+
+# ===========================================================================
+# CRT-17 — espansione nella meta' del range
+# ===========================================================================
+
+
+def meta_tenuta(range_candela: Candela, successive: Sequence[Candela]) -> Optional[Bias]:
+    """CRT-17 — La meta' del range tiene, e da che parte espande.
+
+    *«Il prezzo che tiene la meta' alta espande verso l'alto; se la meta'
+    cede, la bias si ribalta.»*
+
+    Il 50% di `liv_50` non e' solo il bersaglio di TP1 (DEF-36, CRT-03): e'
+    anche uno spartiacque. Da che parte del 50% chiudono le candele successive
+    dice da che parte il range si sta risolvendo.
+
+    Restituisce LONG se tutte le chiusure osservate stanno **sopra** il 50%,
+    SHORT se stanno tutte sotto, `NESSUNA` se lo attraversano — che e' il caso
+    in cui CRT-17 dice che la bias si ribalta, cioe' che non c'e' piu' una
+    tenuta da seguire.
+
+    `None` senza candele successive: il range e' ancora in corso e non ha
+    ancora detto nulla.
+    """
+    if not successive:
+        return None
+    meta = liv_50(range_candela)
+    sopra = all(c.chiusura > meta for c in successive)
+    sotto = all(c.chiusura < meta for c in successive)
+    if sopra:
+        return Bias.LONG
+    if sotto:
+        return Bias.SHORT
+    return Bias.NESSUNA

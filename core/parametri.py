@@ -368,6 +368,125 @@ def gruppo_di(strumento: str) -> str:
     raise ValueError(f"strumento fuori da PRIN-08: {strumento}")
 
 
+# ===========================================================================
+# CRT-12 — le coppie su cui si cerca la divergenza SMT
+# ===========================================================================
+#
+# SMT = Smart Money Technique/Tool. Due strumenti che di norma si muovono
+# insieme; quando uno fa un nuovo estremo e l'altro no, la divergenza dice
+# che la spinta non e' sostenuta.
+#
+# Il segno conta ed e' la meta' del lavoro. `6E` e `6B` salgono insieme:
+# divergenza significa che uno fa un nuovo MASSIMO e l'altro no. `6E` e `6S`
+# si muovono al contrario: la controparte di un nuovo massimo su `6E` e' un
+# nuovo MINIMO su `6S`, e la divergenza e' che quel minimo non arriva.
+#
+# Il verso e' espresso col segno degli strumenti gia' dichiarato in UNIVERSO
+# (`segno_invertito`): due strumenti hanno correlazione positiva se hanno lo
+# stesso segno, negativa se lo hanno diverso. Non e' un'assunzione libera,
+# e' la stessa proprieta' che DEF-33 usa per convertire le direzioni.
+#
+# Il DXY sta a parte: correla negativamente con tutte e cinque le coppie che
+# quotano il dollaro al denominatore e positivamente con le due che lo
+# quotano al numeratore. Non e' nell'UNIVERSO (PRIN-08) ma e' in archivio.
+# Su quante candele si cerca il nuovo estremo. Venti e' la lunghezza su cui
+# le fonti descrivono lo sweep di un "pool di liquidita' significativo": meno
+# e ogni oscillazione conta come nuovo estremo, molto di piu' e nessuno sweep
+# ordinario lo e'. Non e' ottimizzata su dati, ed e' bene che si sappia.
+FINESTRA_SMT: Final[int] = 20
+
+# ===========================================================================
+# CRT-04 — le coppie di timeframe canoniche
+# ===========================================================================
+#
+# Un CRT si legge SEMPRE su due timeframe: il range sta sull'alto, lo sweep e
+# l'ingresso sul basso. Non sono tre candele dello stesso timeframe — quella
+# lettura era in SETUP-01 fino a REV-50 ed e' un'altra strategia.
+#
+# Le coppie sono quelle delle fonti, verbatim. Quelle sotto l'ora richiedono
+# dati a 15 secondi e a 1 minuto che l'archivio non ha, e sono qui lo stesso:
+# il giorno in cui i dati arrivano, l'elenco non va indovinato di nuovo.
+#
+# `W1 -> H4` merita una riga a parte. Il risultato migliore che avevo
+# riportato era su `W1 -> D1`, che **non e' una coppia delle fonti**: quel
+# numero riguardava una strategia che nessuno ha descritto.
+COPPIE_CRT: Final[dict[TF, TF]] = {
+    TF.M1: TF.D1,      # mensile     -> giornaliero
+    TF.W1: TF.H4,      # settimanale -> 4 ore     <-- la coppia di Romeo
+    TF.D1: TF.H1,      # giornaliero -> orario
+}
+
+# ---------------------------------------------------------------------------
+# CONFLITTO APERTO fra CRT-04 e DEF-01, da risolvere e non da aggirare.
+#
+# Le fonti danno sette coppie. Tre stanno qui sopra. Le altre quattro
+# nominano timeframe che **DEF-01 non ammette**:
+#
+#     5m -> 15s      15m -> 1m      1h -> 5m      4h -> 15m
+#
+# DEF-01 dichiara dieci timeframe e dice che «nessun altro puo' essere citato
+# da nessuna regola». Metterli in un enum sarebbe violare DEF-01 di nascosto;
+# lasciarli fuori senza dirlo sarebbe perdere meta' della strategia.
+#
+# Stanno qui come stringhe, che e' esattamente cio' che sono finche' qualcuno
+# non decide: o DEF-01 si allarga, oppure il bot opera dichiaratamente su un
+# sottoinsieme del CRT. Non lo decido io.
+COPPIE_CRT_FUORI_DEF01: Final[tuple[tuple[str, str], ...]] = (
+    ("5m", "15s"),
+    ("15m", "1m"),
+    ("1h", "5m"),
+    ("4h", "15m"),
+)
+
+# ===========================================================================
+# CRT-15 — le finestre orarie
+# ===========================================================================
+#
+# Ore di **New York**, non UTC: le fonti le scrivono cosi' e l'ora di New York
+# cambia rispetto a UTC due volte l'anno. Convertirle qui una volta per tutte
+# darebbe due finestre sbagliate per meta' anno.
+#
+# Le killzone che avevo misurato (Londra 3-6, New York 8:30-11:30) sono UN
+# ALTRO insieme di finestre, preso dalla letteratura ICT generale e non da
+# Romeo. Le sue non erano mai state provate.
+#
+# Ogni intervallo e' [inizio, fine), ore intere.
+FINESTRE_CRT_NY: Final[dict[TF, tuple[tuple[int, int], ...]]] = {
+    TF.H1: ((2, 4), (7, 9), (8, 10), (20, 22)),
+    TF.H4: ((1, 9), (13, 21)),
+}
+FUSO_NEW_YORK: Final[str] = "America/New_York"
+
+COMPAGNE_SMT: Final[dict[str, tuple[str, ...]]] = {
+    # I partner naturali: stessa valuta forte contro dollaro.
+    "EURUSD": ("GBPUSD", "AUDUSD", "USDCHF"),
+    "GBPUSD": ("EURUSD", "AUDUSD", "USDCHF"),
+    "AUDUSD": ("EURUSD", "GBPUSD"),
+    "USDCHF": ("EURUSD", "USDJPY"),
+    "USDJPY": ("USDCHF", "EURUSD"),
+    # L'oro non ha compagne nell'universo: il suo riferimento e' il DXY, che
+    # pero' non e' uno strumento operabile. Resta vuoto finche' non si decide
+    # come trattarlo, e con l'elenco vuoto la divergenza non si cerca.
+    "XAUUSD": (),
+}
+
+
+def correlazione_positiva(uno: str, altro: str) -> bool:
+    """CRT-12 — I due strumenti si muovono nello stesso verso?
+
+    Discende dal segno gia' dichiarato in `UNIVERSO`: `EURUSD` e `GBPUSD`
+    quotano entrambi una valuta contro dollaro e salgono insieme; `EURUSD` e
+    `USDCHF` quotano il dollaro da lati opposti e si muovono al contrario.
+
+    E' la stessa proprieta' che DEF-33 usa per convertire le direzioni, letta
+    per un altro scopo. Derivarla invece di scrivere una seconda tabella
+    significa che non possono divergere.
+    """
+    if uno not in UNIVERSO or altro not in UNIVERSO:
+        raise ValueError(f"strumento fuori da PRIN-08: {uno} / {altro}")
+    return UNIVERSO[uno].segno_invertito == UNIVERSO[altro].segno_invertito
+
+
 # DEF-33: strumenti di sola analisi, mai operati.
 DXY_TF_ALTI: Final[str] = "ICEUS"          # future ICE, per TF_1D e superiori
 DXY_TF_BASSI: Final[str] = "CAPITALCOM:DXY"  # CFD, per TF_H12 e inferiori

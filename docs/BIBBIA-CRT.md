@@ -94,7 +94,9 @@ si esegue mai contro l'alto.
 ### CRT-06 — Tre modelli CRT allineati danno l'accuratezza massima
 `1h/5m` + `4h/15m` + `D/1h` che puntano nella stessa direzione.
 
-**ASSENTE.** Mai implementata, mai misurata.
+**SCRITTA** — `core/setup.py: modelli_allineati`. Non ancora misurata:
+richiede di incrociare tre coppie sullo stesso istante. Delle tre coppie che
+le fonti nominano, **una sola** è esprimibile coi timeframe che DEF-01 ammette.
 
 ---
 
@@ -126,7 +128,11 @@ Raid su un pool di liquidità significativo, poi rientro. È Raschke, 1995.
 Una candela che rompe **entrambi** i lati del range e richiude dentro è la
 forma più forte del pattern.
 
-**ASSENTE.** Il codice non la riconosce affatto.
+**SCRITTA E MISURATA — non regge.** `core/definizioni.py: double_purge`,
+`verso_del_double_purge`. 88,7% di winrate e R **negativa**: tante vittorie
+piccole e poche perdite grandi. La variante *concorde*, quella che segue il
+verso della regola, è **peggiore della base** (−1,4σ). È il caso in cui il
+winrate inganna e l'R dice la verità.
 
 ---
 
@@ -135,18 +141,38 @@ forma più forte del pattern.
 ### CRT-11 — Dopo il raid serve un CISD sul timeframe basso
 Change In State Of Delivery: il primo segno che la consegna ha cambiato verso.
 
-**CONTRARIA.** Ho implementato l'**MSS** (Market Structure Shift), che è
-parente ma non identico: l'MSS chiede la rottura di uno swing strutturale, il
-CISD chiede la rottura dell'ultima serie di candele di consegna opposta. Il
-secondo è più precoce. `backtest/romeo_completo.py` usa l'MSS.
+**SCRITTA E MISURATA — è l'unica che regge.** `core/definizioni.py: cisd`.
+
+Avevo implementato l'**MSS**, che chiede la rottura di uno swing strutturale
+mentre il CISD chiede la rottura dell'ultima serie di consegna opposta. Lo
+swing sta più lontano, quindi **l'MSS arriva sempre dopo**: a prezzo peggiore,
+e a volte mai.
+
+Il CISD moltiplica per cinque il vantaggio di base — da +0,017 a **+0,089 R**
+su `D1→H1` — e senza di esso il CRT rende **negativo** (−0,045 R). Positivo in
+**tutte e sei** le epoche su due coppie indipendenti, placebo a zero (−0,3σ).
+Resta comunque sotto il costo dello spread. Vedi
+`docs/MISURA-REGOLE-MANCANTI-2026-09-16.md`.
+
+**Non è ancora nel motore**: vive in `core/definizioni.py` e non lo chiama
+nessuno, che è esattamente lo stato in cui si trovava `DEF-33`.
 
 ### CRT-12 — Divergenza SMT fra mercati correlati
 Uno strumento fa un nuovo estremo, il correlato no: è divergenza, e le fonti
 la dichiarano **non negoziabile**.
 
-**ASSENTE.** È la lacuna più grave di questo documento: dichiarata
-indispensabile, mai implementata, e la più facile da misurare — sei strumenti
-correlati sono già in archivio.
+**SCRITTA E MISURATA — non mostra nulla.** `core/definizioni.py:
+divergenza_smt`, con le coppie in `COMPAGNE_SMT` e il segno derivato da
+`correlazione_positiva` (la stessa proprietà che usa DEF-33, non una seconda
+tabella che potrebbe divergere).
+
++0,5σ, −0,6σ, +0,2σ a seconda della coppia. Non è un errore di
+implementazione: i test verificano il segno su coppie positive e negative. È
+che su sei strumenti a granularità oraria non si vede. Può darsi che serva la
+granularità al minuto su cui Romeo lavora.
+
+Le fonti la dichiarano non negoziabile. I dati dicono di no. Resta scritta,
+perché il giorno in cui arrivano dati al minuto la domanda si può rifare.
 
 ---
 
@@ -172,9 +198,14 @@ discrezionale.
 ### CRT-15 — Finestre orarie
 CRT orario: 2-4, 7-9, 8-10, 20-22 ora di New York. CRT a 4 ore: 1-9 e 13-21.
 
-**CONTRARIA.** Ho misurato killzone diverse (Londra 3-6, New York 8:30-11:30).
-Le finestre di Romeo non sono mai state provate. `PRIN-12` dichiara il sistema
-attivo 24 ore su 24: se queste finestre entrano, `PRIN-12` va riscritta.
+**SCRITTA E MISURATA — nessuna differenza.** `core/contesto.py:
+dentro_finestra_crt`, con l'ora convertita **adesso** e non una volta per
+tutte: il fuso di New York cambia due volte l'anno e una tabella in UTC
+sarebbe sbagliata per metà anno.
+
++0,0σ e −0,2σ. Su `D1→H1` quasi tutti i segnali cadono *fuori* dalle finestre,
+il che dice che sono pensate per timeframe d'ingresso più bassi di quelli che
+il bot può usare. `PRIN-12` non va toccata.
 
 ---
 
@@ -190,7 +221,14 @@ gestione era lettera morta (REV-49).
 Il prezzo che tiene la metà alta espande verso l'alto; se la metà cede, la
 bias si ribalta.
 
-**ASSENTE.**
+**SCRITTA — e la prima misura era un lookahead.** `core/definizioni.py:
+meta_tenuta`. Filtrando con le candele del timeframe **alto successive a N2**
+dava 85,7% di winrate e +15,3σ. Guardando solo ciò che accade **dentro `N2`**,
+cioè ciò che si vede davvero al momento dell'ingresso, sparisce del tutto:
+meno di 30 campioni in ogni coppia.
+
+È il quinto falso positivo di questo progetto, e tutti e cinque avevano lo
+stesso aspetto: un numero troppo bello.
 
 ---
 
@@ -204,11 +242,15 @@ Tenerlo favorisce la continuazione, attraversarlo invalida.
 ### CRT-19 — Ombre piccole su C2 favoriscono l'espansione
 ### CRT-20 — Ombre grandi su C2 favoriscono la mean-reversion
 
-**SOSPETTA DI SEGNO INVERTITO.** Il CRT **è** un'operazione di mean-reversion.
-Se `CRT-20` è vera, le ombre **grandi** dovrebbero dare i CRT migliori — e il
-mio filtro «sweep efficiente» scartava proprio quelle, tenendo le piccole.
-Non l'ho mai misurata nei due versi. Finché non lo faccio, ogni numero che ho
-dato su quel filtro va letto sapendo che potrebbe essere il contrario.
+**SCRITTE E MISURATE NEI DUE VERSI — il sospetto era fondato, il vantaggio
+no.** `core/definizioni.py: peso_ombre`, `meta_ombra`.
+
+Le ombre **piccole** sono peggiori: 33,6% di winrate su `D1→H1` contro il
+59,6% della base. Quindi il mio filtro «sweep efficiente», che teneva proprio
+quelle, scartava i CRT buoni — il verso del sospetto era giusto.
+
+Ma le ombre grandi non battono la base (−0,1σ, +0,0σ). La conoscenza serve a
+non fare la cosa sbagliata, non a guadagnare.
 
 ---
 
@@ -231,21 +273,28 @@ Su 57 regole delle fonti, ricondotte ai 22 punti normativi qui sopra:
 
 | | |
 |---|---:|
-| VIVE | 9 |
+| VIVE (nel motore) | 9 |
+| SCRITTE e misurate, fuori dal motore | 6 |
 | PARZIALI | 5 |
-| CONTRARIE | 2 |
-| ASSENTI | 6 |
+| ASSENTI | 0 |
+| **di cui MISURATE e che reggono** | **1 — il CISD** |
 
-**Le quattro lacune che contano**, in ordine di peso dichiarato dalle fonti:
+Non ci sono più regole assenti. Delle otto che mancavano, **sette sono state
+misurate** e una sola regge: il **CISD** (`CRT-11`).
 
-1. **Divergenza SMT** (`CRT-12`) — dichiarata non negoziabile, mai scritta.
-2. **Analisi delle ombre** (`CRT-18`, `CRT-19`, `CRT-20`) — un blocco intero,
-   e il mio unico filtro in quest'area potrebbe avere il segno invertito.
-3. **Double Purge Sweep** (`CRT-10`) — una forma di CRT che il codice non
-   riconosce.
-4. **Tre modelli allineati** (`CRT-06`) e la coppia **`W1→H4`** (`CRT-04`) —
-   confluenze mai provate. La coppia su cui ho dato il risultato migliore,
-   `W1→D1`, non è di Romeo.
+Quello che resta da fare, in ordine:
+
+1. **Portare il CISD dentro il motore.** Oggi vive in `core/definizioni.py` e
+   non lo chiama nessuno — lo stato esatto in cui si trovava `DEF-33`. Finché
+   è così, la misura riguarda una regola che il bot non applica.
+2. **Rimisurare il CISD coi costi veri**, per vedere quanto manca alla soglia.
+   +0,089 R contro 0,15–0,35 R di spread: manca, ma non di un ordine di
+   grandezza come prima.
+3. **Misurare `CRT-06`**, i tre modelli allineati — l'unica scritta e non
+   ancora provata.
+4. **Decidere il conflitto `CRT-04` / `DEF-01`**: quattro delle sette coppie
+   di Romeo nominano timeframe che DEF-01 non ammette. O DEF-01 si allarga, o
+   il bot opera dichiaratamente su un sottoinsieme del CRT.
 
 ---
 

@@ -574,3 +574,48 @@ def rapporto_giud01(distanza_kl_gap: float, atr_tf: float) -> Optional[float]:
     if atr_tf is None or atr_tf <= 0:
         return None
     return distanza_kl_gap / atr_tf
+
+
+# ===========================================================================
+# CRT-06 — tre modelli CRT allineati
+# ===========================================================================
+
+
+def modelli_allineati(
+    crt_per_tf: Mapping[TF, Optional[Crt]],
+    coppie: Optional[Mapping[TF, TF]] = None,
+) -> tuple[Bias, int]:
+    """CRT-06 — Quanti modelli CRT puntano nella stessa direzione.
+
+    *«Tre modelli CRT allineati — `1h/5m` + `4h/15m` + `D/1h` — danno
+    l'accuratezza massima.»*
+
+    Non e' la stessa cosa di `SETUP-06`/`bias_comando`, e confonderle sarebbe
+    facile. `bias_comando` guarda le **bias** dei timeframe superiori, che
+    nascono da accettazione e rifiuto (DEF-16). Questa guarda i **CRT**: il
+    pattern completo, sweep e richiusura, formato su piu' coppie insieme.
+
+    Restituisce (direzione comune, quanti). `NESSUNA` e 0 quando i CRT
+    presenti non concordano: un disaccordo non e' una direzione debole, e'
+    assenza di direzione, e va distinto da "nessun CRT".
+
+    ## Quante coppie si possono davvero guardare
+
+    Le fonti ne nominano tre. Di quelle, **una sola** e' esprimibile coi
+    timeframe che DEF-01 ammette: `D1 -> H1`. Le altre due nominano 5 e 15
+    minuti, che DEF-01 non contiene (vedi `COPPIE_CRT_FUORI_DEF01`).
+
+    La funzione non lo sa e non deve saperlo: riceve i CRT che le si danno e
+    conta. Con le coppie di `COPPIE_CRT` ne guardera' tre — `M1/D1`, `W1/H4`,
+    `D1/H1` — che sono le tre esprimibili, non le tre delle fonti. La
+    differenza va tenuta a mente leggendo qualunque misura.
+    """
+    del coppie          # firma tenuta per chi vorra' passare un altro insieme
+
+    direzioni = [crt.direzione for crt in crt_per_tf.values() if crt is not None]
+    if not direzioni:
+        return Bias.NESSUNA, 0
+    prima = direzioni[0]
+    if prima is Bias.NESSUNA or any(d is not prima for d in direzioni):
+        return Bias.NESSUNA, 0
+    return prima, len(direzioni)
