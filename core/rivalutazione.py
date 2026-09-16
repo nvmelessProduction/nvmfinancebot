@@ -79,6 +79,25 @@ def _key_level_del_tf(
     return None
 
 
+def _bersaglio_ancora_disponibile(
+    riga: Mapping[str, Any], foto: Fotografia, verso: Bias
+) -> bool:
+    """Il target della posizione esiste ancora fra i key level correnti?
+
+    Il confronto e' per **verso e distanza**, non per uguaglianza numerica: il
+    target in archivio e' un prezzo CFD, i key level della fotografia sono
+    prezzi del future, e le due scale non coincidono. Se esiste ancora almeno
+    un key level oltre il prezzo nel verso dell'operazione, il bersaglio c'e';
+    se non ne esiste piu' nessuno, e' stato consumato (DEF-27, ESCL-17).
+
+    E' una lettura prudente: dice "consumato" solo quando NESSUN livello e'
+    rimasto davanti, che e' il caso in cui GEST-09 ha davvero qualcosa da
+    dire.
+    """
+    cercato = TipoKeyLevel.MIN if verso is Bias.SHORT else TipoKeyLevel.MAX
+    return any(livello.tipo is cercato for livello in foto.key_level_correnti)
+
+
 def _piu_lontano(direzione_cfd_posizione: Bias, nuovo: float, attuale: float) -> bool:
     """GEST-08 e' a senso unico: il target si allontana, non si avvicina."""
     if direzione_cfd_posizione is Bias.LONG:
@@ -179,17 +198,27 @@ def rivaluta(
         # "lo stop e' gia' stato spostato" e GEST-05 vieta di rifarlo.
         if comando is not Bias.NESSUNA and not riga.get("tp1_raggiunto"):
             comando_cfd = direzione_cfd(comando, foto.strumento)
-            if comando_cfd is not verso:
-                prezzo_ingresso = riga.get("prezzo_ingresso")
-                if prezzo_ingresso:
-                    nuovo_stop = gest.livello_break_even(
-                        float(prezzo_ingresso), verso,
-                        float(riga.get("spread_ingresso") or foto.spread),
-                    )
+            prezzo_ingresso = riga.get("prezzo_ingresso")
+            if comando_cfd is not verso and prezzo_ingresso:
+                # SETUP-17 in persona, con la sua nota sul conflitto con
+                # GEST-03: il break even non allarga mai lo stop, e i due sono
+                # compatibili. La regola vive li', non qui.
+                prima = gest.Posizione(
+                    strumento=foto.strumento, direzione=verso,
+                    prezzo_ingresso=float(prezzo_ingresso),
+                    tf_crt=tf_trigger,
+                    livello_stop=float(riga.get("sl") or 0.0),
+                    tp1=float(riga.get("tp1") or 0.0),
+                    target_finale=float(riga.get("tp") or 0.0),
+                )
+                dopo, perche = gest.cambio_bias_su_posizione_aperta(
+                    prima, comando_cfd,
+                    float(riga.get("spread_ingresso") or foto.spread),
+                )
+                if dopo.livello_stop != prima.livello_stop:
                     azioni.append(AzioneGestione(
-                        id_posizione, ticket, "break_even", nuovo_stop, "SETUP-17",
-                        f"bias_comando passata a {comando.value}, opposta alla "
-                        "posizione: stop a pareggio senza chiudere",
+                        id_posizione, ticket, "break_even", dopo.livello_stop,
+                        "SETUP-17", perche,
                     ))
                     continue
 
@@ -202,9 +231,51 @@ def rivaluta(
             log.warning("posizione %s con tf_crt illeggibile: %r", id_posizione, riga["tf_crt"])
             continue
 
+        # --- GEST-09 e PA-48 — il target e' stato consumato ----------------
+        #
+        # Un key level CONSUMATO non torna disponibile (ESCL-17). Se il
+        # bersaglio della posizione non compare piu' fra i key level correnti
+        # nel suo verso, quel bersaglio non c'e' piu': PA-48 dice di
+        # ricalcolarlo, e se non ne esiste uno successivo PRIN-99 dice di
+        # chiudere, perche' una posizione senza bersaglio non ha ragione di
+        # restare aperta.
+        if not _bersaglio_ancora_disponibile(riga, foto, verso):
+            base_g9 = gest.Posizione(
+                strumento=foto.strumento, direzione=verso,
+                prezzo_ingresso=float(riga.get("prezzo_ingresso") or 0.0),
+                tf_crt=TF(str(riga["tf_crt"])),
+                livello_stop=float(riga.get("sl") or 0.0),
+                tp1=float(riga.get("tp1") or 0.0),
+                target_finale=float(riga["tp"]),
+            )
+            successivo = _key_level_del_tf(
+                foto.key_level_correnti, tf_trigger, crt.direzione
+            )
+            nuovo_g9 = None
+            if successivo is not None:
+                try:
+                    nuovo_g9 = livello_cfd(
+                        successivo.valore, candele[-1].chiusura,
+                        foto.prezzo_cfd, foto.strumento,
+                    )
+                except ValueError:
+                    nuovo_g9 = None
+            _, perche_g9 = gest.target_consumato_prima_di_tp1(base_g9, nuovo_g9)
+            if nuovo_g9 is None:
+                azioni.append(AzioneGestione(
+                    id_posizione, ticket, "chiudi", None, "GEST-09", perche_g9,
+                ))
+            else:
+                azioni.append(AzioneGestione(
+                    id_posizione, ticket, "estendi_target", nuovo_g9,
+                    "GEST-09", perche_g9,
+                ))
+            continue
+
         livello = _key_level_del_tf(foto.key_level_correnti, tf_trigger, crt.direzione)
         if livello is None:
             continue
+
 
         base = gest.Posizione(
             strumento=foto.strumento,

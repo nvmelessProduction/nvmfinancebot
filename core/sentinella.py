@@ -24,10 +24,10 @@ from typing import Any, Optional
 
 from core import broker, notifier, storage
 from core.config import impostazioni
+from core import gestione
 from core.definizioni import Bias
-from core.gestione import livello_break_even
 from core.log import diario
-from core.parametri import FRAZIONE_CHIUSA_A_TP1
+from core.parametri import TF
 
 log = diario("sentinella")
 
@@ -69,6 +69,17 @@ def livello_toccato(
     return None
 
 
+def prezzo_di_uscita(direzione: str, bid: float, ask: float) -> float:
+    """Il prezzo a cui si uscirebbe adesso da questa posizione.
+
+    Una posizione lunga si chiude in bid, una corta in ask. E' lo stesso
+    principio di `livello_toccato`: confrontare uno stop di vendita col
+    prezzo di acquisto fa scattare gli stop qualche pip prima o dopo del
+    dovuto.
+    """
+    return bid if direzione.upper() == "BUY" else ask
+
+
 def tp1_toccato(
     direzione: str,
     bid: float,
@@ -77,31 +88,41 @@ def tp1_toccato(
 ) -> bool:
     """GEST-04 — Il prezzo ha raggiunto TP1?
 
-    Stessa aritmetica di `livello_toccato` sul ramo del target, e per la
-    stessa ragione: si guarda il prezzo a cui si **uscirebbe**, perche' e' a
-    quel prezzo che il quarto di posizione viene effettivamente chiuso.
+    L'aritmetica del confronto e' quella di `gestione.raggiunge_tp1`, che e'
+    dove la regola vive: qui si aggiunge solo la scelta fra bid e ask, che
+    `gestione` non puo' fare perche' non conosce lo spread del broker.
+    Riscriverla sarebbe una seconda copia della stessa regola, e due copie
+    finiscono per divergere proprio nel punto che muove i soldi.
 
-    E' separata da `livello_toccato` perche' TP1 non e' un'uscita: e' un
-    parziale che lascia in vita il 75% della posizione. Mescolare i due
-    significherebbe che un TP1 raggiunto chiude tutto, che e' l'opposto di
-    quello che GEST-07 chiede.
+    TP1 non e' un'uscita: e' un parziale che lascia in vita il 75%. Per
+    questo e' separata da `livello_toccato`, che chiude tutto.
     """
     if tp1 is None:
         return False
-    direzione = direzione.upper()
-    if direzione == "BUY":
-        return bid >= tp1
-    if direzione == "SELL":
-        return ask <= tp1
-    return False
+    if direzione.upper() not in ("BUY", "SELL"):
+        return False
+    magra = gestione.Posizione(
+        strumento="", direzione=_bias(direzione), prezzo_ingresso=0.0,
+        tf_crt=TF.H4, livello_stop=0.0, tp1=float(tp1), target_finale=0.0,
+    )
+    return gestione.raggiunge_tp1(magra, prezzo_di_uscita(direzione, bid, ask))
+
+
+def _bias(direzione: str) -> Bias:
+    return Bias.LONG if direzione.upper() == "BUY" else Bias.SHORT
 
 
 def volume_del_parziale(
     volume_iniziale: float,
     volume_attuale: float,
     passo_broker: float,
+    frazione: float,
 ) -> Optional[float]:
     """GEST-04 — Quanto chiudere a TP1, arrotondato a cio' che il broker accetta.
+
+    `frazione` la decide `gestione.applica_tp1`, che e' dove GEST-04 dice
+    quanto si chiude. Qui si fa solo l'aritmetica del broker: quel numero
+    moltiplicato per il volume, arrotondato al passo.
 
     Il 25% si calcola sul volume **iniziale**, non su quello attuale: sono
     uguali finche' non ci sono stati parziali, e GEST-07 dice che di parziali
@@ -122,7 +143,7 @@ def volume_del_parziale(
     """
     if passo_broker <= 0 or volume_iniziale <= 0 or volume_attuale <= 0:
         return None
-    grezzo = volume_iniziale * FRAZIONE_CHIUSA_A_TP1
+    grezzo = volume_iniziale * frazione
     passi = int(grezzo / passo_broker + 1e-9)
     quota = round(passi * passo_broker, 8)
     if quota <= 0 or quota >= volume_attuale:
@@ -347,8 +368,31 @@ class Sentinella:
 
         volume_attuale = float(posizione["volume"])
         volume_iniziale = float(posizione.get("volume_iniziale") or volume_attuale)
+
+        # GEST-04 in persona: quanto si chiude e dove va lo stop lo decide
+        # `gestione.applica_tp1`, non questo file. Qui c'e' solo l'aritmetica
+        # del broker e l'ordine delle scritture.
+        #
+        # Lo spread e' quello REGISTRATO ALL'INGRESSO, non quello di adesso:
+        # il buffer di PA-46 deve coprire un costo gia' pagato, che e' un
+        # fatto passato. Con lo spread corrente il livello si muoverebbe, e
+        # molto durante una news, mentre GEST-05 lo vuole immobile.
+        spread = posizione.get("spread_ingresso")
+        if spread is None:
+            spread = tick["ask"] - tick["bid"]
+        prima = gestione.Posizione(
+            strumento=simbolo,
+            direzione=_bias(direzione),
+            prezzo_ingresso=float(posizione["prezzo_ingresso"]),
+            tf_crt=TF.H4,          # non entra nel calcolo di GEST-04
+            livello_stop=float(posizione["sl"]),
+            tp1=float(tp1),
+            target_finale=float(posizione.get("tp") or 0.0),
+        )
+        dopo, frazione = gestione.applica_tp1(prima, float(spread))
+
         quota = volume_del_parziale(
-            volume_iniziale, volume_attuale, float(specifiche["volume_step"])
+            volume_iniziale, volume_attuale, float(specifiche["volume_step"]), frazione
         )
         if quota is None:
             # Size minima: un quarto non e' eseguibile. Non si chiude nulla e
@@ -379,19 +423,24 @@ class Sentinella:
             )
             return False
 
-        # Break even col buffer di PA-46: multiplo dello spread, e lo spread
-        # e' quello REGISTRATO ALL'INGRESSO, non quello di adesso. Il buffer
-        # deve coprire il costo gia' pagato per entrare, che e' un fatto
-        # passato: usare lo spread corrente farebbe muovere un livello che
-        # GEST-05 vuole immobile, e in una news lo farebbe muovere molto.
-        spread = posizione.get("spread_ingresso")
-        if spread is None:
-            spread = tick["ask"] - tick["bid"]
-        nuovo_stop = livello_break_even(
-            float(posizione["prezzo_ingresso"]),
-            Bias.LONG if direzione.upper() == "BUY" else Bias.SHORT,
-            float(spread),
-        )
+        # GEST-03, GEST-05, GEST-14, ESCL-07/08/09: lo stop si muove una volta
+        # sola, a break even, e solo dopo TP1. Il controllo gira sulla
+        # posizione **dopo** il parziale, che e' quella a cui lo spostamento
+        # si applica. In funzionamento normale passa sempre; se un giorno non
+        # passasse, vorrebbe dire che `applica_tp1` ha prodotto uno stop che
+        # le esclusioni vietano, e allora e' giusto fermarsi.
+        nuovo_stop = dopo.livello_stop
+        ammesso, perche = gestione.spostamento_stop_ammesso(dopo, nuovo_stop)
+        if not ammesso:
+            log.error(
+                "parziale eseguito su %s ma lo stop NON si puo' spostare: %s",
+                ticket, perche,
+            )
+            notifier.invia(
+                f"ATTENZIONE: parziale eseguito su {simbolo} (ticket {ticket}) ma "
+                f"lo stop non e' stato portato a pareggio: {perche}"
+            )
+            nuovo_stop = float(posizione["sl"])
 
         residuo = round(volume_attuale - quota, 8)
         storage.applica_parziale_tp1(id_posizione, residuo, nuovo_stop)

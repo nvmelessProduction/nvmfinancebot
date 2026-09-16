@@ -53,6 +53,14 @@ CALIBRATURA = {
     "SETUP-02A": "il CRT short, cuore del motore",
     "GEST-02": "lo stop iniziale",
     "RISK-03": "il calcolo della size",
+    # Collegate dopo l'audit del 16/09: se una di queste torna morta,
+    # qualcosa e' stato scollegato.
+    "SETUP-19": "il filtro DXY, collegato in motore.valuta",
+    "RISK-05": "eleggibilita' dello strumento, collegata in motore.valuta",
+    "GEST-04": "il parziale a TP1, collegato in sentinella",
+    "GEST-08": "l'estensione del target, collegata in rivalutazione",
+    "SETUP-17": "la reazione al cambio di bias, collegata in rivalutazione",
+    "RISK-02": "il ridimensionamento, collegato in main",
 }
 RE_REGOLA = re.compile(r"\b((?:DEF|SETUP|GEST|RISK|CTX|PRIN|ESCL|GIUD|PA|REV|PREC)-\d+[A-Z]?)\b")
 
@@ -71,18 +79,32 @@ def moduli() -> dict[str, Path]:
 def analizza(percorso: Path):
     """Funzioni definite, chi chiamano, e quali regole citano."""
     albero = ast.parse(percorso.read_text())
-    definite, chiamate, regole = {}, defaultdict(set), defaultdict(set)
+    definite, chiamate = {}, defaultdict(set)
+    # Due cose diverse, e tenerle insieme era il difetto della v1:
+    #   `implementa`  la docstring della funzione NOMINA la regola: quella
+    #                 funzione e' il posto dove la regola vive;
+    #   `menziona`    l'ID compare in una stringa del corpo, tipicamente
+    #                 `applicate.append("SETUP-06")`. E' una DICHIARAZIONE di
+    #                 aver applicato la regola, non la sua implementazione.
+    #
+    # Confonderle e' il motivo per cui GEST-04, GEST-05, GEST-07 e GEST-08
+    # risultavano vive: `motore.valuta` scriveva i loro ID nell'elenco delle
+    # regole applicate mentre il codice che le implementa non veniva chiamato
+    # da nessuno. La dichiarazione era sincera e il fatto non avveniva.
+    implementa, menziona = defaultdict(set), defaultdict(set)
 
     class Visita(ast.NodeVisitor):
         def __init__(self): self.dove = None
         def visit_FunctionDef(self, nodo):
             precedente, self.dove = self.dove, nodo.name
             definite[nodo.name] = nodo.lineno
-            testo = ast.get_docstring(nodo) or ""
-            regole[nodo.name].update(RE_REGOLA.findall(testo))
+            docstring = ast.get_docstring(nodo) or ""
+            implementa[nodo.name].update(RE_REGOLA.findall(docstring))
             for pezzo in ast.walk(nodo):
                 if isinstance(pezzo, ast.Constant) and isinstance(pezzo.value, str):
-                    regole[nodo.name].update(RE_REGOLA.findall(pezzo.value))
+                    if pezzo.value == docstring:
+                        continue
+                    menziona[nodo.name].update(RE_REGOLA.findall(pezzo.value))
             self.generic_visit(nodo)
             self.dove = precedente
         visit_AsyncFunctionDef = visit_FunctionDef
@@ -97,20 +119,25 @@ def analizza(percorso: Path):
             self.generic_visit(nodo)
 
     Visita().visit(albero)
-    return definite, chiamate, regole
+    return definite, chiamate, implementa, menziona
 
 
 def main() -> int:
     mods = moduli()
-    tutte_definite, tutte_chiamate, tutte_regole = {}, defaultdict(set), defaultdict(set)
+    tutte_definite, tutte_chiamate = {}, defaultdict(set)
+    tutte_implementa, tutte_menziona = defaultdict(set), defaultdict(set)
     dove_definita = {}
     for nome, percorso in mods.items():
-        d, c, r = analizza(percorso)
+        d, c, i, m = analizza(percorso)
         for f in d:
             dove_definita.setdefault(f, []).append(nome)
         tutte_definite.update({f: nome for f in d})
         for k, v in c.items(): tutte_chiamate[k] |= v
-        for k, v in r.items(): tutte_regole[k] |= v
+        for k, v in i.items(): tutte_implementa[k] |= v
+        for k, v in m.items(): tutte_menziona[k] |= v
+    tutte_regole = defaultdict(set)
+    for k, v in tutte_implementa.items(): tutte_regole[k] |= v
+    for k, v in tutte_menziona.items(): tutte_regole[k] |= v
 
     # Raggiungibilita' per nome di funzione (approssimazione volutamente
     # generosa: se un nome e' chiamato da qualche parte di raggiungibile, la
@@ -129,21 +156,32 @@ def main() -> int:
     for f in Path("docs").glob("*.md"):
         nei_documenti.update(RE_REGOLA.findall(f.read_text()))
 
-    # Dove vive ogni regola nel codice, e se quella funzione e' raggiungibile
-    stato: dict[str, list[tuple[str, bool]]] = defaultdict(list)
-    for funzione, regole in tutte_regole.items():
+    # Dove vive ogni regola, distinguendo chi la IMPLEMENTA da chi la NOMINA.
+    implementata_in: dict[str, list[str]] = defaultdict(list)
+    menzionata_in: dict[str, list[str]] = defaultdict(list)
+    for funzione, regole in tutte_implementa.items():
         for r in regole:
-            stato[r].append((funzione, funzione in vivi))
+            implementata_in[r].append(funzione)
+    for funzione, regole in tutte_menziona.items():
+        for r in regole:
+            menzionata_in[r].append(funzione)
 
-    morte, mai, vive = [], [], []
+    morte, mai, vive, dichiarate = [], [], [], []
     for r in sorted(nei_documenti):
-        posti = stato.get(r, [])
-        if not posti:
+        implementanti = implementata_in.get(r, [])
+        menzionanti = menzionata_in.get(r, [])
+        if not implementanti and not menzionanti:
             mai.append(r)
-        elif any(viva for _, viva in posti):
+        elif any(f in vivi for f in implementanti):
             vive.append(r)
+        elif any(f in vivi for f in menzionanti):
+            # Codice raggiungibile DICHIARA di applicarla, ma nessuna funzione
+            # che la implementa viene mai chiamata. E' la classe di GEST-07:
+            # la decisione portava "GEST-07" nelle regole applicate mentre il
+            # TP1 calcolato veniva buttato via il passaggio dopo.
+            dichiarate.append((r, sorted(set(menzionanti))[:3], sorted(set(implementanti))[:3]))
         else:
-            morte.append((r, [f for f, _ in posti]))
+            morte.append((r, implementanti or menzionanti))
 
     # --- calibratura: se queste risultano morte, lo strumento e' rotto ------
     rotte = [r for r in CALIBRATURA if r in {x[0] for x in morte}]
@@ -166,6 +204,16 @@ def main() -> int:
         print(f"  {r:10s} vive solo in: {', '.join(sorted(set(funzioni))[:4])}")
 
     print(f"\n{'=' * 78}")
+    print("REGOLE DICHIARATE APPLICATE MA SENZA IMPLEMENTAZIONE RAGGIUNGIBILE")
+    print("(codice vivo scrive il loro ID; il codice che le fa non gira mai)")
+    print("=" * 78)
+    if not dichiarate:
+        print("  nessuna")
+    for r, chi_dichiara, chi_implementa in dichiarate:
+        coda = f" | implementata in: {', '.join(chi_implementa)}" if chi_implementa else " | NESSUNA implementazione"
+        print(f"  {r:10s} dichiarata da: {', '.join(chi_dichiara)}{coda}")
+
+    print(f"\n{'=' * 78}")
     print("REGOLE DEI DOCUMENTI SENZA ALCUNA TRACCIA NEL CODICE")
     print("=" * 78)
     print(f"  {len(mai)} regole: {', '.join(mai)}")
@@ -182,8 +230,9 @@ def main() -> int:
         r = sorted(tutte_regole.get(f, []))
         print(f"  {tutte_definite[f]:28s} {f:34s} {'regole: ' + ', '.join(r[:3]) if r else ''}")
 
-    print(f"\nriepilogo: {len(vive)} regole vive, {len(morte)} morte, "
-          f"{len(mai)} senza traccia, {len(orfane)} funzioni orfane")
+    print(f"\nriepilogo: {len(vive)} vive, {len(dichiarate)} solo dichiarate, "
+          f"{len(morte)} morte, {len(mai)} senza traccia, "
+          f"{len(orfane)} funzioni orfane")
     return 0
 
 

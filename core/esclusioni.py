@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 from core.definizioni import Bias
+from core.rischio import stop_obbligatorio
 from core.parametri import MAX_POSIZIONI_PER_STRUMENTO, TF, TF_SOLO_GAP, UNIVERSO, gerarchia
 
 
@@ -103,7 +104,10 @@ def verifica_divieti(ordine: OrdineProposto) -> tuple[Divieto, ...]:
         violati.append(Divieto("ESCL-08", "stop spostato prima del raggiungimento di TP1"))
     if ordine.usa_trailing:
         violati.append(Divieto("ESCL-09", "trailing stop, vietato in qualsiasi forma"))
-    if ordine.livello_stop is None:
+    if not stop_obbligatorio(ordine.livello_stop):
+        # RISK-11 ed ESCL-10 sono la stessa condizione scritta in due file.
+        # La funzione sta in `rischio` e vale la pena chiamarla invece di
+        # riscrivere qui `is None`: due copie della stessa regola divergono.
         violati.append(Divieto("ESCL-10", "nessuno stop loss definito"))
     elif ordine.livello_stop == ordine.prezzo_ingresso:
         violati.append(Divieto("ESCL-10", "stop coincidente con l'ingresso: distanza nulla"))

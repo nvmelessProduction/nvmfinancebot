@@ -166,6 +166,24 @@ class TestSegnoInvertito:
         assert any(a.tipo == "break_even" for a in azioni)
 
 
+class TestTargetConsumato:
+    """GEST-09 e PA-48 — il bersaglio sparisce prima di TP1."""
+
+    def test_senza_alcun_key_level_nel_verso_si_chiude(self) -> None:
+        """Nessun minimo fra i key level correnti: uno short non ha piu' dove
+        andare. PRIN-99 — una posizione senza bersaglio non ha ragione di
+        restare aperta."""
+        senza_minimi = foto(key_level_correnti=[KL_SETTIMANALE, KL_H4_MAX])
+        azioni = riv.rivaluta(senza_minimi, TF.H4, [posizione()])
+        assert len(azioni) == 1
+        assert azioni[0].regola == "GEST-09"
+        assert azioni[0].tipo == "chiudi"
+
+    def test_con_un_livello_davanti_non_si_chiude(self) -> None:
+        azioni = riv.rivaluta(foto(), TF.H4, [posizione()])
+        assert all(a.tipo != "chiudi" for a in azioni)
+
+
 class TestTargetDiComando:
     """GEST-10 — al target di tf_comando si chiude tutto."""
 
