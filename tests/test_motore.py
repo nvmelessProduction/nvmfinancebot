@@ -307,6 +307,42 @@ class TestUltimaRigaDiDifesa:
 
 
 # ===========================================================================
+# DEF-33 — il segno invertito di 6J e 6S
+# ===========================================================================
+class TestSegnoInvertito:
+    """Un CRT short sul future non e' sempre un SELL sul CFD.
+
+    `6J` e `6S` quotano yen e franco contro dollaro; i CFD corrispondenti
+    quotano il dollaro contro quelle valute. Senza la conversione il bot
+    manderebbe al broker l'ordine **rovesciato** su due strumenti su sei —
+    e nessun test se ne accorgeva, perche' `direzione_cfd` era collaudata da
+    sola e non chiamata da nessuno (REV-51).
+    """
+
+    def test_strumento_diretto_non_si_inverte(self) -> None:
+        decisione = m.valuta(foto(strumento="EURUSD"), TF.H4)
+        assert decisione.direzione is Bias.SHORT
+        assert decisione.azione == "SELL"
+
+    def test_usdjpy_si_inverte(self) -> None:
+        decisione = m.valuta(foto(strumento="USDJPY"), TF.H4)
+        assert decisione.direzione is Bias.SHORT, "il CRT sul future resta short"
+        assert decisione.azione == "BUY", "ma sul CFD si compra"
+
+    def test_usdchf_si_inverte(self) -> None:
+        decisione = m.valuta(foto(strumento="USDCHF"), TF.H4)
+        assert decisione.direzione is Bias.SHORT
+        assert decisione.azione == "BUY"
+
+    def test_i_livelli_restano_del_future(self) -> None:
+        """Si converte il verso dell'ordine, non i prezzi: ESCL-12."""
+        diretto = m.valuta(foto(strumento="EURUSD"), TF.H4)
+        invertito = m.valuta(foto(strumento="USDJPY"), TF.H4)
+        assert diretto.livello_stop == invertito.livello_stop
+        assert diretto.tp1 == invertito.tp1
+
+
+# ===========================================================================
 # Il target del residuo (SETUP-14, REV-49)
 # ===========================================================================
 class TestTargetFinale:

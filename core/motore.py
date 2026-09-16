@@ -39,7 +39,7 @@ from core import esclusioni as esc
 from core import gestione as gest
 from core import rischio as risk
 from core import setup as stp
-from core.definizioni import Bias, Candela, Gap, KeyLevel, Mitigazione
+from core.definizioni import Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd
 from core.parametri import MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO
 
 # ===========================================================================
@@ -403,9 +403,19 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
 
     # --- 8. Ordine ---------------------------------------------------------
-    applicate.extend(["SETUP-03", "SETUP-04"])
+    applicate.extend(["SETUP-03", "SETUP-04", "DEF-33"])
+
+    # DEF-33 — il CRT e' rilevato sul FUTURE, l'ordine va al CFD, e per `6J` e
+    # `6S` i due hanno segno opposto: quei future quotano yen e franco contro
+    # dollaro, i CFD quotano il dollaro contro quelle valute. Un CRT short su
+    # `6J` e' un BUY su `USDJPY`.
+    #
+    # `direzione` resta quella del future, perche' stop e bersaglio sono
+    # livelli del future e vanno letti con il suo segno. Si converte solo cio'
+    # che parte verso il broker.
+    verso_cfd = direzione_cfd(crt.direzione, foto.strumento)
     return Decisione(
-        azione="SELL" if crt.direzione is Bias.SHORT else "BUY",
+        azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
         strumento=foto.strumento,
         direzione=crt.direzione,
         volume=esito_size.lotti,
