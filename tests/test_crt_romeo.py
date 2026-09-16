@@ -302,12 +302,22 @@ class TestCoppieEAllineamento:
         assert COPPIE_CRT[TF.W1] is TF.H4
         assert COPPIE_CRT.get(TF.W1) is not TF.D1
 
-    def test_le_coppie_fuori_da_def01_sono_dichiarate_non_nascoste(self) -> None:
-        """DEF-01 ammette dieci timeframe e dice che nessun altro puo' essere
-        citato. Quattro coppie delle fonti ne nominano altri: stanno come
-        stringhe, che e' cio' che sono finche' qualcuno non decide."""
-        assert ("4h", "15m") in COPPIE_CRT_FUORI_DEF01
-        assert ("1h", "5m") in COPPIE_CRT_FUORI_DEF01
+    def test_le_coppie_intraday_ora_ci_sono(self) -> None:
+        """Il vincolo di DEF-01 e' stato sollevato, e la ragione e' un numero.
+
+        Il bot produceva 413 segnali in vent'anni; Romeo ne apre cinque o sei
+        AL GIORNO. Fattore cento. La causa: quattro delle sue sette coppie
+        sono intraday, e senza i timeframe sotto l'ora il bot poteva usare
+        solo le tre piu' lente.
+        """
+        assert COPPIE_CRT[TF.H4] is TF.MIN15
+        assert COPPIE_CRT[TF.H1] is TF.MIN5
+        assert COPPIE_CRT[TF.MIN15] is TF.MIN1
+
+    def test_resta_fuori_solo_la_coppia_sui_tick(self) -> None:
+        """`5m -> 15s` richiede i tick, non le candele: e' un livello di dati
+        diverso, non una riga di configurazione."""
+        assert COPPIE_CRT_FUORI_DEF01 == (("5m", "15s"),)
         assert len(COPPIE_CRT) + len(COPPIE_CRT_FUORI_DEF01) == 7
 
     def test_tutte_le_coppie_ammesse_usano_timeframe_di_def01(self) -> None:

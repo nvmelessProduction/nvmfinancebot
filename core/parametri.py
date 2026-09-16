@@ -45,6 +45,20 @@ class TF(str, Enum):
     H6 = "TF_H6"
     H4 = "TF_H4"
     H1 = "TF_H1"
+    # --- Sotto l'ora: le coppie intraday di Romeo (CRT-04) ----------------
+    #
+    # DEF-01 dichiarava dieci timeframe e vietava di citarne altri. Quel
+    # vincolo e' stato sollevato, e la ragione sta in un numero: il bot
+    # produceva 413 segnali in vent'anni, Romeo ne apre cinque o sei AL
+    # GIORNO. Fattore cento.
+    #
+    # La causa era che quattro delle sue sette coppie sono intraday —
+    # `1h -> 5m`, `15m -> 1m`, `4h -> 15m`, `5m -> 15s` — e senza questi
+    # timeframe il bot poteva usare solo le tre piu' lente. Non era una
+    # configurazione da aggiustare: era un'altra strategia.
+    MIN15 = "TF_M15"
+    MIN5 = "TF_M5"
+    MIN1 = "TF_M1min"
 
 
 # DEF-01 contiene DUE gerarchie diverse, a diciassette righe di distanza.
@@ -58,6 +72,12 @@ GERARCHIA_RIDOTTA: Final[tuple[TF, ...]] = (
 
 # Ruoli dichiarati da DEF-01 e PRIN-10.
 TF_BIAS: Final[tuple[TF, ...]] = (TF.M12, TF.M6, TF.M3, TF.M1, TF.W1, TF.D1)
+
+# I timeframe sotto l'ora. Servono SOLO come timeframe di ingresso delle
+# coppie intraday di CRT-04: non producono bias (DEF-16 parla di accettazione
+# e rifiuto su orizzonti dove una candela e' un fatto, non rumore) e non hanno
+# un target di DEF-46. Sono il posto dove si entra, non dove si decide.
+TF_INTRADAY: Final[tuple[TF, ...]] = (TF.MIN15, TF.MIN5, TF.MIN1)
 TF_SOLO_GAP: Final[tuple[TF, ...]] = (TF.H12, TF.H6)
 TF_ESECUZIONE: Final[tuple[TF, ...]] = (TF.D1, TF.H4, TF.H1)
 
@@ -485,8 +505,13 @@ def conferma_attiva(regola: str) -> bool:
 # numero riguardava una strategia che nessuno ha descritto.
 COPPIE_CRT: Final[dict[TF, TF]] = {
     TF.M1: TF.D1,      # mensile     -> giornaliero
-    TF.W1: TF.H4,      # settimanale -> 4 ore     <-- la coppia di Romeo
+    TF.W1: TF.H4,      # settimanale -> 4 ore
     TF.D1: TF.H1,      # giornaliero -> orario
+    # Le intraday, dove Romeo opera davvero: e' da queste che vengono le
+    # cinque o sei operazioni al giorno.
+    TF.H4: TF.MIN15,   # 4 ore  -> 15 minuti
+    TF.H1: TF.MIN5,    # 1 ora  -> 5 minuti
+    TF.MIN15: TF.MIN1,  # 15 min -> 1 minuto
 }
 
 # ---------------------------------------------------------------------------
@@ -504,11 +529,10 @@ COPPIE_CRT: Final[dict[TF, TF]] = {
 # Stanno qui come stringhe, che e' esattamente cio' che sono finche' qualcuno
 # non decide: o DEF-01 si allarga, oppure il bot opera dichiaratamente su un
 # sottoinsieme del CRT. Non lo decido io.
+# Resta fuori solo `5m -> 15s`: i 15 secondi richiedono i tick, non le
+# candele, ed e' un livello di dati diverso — non una riga di configurazione.
 COPPIE_CRT_FUORI_DEF01: Final[tuple[tuple[str, str], ...]] = (
     ("5m", "15s"),
-    ("15m", "1m"),
-    ("1h", "5m"),
-    ("4h", "15m"),
 )
 
 # ===========================================================================
@@ -1162,11 +1186,12 @@ def verifica() -> None:
     assert set(GERARCHIA_COMPLETA) - set(GERARCHIA_RIDOTTA) == set(TF_SOLO_GAP)
 
     # Ogni timeframe compare in esattamente un ruolo di bias/gap.
-    assert set(TF_BIAS) | set(TF_SOLO_GAP) | {TF.H4, TF.H1} == set(TF)
+    assert (set(TF_BIAS) | set(TF_SOLO_GAP) | {TF.H4, TF.H1}
+            | set(TF_INTRADAY)) == set(TF)
     assert not (set(TF_BIAS) & set(TF_SOLO_GAP))
 
     # DEF-46 copre tutti i timeframe di bias ed esecuzione, e solo quelli.
-    assert set(TARGET_DI) == set(TF) - set(TF_SOLO_GAP)
+    assert set(TARGET_DI) == set(TF) - set(TF_SOLO_GAP) - set(TF_INTRADAY)
     # E il target di un TF e' davvero quello immediatamente superiore nella
     # gerarchia ridotta: e' cio' che DEF-46 dichiara di essere.
     for tf, superiore in TARGET_DI.items():

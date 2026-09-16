@@ -20,8 +20,12 @@ from core.definizioni import Bias, Candela, Gap, KeyLevel, Mitigazione, Polarita
 from core.motore import Fotografia
 from core.parametri import TF
 
-# Un martedi' qualunque, lontano da festivita'.
-ADESSO = datetime(2026, 3, 10, 14, 0, tzinfo=timezone.utc)
+# Un martedi' qualunque, lontano da festivita', e DENTRO una finestra oraria
+# di Romeo: le 18:00 UTC sono le 14:00 di New York, dentro la 13-21 che
+# CRT-15 prescrive per i CRT a quattro ore. Con un istante fuori finestra
+# ogni prova di questo file si fermerebbe su CRT-15 invece che sulla regola
+# che intende collaudare.
+ADESSO = datetime(2026, 3, 10, 18, 0, tzinfo=timezone.utc)
 
 
 def cand(massimo: float, minimo: float, chiusura: float, apertura: float, ore: int = 0) -> Candela:
