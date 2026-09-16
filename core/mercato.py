@@ -51,6 +51,7 @@ import httpx
 from core import storage
 from core.log import diario
 from core.models import AlertIn
+from core.contesto import pronto_all_avvio
 from core.parametri import TF, gerarchia
 from core.simboli import DXY_FUTURE, FUTURE_A_CFD
 
@@ -225,10 +226,16 @@ class Mercato:
         if tf not in ordine:
             return ()
         posizione = ordine.index(tf)
-        return tuple(
-            superiore for superiore in ordine[:posizione]
-            if superiore in DURATA and (future, superiore) in falliti
-        )
+        attesi = tuple(t for t in ordine[:posizione] if t in DURATA)
+        ricalcolati = tuple(t for t in attesi if (future, t) not in falliti)
+
+        # `contesto.pronto_all_avvio` E' questo controllo: `attesi` contenuti
+        # nei `ricalcolati`. Chiamarla invece di riscrivere il confronto tiene
+        # CTX-08, CTX-10 e REV-20 in un posto solo — e' la stessa lezione che
+        # `audit_regole.py` ha appena dato su `applica_tp1`.
+        if pronto_all_avvio(ricalcolati, attesi):
+            return ()
+        return tuple(t for t in attesi if t not in ricalcolati)
 
     def _valuta_le_ultime(
         self, raccolte: list[Nuova], falliti: Optional[set[tuple[str, TF]]] = None

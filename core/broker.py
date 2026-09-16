@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from core.config import impostazioni
+from core.gestione import chiusura_ha_soglia_di_tolleranza
 from core.simboli import cfd_da_simbolo_esecuzione
 from core.log import diario
 from core.models import OrderResult
@@ -468,7 +469,15 @@ def chiudi_posizione(
             "type": tipo,
             "position": posizione.ticket,
             "price": prezzo,
-            "deviation": deviazione if deviazione is not None else DEVIAZIONE_CHIUSURA,
+            # GEST-11: `chiusura_ha_soglia_di_tolleranza()` e' False, e da li'
+            # discende il valore. Chiamarla invece di darlo per scontato fa
+            # fallire rumorosamente il giorno in cui la regola cambiasse.
+            "deviation": (
+                deviazione if deviazione is not None
+                else (impostazioni().MT5_DEVIAZIONE
+                      if chiusura_ha_soglia_di_tolleranza()
+                      else DEVIAZIONE_CHIUSURA)
+            ),
             "magic": impostazioni().MT5_MAGIC,
             "comment": "parziale bot" if parziale else "chiusura bot",
             "type_time": mt5.ORDER_TIME_GTC,
