@@ -78,7 +78,9 @@ def moduli() -> dict[str, Path]:
 
 def analizza(percorso: Path):
     """Funzioni definite, chi chiamano, e quali regole citano."""
-    albero = ast.parse(percorso.read_text())
+    # encoding esplicito: su Windows `read_text()` usa cp1252 e i
+    # documenti sono in UTF-8 con accenti.
+    albero = ast.parse(percorso.read_text(encoding="utf-8"))
     definite, chiamate = {}, defaultdict(set)
     # Due cose diverse, e tenerle insieme era il difetto della v1:
     #   `implementa`  la docstring della funzione NOMINA la regola: quella
@@ -154,7 +156,7 @@ def main() -> int:
     # Regole citate dai documenti
     nei_documenti = set()
     for f in Path("docs").glob("*.md"):
-        nei_documenti.update(RE_REGOLA.findall(f.read_text()))
+        nei_documenti.update(RE_REGOLA.findall(f.read_text(encoding="utf-8")))
 
     # Dove vive ogni regola, distinguendo chi la IMPLEMENTA da chi la NOMINA.
     implementata_in: dict[str, list[str]] = defaultdict(list)
