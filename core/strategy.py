@@ -21,10 +21,13 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+from core.log import diario
 from core.models import AlertIn, Decision
 from core.motore import Decisione, Fotografia
 from core.motore import valuta as valuta_motore
 from core.parametri import TF
+
+log = diario("strategy")
 
 # Un fornitore riceve l'alert e restituisce (fotografia, timeframe di trigger),
 # oppure None se non e' in grado di costruirla per quell'alert.
@@ -115,3 +118,38 @@ def valuta(alert: AlertIn) -> Decision:
 
     fotografia, tf_trigger = contesto
     return traduci(valuta_motore(fotografia, tf_trigger))
+
+
+def gestisci_aperte(alert: AlertIn) -> tuple:
+    """GEST-08, GEST-10, SETUP-17 — cosa fare alle posizioni gia' aperte.
+
+    Stesso innesto di `valuta`, altra domanda. `valuta` chiede "si apre
+    qualcosa?", questa chiede "cambia qualcosa per cio' che e' gia' aperto?".
+    Sono separate perche' la prima puo' astenersi per venti motivi diversi —
+    news, limiti di rischio, festivita' — che non hanno alcun effetto sulle
+    posizioni in corso: un limite giornaliero raggiunto blocca le aperture,
+    non la gestione (RISK-10).
+
+    Restituisce una tupla di `rivalutazione.AzioneGestione`, vuota quando non
+    c'e' nulla da fare. Non tocca ne' broker ne' archivio.
+    """
+    from core import storage
+    from core.rivalutazione import rivaluta
+
+    if _fornitore is None:
+        return ()
+
+    try:
+        contesto = _fornitore(alert)
+    except Exception as errore:
+        log.warning("rivalutazione saltata: %s", errore)
+        return ()
+    if contesto is None:
+        return ()
+
+    aperte = storage.posizioni_aperte()
+    if not aperte:
+        return ()
+
+    fotografia, tf_trigger = contesto
+    return rivaluta(fotografia, tf_trigger, aperte)

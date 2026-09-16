@@ -395,6 +395,83 @@ class ArchiviazioneFallita(RuntimeError):
     """
 
 
+def _gestisci_posizioni_aperte(alert: AlertIn) -> int:
+    """Applica al broker e all'archivio le azioni di GEST-08, GEST-10, SETUP-17.
+
+    Restituisce quante ne ha applicate. Non solleva mai: una rivalutazione che
+    fallisce non deve impedire la valutazione di un ingresso nuovo, e nemmeno
+    la sorveglianza di stop e target, che vive per conto suo nella sentinella.
+
+    L'ordine di scrittura conta. Per una chiusura si chiude **prima** sul
+    broker e si scrive **dopo** in archivio: se si invertisse, un archivio che
+    dice "chiusa" e un broker che dice "aperta" darebbero una posizione senza
+    piu' nessuno che ne sorvegli lo stop. Al contrario, un broker chiuso e un
+    archivio non aggiornato viene riconciliato dalla sentinella al giro dopo.
+    """
+    try:
+        azioni = strategy.gestisci_aperte(alert)
+    except Exception:
+        log.exception("rivalutazione delle posizioni aperte fallita")
+        return 0
+
+    applicate = 0
+    for azione in azioni:
+        try:
+            if azione.tipo == "chiudi":
+                if azione.ticket is None:
+                    continue
+                esito = broker.chiudi_posizione(int(azione.ticket))
+                if not esito.ok:
+                    log.error("%s: chiusura fallita: %s", azione.regola, esito.messaggio)
+                    notifier.invia(
+                        f"ATTENZIONE: {azione.regola} chiede di chiudere la posizione "
+                        f"{azione.ticket} ma la chiusura e' fallita: {esito.messaggio}"
+                    )
+                    continue
+                storage.chiudi_posizione(
+                    azione.id_posizione, esito.prezzo, f"{azione.regola}: {azione.motivo}"
+                )
+            elif azione.tipo == "break_even":
+                # Lo stop vive in archivio, non sul broker: sposta la
+                # sentinella, non MT5. E si marca come gia' spostato, perche'
+                # GEST-05 vieta di rifarlo.
+                storage.applica_parziale_tp1(
+                    azione.id_posizione,
+                    _volume_attuale(azione.id_posizione),
+                    float(azione.valore or 0.0),
+                )
+            elif azione.tipo == "estendi_target":
+                storage.aggiorna_target(azione.id_posizione, float(azione.valore or 0.0))
+            else:
+                log.warning("azione di gestione sconosciuta: %r", azione.tipo)
+                continue
+        except Exception:
+            log.exception("azione %s su posizione %s fallita", azione.tipo, azione.id_posizione)
+            continue
+
+        applicate += 1
+        log.info(
+            "%s su posizione %s: %s (%s)",
+            azione.regola, azione.id_posizione, azione.tipo, azione.motivo,
+        )
+        notifier.invia(f"{azione.regola} — {azione.motivo}")
+
+    return applicate
+
+
+def _volume_attuale(id_posizione: int) -> float:
+    """Il volume che l'archivio registra per quella posizione.
+
+    Serve a SETUP-17, che sposta lo stop senza toccare il volume: la stessa
+    scrittura di GEST-04 lo richiede, e riscriverlo uguale e' piu' sicuro che
+    avere due percorsi di scrittura diversi per la stessa colonna.
+    """
+    for riga in storage.posizioni_aperte():
+        if int(riga["id"]) == id_posizione:
+            return float(riga["volume"])
+    return 0.0
+
+
 def processa_alert(alert: AlertIn) -> dict[str, Any]:
     """Il percorso completo di un alert, da qualunque parte arrivi.
 
@@ -440,7 +517,13 @@ def processa_alert(alert: AlertIn) -> dict[str, Any]:
             "modalita": impostazioni().MODE,
         }
 
-    # 4. Decisione ed esecuzione, una per volta.
+    # 4. Prima di decidere un ingresso nuovo: cosa cambia per cio' che e'
+    #    gia' aperto (GEST-08, GEST-10, SETUP-17). Va prima, perche' una
+    #    posizione chiusa da GEST-10 libera un posto sotto il tetto di RISK-06
+    #    e la valutazione successiva deve vederlo.
+    gestite = _gestisci_posizioni_aperte(alert)
+
+    # 5. Decisione ed esecuzione, una per volta.
     decisione = valuta(alert)
     with _lucchetto_decisione:
         try:
@@ -455,7 +538,7 @@ def processa_alert(alert: AlertIn) -> dict[str, Any]:
             )
             log.exception("esecuzione fallita")
 
-        # 5. Registrazione della decisione con il suo esito.
+        # 5bis. Registrazione della decisione con il suo esito.
         try:
             id_decisione: Optional[int] = storage.salva_decisione(
                 id_alert, decisione, esito, dettaglio, ticket
@@ -504,6 +587,9 @@ def processa_alert(alert: AlertIn) -> dict[str, Any]:
         "azione": decisione.azione,
         "esito": esito,
         "dettaglio": dettaglio,
+        # Quante posizioni gia' aperte sono state toccate da GEST-08, GEST-10
+        # o SETUP-17 a questa chiusura di candela.
+        "posizioni_gestite": gestite,
         "modalita": impostazioni().MODE,
     }
 
