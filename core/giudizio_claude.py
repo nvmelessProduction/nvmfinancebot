@@ -215,8 +215,17 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0) -> Verdetto:
     if not getattr(cfg, "GIUDIZIO_ATTIVO", False):
         return _astieniti("GIUDIZIO_ATTIVO non abilitato")
 
+    # La chiave si passa ESPLICITAMENTE dalla configurazione. Lasciare che la
+    # libreria la cerchi nell'ambiente funzionerebbe solo se qualcuno l'avesse
+    # esportata a mano: `pydantic-settings` legge il `.env` dentro
+    # `impostazioni()` e non lo riversa in `os.environ`.
+    chiave = getattr(cfg, "ANTHROPIC_API_KEY", "") or None
+    if chiave is None:
+        return _astieniti("ANTHROPIC_API_KEY assente dal .env")
+
     try:
-        cliente = anthropic.Anthropic(timeout=timeout_sec, max_retries=1)
+        cliente = anthropic.Anthropic(
+            api_key=chiave, timeout=timeout_sec, max_retries=1)
     except Exception as errore:
         return _astieniti(f"client non costruibile: {errore!r}")
 

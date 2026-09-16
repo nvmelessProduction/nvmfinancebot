@@ -42,6 +42,14 @@ class Impostazioni(BaseSettings):
     # astiene e non parte nulla: fallisce chiuso, come PRIN-99 impone.
     GIUDIZIO_ATTIVO: bool = False
 
+    # La chiave per il giudizio. Deve stare QUI e non solo nell'ambiente:
+    # pydantic-settings legge il `.env` dentro questo oggetto, ma NON lo
+    # esporta in `os.environ`. La libreria `anthropic` guarda l'ambiente,
+    # quindi una chiave messa solo nel `.env` non la vedrebbe mai — e il
+    # giudizio fallirebbe in silenzio, astenendosi a ogni setup senza che
+    # nulla nei log spieghi il perche'.
+    ANTHROPIC_API_KEY: str = ""
+
     # --- Webhook TradingView -------------------------------------------------
     # Parola segreta condivisa con l'alert di TradingView. Se resta vuota
     # l'endpoint rifiuta tutto: meglio non ricevere nulla che accettare chiunque.
