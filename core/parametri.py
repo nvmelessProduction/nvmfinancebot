@@ -63,11 +63,20 @@ class TF(str, Enum):
 
 # DEF-01 contiene DUE gerarchie diverse, a diciassette righe di distanza.
 # Non scelgo io quale: vedi REV-10 e `gerarchia()` piu' sotto.
+# I timeframe intraday chiudono entrambe le gerarchie, sotto l'ora, dove
+# stanno per durata. Senza di essi ogni confronto di altezza — `_piu_alto`,
+# `timeframe_crt_ammesso`, l'estensione del target di GEST-08 — solleva
+# `ValueError: x not in tuple` appena il motore incontra una candela a 15
+# minuti. Sono nella gerarchia perche' vanno ORDINATI, non perche' abbiano
+# acquisito i ruoli dei timeframe alti: la bias resta a TF_BIAS e il target
+# di DEF-46 a TARGET_DI, che li escludono entrambi.
 GERARCHIA_COMPLETA: Final[tuple[TF, ...]] = (
     TF.M12, TF.M6, TF.M3, TF.M1, TF.W1, TF.D1, TF.H12, TF.H6, TF.H4, TF.H1,
+    TF.MIN15, TF.MIN5, TF.MIN1,
 )
 GERARCHIA_RIDOTTA: Final[tuple[TF, ...]] = (
     TF.M12, TF.M6, TF.M3, TF.M1, TF.W1, TF.D1, TF.H4, TF.H1,
+    TF.MIN15, TF.MIN5, TF.MIN1,
 )
 
 # Ruoli dichiarati da DEF-01 e PRIN-10.

@@ -93,7 +93,12 @@ def test_un_non_bloccante_ha_comunque_il_default(monkeypatch: pytest.MonkeyPatch
 # ---------------------------------------------------------------------------
 def test_rev10_gerarchia_completa() -> None:
     assert parametri.gerarchia() == parametri.GERARCHIA_COMPLETA
-    assert len(parametri.gerarchia()) == 10
+    # Dieci di DEF-01 piu' i tre intraday di CRT-04. Questi ultimi stanno
+    # nella gerarchia per essere ORDINATI — `_piu_alto` e
+    # `timeframe_crt_ammesso` li confrontano — non perche' abbiano i ruoli
+    # dei timeframe alti: TF_BIAS e TARGET_DI li escludono entrambi.
+    assert len(parametri.gerarchia()) == 13
+    assert parametri.gerarchia()[-3:] == parametri.TF_INTRADAY
     assert TF.H12 in parametri.gerarchia()
 
 

@@ -554,10 +554,23 @@ class TestKeyLevel:
         """REV-11: servono ai gap, non possono ospitare un CRT."""
         ammessi = d.timeframe_trigger_ammessi(TF.D1)
         assert TF.H12 not in ammessi and TF.H6 not in ammessi
-        assert ammessi == (TF.H4, TF.H1)
+        # Dai timeframe di CRT-04 in giu': un key level giornaliero puo'
+        # essere spazzato da un CRT a quattro ore come da uno a 15 minuti.
+        # E' cio' che rende praticabili le coppie intraday.
+        assert ammessi == (TF.H4, TF.H1, TF.MIN15, TF.MIN5, TF.MIN1)
 
-    def test_def30_dal_timeframe_piu_basso_nessun_trigger(self) -> None:
-        assert d.timeframe_trigger_ammessi(TF.H1) == ()
+    def test_def30_sotto_l_ora_restano_i_trigger_intraday(self) -> None:
+        """Un key level orario puo' essere spazzato da un CRT a 15, 5 o 1
+        minuto: sono le coppie `1h -> 5m` e `15m -> 1m` di CRT-04.
+
+        Prima della loro introduzione questo caso dava la tupla vuota,
+        perche' sotto l'ora non c'era nulla."""
+        assert d.timeframe_trigger_ammessi(TF.H1) == (TF.MIN15, TF.MIN5, TF.MIN1)
+
+    def test_def30_dal_piu_basso_in_assoluto_nessun_trigger(self) -> None:
+        """Sotto il minuto non c'e' niente: nessun timeframe puo' spazzare
+        un key level del minuto."""
+        assert d.timeframe_trigger_ammessi(TF.MIN1) == ()
 
 
 # ===========================================================================

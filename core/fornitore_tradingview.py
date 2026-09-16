@@ -84,6 +84,14 @@ class FotografiaImpossibile(RuntimeError):
 # significherebbe aspettare tre mesi.
 TF_DA_ALERT: tuple[TF, ...] = (
     TF.M1, TF.W1, TF.D1, TF.H12, TF.H6, TF.H4, TF.H1,
+    # I timeframe di INGRESSO delle coppie intraday di CRT-04. Senza di
+    # essi il motore non vede le candele su cui cercare il CISD, l'FVG e il
+    # ritorno: i setup non si armano, e la coppia `4h -> 15m` — quella col
+    # risultato migliore misurato — non puo' girare.
+    #
+    # Averli in archivio non basta se chi costruisce la Fotografia non li
+    # legge: e' la stessa forma di guasto silenzioso del nome sbagliato.
+    TF.MIN15, TF.MIN5, TF.MIN1,
 )
 
 
