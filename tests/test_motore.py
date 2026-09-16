@@ -113,7 +113,7 @@ class TestNienteLookahead:
         decisione = m.valuta(foto(candele_per_tf={TF.H4: [N1, N2, futura]}), TF.H4)
         # Con la futura come N2 il CRT sarebbe diverso: verifico che non venga usata.
         assert decisione.tf_crt is TF.H4
-        assert decisione.livello_stop == N2.massimo, "N2 e' l'ultima candela CHIUSA"
+        assert decisione.livello_stop == pytest.approx(N2.massimo), "N2 e' l'ultima candela CHIUSA"
 
 
 # ===========================================================================
@@ -125,7 +125,7 @@ class TestPercorsoCompleto:
         assert decisione.azione == "SELL"
         assert decisione.direzione is Bias.SHORT
         assert decisione.volume is not None and decisione.volume > 0
-        assert decisione.livello_stop == 111.0        # estremo di N2
+        assert decisione.livello_stop == pytest.approx(111.0)   # estremo di N2
         assert decisione.tp1 == pytest.approx(105.0)  # meta' del range di N1
         assert decisione.rapporto_su_tp1 == pytest.approx(2.0)  # l'esempio di GEST-01
         assert decisione.regole_che_bloccano == ()
@@ -202,13 +202,20 @@ class TestAstensioni:
         assert "PRIN-99" in self.blocchi(eta_calendario_ore=None)
 
     def test_gest01_rapporto_sotto_soglia(self) -> None:
-        """Ingresso vicino allo stop: il rendimento su TP1 non copre il rischio.
+        """Spike larga: il rendimento su TP1 non copre il rischio.
 
-        Entrare a 106 invece che a 109 porta il rischio a 5 e il rendimento a
-        1: rr 0.2, sotto la soglia di 1,5. E' il ritardo che CTX-05 misura col
-        rapporto invece che col cronometro.
+        N2 si spinge a 117 invece che a 111. Lo stop aggressivo va all'estremo
+        della spike, quindi il rischio passa da 2 a 8 mentre il rendimento su
+        TP1 resta 4: rr 0.5, sotto la soglia di 1,5. E' il filtro che GEST-01
+        descrive a parole ("la spike di N2 stretta rispetto al range di N1")
+        misurato col rapporto invece che a occhio.
+
+        Il rapporto si misura su distanze **relative** e non cambia con la
+        scala di quotazione (REV-52): non lo si puo' piu' provare spostando
+        `prezzo_cfd`, perche' quello sposta l'ancora e i livelli insieme.
         """
-        assert "GEST-01" in self.blocchi(prezzo_cfd=106.0)
+        largo = cand(massimo=117, minimo=108, chiusura=109, apertura=110, ore=0)
+        assert "GEST-01" in self.blocchi(candele_per_tf={TF.H4: [N1, largo]})
 
     def test_piu_blocchi_tutti_riportati(self) -> None:
         blocchi = self.blocchi(
@@ -275,13 +282,20 @@ class TestUltimaRigaDiDifesa:
     ) -> None:
         """Uno stop a distanza nulla dall'ingresso e' una posizione senza stop.
 
-        Normalmente lo ferma GEST-01, perche' il rischio nullo rende il
-        rapporto incalcolabile. Qui zittisco anche quel filtro per arrivare
-        fino in fondo e verificare che ESCL-10 regga da sola.
+        Normalmente lo fermano prima GEST-01 (rapporto incalcolabile) e
+        RISK-03 (distanza di stop nulla, quindi size infinita). Qui zittisco
+        anche quei due per arrivare in fondo e verificare che ESCL-10 regga
+        da sola: e' l'unico modo di collaudare l'ultima riga di difesa.
         """
-        monkeypatch.setattr(m.gest, "stop_aggressivo", lambda n2, direzione: 110.0)
+        # Lo stop coincide con la chiusura di N2, che e' l'ancora della
+        # conversione: convertito sul CFD cade esattamente sull'ingresso.
+        monkeypatch.setattr(m.gest, "stop_aggressivo", lambda n2, direzione: 109.0)
         monkeypatch.setattr(m.ctx, "filtri_attivi", lambda **k: ())
-        decisione = m.valuta(foto(prezzo_cfd=110.0), TF.H4)
+        monkeypatch.setattr(
+            m.risk, "calcola_size",
+            lambda **k: m.risk.EsitoSize(1.0, 0.01, 0.01, "size finta"),
+        )
+        decisione = m.valuta(foto(prezzo_cfd=109.0), TF.H4)
         assert decisione.azione == "NONE"
         assert "ESCL-10" in decisione.regole_che_bloccano
 
@@ -334,12 +348,41 @@ class TestSegnoInvertito:
         assert decisione.direzione is Bias.SHORT
         assert decisione.azione == "BUY"
 
-    def test_i_livelli_restano_del_future(self) -> None:
-        """Si converte il verso dell'ordine, non i prezzi: ESCL-12."""
+    def test_i_livelli_passano_sulla_scala_del_cfd(self) -> None:
+        """REV-52 — i livelli che escono dal motore sono prezzi CFD.
+
+        Su uno strumento diretto lo stop di uno short sta **sopra**
+        l'ingresso. Su `USDJPY`, che quota il reciproco di `6J`, lo stesso
+        stop sta **sotto**: l'operazione sul CFD e' un BUY, e il suo stop non
+        puo' che stare sotto il prezzo di ingresso.
+
+        Finche' i livelli restavano del future erano identici sui due
+        strumenti, e la sentinella li confrontava con prezzi CFD: su USDJPY
+        avrebbe chiuso la posizione al primo passaggio.
+        """
         diretto = m.valuta(foto(strumento="EURUSD"), TF.H4)
         invertito = m.valuta(foto(strumento="USDJPY"), TF.H4)
-        assert diretto.livello_stop == invertito.livello_stop
-        assert diretto.tp1 == invertito.tp1
+
+        assert diretto.azione == "SELL" and invertito.azione == "BUY"
+        # Ingresso a 109 su entrambi (prezzo_cfd della fotografia).
+        assert diretto.livello_stop > 109.0 > diretto.tp1
+        assert invertito.livello_stop < 109.0 < invertito.tp1
+
+    def test_la_distanza_relativa_e_la_stessa(self) -> None:
+        """La conversione conserva la distanza adimensionale: e' il numero su
+        cui RISK-03 calcola la size, e deve restare lo stesso su tutti e sei
+        gli strumenti."""
+        diretto = m.valuta(foto(strumento="EURUSD"), TF.H4)
+        invertito = m.valuta(foto(strumento="USDJPY"), TF.H4)
+        # Sul future lo stop dista r = |111 - 109| / 109 dall'ancora.
+        r = 2.0 / 109.0
+        assert abs(diretto.livello_stop - 109.0) / 109.0 == pytest.approx(r)
+        # Sul reciproco la distanza relativa non e' r ma r/(1+r): e' esatta,
+        # non un'approssimazione, perche' C' = k/(F(1+r)). Le due coincidono
+        # al primo ordine, ed e' quanto basta a RISK-03.
+        assert abs(invertito.livello_stop - 109.0) / 109.0 == pytest.approx(
+            r / (1 + r)
+        )
 
 
 # ===========================================================================

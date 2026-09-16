@@ -39,7 +39,9 @@ from core import esclusioni as esc
 from core import gestione as gest
 from core import rischio as risk
 from core import setup as stp
-from core.definizioni import Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd
+from core.definizioni import (
+    Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd, livello_cfd,
+)
 from core.parametri import MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO
 
 # ===========================================================================
@@ -282,16 +284,46 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         and foto.gap_fase > 0
         and stp.doppio_ingresso(crt, foto.gap_reazione)
     )
-    stop = gest.stop_aggressivo(crt.n2, crt.direzione)
-    obiettivo_1 = gest.tp1(crt.n1)
-    bersaglio = stp.target_iniziale(crt, foto.key_level_correnti)
+    stop_future = gest.stop_aggressivo(crt.n2, crt.direzione)
+    tp1_future = gest.tp1(crt.n1)
+    bersaglio_future = stp.target_iniziale(crt, foto.key_level_correnti)
     applicate.extend(["GEST-02", "GEST-07", "SETUP-14"])
-
 
     # Il prezzo di ingresso e' l'apertura di N3, che non esiste ancora: si usa
     # il prezzo corrente, che e' cio' che CTX-05 chiede di fare ("sui prezzi
     # effettivi al momento dell'ordine, non su quelli teorici").
     prezzo_ingresso = foto.prezzo_cfd
+
+    # --- 4bis. I tre livelli passano sulla scala del CFD (DEF-33, ESCL-12) --
+    #
+    # Nascono come prezzi del FUTURE — estremi di N2, 50% di N1, key level —
+    # e da qui in poi servono a tre cose che vivono tutte sul CFD: il
+    # rapporto di GEST-01 contro `prezzo_ingresso`, i livelli che partono al
+    # broker, e il confronto della sentinella con `prezzo_corrente`. Lasciarli
+    # sulla scala del future e' il confronto che ESCL-12 vieta, e su `6J` e
+    # `6S` produce numeri di due ordini di grandezza diversi.
+    #
+    # La size resta calcolata sui livelli FUTURE (`calcola_size`, piu' sotto):
+    # li' la distanza e' gia' adimensionale e la conversione sarebbe un giro a
+    # vuoto con un arrotondamento in piu'.
+    ancora = crt.n2.chiusura
+    try:
+        stop = livello_cfd(stop_future, ancora, prezzo_ingresso, foto.strumento)
+        obiettivo_1 = livello_cfd(tp1_future, ancora, prezzo_ingresso, foto.strumento)
+        bersaglio = (
+            None if bersaglio_future is None
+            else livello_cfd(bersaglio_future, ancora, prezzo_ingresso, foto.strumento)
+        )
+    except ValueError as errore:
+        # Prezzo CFD assente o livello incoerente: PRIN-99, ci si astiene. Non
+        # si manda un ordine con livelli che non si sanno leggere.
+        return _non_operare(
+            foto.strumento, ["PRIN-99", "ESCL-12"],
+            f"livelli non convertibili sulla scala del CFD: {errore}",
+            applicate,
+            direzione=crt.direzione,
+            tf_crt=crt.tf,
+        )
 
     rapporto = ctx.rapporto_rischio_rendimento(prezzo_ingresso, stop, obiettivo_1)
 
@@ -350,7 +382,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         equity=foto.equity,
         strumento=foto.strumento,
         chiusura_n2_future=n2_future,
-        stop_future=stop,
+        stop_future=stop_future,
         prezzo_cfd=foto.prezzo_cfd,
         valore_punto=foto.valore_punto,
         passo_broker=foto.passo_broker,
@@ -410,9 +442,10 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # dollaro, i CFD quotano il dollaro contro quelle valute. Un CRT short su
     # `6J` e' un BUY su `USDJPY`.
     #
-    # `direzione` resta quella del future, perche' stop e bersaglio sono
-    # livelli del future e vanno letti con il suo segno. Si converte solo cio'
-    # che parte verso il broker.
+    # `direzione` resta quella del future perche' e' con quel segno che il CRT
+    # e' stato letto e con quel segno vanno interpretate le regole di setup.
+    # Verso il broker parte `azione`, ed e' l'unica cosa che si converte qui:
+    # i tre livelli sono gia' passati sulla scala del CFD al punto 4bis.
     verso_cfd = direzione_cfd(crt.direzione, foto.strumento)
     return Decisione(
         azione="SELL" if verso_cfd is Bias.SHORT else "BUY",

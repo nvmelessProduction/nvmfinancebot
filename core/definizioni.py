@@ -876,3 +876,66 @@ def direzione_cfd(direzione_future: Bias, strumento: str) -> Bias:
     if UNIVERSO[strumento].segno_invertito:
         return direzione_future.opposta()
     return direzione_future
+
+
+def livello_cfd(
+    livello_future: float,
+    ancora_future: float,
+    prezzo_cfd: float,
+    strumento: str,
+) -> float:
+    """DEF-33 e ESCL-12 — Porta un livello del future sulla scala del CFD.
+
+    ## Perche' serve
+
+    Il CRT si rileva sul future (DEF-32), l'ordine va al CFD (DEF-34). Stop,
+    TP1 e target nascono percio' come **prezzi del future**: estremi di `N2`,
+    50% di `N1`, key level. Mandarli al broker cosi' com'e' significa dare a
+    una posizione su `USDJPY` — che quota intorno a 150 — uno stop intorno a
+    0,0067, che e' la quotazione del future `6J`. La sentinella confronta quel
+    livello con il prezzo CFD al primo passaggio e chiude subito, con
+    un'etichetta decisa dal verso e non dal mercato.
+
+    E' esattamente il confronto che ESCL-12 vieta. La regola non vieta di
+    **convertire** un livello: vieta di **confrontare** le due scale. Questa
+    funzione converte, perche' il confronto avvenga fra numeri omogenei.
+
+    ## Come
+
+    Sulla scala del future il livello dista dall'ancora di una quantita'
+    adimensionale:
+
+        r = (livello - ancora) / ancora
+
+    che e' lo stesso numero puro su cui RISK-03 calcola gia' la size
+    (`calcola_size`, passo 1). Riportarla sul CFD:
+
+    - strumento diretto: `prezzo_cfd x (1 + r)`;
+    - strumento a segno invertito (`6J`, `6S`): il CFD quota il reciproco, e
+      allora `prezzo_cfd / (1 + r)`. Non e' un'approssimazione al primo
+      ordine: se `F' = F(1+r)` e `C = k/F`, allora `C' = k/(F(1+r))` esatto.
+
+    L'ancora e' la chiusura di `N2`, cioe' il prezzo del future nel momento in
+    cui il CRT si e' chiuso, appaiata al `prezzo_cfd` di quello stesso
+    momento. Le due quotazioni non sono agganciate da un'identita' — base,
+    dividendi impliciti e costo del carry le separano — ma la **distanza
+    relativa** e' la stessa grandezza su entrambe, ed e' l'unica cosa che
+    questa conversione usa.
+    """
+    if strumento not in UNIVERSO:
+        raise ValueError(f"strumento fuori da PRIN-08: {strumento}")
+    if ancora_future <= 0 or prezzo_cfd <= 0:
+        raise ValueError(
+            f"ancora o prezzo CFD non validi: {ancora_future}, {prezzo_cfd}"
+        )
+
+    fattore = 1.0 + (livello_future - ancora_future) / ancora_future
+    if fattore <= 0:
+        # Un livello a distanza relativa <= -100% non e' un prezzo.
+        raise ValueError(
+            f"livello incoerente con l'ancora: {livello_future} su {ancora_future}"
+        )
+
+    if UNIVERSO[strumento].segno_invertito:
+        return prezzo_cfd / fattore
+    return prezzo_cfd * fattore
