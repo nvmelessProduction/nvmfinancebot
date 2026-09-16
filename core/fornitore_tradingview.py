@@ -55,6 +55,7 @@ from core.definizioni import Bias, Candela
 from core.log import diario
 from core.models import AlertIn
 from core.motore import Fotografia
+from core.config import impostazioni
 from core.parametri import COMPAGNE_SMT, LOOKBACK_ANNI, TF, UNIVERSO
 from core.simboli import (
     DXY_FUTURE,
@@ -186,11 +187,31 @@ class FornitoreTradingView:
     suffisso_broker: str = ""
 
     # -- storico ----------------------------------------------------------
+    def nome_in_archivio(self, future: str) -> str:
+        """Sotto quale nome sono archiviate le candele di questo strumento.
+
+        Dipende da **chi le ha scritte**, e i due casi non coincidono:
+
+        - TradingView e il ciclo su fonte gratuita archiviano il **future**
+          (`6E`, `GC`), perche' e' quello che scaricano (DEF-32);
+        - Dukascopy serve il book di un broker, che e' della stessa famiglia
+          del CFD: quelle candele sono archiviate sotto `EURUSD`, `XAUUSD`.
+
+        Leggere col nome sbagliato non produce alcun errore: produce un
+        archivio vuoto, quindi `DEF-26` fa tacere ogni timeframe, quindi il
+        bot non opera mai — e nei log non compare nulla di anomalo. E' il
+        modo piu' silenzioso possibile di avere un bot spento.
+        """
+        if impostazioni().FORNITORE_DATI != "dukascopy":
+            return future
+        return cfd_di(future) or future
+
     def storico(self, future: str) -> dict[TF, tuple[Candela, ...]]:
-        """Lo storico del future, dai prezzi che TradingView ha mandato."""
+        """Lo storico dello strumento, dall'archivio, col nome giusto."""
+        nome = self.nome_in_archivio(future)
         storico: dict[TF, tuple[Candela, ...]] = {}
         for tf in TF_DA_ALERT:
-            righe = storage.candele_archiviate(future, tf.value)
+            righe = storage.candele_archiviate(nome, tf.value)
             candele = tuple(c for c in (_da_riga(r) for r in righe) if c is not None)
             storico[tf] = candele
 
@@ -347,7 +368,7 @@ class FornitoreTradingView:
             # si puo' valutare, e una conferma che non si valuta e' una
             # conferma morta: e' la classe di DEF-33.
             storici_compagni={
-                c: self.storico(cfd_di(c) or c)
+                c: self.storico(UNIVERSO[c].future if c in UNIVERSO else c)
                 for c in COMPAGNE_SMT.get(cfd, ())
             },
             eventi_news=eventi or (),

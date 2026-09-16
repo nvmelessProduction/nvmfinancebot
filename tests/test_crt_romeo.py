@@ -344,3 +344,47 @@ class TestCoppieEAllineamento:
 
     def test_nessun_crt_non_e_un_disaccordo(self) -> None:
         assert stp.modelli_allineati({TF.D1: None, TF.W1: None}) == (Bias.NESSUNA, 0)
+
+
+# ===========================================================================
+# Il nome in archivio: chi scrive e chi legge devono accordarsi
+# ===========================================================================
+class TestNomeInArchivio:
+    """Il bug piu' silenzioso possibile, trovato prima del deploy.
+
+    Il ciclo Dukascopy archivia sotto il nome del **CFD** (`EURUSD`), perche'
+    serve il book di un broker e non il future CME. Il fornitore rileggeva
+    sotto il nome del **future** (`6E`).
+
+    Leggere col nome sbagliato non produce alcun errore: produce un archivio
+    vuoto, quindi `DEF-26` fa tacere ogni timeframe, quindi il bot non opera
+    mai — e nei log non compare nulla di anomalo.
+    """
+
+    @staticmethod
+    def fornitore(sorgente: str):
+        import os
+        from core import config
+        from core.fornitore_tradingview import FornitoreTradingView
+
+        os.environ["FORNITORE_DATI"] = sorgente
+        config.impostazioni.cache_clear()
+        return FornitoreTradingView(suffisso_broker="")
+
+    def test_con_dukascopy_si_legge_il_nome_del_cfd(self) -> None:
+        f = self.fornitore("dukascopy")
+        assert f.nome_in_archivio("6E") == "EURUSD"
+        assert f.nome_in_archivio("GC") == "XAUUSD"
+        assert f.nome_in_archivio("6J") == "USDJPY"
+
+    def test_con_le_altre_fonti_si_legge_il_future(self) -> None:
+        """DEF-32: su TradingView e sulla fonte gratuita si analizza il
+        future, ed e' sotto quel nome che le candele sono archiviate."""
+        f = self.fornitore("mercato")
+        assert f.nome_in_archivio("6E") == "6E"
+        assert f.nome_in_archivio("GC") == "GC"
+
+    def test_uno_strumento_sconosciuto_resta_se_stesso(self) -> None:
+        """Il DXY non e' nell'UNIVERSO (PRIN-08) ma e' in archivio."""
+        f = self.fornitore("dukascopy")
+        assert f.nome_in_archivio("ICEUS") == "ICEUS"
