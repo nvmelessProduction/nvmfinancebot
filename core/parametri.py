@@ -479,22 +479,36 @@ INGRESSO_ROMEO: Final[bool] = True
 # per una, ed e' il motivo per cui una misura a una variabile alla volta
 # non basta su regole che le fonti descrivono come confluenze.
 CONFERME_ROMEO: Final[dict[str, bool]] = {
-    "CRT-06": True,   # tre modelli CRT allineati — MAI MISURATA da sola
-    "CRT-10": True,   # Double Purge Sweep
-    "CRT-11": True,   # CISD sul timeframe di ingresso
-    "CRT-12": True,   # divergenza SMT fra strumenti correlati
-    "CRT-15": True,   # finestre orarie di New York
-    # L'UNICA spenta, e con un motivo preciso. Blocca 281 segnali su 413 —
-    # quasi tutto — e la sua prima misura (85,7% di winrate, +15,3 sigma) era
-    # un LOOKAHEAD: filtravo con le candele successive a N2. Corretta, non
-    # mostra nulla. Accesa insieme alle altre porta il risultato da +0,2897 a
-    # -0,3126, cioe' e' lei sola a rovesciare il segno della strategia.
+    # --- ACCESA: misurata, e da sola e' la migliore ------------------------
+    # Con l'ingresso di CRT-13 il filtro sulle ombre porta il winrate dal
+    # 57,4% al 62,4% e il netto da +0,1992 a +0,3613 R.
+    "CRT-20": True,
+
+    # --- INTRINSECA all'ingresso: accenderla non cambia nulla --------------
+    # Il CISD e' il PRIMO PASSO della sequenza di CRT-13. Applicarlo anche
+    # come filtro a monte da' esattamente lo stesso campione (n=226 in
+    # entrambi i casi): e' gia' applicato, dentro l'ingresso.
+    "CRT-11": False,
+
+    # --- SPENTE: non misurate INSIEME all'ingresso di CRT-13 ---------------
+    # Non sono spente perche' Romeo abbia torto. Sono spente perche' le ho
+    # misurate con l'ingresso VECCHIO — quello alla chiusura del range — e
+    # quel numero non dice niente su come si comportino con l'ingresso vero.
     #
-    # Le fonti la scrivono e io non ho una lettura migliore della mia. Chi
-    # vuole la strategia alla lettera la rimetta a True sapendo questo.
-    "CRT-17": False,  # tenuta della meta' del range
-    "CRT-18": True,   # il punto medio dell'ombra come livello
-    "CRT-20": True,   # peso delle ombre di N2
+    # Misurato: con tutte accese, su 360 valutazioni dell'archivio reale si
+    # trovano 18 CRT e se ne bloccano 18. Il bot tace del tutto.
+    #
+    # Vanno riaccese UNA PER UNA, misurando ciascuna con l'ingresso di
+    # CRT-13. E' il lavoro che resta, ed e' scritto qui perche' non venga
+    # scambiato per una bocciatura.
+    "CRT-06": False,  # tre modelli CRT allineati
+    "CRT-10": False,  # Double Purge Sweep
+    "CRT-12": False,  # divergenza SMT
+    "CRT-15": False,  # finestre orarie di New York
+    "CRT-17": False,  # tenuta della meta' del range — e' l'unica con un
+                      # motivo proprio: blocca 281 segnali su 413 e la sua
+                      # prima misura era un lookahead
+    "CRT-18": False,  # punto medio dell'ombra
 }
 
 
