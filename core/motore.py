@@ -30,7 +30,7 @@ e' l'unico controllo che non si fida degli altri.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Mapping, Optional, Sequence
 
@@ -188,6 +188,11 @@ class Decisione:
     # Registrati per le statistiche, mai per decidere (DEF-44, GIUD-01).
     rapporto_su_tp1: Optional[float] = None
     rapporto_giud01: Optional[float] = None
+    # CRT-14 — cosa ha detto CIASCUNA conferma di Romeo, anche quelle spente.
+    # Non serve a decidere: serve al trader discrezionale, che le pesa tutte
+    # insieme invece di subirle come veti in AND. E' la regola che dice
+    # "non si prende ogni istanza, il contesto decide quali istanze valgono".
+    responso_romeo: Mapping[str, Optional[bool]] = field(default_factory=dict)
 
     def spiegazione(self) -> str:
         """Una riga leggibile, per il log e per Telegram."""
@@ -432,7 +437,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             foto.candele_per_tf.get(tf_ingresso, ()), foto.istante
         )
         applicate.extend(sorted(CONFERME_ROMEO))
-        ok_romeo, blocchi_romeo = stp.conferme_di_romeo(
+        ok_romeo, blocchi_romeo, responso_romeo = stp.conferme_di_romeo(
             n1=crt.n1,
             n2=crt.n2,
             candele_ingresso=serie_ingresso[-12:],
@@ -681,7 +686,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         # CRT-13 e' la regola che impedisce l'ordine IMMEDIATO, e va
         # dichiarata: una decisione NONE senza regola che la imponga
         # sarebbe un errore del motore.
-        return _non_operare(
+        armata = _non_operare(
             foto.strumento, ["CRT-13"],
             "CRT-13: setup armato, attendo il ritorno nell'FVG sul "
             f"{tf_ingresso.value}",
@@ -689,6 +694,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             direzione=crt.direzione, tf_crt=crt.tf,
             livello_stop=stop, tp1=obiettivo_1, rapporto_su_tp1=rapporto,
         )
+        return replace(armata, responso_romeo=responso_romeo)
 
     # --- 7bis. Un bersaglio deve esistere (SETUP-14, PRIN-99) --------------
     # Sta DOPO i divieti e non prima: PREC-05 vuole le esclusioni come ultimo

@@ -77,6 +77,27 @@ def costruisci(
         elif decisione.direzione is Bias.LONG:
             dossier["sweep_oltre_n1"] = round(n1.minimo - n2.minimo, 6)
 
+    # --- Il responso di TUTTE le conferme di Romeo (CRT-14) ---------------
+    #
+    # E' la parte che conta per chi giudica. Ogni conferma dice `si`, `no`
+    # oppure `non valutabile`, e le spente parlano come le accese: a un
+    # trader discrezionale servono TUTTE INSIEME, pesate, non applicate una
+    # per una come veti in AND.
+    #
+    # Misurato: usate come filtri rigidi, con tutte accese si trovano 18 CRT
+    # su 360 valutazioni e se ne bloccano 18. Il bot tace del tutto. Come
+    # informazione, invece, sono il quadro su cui si decide.
+    if decisione.responso_romeo:
+        dossier["conferme_di_romeo"] = {
+            regola: ("si" if esito is True else
+                     "no" if esito is False else "non valutabile")
+            for regola, esito in sorted(decisione.responso_romeo.items())
+        }
+        dossier["conferme_favorevoli"] = sum(
+            1 for e in decisione.responso_romeo.values() if e is True)
+        dossier["conferme_contrarie"] = sum(
+            1 for e in decisione.responso_romeo.values() if e is False)
+
     # Il CISD si cerca sul timeframe piu' basso disponibile nella fotografia:
     # e' li' che il cambio di consegna si vede.
     dossier["cisd_presente"] = None

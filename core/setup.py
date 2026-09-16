@@ -645,46 +645,56 @@ def conferme_di_romeo(
     strumento: str = "",
     crt_per_tf: Optional[Mapping[TF, Any]] = None,
     peso_ombre_minimo: float = PESO_OMBRE_MINIMO,
-) -> tuple[bool, tuple[str, ...]]:
-    """TUTTE le conferme di Romeo, ciascuna accendibile da `CONFERME_ROMEO`.
+) -> tuple[bool, tuple[str, ...], dict[str, Optional[bool]]]:
+    """TUTTE le conferme di Romeo. Restituisce anche COSA HA DETTO CIASCUNA.
 
-    Restituisce (ammesso, regole_che_bloccano).
+    `(ammesso, regole_che_bloccano, responso)`.
 
-    Ogni voce e' una regola delle fonti, e ognuna e' **misurata**. Il
-    commento accanto dice cosa ha detto la misura, perche' chi legge questo
-    codice deve poter distinguere una regola che funziona da una che le fonti
-    celebrano e i dati non confermano. Vedi
-    `docs/MISURA-REGOLE-MANCANTI-2026-09-16.md`.
+    ## Il cambio che conta: filtro e informazione non sono la stessa cosa
 
-    Il principio: **se una conferma non e' valutabile, non blocca**. Mancano i
-    dati della compagna? La divergenza SMT non si pronuncia. Non c'e' ancora
-    storia per il CISD? Non si pronuncia. Trasformare "non lo so" in "no"
-    spegnerebbe il bot senza dirlo, ed e' diverso dal fallimento chiuso del
-    giudizio, dove l'astensione e' il punto.
+    Prima questa funzione faceva solo da filtro in AND: se una conferma
+    diceva no, l'operazione moriva. Misurato sull'archivio reale, con tutte
+    accese si trovano 18 CRT e se ne bloccano 18 — il bot tace del tutto.
+
+    Ma il bot non decide da solo: c'e' un trader discrezionale a valle, ed e'
+    esattamente cio' che `CRT-14` prescrive — *"non si prende ogni istanza, il
+    contesto decide quali istanze valgono"*. A un giudice le conferme servono
+    **tutte insieme**, pesate, non applicate una per una come veti.
+
+    Per questo il responso e' sempre completo, anche per le conferme spente:
+
+        True   la conferma c'e'
+        False  la conferma manca
+        None   non valutabile (dati assenti)
+
+    Solo le conferme **accese** in `CONFERME_ROMEO` bloccano. Le altre
+    parlano, e chi ascolta decide. `None` non blocca mai: trasformare "non lo
+    so" in "no" spegnerebbe il bot senza dirlo.
     """
     blocchi: list[str] = []
+    responso: dict[str, Optional[bool]] = {}
+
+    def registra(regola: str, esito: Optional[bool]) -> None:
+        """Il verdetto va nel responso sempre; blocca solo se acceso."""
+        responso[regola] = esito
+        if esito is False and conferma_attiva(regola):
+            blocchi.append(regola)
 
     # --- CRT-20 — il peso delle ombre di N2 -------------------------------
-    # MISURATA: le ombre piccole danno 33,6% di winrate contro il 59,6% della
-    # base. Uno sweep "pulito" e' un cattivo segno per la mean-reversion.
-    if conferma_attiva("CRT-20"):
-        peso = peso_ombre(n2)
-        if peso is not None and peso < peso_ombre_minimo:
-            blocchi.append("CRT-20")
+    # Ombre piccole: 33,6% di winrate contro il 59,6% della base. Uno sweep
+    # "pulito" e' un cattivo segno per la mean-reversion.
+    peso = peso_ombre(n2)
+    registra("CRT-20", None if peso is None else peso >= peso_ombre_minimo)
 
     # --- CRT-11 — il CISD sul timeframe di ingresso -----------------------
-    # MISURATA: +3,0 sigma sopra la base. Senza CISD il CRT rende NEGATIVO.
-    # E' l'unica conferma delle fonti che regge alla misura.
-    if conferma_attiva("CRT-11") and candele_ingresso:
-        if cisd(candele_ingresso, direzione) is None:
-            blocchi.append("CRT-11")
+    # Con l'ingresso di CRT-13 questa e' INTRINSECA: il CISD e' il primo
+    # passo della sequenza. Resta qui perche' il responso serve al giudice.
+    registra("CRT-11",
+             None if not candele_ingresso else cisd(candele_ingresso, direzione) is not None)
 
     # --- CRT-12 — la divergenza SMT ---------------------------------------
-    # MISURATA: +0,5 / -0,6 sigma, cioe' nulla. Le fonti la dichiarano una
-    # delle tre confluenze NON NEGOZIABILI; i dati a granularita' oraria non
-    # la vedono. Resta accesa perche' e' la strategia, e chi la spegne deve
-    # saperlo. Puo' darsi che serva il minuto su cui Romeo lavora.
-    if conferma_attiva("CRT-12") and candele_compagne and candele_strumento:
+    # Le fonti la dichiarano una delle tre confluenze NON NEGOZIABILI.
+    if candele_compagne and candele_strumento:
         verso_sweep = Bias.LONG if direzione is Bias.SHORT else Bias.SHORT
         giudizi = []
         for compagna, serie in candele_compagne.items():
@@ -692,65 +702,47 @@ def conferme_di_romeo(
                 strumento, candele_strumento, serie, compagna, verso_sweep)
             if esito is not None:
                 giudizi.append(esito)
-        # Serve almeno una compagna che si pronunci, e almeno una divergenza.
-        if giudizi and not any(giudizi):
-            blocchi.append("CRT-12")
+        registra("CRT-12", any(giudizi) if giudizi else None)
+    else:
+        registra("CRT-12", None)
 
     # --- CRT-10 — il Double Purge Sweep -----------------------------------
-    # MISURATA, e il risultato e' scomodo: 88,7% di winrate e R NEGATIVA —
-    # tante vittorie piccole e poche perdite grandi. La variante CONCORDE,
-    # quella che segue il verso della regola, e' PEGGIO della base (-1,4
-    # sigma). Qui si applica come le fonti la scrivono: se la candela e' un
-    # double purge, il verso lo decide il lato piu' respinto, e un CRT che va
-    # dall'altra parte non si esegue.
-    if conferma_attiva("CRT-10") and double_purge(n1, n2):
+    # Se la candela e' un double purge, il verso lo decide il lato piu'
+    # respinto. Se non lo e', la regola non ha nulla da dire: None, non False.
+    if double_purge(n1, n2):
         verso = verso_del_double_purge(n2)
-        if verso is not Bias.NESSUNA and verso is not direzione:
-            blocchi.append("CRT-10")
+        registra("CRT-10", None if verso is Bias.NESSUNA else verso is direzione)
+    else:
+        registra("CRT-10", None)
 
     # --- CRT-15 — le finestre orarie di New York --------------------------
-    # MISURATA: nessuna differenza (+0,0 / -0,2 sigma). Su D1 -> H1 quasi
-    # tutti i segnali cadono FUORI: sono pensate per timeframe d'ingresso piu'
-    # bassi di quelli che il bot puo' usare. Dove non c'e' finestra non
-    # blocca — `None` non e' `False`.
-    if conferma_attiva("CRT-15"):
-        from core.contesto import dentro_finestra_crt
+    from core.contesto import dentro_finestra_crt
 
-        dentro = dentro_finestra_crt(istante, tf_crt)
-        if dentro is False:
-            blocchi.append("CRT-15")
+    registra("CRT-15", dentro_finestra_crt(istante, tf_crt))
 
     # --- CRT-17 — la tenuta della meta' del range -------------------------
-    # La prima misura dava 85,7% di winrate e +15,3 sigma: era un LOOKAHEAD,
-    # filtravo con le candele successive a N2. Corretta guardando solo cio'
-    # che si vede all'ingresso, sparisce sotto i 30 campioni. Qui si guarda
-    # dentro N2, sul timeframe di ingresso: e' l'unica cosa nota.
-    if conferma_attiva("CRT-17") and candele_ingresso:
+    if candele_ingresso:
         tenuta = meta_tenuta(n1, candele_ingresso)
-        if tenuta is not None and tenuta is not Bias.NESSUNA and tenuta is not direzione:
-            blocchi.append("CRT-17")
+        registra("CRT-17",
+                 None if tenuta is None or tenuta is Bias.NESSUNA else tenuta is direzione)
+    else:
+        registra("CRT-17", None)
 
     # --- CRT-18 — il punto medio dell'ombra come livello ------------------
-    # *"Tenerlo favorisce la continuazione, attraversarlo invalida."* La
-    # chiusura di N2 deve stare dalla parte giusta della meta' dell'ombra
-    # dello sweep. Mai misurata da sola.
-    if conferma_attiva("CRT-18"):
-        meta = meta_ombra(n2, superiore=(direzione is Bias.SHORT))
-        if meta is not None:
-            if direzione is Bias.SHORT and n2.chiusura > meta:
-                blocchi.append("CRT-18")
-            elif direzione is Bias.LONG and n2.chiusura < meta:
-                blocchi.append("CRT-18")
+    meta = meta_ombra(n2, superiore=(direzione is Bias.SHORT))
+    if meta is None:
+        registra("CRT-18", None)
+    elif direzione is Bias.SHORT:
+        registra("CRT-18", n2.chiusura <= meta)
+    else:
+        registra("CRT-18", n2.chiusura >= meta)
 
     # --- CRT-06 — tre modelli CRT allineati -------------------------------
-    # *"Tre modelli CRT allineati danno l'accuratezza massima."* Mai
-    # misurata. Blocca solo su un DISACCORDO esplicito: se su un'altra coppia
-    # esiste un CRT che punta dall'altra parte, i modelli non sono allineati.
-    # L'assenza di CRT altrove non e' un disaccordo.
-    if conferma_attiva("CRT-06") and crt_per_tf:
+    if crt_per_tf:
         altri = [c.direzione for t, c in crt_per_tf.items()
                  if c is not None and t is not tf_crt]
-        if altri and any(d is not direzione for d in altri):
-            blocchi.append("CRT-06")
+        registra("CRT-06", all(d is direzione for d in altri) if altri else None)
+    else:
+        registra("CRT-06", None)
 
-    return not blocchi, tuple(blocchi)
+    return not blocchi, tuple(blocchi), responso
