@@ -44,7 +44,8 @@ from core.definizioni import (
     Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd, livello_cfd,
 )
 from core.parametri import (
-    CONFERME_ROMEO, COPPIE_CRT, MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO,
+    CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
+    MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO,
 )
 
 # Perche' ciascuna conferma di Romeo ha fermato l'operazione. Finisce nel
@@ -250,6 +251,99 @@ def _rapporto_giud01(
     gap = foto.gap_attivo
     bordo = gap.zona_inf if bersaglio_future < gap.zona_inf else gap.zona_sup
     return stp.rapporto_giud01(abs(bersaglio_future - bordo), misura)
+
+
+def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisione]:
+    """CRT-13, secondo tempo: il ritorno nell'FVG fa partire l'ordine.
+
+    Gira alla chiusura di una candela del timeframe di INGRESSO, non di
+    quello di range. Restituisce una Decisione eseguibile oppure `None`, che
+    e' il caso normale: la maggior parte delle chiusure non fa scattare
+    niente.
+
+    I controlli di rischio si rifanno **qui** e non si ereditano dal momento
+    in cui il setup fu armato. Fra i due momenti possono essere passate ore:
+    un limite di perdita puo' essere scattato, una finestra news puo' essersi
+    aperta, il tetto di posizioni puo' essersi riempito. PREC-01 dice che il
+    rischio batte il setup, e un setup armato non e' un lasciapassare.
+    """
+    from core import ingresso_ltf
+
+    basse = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
+    if len(basse) < 3:
+        return None
+    ingressi = ingresso_ltf.valuta_armati(foto.strumento, tf_trigger, basse)
+    if not ingressi:
+        return None
+    ingresso = ingressi[0]
+
+    applicate = ["CRT-13", "SETUP-13", "GEST-02"]
+
+    # --- I controlli di rischio, rifatti adesso ---------------------------
+    limiti = risk.limiti_raggiunti(
+        foto.pnl_giornaliero, foto.equity_inizio_giornata,
+        foto.pnl_settimanale, foto.equity_inizio_settimana,
+        foto.pnl_mensile, foto.equity_inizio_mese,
+    )
+    posizioni_qui = foto.posizioni_aperte_per_strumento.get(foto.strumento, 0)
+    evento_news = ctx.dentro_finestra_news(foto.istante, foto.strumento, foto.eventi_news)
+    blocchi: list[str] = [l.regola for l in limiti]
+    if evento_news is not None:
+        blocchi.append("CTX-02")
+    if posizioni_qui >= MAX_POSIZIONI_PER_STRUMENTO:
+        blocchi.append("RISK-06")
+    if not foto.dati_coerenti:
+        blocchi.append("PRIN-99")
+    if blocchi:
+        return _non_operare(
+            foto.strumento, blocchi,
+            "ingresso trovato ma il rischio non lo consente (PREC-01)",
+            applicate, direzione=ingresso.direzione, tf_crt=tf_trigger,
+        )
+
+    # I livelli nascono sul FUTURE e devono passare sulla scala del CFD
+    # (REV-52), come per l'ingresso ordinario.
+    ancora_prezzo = ingresso.prezzo
+    try:
+        stop = livello_cfd(ingresso.stop, ancora_prezzo, foto.prezzo_cfd, foto.strumento)
+        bersaglio = livello_cfd(
+            ingresso.bersaglio_1, ancora_prezzo, foto.prezzo_cfd, foto.strumento)
+        finale = livello_cfd(
+            ingresso.bersaglio_2, ancora_prezzo, foto.prezzo_cfd, foto.strumento)
+    except ValueError as errore:
+        return _non_operare(
+            foto.strumento, ["PRIN-99", "ESCL-12"],
+            f"livelli non convertibili: {errore}", applicate,
+            direzione=ingresso.direzione, tf_crt=tf_trigger)
+
+    esito_size = risk.calcola_size(
+        equity=foto.equity, strumento=foto.strumento,
+        chiusura_n2_future=ingresso.prezzo, stop_future=ingresso.stop,
+        prezzo_cfd=foto.prezzo_cfd, valore_punto=foto.valore_punto,
+        passo_broker=foto.passo_broker,
+        posizioni_aperte_per_strumento=foto.posizioni_aperte_per_strumento,
+    )
+    applicate.extend(["RISK-01", "RISK-02", "RISK-03"])
+    if esito_size.lotti is None:
+        return _non_operare(
+            foto.strumento, ["RISK-03"], esito_size.motivo, applicate,
+            direzione=ingresso.direzione, tf_crt=tf_trigger)
+
+    verso_cfd = direzione_cfd(ingresso.direzione, foto.strumento)
+    return Decisione(
+        azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
+        strumento=foto.strumento,
+        direzione=ingresso.direzione,
+        volume=esito_size.lotti,
+        livello_stop=stop,
+        tp1=bersaglio,
+        target_finale=finale,
+        tf_crt=tf_trigger,
+        spread=foto.spread,
+        rischio=esito_size.rischio_percentuale,
+        regole_applicate=tuple(dict.fromkeys(applicate)),
+        motivo="CRT-13: ingresso sul ritorno nell'FVG dopo il CISD",
+    )
 
 
 def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
@@ -554,6 +648,47 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             rapporto_su_tp1=rapporto,
         )
     applicate.append("PREC-05")
+
+    # --- 7bis. CRT-13 — si ARMA, non si ordina ----------------------------
+    #
+    # Romeo non entra alla chiusura della candela di range: entra sul
+    # timeframe basso, sul ritorno nell'FVG dopo il CISD. Sono due momenti
+    # separati nel tempo, e il secondo puo' non arrivare mai.
+    #
+    # Qui il CRT ha superato ogni controllo: si mette in attesa. L'ordine
+    # partira' da `ingresso_ltf.controlla` alla chiusura di una candela del
+    # timeframe di ingresso, se e quando il prezzo torna nel vuoto.
+    #
+    # Misurato su `4h -> 15m`: winrate da 30,8% a 62,4%, da -0,0782 a
+    # +0,3613 R. Non e' una regolazione, e' un'altra operazione.
+    # Si arma solo se i dati del timeframe di ingresso ci sono davvero:
+    # senza quelli il ritorno nell'FVG non si puo' vedere, e un setup armato
+    # che nessuno potra' mai far scattare e' peggio di un ingresso mediocre.
+    ha_ltf = bool(foto.candele_per_tf.get(tf_ingresso)) if tf_ingresso else False
+    if INGRESSO_ROMEO and tf_ingresso is not None and ha_ltf:
+        from core import ingresso_ltf
+
+        applicate.append("CRT-13")
+        ingresso_ltf.arma(
+            strumento=foto.strumento,
+            direzione=crt.direzione,
+            tf_crt=crt.tf,
+            tf_ingresso=tf_ingresso,
+            estremo_sweep=crt.n2.massimo if crt.direzione is Bias.SHORT else crt.n2.minimo,
+            eq_range=(crt.n1.massimo + crt.n1.minimo) / 2,
+            lato_opposto=crt.n1.minimo if crt.direzione is Bias.SHORT else crt.n1.massimo,
+        )
+        # CRT-13 e' la regola che impedisce l'ordine IMMEDIATO, e va
+        # dichiarata: una decisione NONE senza regola che la imponga
+        # sarebbe un errore del motore.
+        return _non_operare(
+            foto.strumento, ["CRT-13"],
+            "CRT-13: setup armato, attendo il ritorno nell'FVG sul "
+            f"{tf_ingresso.value}",
+            applicate,
+            direzione=crt.direzione, tf_crt=crt.tf,
+            livello_stop=stop, tp1=obiettivo_1, rapporto_su_tp1=rapporto,
+        )
 
     # --- 7bis. Un bersaglio deve esistere (SETUP-14, PRIN-99) --------------
     # Sta DOPO i divieti e non prima: PREC-05 vuole le esclusioni come ultimo

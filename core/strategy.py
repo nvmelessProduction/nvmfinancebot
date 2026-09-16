@@ -120,6 +120,17 @@ def valuta(alert: AlertIn) -> Decision:
         )
 
     fotografia, tf_trigger = contesto
+
+    # CRT-13 ha due tempi, e questa chiusura di candela puo' essere il
+    # secondo: un setup armato in precedenza che adesso trova il suo
+    # ingresso. Si guarda PRIMA di cercare un CRT nuovo, perche' un ingresso
+    # gia' preparato ha la precedenza su uno da preparare.
+    from core.motore import valuta_ingresso_armato
+
+    ingresso = valuta_ingresso_armato(fotografia, tf_trigger)
+    if ingresso is not None and ingresso.azione in ("BUY", "SELL"):
+        return traduci(_passa_dal_giudizio(ingresso, fotografia, tf_trigger))
+
     decisione = valuta_motore(fotografia, tf_trigger)
     return traduci(_passa_dal_giudizio(decisione, fotografia, tf_trigger))
 

@@ -421,6 +421,22 @@ FINESTRA_SMT: Final[int] = 20
 # Taglio grossolano, non ottimizzato finemente.
 PESO_OMBRE_MINIMO: Final[float] = 0.6
 
+# CRT-13 — si entra come Romeo, sul ritorno nell'FVG dal timeframe basso,
+# invece che alla chiusura della candela di range.
+#
+#   ingresso alla chiusura di N2    winrate 30,8%   -0,0782 R
+#   ingresso di ROMEO (CRT-13)      winrate 62,4%   +0,3613 R
+#
+# Il winrate raddoppia perche' il prezzo di ingresso e' molto migliore. E'
+# la differenza piu' grande misurata in tutto il progetto, e non e' una
+# regolazione: e' un'altra operazione.
+#
+# A False il motore torna a ordinare alla chiusura del range — piu' semplice
+# e misurato peggio. Resta commutabile perche' l'ingresso di Romeo richiede
+# dati sul timeframe basso, e dove non ci sono e' meglio un ingresso
+# mediocre che nessuno.
+INGRESSO_ROMEO: Final[bool] = True
+
 # ===========================================================================
 # Le conferme di Romeo: quali si applicano
 # ===========================================================================

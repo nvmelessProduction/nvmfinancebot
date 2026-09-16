@@ -52,7 +52,7 @@ from core import storage
 from core.log import diario
 from core.models import AlertIn
 from core.contesto import pronto_all_avvio
-from core.parametri import TF, gerarchia
+from core.parametri import COPPIE_CRT, TF, gerarchia
 from core.simboli import DXY_FUTURE, FUTURE_A_CFD
 
 log = diario("mercato")
@@ -80,6 +80,11 @@ DURATA: dict[TF, timedelta] = {
 # netto dello spread reale: su stop larghi il costo pesa 0,071 R invece dei
 # 0,15-0,35 R delle coppie orarie. Vedi OPERATIVO.md.
 TF_OPERATIVI: tuple[TF, ...] = (TF.M1, TF.H1, TF.H4, TF.D1)
+
+# I timeframe su cui si cerca l'INGRESSO di un setup gia' armato (CRT-13).
+# Sono i valori di COPPIE_CRT: il secondo tempo della sequenza di Romeo
+# avviene qui, e senza valutarli un setup armato non scatterebbe mai.
+TF_INGRESSO_OPERATIVI: tuple[TF, ...] = tuple(dict.fromkeys(COPPIE_CRT.values()))
 
 # Il ticker con cui il resto dell'impianto riconosce il future.
 def ticker_di(future: str) -> str:
@@ -264,8 +269,8 @@ class Mercato:
         for (future, tf), nuova in sorted(ultime.items(), key=lambda kv: kv[0][0]):
             if future == DXY_FUTURE:
                 continue                 # PRIN-08: si analizza, non si opera
-            if tf not in TF_OPERATIVI:
-                continue                 # non e' un timeframe d'ingresso
+            if tf not in TF_OPERATIVI and tf not in TF_INGRESSO_OPERATIVI:
+                continue                 # ne' range ne' ingresso
 
             # CTX-10 — *"l'analisi del timeframe appena chiuso va
             # ricalcolata prima di operare sui timeframe inferiori"*.
