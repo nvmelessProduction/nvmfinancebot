@@ -150,6 +150,22 @@ def main() -> int:
     print(f"\n  DXY      {len(dxy):7d} ore "
           f"({dxy[0].orario:%Y-%m-%d} -> {dxy[-1].orario:%Y-%m-%d})")
 
+    # --- Una sola fonte nella serie ---------------------------------------
+    #
+    # Una macchina puo' gia' avere un ICEUS arrivato dalla fonte gratuita,
+    # con gli estremi attenuati. Le candele nuove non lo sostituirebbero --
+    # `salva_candele` fa INSERT OR IGNORE -- ma ne riempirebbero i buchi, e
+    # la serie diventerebbe un mosaico di due costruzioni diverse. DEF-16
+    # confronta ogni candela con la precedente: sui punti di giunzione
+    # confronterebbe due oggetti che non sono la stessa cosa.
+    #
+    # Si cancella DOPO aver verificato che la serie nuova esista: cancellare
+    # e poi fallire lascerebbe la macchina senza DXY e senza averlo chiesto.
+    vecchie = storage.dimentica_candele(NOME_ARCHIVIO, tranne_origine=ORIGINE)
+    if vecchie:
+        print(f"\n  rimosse {vecchie} candele di {NOME_ARCHIVIO} che venivano")
+        print("  da un'altra fonte: una serie sola, costruita in un modo solo")
+
     for tf, candele in costruisci(dxy).items():
         if not candele:
             continue

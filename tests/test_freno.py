@@ -275,3 +275,60 @@ class ProvaArchivioVecchio(unittest.TestCase):
 
         adesso = datetime(2026, 9, 17, 12, tzinfo=timezone.utc)
         self.assertIsNone(archivio_vecchio({}, adesso))
+
+
+class ProvaSerieOmogenea(unittest.TestCase):
+    """Due fonti nella stessa serie sono peggio di entrambe prese da sole.
+
+    Sulla VPS l'archivio `ICEUS` contava 14.141 candele giornaliere: 56 anni,
+    che Dukascopy non ha. Veniva dalla fonte gratuita, quella con gli estremi
+    attenuati su cui il 37,7% degli esiti cambiava.
+
+    `salva_candele` fa INSERT OR IGNORE, quindi le candele calcolate dai
+    costituenti non l'avrebbero sostituito: ne avrebbero riempito i buchi. La
+    serie sarebbe diventata un mosaico, e DEF-16 -- che confronta ogni
+    candela con la precedente -- sui punti di giunzione avrebbe confrontato
+    due oggetti costruiti in modi diversi. Senza lasciare alcun segno: le
+    candele ci sono tutte e sembrano giuste.
+    """
+
+    def setUp(self) -> None:
+        import os
+        import tempfile
+
+        self.percorso = Path(tempfile.mkdtemp()) / "prova.db"
+        os.environ["DB_PATH"] = str(self.percorso)
+        from core import storage
+
+        storage.impostazioni.cache_clear() if hasattr(
+            storage, "impostazioni") else None
+        self.storage = storage
+        storage.inizializza()
+
+    def righe(self, strumento: str, quante: int) -> list:
+        from datetime import datetime, timedelta, timezone
+
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [{
+            "strumento": strumento, "tf": "TF_H1",
+            "chiusura_utc": (base + timedelta(hours=n)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            "apertura": 100.0, "massimo": 101.0,
+            "minimo": 99.0, "chiusura": 100.5,
+        } for n in range(quante)]
+
+    def test_toglie_solo_l_altra_fonte(self) -> None:
+        self.storage.salva_candele(self.righe("ICEUS", 5), origine="tradingview")
+        self.storage.salva_candele(self.righe("ICEUS", 3), origine="dukascopy")
+        self.storage.salva_candele(self.righe("EURUSD", 4), origine="tradingview")
+
+        tolte = self.storage.dimentica_candele("ICEUS", tranne_origine="dukascopy")
+        self.assertEqual(tolte, 5)
+        self.assertEqual(
+            len(self.storage.candele_archiviate("EURUSD", "TF_H1")), 4,
+            "gli altri strumenti non si toccano")
+
+    def test_su_un_archivio_gia_omogeneo_non_fa_nulla(self) -> None:
+        self.storage.salva_candele(self.righe("ICEUS", 5), origine="dukascopy")
+        self.assertEqual(
+            self.storage.dimentica_candele("ICEUS", tranne_origine="dukascopy"), 0)

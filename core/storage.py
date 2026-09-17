@@ -521,6 +521,33 @@ def salva_candele(righe: list[dict[str, Any]], origine: str = "importazione") ->
     return nuove, len(righe) - nuove
 
 
+def dimentica_candele(strumento: str, tranne_origine: str) -> int:
+    """Cancella le candele di uno strumento che vengono da un'altra fonte.
+
+    Serve a una cosa sola e va usata solo per quella: rendere **omogenea**
+    una serie che si e' riempita da due fonti diverse.
+
+    Il caso vero e' il DXY. Una macchina puo' avere un `ICEUS` arrivato dalla
+    fonte gratuita -- estremi attenuati, cioe' massimi e minimi campionati
+    invece che toccati -- e poi ricevere quello calcolato dai costituenti
+    Dukascopy. `salva_candele` fa `INSERT OR IGNORE`, quindi le nuove
+    riempirebbero solo i buchi e la serie diventerebbe un mosaico: DEF-16
+    confronta ogni candela con la precedente, e sui punti di giunzione
+    confronterebbe due oggetti costruiti in modi diversi.
+
+    Un mosaico e' peggio di entrambe le fonti prese da sole, e non lascia
+    alcun segno: le candele ci sono tutte e sembrano giuste.
+
+    Restituisce quante ne ha cancellate, perche' chi chiama lo deve dire.
+    """
+    with connessione(scrittura=True) as conn:
+        cur = conn.execute(
+            "DELETE FROM candela WHERE strumento = ? AND origine != ?",
+            (strumento, tranne_origine),
+        )
+        return cur.rowcount
+
+
 def candele_archiviate(
     strumento: str,
     tf: str,
