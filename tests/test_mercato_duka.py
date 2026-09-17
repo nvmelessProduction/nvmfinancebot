@@ -119,6 +119,76 @@ class ProvaMesiEGiorni(unittest.TestCase):
         self.assertEqual(giorni, sorted(giorni))
 
 
+class ProvaVolumeRichieste(unittest.TestCase):
+    """Quanto si chiede alla fonte, che era il numero che nessuno guardava.
+
+    Il cancello sull'archivio non basta per i minuti: `serie_da_chiedere` su
+    `MIN1` e' praticamente sempre vero, perche' un minuto nuovo si chiude
+    ogni minuto. A ogni giro si riscaricava lo stesso file giornaliero --
+    8.640 richieste al giorno per sei strumenti, un terzo del difetto che ha
+    fatto chiudere la porta a Dukascopy, e abbastanza per tenerla chiusa.
+    """
+
+    def setUp(self) -> None:
+        self.ciclo = md.MercatoDukascopy()
+        # Qui si misura il VOLUME delle richieste, non l'archiviazione: il
+        # database non serve e il suo stato falserebbe il conto.
+        self.ciclo._archivia = lambda strumento, per_tf: {}
+        self.archivio: dict[tuple[str, TF], datetime] = {}
+        self._vera = md.ultima_archiviata
+        md.ultima_archiviata = lambda s, tf: self.archivio.get((s, tf))
+
+    def tearDown(self) -> None:
+        md.ultima_archiviata = self._vera
+
+    def test_i_minuti_non_si_richiedono_a_ogni_giro(self) -> None:
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        chiesti: list[datetime] = []
+
+        # Il finto deve RIUSCIRE: un giro a vuoto mette lo strumento a
+        # riposo, e misurerebbe quel meccanismo invece dell'intervallo.
+        def finto(simbolo, giorno, fresco=False):
+            chiesti.append(giorno)
+            return minuti_finti(datetime(2026, 9, 17, 11, 0, tzinfo=UTC), 30)
+
+        vero = md.minuti_del_giorno
+        md.minuti_del_giorno = finto
+        try:
+            # Sei giri a un minuto l'uno: due minuti di intervallo, quindi
+            # il file va chiesto tre volte, non sei.
+            for n in range(6):
+                self.ciclo._aggiorna_minuti("EURUSD", adesso + timedelta(minutes=n))
+        finally:
+            md.minuti_del_giorno = vero
+
+        self.assertEqual(len(chiesti), 3, f"chiesto {len(chiesti)} volte in 6 giri")
+
+    def test_il_conto_delle_richieste_e_visibile(self) -> None:
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        vero = md.minuti_del_giorno
+        md.minuti_del_giorno = lambda s, g, fresco=False: minuti_finti(
+            datetime(2026, 9, 17, 11, 0, tzinfo=UTC), 30)
+        try:
+            self.ciclo._aggiorna_minuti("EURUSD", adesso)
+        finally:
+            md.minuti_del_giorno = vero
+        self.assertEqual(self.ciclo.richieste, 1)
+
+    def test_il_ritmo_non_si_stima_sui_primi_secondi(self) -> None:
+        """Mille richieste in dieci minuti proiettate a ventiquattro ore
+        darebbero un numero spaventoso e privo di senso."""
+        self.ciclo.richieste = 50
+        self.ciclo._acceso = datetime.now(timezone.utc)
+        self.assertIsNone(self.ciclo.richieste_al_giorno)
+
+    def test_il_ritmo_si_misura_dopo(self) -> None:
+        self.ciclo.richieste = 100
+        self.ciclo._acceso = datetime.now(timezone.utc) - timedelta(hours=2)
+        ritmo = self.ciclo.richieste_al_giorno
+        self.assertIsNotNone(ritmo)
+        self.assertAlmostEqual(ritmo, 1200.0, delta=5.0)
+
+
 class ProvaRiposo(unittest.TestCase):
     """Quando la fonte non risponde, il cancello sull'archivio non basta."""
 

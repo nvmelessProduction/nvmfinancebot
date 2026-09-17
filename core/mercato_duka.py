@@ -68,6 +68,25 @@ GIORNI_MINUTI_MASSIMI = 4
 # ragione. La semina e' `importa_dukascopy.py`.
 MESI_ORARIE_MASSIMI = 2
 
+# Ogni quanto ripescare il file dei minuti del giorno in corso.
+#
+# Il cancello sull'archivio qui non basta, ed e' il difetto piu' sottile dei
+# tre che il ciclo ha avuto. `serie_da_chiedere(MIN1)` e' praticamente sempre
+# vero -- un minuto nuovo si chiude ogni minuto -- quindi a ogni giro si
+# riscaricava lo stesso file giornaliero, che intanto cresce. Fa 8.640
+# richieste al giorno per sei strumenti: un terzo del difetto che ieri notte
+# ha fatto chiudere la porta a Dukascopy, e sufficiente a tenerla chiusa.
+#
+# Due minuti e' il compromesso, e non e' arbitrario. La configurazione con il
+# risultato migliore misurato e' `4h -> 15m`: una candela da un quarto d'ora
+# si chiude ogni quindici minuti, quindi due minuti di ritardo nel vederla
+# sono un ottavo della sua durata. Sarebbe troppo per `15m -> 1m`, che pero'
+# e' la coppia peggiore misurata (-0,2195 R su 3.514 casi) e non e' quella
+# che vogliamo far girare.
+#
+# Chi vuole l'altro compromesso abbassa questo numero sapendo cosa costa.
+MINUTI_INTERVALLO_SEC = 120.0
+
 # Dopo un guasto di rete su uno strumento, quanto aspettare prima di
 # riprovare, e il tetto di quell'attesa.
 #
@@ -178,6 +197,14 @@ class MercatoDukascopy:
     # attesa. Chiave: (strumento, "ore" | "minuti").
     _riposo: dict = field(default_factory=dict, init=False)
     _attesa: dict = field(default_factory=dict, init=False)
+    # Quando si e' chiesto l'ultima volta il file dei minuti, per strumento.
+    _minuti_chiesti: dict = field(default_factory=dict, init=False)
+    # Quante richieste di rete ha fatto il ciclo, da quando e' partito. Sta
+    # in `/salute` perche' il volume era invisibile, ed e' cosi' che un ciclo
+    # da 26.000 richieste al giorno e' rimasto in piedi senza che nessuno se
+    # ne accorgesse: i log dicevano cosa falliva, mai quanto si chiedeva.
+    richieste: int = field(default=0, init=False)
+    _acceso: Optional[datetime] = field(default=None, init=False)
     giri: int = field(default=0, init=False)
     candele_nuove: int = field(default=0, init=False)
     valutazioni: int = field(default=0, init=False)
@@ -187,6 +214,7 @@ class MercatoDukascopy:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
+        self._acceso = datetime.now(timezone.utc)
         self._thread = threading.Thread(
             target=self._ciclo, name="mercato-duka", daemon=True)
         self._thread.start()
@@ -201,6 +229,22 @@ class MercatoDukascopy:
     @property
     def in_funzione(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def richieste_al_giorno(self) -> Optional[float]:
+        """Il ritmo verso la fonte, proiettato su ventiquattro ore.
+
+        Il totale da solo non dice niente: mille richieste sono poche in un
+        giorno e tante in dieci minuti. E' il ritmo che fa chiudere la porta,
+        ed e' il numero che mancava quando il ciclo ne faceva 26.000 al
+        giorno senza che nulla lo dicesse.
+        """
+        if self._acceso is None or not self.richieste:
+            return None
+        ore = (datetime.now(timezone.utc) - self._acceso).total_seconds() / 3600
+        if ore < 0.05:                     # meno di tre minuti: non significa nulla
+            return None
+        return round(self.richieste / ore * 24, 1)
 
     def _ciclo(self) -> None:
         while not self._stop.wait(self.intervallo_sec):
@@ -250,6 +294,7 @@ class MercatoDukascopy:
             "strumenti": len(nuove_per_strumento),
             "candele_nuove": self.candele_nuove,
             "valutazioni": self.valutazioni,
+            "richieste": self.richieste,
         }
 
     # ------------------------------------------------------------------
@@ -322,6 +367,7 @@ class MercatoDukascopy:
 
         orarie: list[Candela] = []
         for anno, mese in self._mesi_da_chiedere(strumento, adesso):
+            self.richieste += 1
             orarie.extend(orarie_del_mese(strumento, anno, mese))
         if not orarie:
             self._guasto(chiave, adesso)
@@ -376,11 +422,19 @@ class MercatoDukascopy:
         if not self.serie_da_chiedere(strumento, TF.MIN1, adesso):
             return {}
 
+        ultima_richiesta = self._minuti_chiesti.get(strumento)
+        if (ultima_richiesta is not None
+                and (adesso - ultima_richiesta).total_seconds()
+                < MINUTI_INTERVALLO_SEC):
+            return {}
+        self._minuti_chiesti[strumento] = adesso
+
         oggi = adesso.date()
         minuti: list[Candela] = []
         for giorno in self._giorni_da_chiedere(strumento, adesso):
             # Il giorno in corso si ripesca sempre: il file cresce mentre lo
             # si guarda, e la copia in cache sarebbe quella di un'ora fa.
+            self.richieste += 1
             minuti.extend(minuti_del_giorno(strumento, giorno, fresco=(giorno >= oggi)))
         if len(minuti) < 2:
             self._guasto(chiave, adesso)
@@ -431,6 +485,7 @@ class MercatoDukascopy:
             return
 
         mesi = self._mesi_da_chiedere(duka_dxy.NOME_ARCHIVIO, adesso)
+        self.richieste += len(mesi) * len(duka_dxy.PESI)
         serie = {
             simbolo: [c for anno, mese in mesi
                       for c in orarie_del_mese(simbolo, anno, mese)]

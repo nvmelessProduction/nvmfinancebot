@@ -862,6 +862,13 @@ def salute() -> dict[str, Any]:
             "giri": mercato_duka.giri,
             "candele_raccolte": mercato_duka.candele_nuove,
             "valutazioni": mercato_duka.valutazioni,
+            # Quante richieste sono andate a Dukascopy, e a che ritmo. Il
+            # volume era invisibile, ed e' cosi' che un ciclo da 26.000
+            # richieste al giorno e' rimasto in piedi finche' la fonte non ha
+            # chiuso la porta: i log dicevano cosa falliva, mai quanto si
+            # chiedeva. Sopra le diecimila al giorno, aspettarsi dei 503.
+            "richieste": mercato_duka.richieste,
+            "richieste_al_giorno": mercato_duka.richieste_al_giorno,
             "ultimo_errore": mercato_duka.ultimo_errore,
         }
     if cfg.FORNITORE_DATI == "mercato":
