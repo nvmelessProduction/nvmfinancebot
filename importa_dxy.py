@@ -27,8 +27,10 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
+import gzip
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from core import storage
 from core.definizioni import Candela
@@ -38,6 +40,17 @@ from core.log import configura as configura_log
 from core.mercato_duka import costruisci
 
 ORIGINE = "dukascopy"
+
+# La serie gia' calcolata, che viaggia col repository. Esiste perche'
+# Dukascopy limita gli indirizzi che chiedono troppo, e una VPS che ha gia'
+# seminato vent'anni di storia puo' trovarsi la porta chiusa per ore -- o,
+# se l'indirizzo appartiene a un intervallo di hosting, senza riaprirsi.
+#
+# Il file pesa poche centinaia di kilobyte perche' contiene solo l'indice,
+# non i sei costituenti da cui nasce. Chi vuole ricalcolarlo da capo usa
+# `--rete`: la formula e il metodo sono in `core/duka_dxy.py` e il risultato
+# deve coincidere.
+SERIE_PRONTA = Path("dati/dxy_orarie.csv.gz")
 
 
 def scarica(
@@ -78,6 +91,26 @@ def scarica(
     return serie, falliti
 
 
+def da_file(percorso: Path) -> list[Candela]:
+    """Legge la serie oraria del DXY dal CSV che viaggia col repository."""
+    apri = gzip.open if percorso.suffix == ".gz" else open
+    fuori: list[Candela] = []
+    with apri(percorso, "rt", encoding="utf-8") as file:
+        intestazione = file.readline()
+        if not intestazione.startswith("orario_utc"):
+            raise SystemExit(f"{percorso}: intestazione inattesa: {intestazione!r}")
+        for riga in file:
+            pezzi = riga.strip().split(",")
+            if len(pezzi) != 5:
+                continue
+            fuori.append(Candela(
+                datetime.strptime(pezzi[0], "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=timezone.utc),
+                float(pezzi[1]), float(pezzi[2]), float(pezzi[3]), float(pezzi[4]),
+            ))
+    return fuori
+
+
 def main() -> int:
     oggi = datetime.now(timezone.utc)
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -91,15 +124,24 @@ def main() -> int:
     # rallenta da solo; questo numero e' solo il punto di partenza.
     p.add_argument("--paralleli", type=int, default=4,
                    help="quante richieste insieme (predefinito 4)")
+    p.add_argument("--rete", action="store_true",
+                   help="ricalcola dai sei costituenti invece di leggere "
+                        f"{SERIE_PRONTA} (serve accesso a Dukascopy)")
     scelte = p.parse_args()
 
     configura_log()
     storage.inizializza()
 
-    print(f"DXY dai sei costituenti ({scelte.da}-{scelte.a})")
-    serie, falliti = scarica(scelte.da, scelte.a, scelte.paralleli)
+    falliti: list[str] = []
+    if scelte.rete or not SERIE_PRONTA.exists():
+        print(f"DXY dai sei costituenti ({scelte.da}-{scelte.a})")
+        serie, falliti = scarica(scelte.da, scelte.a, scelte.paralleli)
+        dxy = componi(serie)
+    else:
+        print(f"DXY dalla serie gia' calcolata: {SERIE_PRONTA}")
+        print("(per ricalcolarla dai sei costituenti: --rete)")
+        dxy = da_file(SERIE_PRONTA)
 
-    dxy = componi(serie)
     if not dxy:
         raise SystemExit(
             "nessuna ora in cui tutti e sei i costituenti abbiano una candela: "
@@ -141,6 +183,10 @@ def main() -> int:
         completo = False
         print(f"\n  L'indice si ferma a {dxy[-1].orario:%Y-%m-%d %H:%M}, "
               f"{ritardo:.0f} giorni fa.")
+        if not scelte.rete:
+            print("  La serie nel repository non si aggiorna da sola: il")
+            print("  ciclo di mercato la porta avanti un'ora alla volta, se")
+            print("  Dukascopy risponde. Altrimenti `--rete` la ricalcola.")
 
     if completo:
         print("\nFatto. SETUP-19 ha la bias su cui decidere.")

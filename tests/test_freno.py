@@ -141,3 +141,64 @@ class ProvaCacheMensile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProvaSeriePronta(unittest.TestCase):
+    """Il DXY gia' calcolato, che viaggia col repository.
+
+    Esiste perche' Dukascopy limita gli indirizzi che chiedono troppo, e una
+    macchina che ha gia' seminato vent'anni di storia puo' trovarsi la porta
+    chiusa per ore. Senza questa strada, il bot resta fermo per un dato che
+    si puo' benissimo consegnare dentro il codice.
+    """
+
+    def scrivi(self, righe: str) -> Path:
+        import gzip
+        import tempfile
+
+        percorso = Path(tempfile.mkdtemp()) / "dxy.csv.gz"
+        with gzip.open(percorso, "wt", encoding="utf-8") as file:
+            file.write("orario_utc,apertura,massimo,minimo,chiusura\n" + righe)
+        self.addCleanup(lambda: percorso.unlink(missing_ok=True))
+        return percorso
+
+    def test_legge_la_serie(self) -> None:
+        from datetime import datetime, timezone
+
+        import importa_dxy
+
+        percorso = self.scrivi(
+            "2026-09-16T21:00:00Z,103.100000,103.250000,103.050000,103.200000\n"
+            "2026-09-16T22:00:00Z,103.200000,103.300000,103.150000,103.280000\n"
+        )
+        candele = importa_dxy.da_file(percorso)
+        self.assertEqual(len(candele), 2)
+        self.assertEqual(candele[0].orario,
+                         datetime(2026, 9, 16, 21, tzinfo=timezone.utc))
+        self.assertAlmostEqual(candele[0].massimo, 103.25, places=6)
+        self.assertAlmostEqual(candele[1].chiusura, 103.28, places=6)
+
+    def test_un_file_di_altro_genere_non_si_interpreta(self) -> None:
+        """Meglio fermarsi che archiviare numeri presi da un file sbagliato."""
+        import gzip
+        import tempfile
+
+        import importa_dxy
+
+        percorso = Path(tempfile.mkdtemp()) / "altro.csv.gz"
+        with gzip.open(percorso, "wt", encoding="utf-8") as file:
+            file.write("data_ora_utc,valuta,stelle,descrizione\n")
+        self.addCleanup(lambda: percorso.unlink(missing_ok=True))
+        with self.assertRaises(SystemExit):
+            importa_dxy.da_file(percorso)
+
+    def test_le_righe_storte_si_saltano_senza_fermare_tutto(self) -> None:
+        import importa_dxy
+
+        percorso = self.scrivi(
+            "2026-09-16T21:00:00Z,103.1,103.25,103.05,103.2\n"
+            "\n"
+            "riga rotta\n"
+            "2026-09-16T22:00:00Z,103.2,103.3,103.15,103.28\n"
+        )
+        self.assertEqual(len(importa_dxy.da_file(percorso)), 2)
