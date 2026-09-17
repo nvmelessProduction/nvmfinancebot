@@ -202,3 +202,76 @@ class ProvaSeriePronta(unittest.TestCase):
             "2026-09-16T22:00:00Z,103.2,103.3,103.15,103.28\n"
         )
         self.assertEqual(len(importa_dxy.da_file(percorso)), 2)
+
+
+class ProvaArchivioVecchio(unittest.TestCase):
+    """Il pericolo peggiore trovato in questa sessione.
+
+    Sulla VPS i sei strumenti erano fermi al 31 agosto, sedici giorni prima,
+    con il bot pronto a operare e nessun segno che qualcosa non andasse.
+
+    Il motore cerca il CRT sulle candele in ARCHIVIO e manda l'ordine al
+    broker al prezzo CORRENTE. Con un archivio fermo, stop e bersaglio
+    nascono da livelli di due settimane prima mentre l'ingresso avviene oggi:
+    un'operazione costruita su un grafico e aperta su un altro.
+
+    Nessuno dei controlli esistenti lo intercettava. `verifica_allineamento`
+    confronta l'alert con l'archivio, e sulla via Dukascopy l'alert nasce
+    dall'archivio, quindi combacia sempre. `DEF-26` conta le candele e non ne
+    guarda la data -- e un archivio a cui la fonte ha chiuso la porta ne ha
+    in abbondanza.
+    """
+
+    def storico(self, fine, quante: int = 40):
+        from datetime import timedelta
+
+        from core.definizioni import Candela
+        from core.parametri import TF
+
+        return {
+            TF.H1: tuple(
+                Candela(fine - timedelta(hours=quante - 1 - n),
+                        1.10, 1.11, 1.09, 1.105)
+                for n in range(quante)
+            )
+        }
+
+    def test_archivio_fresco_passa(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from core.fornitore_tradingview import archivio_vecchio
+
+        adesso = datetime(2026, 9, 17, 12, tzinfo=timezone.utc)
+        self.assertIsNone(
+            archivio_vecchio(self.storico(adesso - timedelta(hours=1)), adesso))
+
+    def test_sedici_giorni_si_fermano(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from core.fornitore_tradingview import archivio_vecchio
+
+        adesso = datetime(2026, 9, 17, 12, tzinfo=timezone.utc)
+        motivo = archivio_vecchio(self.storico(adesso - timedelta(days=16)), adesso)
+        self.assertIsNotNone(motivo)
+        self.assertIn("16.0 giorni fa", motivo)
+        self.assertIn("2026-09-01", motivo, "il motivo deve dire DA QUANDO")
+
+    def test_il_ponte_di_natale_passa(self) -> None:
+        """Quattro giorni e mezzo e' la chiusura piu' lunga del forex."""
+        from datetime import datetime, timedelta, timezone
+
+        from core.fornitore_tradingview import archivio_vecchio
+
+        adesso = datetime(2026, 9, 17, 12, tzinfo=timezone.utc)
+        self.assertIsNone(
+            archivio_vecchio(self.storico(adesso - timedelta(days=4, hours=12)),
+                             adesso))
+
+    def test_archivio_vuoto_non_e_affar_suo(self) -> None:
+        """Lo dice gia' DEF-26, e due messaggi per la stessa cosa confondono."""
+        from datetime import datetime, timezone
+
+        from core.fornitore_tradingview import archivio_vecchio
+
+        adesso = datetime(2026, 9, 17, 12, tzinfo=timezone.utc)
+        self.assertIsNone(archivio_vecchio({}, adesso))

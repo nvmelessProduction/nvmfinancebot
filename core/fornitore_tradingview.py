@@ -188,6 +188,36 @@ def verifica_allineamento(alert: AlertIn, future: str, tf: TF) -> Optional[str]:
     return None
 
 
+def archivio_vecchio(storico, adesso: datetime) -> Optional[str]:
+    """L'archivio e' troppo indietro per operarci? Se si', da quando.
+
+    Restituisce `None` quando va bene, altrimenti una descrizione pronta da
+    mettere nel motivo dell'astensione -- perche' "l'archivio e' vecchio"
+    senza la data non dice a chi legge se mancano due ore o due settimane, e
+    sono due problemi diversi.
+
+    La freschezza si misura sulla candela piu' recente di QUALUNQUE
+    timeframe, non del solo timeframe valutato. Un archivio aggiornato ha per
+    forza qualcosa di recente da qualche parte; uno fermo non ha niente da
+    nessuna parte, ed e' proprio quello il caso da cogliere.
+    """
+    from core.parametri import RITARDO_MASSIMO_ARCHIVIO_GIORNI
+
+    piu_recente = max(
+        (c.orario for candele in storico.values() for c in candele),
+        default=None,
+    )
+    if piu_recente is None:
+        return None                       # archivio vuoto: lo dice gia' DEF-26
+    if piu_recente.tzinfo is None:
+        piu_recente = piu_recente.replace(tzinfo=timezone.utc)
+    ritardo = adesso - piu_recente
+    if ritardo <= timedelta(days=RITARDO_MASSIMO_ARCHIVIO_GIORNI):
+        return None
+    return (f"{piu_recente:%Y-%m-%d %H:%M} UTC, "
+            f"{ritardo.total_seconds() / 86400:.1f} giorni fa")
+
+
 @dataclass
 class FornitoreTradingView:
     """Costruisce la Fotografia dai prezzi archiviati e dal conto MT5."""
@@ -308,7 +338,7 @@ class FornitoreTradingView:
             equity_inizio_mese=equity - mensile,
         )
 
-    # -- fotografia --------------------------------------------------------
+    # -- freschezza --------------------------------------------------------
     def costruisci(self, alert: AlertIn) -> Optional[tuple[Fotografia, TF]]:
         """Da un alert di TradingView alla Fotografia su cui il motore decide."""
         future = future_da_ticker(alert.simbolo)
@@ -338,6 +368,23 @@ class FornitoreTradingView:
             # e' sbagliato e non si opera su nessuno dei due.
             raise FotografiaImpossibile(
                 f"archivio disallineato su {future} {tf_trigger.value}: {discrepanza}")
+
+        adesso = datetime.now(timezone.utc)
+        vecchiaia = archivio_vecchio(self.storico(future), adesso)
+        if vecchiaia is not None:
+            # PRIN-99, e qui il costo di sbagliare e' massimo. Il CRT si cerca
+            # sulle candele in archivio; l'ordine parte al prezzo CORRENTE.
+            # Con un archivio fermo, stop e bersaglio nascono da livelli
+            # vecchi mentre l'ingresso avviene oggi -- un'operazione costruita
+            # su un grafico e aperta su un altro.
+            #
+            # `verifica_allineamento` non lo intercetta: confronta l'alert con
+            # l'archivio, e sulla via Dukascopy l'alert NASCE dall'archivio,
+            # quindi combacia sempre. `DEF-26` nemmeno: conta le candele e non
+            # ne guarda la data.
+            raise FotografiaImpossibile(
+                f"archivio di {future} fermo a {vecchiaia}: il CRT si cercherebbe "
+                f"su candele vecchie e l'ordine partirebbe al prezzo di adesso")
 
         conto = self.conto(cfd)
         if conto is None:

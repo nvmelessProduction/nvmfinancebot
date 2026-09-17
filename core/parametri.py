@@ -186,6 +186,30 @@ MINIMO_CANDELE_CHIUSE_PER_TF: Final[int] = 3
 # ha fatto nascere questo parametro era indietro di quarantasette giorni.
 RITARDO_MASSIMO_DXY_GIORNI: Final[int] = 6
 
+# Lo stesso, per l'archivio dello strumento su cui si opera. E qui la posta
+# e' molto piu' alta che sul DXY, dove un ritardo degrada un filtro: qui
+# degrada l'ordine.
+#
+# Il motore cerca il CRT sulle candele in archivio e manda l'ordine al broker
+# al prezzo CORRENTE. Con un archivio fermo a due settimane prima, stop e
+# bersaglio nascono da livelli vecchi di due settimane mentre l'ingresso
+# avviene oggi: un'operazione costruita su un grafico e aperta su un altro.
+# Niente in DEF-26 lo impedisce, perche' DEF-26 conta le candele e non ne
+# guarda la data -- e l'archivio di una macchina a cui la fonte ha chiuso la
+# porta ne ha in abbondanza.
+#
+# Misurato sulla VPS il 2026-09-17: i sei strumenti fermi al 31 agosto, 16
+# giorni prima, con il bot pronto a operare e nessun segno che qualcosa non
+# andasse.
+#
+# Cinque giorni, per la stessa ragione dei sei del DXY: la chiusura piu'
+# lunga che il forex conosce e' il ponte di Natale, circa quattro giorni e
+# mezzo. Sotto si avrebbero falsi allarmi a fine dicembre; sopra si lascia
+# passare un'avaria vera. Non e' una soglia fine -- non protegge da un
+# ritardo di un giorno -- ma coglie il caso in cui la fonte ha smesso di
+# rispondere, che e' quello che succede davvero.
+RITARDO_MASSIMO_ARCHIVIO_GIORNI: Final[int] = 5
+
 # DEF-44. Unico indicatore ammesso per generare un dato (ESCL-15 a).
 RSI_PERIODO: Final[int] = 14
 

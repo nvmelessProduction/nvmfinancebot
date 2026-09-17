@@ -39,7 +39,12 @@ from core.duka_dxy import NOME_ARCHIVIO as DXY
 from core.log import configura as configura_log
 from core.mercato import TF_INGRESSO_OPERATIVI, TF_OPERATIVI
 from core.mercato_duka import _alert, ultima_archiviata
-from core.parametri import LOOKBACK_ANNI, TF, UNIVERSO
+from core.parametri import (
+    LOOKBACK_ANNI,
+    RITARDO_MASSIMO_ARCHIVIO_GIORNI,
+    TF,
+    UNIVERSO,
+)
 
 OK, NO, FORSE = "  OK  ", " NO   ", "  ?   "
 
@@ -68,9 +73,18 @@ def prova_archivio(adesso: datetime) -> bool:
             tutto_bene = False
             continue
         ritardo = adesso - ultima
-        # Sei ore: il fine settimana e le feste fanno ritardi legittimi molto
-        # piu' lunghi, quindi un ritardo alto e' un dubbio, non una condanna.
-        stato = OK if ritardo < timedelta(hours=6) else FORSE
+        # Tre soglie, perche' tre sono le situazioni:
+        #   sotto le 6 ore   l'archivio segue il mercato;
+        #   fino a 5 giorni  puo' essere un fine settimana o una festa;
+        #   oltre            il motore si RIFIUTA di costruire la fotografia,
+        #                    quindi qui e' un NO, non un dubbio.
+        if ritardo > timedelta(days=RITARDO_MASSIMO_ARCHIVIO_GIORNI):
+            stato = NO
+            tutto_bene = False
+        elif ritardo > timedelta(hours=6):
+            stato = FORSE
+        else:
+            stato = OK
         riga(stato, f"{strumento:8s} ultima oraria {ultima:%Y-%m-%d %H:%M} "
                     f"({ritardo.total_seconds() / 3600:.1f}h fa)   "
                     + "  ".join(pezzi))
