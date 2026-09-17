@@ -35,6 +35,7 @@ from pathlib import Path
 from core import storage
 from core.definizioni import Candela
 from core.duka_dxy import NOME_ARCHIVIO, PESI, componi
+from core.parametri import RITARDO_MASSIMO_DXY_GIORNI
 from core.fonte_dukascopy import MeseNonScaricato, orarie_del_mese
 from core.log import configura as configura_log
 from core.mercato_duka import costruisci
@@ -168,10 +169,8 @@ def main() -> int:
     # dall'indice. Per questo il buco va detto qui e non lasciato dedurre dai
     # conteggi, che sembrano tutti generosi.
     ritardo = (oggi - dxy[-1].orario).total_seconds() / 86400
-    completo = True
 
     if falliti:
-        completo = False
         print(f"\n  {len(falliti)} mesi NON scaricati (rete, non assenza):")
         for f in sorted(falliti)[:12]:
             print(f"    {f}")
@@ -179,32 +178,44 @@ def main() -> int:
             print(f"    ... e altri {len(falliti) - 12}")
 
     # Tre giorni coprono un fine settimana lungo. Oltre, l'indice e' vecchio.
-    if ritardo > 3:
-        completo = False
+    vecchio = ritardo > 3
+    if vecchio:
         print(f"\n  L'indice si ferma a {dxy[-1].orario:%Y-%m-%d %H:%M}, "
               f"{ritardo:.0f} giorni fa.")
-        if not scelte.rete:
-            print("  La serie nel repository non si aggiorna da sola: il")
-            print("  ciclo di mercato la porta avanti un'ora alla volta, se")
-            print("  Dukascopy risponde. Altrimenti `--rete` la ricalcola.")
 
-    if completo:
+    if not falliti and not vecchio:
         print("\nFatto. SETUP-19 ha la bias su cui decidere.")
         return 0
 
-    print("\nARCHIVIO INCOMPLETO. Nulla e' andato perso: i mesi gia' presi")
-    print("sono su disco in `dukascopy_ore` e il rilancio NON li richiede.")
-    print("Rilancia `python importa_dxy.py`: riprovera' solo cio' che manca,")
-    print("e ogni giro parte da piu' avanti del precedente.")
+    # I consigli dipendono da come si e' arrivati qui, e darli tutti sarebbe
+    # peggio che non darne: chi ha letto da file non ha `dukascopy_ore` da
+    # riprovare, e chi e' stato in rete non ha un file da aggiornare.
     print()
-    print("Se i messaggi sono 'connessione chiusa' o 'host non risponde' e non")
-    print("503, Dukascopy ha smesso di rispondere a questo indirizzo: e' una")
-    print("misura temporanea contro chi chiede troppo. Insistere la allunga.")
-    print("Aspetta un'ora e rilancia, oppure prova con meno richieste insieme:")
-    print("    python importa_dxy.py --paralleli 2")
+    if scelte.rete or not SERIE_PRONTA.exists():
+        print("ARCHIVIO INCOMPLETO. Nulla e' andato perso: i mesi gia' presi")
+        print("sono su disco in `dukascopy_ore` e il rilancio NON li richiede.")
+        print("Rilancia `python importa_dxy.py --rete`: riprovera' solo cio'")
+        print("che manca, e ogni giro parte da piu' avanti del precedente.")
+        print()
+        print("Se i messaggi sono 'connessione chiusa' o 'host non risponde' e")
+        print("non 503, Dukascopy ha smesso di rispondere a questo indirizzo:")
+        print("e' una misura temporanea contro chi chiede troppo, e insistere")
+        print("la allunga. Aspetta un'ora, o chiedi meno per volta:")
+        print("    python importa_dxy.py --rete --paralleli 2")
+    else:
+        print(f"La serie in {SERIE_PRONTA} e' in archivio, ma si ferma")
+        print(f"{ritardo:.0f} giorni fa. Quel file non si aggiorna da solo.")
+        print()
+        print("Se il bot gira, e' il ciclo di mercato a portarla avanti")
+        print("un'ora alla volta, e fra poco questo messaggio sparira'.")
+        print("Se non gira, o se Dukascopy non risponde da giorni, la si")
+        print("ricalcola dai sei costituenti:")
+        print("    python importa_dxy.py --rete")
+
     print()
-    print("Finche' questo messaggio compare, la bias del DXY e' vecchia o")
-    print("assente e SETUP-19 non abilita nulla sulle cinque coppie FX.")
+    print(f"Finche' l'indice resta indietro di piu' di "
+          f"{RITARDO_MASSIMO_DXY_GIORNI} giorni, la bias del DXY vale NESSUNA")
+    print("e SETUP-19 non abilita nulla sulle cinque coppie FX.")
     return 1
 
 
