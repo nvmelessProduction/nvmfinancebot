@@ -42,3 +42,7 @@ dukascopy
 dukascopy_min
 duka_serie.pickle
 *.bi5
+
+# Il calendario messo al sicuro da aggiorna.bat, se lo script viene
+# interrotto a meta.
+news.csv.salvato

@@ -20,6 +20,23 @@ sono in `docs/`, la strategia normativa in `docs/BIBBIA-CRT.md`.
 
 ---
 
+## 0. Aggiornare il codice
+
+```
+aggiorna.bat
+```
+
+Doppio click, o dal terminale. Fa da solo la sequenza che `git pull` da solo
+non riesce a fare quando in cartella ci sono modifiche locali: mette al
+sicuro il calendario news, manda il resto in `git stash`, aggiorna, rimette
+il calendario.
+
+**Non usare `git reset --hard`** per sbloccare un pull rifiutato: butta via
+le modifiche locali per sempre. Lo `stash` le conserva, e `git stash list`
+le ritrova.
+
+---
+
 ## 1. Verifica prima di accendere
 
 ```powershell
