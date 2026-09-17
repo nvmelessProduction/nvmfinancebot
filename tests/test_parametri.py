@@ -84,8 +84,22 @@ def test_punto_sconosciuto() -> None:
 
 def test_un_non_bloccante_ha_comunque_il_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delitem(parametri.SCELTE, "PA-46")
+    monkeypatch.delitem(parametri.SCELTE, "PA-55")
     assert parametri.richiedi("PA-46") == 0.0
     assert parametri.richiedi("PA-55") == "astieniti"     # PRIN-99
+
+
+def test_pa55_e_deciso_opera() -> None:
+    """La lettura in vigore si scosta dal default, e non per sbaglio.
+
+    Decisa dall'autore il 2026-09-17: il bot lavora anche senza calendario.
+    Il prezzo e' che CTX-02, il divieto di aprire dentro la finestra di una
+    news a tre stelle, senza calendario non ha piu' nulla contro cui
+    confrontare l'orario -- quindi non blocca piu' niente.
+    """
+    assert parametri.richiedi("PA-55") == "opera"
+    assert "opera" in parametri.PUNTI_APERTI["PA-55"].letture
+    assert parametri.PUNTI_APERTI["PA-55"].default == "astieniti"
 
 
 # ---------------------------------------------------------------------------

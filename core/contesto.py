@@ -86,7 +86,7 @@ def valute_di(strumento: str) -> Optional[frozenset[str]]:
 def dentro_finestra_news(
     adesso: datetime,
     strumento: str,
-    eventi: Sequence[EventoNews],
+    eventi: Optional[Sequence[EventoNews]],
 ) -> Optional[EventoNews]:
     """CTX-02 e RISK-13 — L'evento che blocca le nuove aperture, se c'e'.
 
@@ -96,8 +96,22 @@ def dentro_finestra_news(
     una posizione gia' aperta attraversa la news senza modifiche.
 
     Restituisce il primo evento che blocca, o None.
+
+    `eventi` a `None` significa **calendario non disponibile**, ed e' distinto
+    da una lista vuota, che significa "nessun evento in programma". Qui pero'
+    producono la stessa risposta: senza eventi non c'e' nulla contro cui
+    confrontare l'orario, quindi nessun blocco.
+
+    Finche' `PA-55` valeva `astieniti`, un calendario mancante fermava il
+    motore prima di arrivare fin qui e questo caso non si presentava: la
+    funzione iterava `None` e sarebbe esplosa. Con `PA-55 = opera` il caso e'
+    diventato la normalita', e l'eccezione sarebbe stata catturata piu' in
+    alto e trasformata in un PRIN-99 -- cioe' in un bot fermo, esattamente
+    cio' che quella scelta voleva evitare, e senza alcun segno del perche'.
     """
     valute = valute_di(strumento)
+    if not eventi:
+        return None
     prima = timedelta(minutes=FINESTRA_NEWS_MINUTI_PRIMA)
     dopo = timedelta(minutes=FINESTRA_NEWS_MINUTI_DOPO)
 
@@ -115,12 +129,13 @@ def calendario_utilizzabile(
     eventi: Optional[Sequence[EventoNews]],
     eta_ore: Optional[float],
 ) -> bool:
-    """PA-55 — Il calendario news e' disponibile e abbastanza fresco?
+    """Il calendario news c'e' ed e' abbastanza fresco?
 
-    Se manca o e' piu' vecchio della soglia, non si opera: e' PRIN-99, e il
-    filtro news e' obbligatorio in CTX-01 #8 e SETUP-15. Operare senza sapere
-    se fra due minuti esce un dato a 3 stelle sarebbe peggio che saltare la
-    giornata.
+    Questa funzione risponde a un **fatto**, non decide niente: cosa fare
+    quando la risposta e' no lo decide `PA-55`, e sta in
+    `calendario_impone_astensione`. Le due erano una sola, e quella
+    sovrapposizione rendeva impossibile cambiare la politica senza far
+    mentire il nome.
 
     Qui `eventi` vuoto significa "nessun evento rilevante", ed e' uno stato
     valido: bloccare su quello fermerebbe il bot in ogni giornata tranquilla.
@@ -131,11 +146,42 @@ def calendario_utilizzabile(
     """
     from core.parametri import ETA_MASSIMA_CALENDARIO_ORE
 
-    if richiedi("PA-55") != "astieniti":
-        raise ValueError(f"PA-55: lettura non riconosciuta: {richiedi('PA-55')!r}")
     if eventi is None or eta_ore is None:
         return False
     return eta_ore <= ETA_MASSIMA_CALENDARIO_ORE
+
+
+def calendario_impone_astensione(
+    eventi: Optional[Sequence[EventoNews]],
+    eta_ore: Optional[float],
+) -> bool:
+    """PA-55 — Senza calendario utilizzabile, ci si astiene oppure si opera?
+
+    Sono le due letture che il documento ammette, e la scelta e' in `SCELTE`:
+
+    - **`astieniti`** e' il default e la lettura coerente con `PRIN-99`: in
+      presenza di dati mancanti non si opera, e un trade saltato costa zero.
+    - **`opera`** e' quella in vigore, scelta dall'autore il 2026-09-17. Il
+      bot lavora anche senza calendario, o con un calendario vecchio.
+
+    Vale la pena essere espliciti su cosa comporta la seconda, perche' e' il
+    genere di cosa che non lascia traccia. `CTX-02` vieta di aprire dentro la
+    finestra di una news a tre stelle; senza calendario non c'e' alcun evento
+    contro cui confrontare l'orario, quindi il divieto **non esiste piu'**.
+    Con un calendario vecchio e' peggio, non meglio: gli eventi che contiene
+    sono passati, `dentro_finestra_news` non trova mai nulla, e il filtro
+    risulta acceso mentre e' spento.
+
+    Chi legge deve poter tornare indietro cambiando una riga in `SCELTE`.
+    """
+    from core.parametri import richiedi
+
+    lettura = richiedi("PA-55")
+    if lettura not in ("astieniti", "opera"):
+        raise ValueError(f"PA-55: lettura non riconosciuta: {lettura!r}")
+    if lettura == "opera":
+        return False
+    return not calendario_utilizzabile(eventi, eta_ore)
 
 
 # ===========================================================================

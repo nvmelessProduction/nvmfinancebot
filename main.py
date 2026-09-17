@@ -452,18 +452,22 @@ def _annuncia_il_conto(cfg) -> None:
 
 
 def _prepara_calendario() -> None:
-    """Crea il calendario news se manca, e dice a voce alta se e' vuoto.
+    """Crea il calendario news se manca, e dice cosa comporta averlo vuoto.
 
-    Senza calendario il bot non opera (`PA-55`), e il messaggio che dava —
-    "calendario assente" a ogni valutazione — non diceva ne' che bastava un
-    file, ne' dove metterlo. Il file lo creiamo noi; riempirlo resta un
-    lavoro umano, e finche' e' vuoto e' giusto che il bot stia fermo, ma
-    deve saperlo chi lo ha acceso.
+    Cosa comporta dipende da `PA-55`, e il messaggio deve seguirlo. Quando la
+    lettura era `astieniti` questa funzione annunciava "IL BOT NON OPERERA'"
+    ed era vero; con `opera` la stessa riga sarebbe una bugia detta
+    all'accensione, e chi la legge starebbe tranquillo per il motivo
+    sbagliato.
     """
     from pathlib import Path
 
     from core import calendario
-    from core.parametri import PERCORSO_CALENDARIO_NEWS
+    from core.parametri import (
+        ETA_MASSIMA_CALENDARIO_ORE,
+        PERCORSO_CALENDARIO_NEWS,
+        richiedi,
+    )
 
     percorso = Path(PERCORSO_CALENDARIO_NEWS)
     if not percorso.exists():
@@ -474,22 +478,49 @@ def _prepara_calendario() -> None:
             log.exception("impossibile creare il calendario news in %s", percorso)
             return
 
-    eventi, _, motivo = calendario.carica(percorso, datetime.now(timezone.utc))
+    eventi, eta, motivo = calendario.carica(percorso, datetime.now(timezone.utc))
     if eventi:
         log.info("calendario news: %s", motivo)
+        if eta is not None and eta > ETA_MASSIMA_CALENDARIO_ORE:
+            # Con PA-55 = opera un calendario vecchio non ferma nulla, ed e'
+            # proprio per questo che va detto: gli eventi che contiene sono
+            # passati, quindi CTX-02 non trovera' mai nulla contro cui
+            # bloccare. Il filtro risulta acceso mentre e' spento.
+            log.warning(
+                "il calendario news ha %.0f ore: gli eventi dentro sono "
+                "passati, quindi CTX-02 non blocchera' nulla. Aggiornalo.", eta)
+        return
+
+    if richiedi("PA-55") == "astieniti":
+        log.warning("=" * 60)
+        log.warning("IL BOT NON OPERERA' finche' il calendario news e' vuoto.")
+        log.warning("Apri %s e aggiungi una riga per ogni notizia, in orario UTC:", percorso)
+        log.warning("   data_ora_utc,valuta,stelle,descrizione")
+        log.warning("   2026-09-11T12:30:00Z,USD,3,Non-Farm Payrolls")
+        log.warning("Mettici anche gli eventi a una e due stelle: servono a")
+        log.warning("distinguere una giornata tranquilla da un file mai compilato.")
+        log.warning("=" * 60)
+        notifier.invia(
+            "nvmfinancebot avviato, ma NON operera': il calendario news e' vuoto.\n"
+            f"Compila {percorso} e riavvia."
+        )
         return
 
     log.warning("=" * 60)
-    log.warning("IL BOT NON OPERERA' finche' il calendario news e' vuoto.")
-    log.warning("Apri %s e aggiungi una riga per ogni notizia, in orario UTC:", percorso)
+    log.warning("Calendario news vuoto. Il bot OPERERA' lo stesso (PA-55).")
+    log.warning("Quello che perdi e' CTX-02: il divieto di aprire da 30 minuti")
+    log.warning("prima a 30 minuti dopo una notizia a tre stelle. Senza")
+    log.warning("calendario non c'e' alcun evento contro cui confrontare")
+    log.warning("l'orario, quindi quel divieto non esiste: il bot puo' aprire")
+    log.warning("un minuto prima di un NFP o di un CPI.")
+    log.warning("Per riaccenderlo basta compilare %s:", percorso)
     log.warning("   data_ora_utc,valuta,stelle,descrizione")
     log.warning("   2026-09-11T12:30:00Z,USD,3,Non-Farm Payrolls")
-    log.warning("Mettici anche gli eventi a una e due stelle: servono a")
-    log.warning("distinguere una giornata tranquilla da un file mai compilato.")
     log.warning("=" * 60)
     notifier.invia(
-        "nvmfinancebot avviato, ma NON operera': il calendario news e' vuoto.\n"
-        f"Compila {percorso} e riavvia."
+        "nvmfinancebot avviato. Il calendario news e' vuoto: il bot opera "
+        "lo stesso (PA-55), ma il filtro news CTX-02 e' spento e puo' "
+        "aprire a ridosso di un dato ad alto impatto."
     )
 
 

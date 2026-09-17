@@ -106,6 +106,41 @@ def prova_dxy(adesso: datetime) -> bool:
     return True
 
 
+def prova_calendario(adesso: datetime) -> bool:
+    """Il calendario non ferma piu' il bot, ma quel che perde va detto."""
+    from pathlib import Path
+
+    from core import calendario
+    from core.parametri import (
+        ETA_MASSIMA_CALENDARIO_ORE,
+        PERCORSO_CALENDARIO_NEWS,
+        richiedi,
+    )
+
+    print("\n--- Il calendario news (CTX-02, PA-55) --------------------------")
+    lettura = richiedi("PA-55")
+    eventi, eta, motivo = calendario.carica(Path(PERCORSO_CALENDARIO_NEWS), adesso)
+
+    if eventi:
+        if eta is not None and eta > ETA_MASSIMA_CALENDARIO_ORE:
+            riga(FORSE, f"{len(eventi)} eventi ma il file ha {eta:.0f} ore: "
+                        f"sono tutti passati, CTX-02 non blocchera' nulla")
+        else:
+            riga(OK, f"{len(eventi)} eventi, {eta:.0f} ore: CTX-02 funziona")
+        return True
+
+    if lettura == "astieniti":
+        riga(NO, f"calendario non utilizzabile ({motivo}) e PA-55 vale "
+                 f"'astieniti': il bot non aprira' nulla")
+        return False
+
+    riga(FORSE, f"calendario non utilizzabile ({motivo}), ma PA-55 vale "
+                f"'opera': il bot lavora lo stesso")
+    riga(FORSE, "CTX-02 e' spento: nessun divieto di aprire a ridosso di una "
+                "notizia a tre stelle")
+    return True
+
+
 def prova_catena(adesso: datetime) -> bool:
     """L'alert che il ciclo costruisce arriva davvero fino a una decisione?"""
     print("\n--- La catena, un alert alla volta ------------------------------")
@@ -172,6 +207,7 @@ def main() -> int:
     esiti = [
         prova_archivio(adesso),
         prova_dxy(adesso),
+        prova_calendario(adesso),
         prova_catena(adesso),
     ]
 

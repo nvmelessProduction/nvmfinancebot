@@ -365,7 +365,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         return _non_operare(foto.strumento, ["ESCL-05"], "strumento fuori da PRIN-08")
 
     # --- 1. Il calendario news e' utilizzabile? (PA-55) -------------------
-    if not ctx.calendario_utilizzabile(foto.eventi_news, foto.eta_calendario_ore):
+    if ctx.calendario_impone_astensione(foto.eventi_news, foto.eta_calendario_ore):
         return _non_operare(
             foto.strumento, ["PRIN-99"],
             "calendario news assente o troppo vecchio: PA-55 impone astensione",

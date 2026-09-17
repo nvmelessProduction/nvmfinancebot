@@ -169,7 +169,6 @@ class TestAstensioni:
             {"pnl_giornaliero": -500.0},
             {"equity": 1.0, "passo_broker": 1.0},
             {"strumento": "BTCUSD"},
-            {"eta_calendario_ore": None},
             {"candele_per_tf": {TF.H4: []}},
         ]
         for caso in casi:
@@ -207,8 +206,31 @@ class TestAstensioni:
     def test_escl05_strumento_fuori_universo(self) -> None:
         assert "ESCL-05" in self.blocchi(strumento="BTCUSD")
 
-    def test_pa55_calendario_assente(self) -> None:
+    def test_pa55_senza_calendario_si_opera(self) -> None:
+        """La lettura in vigore: il calendario assente non ferma piu' nulla.
+
+        Era `astieniti`, coerente con PRIN-99. L'autore ha deciso `opera` il
+        2026-09-17. Qui si verifica che la scelta abbia davvero effetto: se
+        tornasse a bloccare senza che nessuno abbia toccato SCELTE, sarebbe
+        una regressione silenziosa.
+        """
+        assert "PRIN-99" not in self.blocchi(eta_calendario_ore=None)
+        assert "PRIN-99" not in self.blocchi(eventi_news=None,
+                                             eta_calendario_ore=None)
+
+    def test_pa55_la_lettura_astieniti_funziona_ancora(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Il meccanismo non e' morto: si torna indietro con una riga."""
+        from core import parametri
+
+        monkeypatch.setitem(parametri.SCELTE, "PA-55", "astieniti")
         assert "PRIN-99" in self.blocchi(eta_calendario_ore=None)
+
+    def test_ctx02_funziona_ancora_quando_il_calendario_c_e(self) -> None:
+        """PA-55 cambia cosa succede SENZA calendario, non con."""
+        assert "CTX-02" in self.blocchi(
+            eventi_news=[EventoNews(ADESSO, "USD", 3)], eta_calendario_ore=1.0)
 
     def test_gest01_rapporto_sotto_soglia(self) -> None:
         """Spike larga: il rendimento su TP1 non copre il rischio.

@@ -990,6 +990,7 @@ PUNTI_APERTI: Final[dict[str, PuntoAperto]] = {
         "Comportamento se il calendario news non e' disponibile al momento "
         "della valutazione di un setup.",
         bloccante=False,
+        letture=("astieniti", "opera"),
         default="astieniti",
         motivo_default=(
             "PRIN-99: in presenza di dati mancanti non si opera. Un trade "
@@ -1076,6 +1077,30 @@ SCELTE: dict[str, Any] = {
     "PA-63": "non_aprire_la_nuova",         # RISK-11 + PRIN-99
     "PA-46": 2.0,                           # moltiplicatore dello spread corrente
     "PA-54": "file_locale",                 # dati/news.csv, nessuna rete
+
+    # --- SCELTE DELL'AUTORE che si scostano dai documenti ---------------
+    #
+    # PA-55, deciso il 2026-09-17 su istruzione esplicita: *"Il calendario
+    # deve restare senza aggiornamento obbligatorio ogni 24h, se non c'e'
+    # calendario opera normalmente."*
+    #
+    # Il default era `astieniti`, ed era la lettura coerente con PRIN-99:
+    # dati mancanti, nessuna operazione. Questa lettura la ribalta, e cosa
+    # comporta va scritto qui e non lasciato scoprire dopo.
+    #
+    # `CTX-02` vieta di aprire dentro la finestra di una news a tre stelle.
+    # Senza calendario quel divieto non diventa meno preciso: **non esiste
+    # piu'**, perche' non c'e' nessun evento contro cui confrontare l'orario.
+    # Il bot puo' aprire un minuto prima di un NFP o di un CPI. Lo stesso
+    # vale per un calendario vecchio: gli eventi che contiene sono tutti
+    # passati, quindi `dentro_finestra_news` non trova mai nulla e il filtro
+    # e' spento pur essendo formalmente acceso -- che e' il modo piu'
+    # silenzioso di non avere un filtro.
+    #
+    # Resta acceso tutto il resto: `SETUP-15` continua a citare `RISK-13`,
+    # e quando il calendario c'e' ed e' fresco il filtro funziona come prima.
+    # Cambia solo cosa succede quando manca.
+    "PA-55": "opera",
 
     # --- MISURE: risolte leggendo, non decidendo ------------------------
     "PA-62": "distanza_relativa",           # k costante non esiste per 6J e 6S

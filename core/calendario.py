@@ -136,9 +136,14 @@ def carica(
         # Trattarlo come vuoto-ma-valido significherebbe spegnere in silenzio
         # un filtro che CTX-01 #8 e SETUP-15 rendono obbligatorio, e bastava
         # creare il file per farlo.
+        # Cosa comporta il vuoto lo decide PA-55, non questa funzione: qui
+        # si riporta il fatto. Dire "il bot non opera" era vero con la
+        # lettura `astieniti` ed e' falso con `opera` -- e un messaggio che
+        # promette un'astensione che non avverra' e' peggio di nessun
+        # messaggio.
         return None, None, (
             f"calendario vuoto: {percorso} esiste ma non contiene nemmeno un "
-            f"evento. Finche' non lo compili il bot non opera (PA-55)"
+            f"evento, quindi CTX-02 non ha nulla contro cui bloccare"
         )
 
     eta = eta_ore(percorso, adesso)
@@ -148,8 +153,8 @@ def carica(
 def scrivi_modello(percorso: str | Path) -> None:
     """Crea un calendario di esempio, con la sola intestazione e un commento.
 
-    Serve a partire: senza file il bot non opera, e un file vuoto ma valido e'
-    meglio di un errore alla prima valutazione.
+    Serve a partire: un file vuoto ma valido e' meglio di un errore alla
+    prima valutazione, e da' a chi legge un posto dove scrivere.
     """
     percorso = Path(percorso)
     percorso.parent.mkdir(parents=True, exist_ok=True)
