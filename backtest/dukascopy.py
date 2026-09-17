@@ -41,6 +41,7 @@ from typing import Optional, Sequence
 import httpx
 
 from core.definizioni import Candela
+from core.fonte_dukascopy import freno
 
 BASE = "https://datafeed.dukascopy.com/datafeed"
 CAPO = {"User-Agent": "nvmfinancebot/1.0 (ricerca, non commerciale)"}
@@ -87,24 +88,39 @@ ATTESA_MASSIMA_SEC = 4.0
 
 
 def _scarica(percorso: str, tentativi: int = 4) -> Optional[bytes]:
-    """Un file, con attesa crescente sui 503. None se non esiste davvero."""
+    """Un file, con attesa crescente sui 503. None se non esiste davvero.
+
+    Usa lo stesso freno condiviso di `core/fonte_dukascopy.py`, e non per
+    ordine ma per necessita': questo scaricatore e' quello che gira quando si
+    rilancia `importa_dukascopy.py` per riempire i mesi mancanti, cioe'
+    esattamente quando la fonte e' gia' irritata. Chiede anche il doppio
+    degli altri, perche' prende BID e ASK.
+
+    Senza il freno ciascuno dei dodici lavoratori raddoppiava solo la propria
+    attesa, con un tetto di quattro secondi: la pressione complessiva non
+    calava mai, ed e' cosi' che Dukascopy ha smesso di rispondere.
+    """
     cache = DEPOSITO / percorso.replace("/", "_")
     if cache.exists():
         return cache.read_bytes() or None
     _assicura_deposito()
     attesa = 0.5
     for _ in range(tentativi):
+        freno.aspetta()
         try:
             r = httpx.get(f"{BASE}/{percorso}", headers=CAPO, timeout=60,
                           follow_redirects=True)
             if r.status_code == 200:
+                freno.contento()
                 cache.write_bytes(r.content)
                 return r.content or None
             if r.status_code == 404:
+                freno.contento()
                 cache.write_bytes(b"")          # assente per davvero
                 return None
+            freno.protesta()
         except Exception:
-            pass
+            freno.protesta()
         time.sleep(attesa)
         attesa = min(attesa * 2, ATTESA_MASSIMA_SEC)
     return None
@@ -149,7 +165,7 @@ def orarie(simbolo: str, da: int, a: int) -> tuple[tuple[Candela, ...], tuple[Ca
     for lato in ("BID", "ASK"):
         righe = []
         fatti = 0
-        with cf.ThreadPoolExecutor(max_workers=12) as pool:
+        with cf.ThreadPoolExecutor(max_workers=4) as pool:
             lavori = {pool.submit(mese, simbolo, anno, m, lato): (anno, m)
                       for anno, m in mesi}
             for compito in cf.as_completed(lavori):

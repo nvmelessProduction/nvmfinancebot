@@ -11,6 +11,12 @@ mai state prese.
 Questo script percorre la catena **una volta**, sullo stato reale della
 macchina, e dice a quale anello si ferma. Non apre nulla e non scrive nulla.
 
+Una cosa pero' la fa, e va detta: se una valutazione arriva fino a BUY o
+SELL, il giudizio discrezionale parte davvero e consuma una chiamata alle
+API. E' il comportamento giusto -- verifica anche quel collegamento -- ma non
+deve essere una sorpresa. Nessun ordine viene inviato al broker: l'esecuzione
+sta in `main.py` e questo script non la chiama.
+
 Le cinque cose che ha gia' sbagliato in silenzio, e che qui si vedono subito:
 
 1. l'alert costruito dal ciclo non era leggibile da chi lo riceve;
