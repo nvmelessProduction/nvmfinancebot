@@ -349,7 +349,10 @@ class FornitoreTradingView:
         adesso = datetime.now(timezone.utc)
         eventi, eta, motivo = _calendario(adesso)
         if eventi is None:
-            log.error("calendario news non utilizzabile: %s", motivo)
+            # WARNING e non ERROR: con `PA-55 = opera` questa non e' piu'
+            # un'avaria ma una condizione dichiarata, e un ERROR ripetuto a
+            # ogni valutazione insegna a ignorare gli ERROR.
+            log.warning("calendario news non utilizzabile: %s", motivo)
 
         # Le fasi del gap sono sorveglianza (DEF-43, DEF-45) e dipendono dai
         # prezzi scambiati fra una chiusura e l'altra. Con soli alert a

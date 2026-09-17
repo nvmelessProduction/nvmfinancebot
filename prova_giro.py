@@ -29,6 +29,7 @@ Le cinque cose che ha gia' sbagliato in silenzio, e che qui si vedono subito:
 
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -197,8 +198,25 @@ def prova_catena(adesso: datetime) -> bool:
     return tutto_bene
 
 
+def zittisci_i_log() -> None:
+    """Il rapporto deve restare leggibile.
+
+    Costruire una fotografia produce una riga di log per ogni timeframe di
+    ogni strumento -- DEF-26 che segnala la storia corta, il calendario, la
+    bias del DXY. Sono informazioni giuste, e in esercizio servono; qui sono
+    quaranta righe per ognuna delle quarantadue valutazioni, e il rapporto
+    che questo script esiste per produrre finisce fuori schermo.
+
+    Si tengono solo gli ERROR: quelli riguardano la catena, non la storia.
+    """
+    for nome in ("fornitore", "dukascopy", "duka_minuti", "stato",
+                 "mercato_duka", "strategia", "motore"):
+        logging.getLogger(nome).setLevel(logging.ERROR)
+
+
 def main() -> int:
     configura_log()
+    zittisci_i_log()
     storage.inizializza()
     adesso = datetime.now(timezone.utc)
     cfg = impostazioni()
@@ -217,7 +235,11 @@ def main() -> int:
         prova_catena(adesso),
     ]
 
-    print("\n-----------------------------------------------------------------")
+    print("\n=================================================================")
+    nomi = ("archivio", "DXY", "calendario", "catena")
+    for nome, esito in zip(nomi, esiti):
+        print(f"  {'OK  ' if esito else 'NO  '}  {nome}")
+    print("=================================================================")
     if all(esiti):
         print("La catena regge: ogni anello risponde. Un NONE qui e' un'astensione")
         print("vera, non un guasto travestito.")
