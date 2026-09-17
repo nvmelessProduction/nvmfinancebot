@@ -348,3 +348,75 @@ class ProvaValutazione(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProvaDXYVecchio(unittest.TestCase):
+    """Un archivio del DXY vecchio produceva una bias come se fosse di oggi.
+
+    DEF-26 conta le candele e non ne guarda la data. Un archivio fermo a
+    settimane prima ne ha in abbondanza, quindi una bias esce, e quella bias
+    apre o blocca ogni operazione su cinque coppie su sei. Misurato: sei
+    costituenti scaricati a meta' per un guasto di rete, indice fermo a
+    quarantasette giorni prima, `bias di comando LONG` stampato come se
+    niente fosse.
+    """
+
+    def storico(self, fine: datetime, quante: int = 40) -> dict:
+        """Una serie che sale in accettazione: DEF-16 ci legge LONG."""
+        from core.parametri import TF_BIAS
+
+        fuori = {}
+        for tf in TF_BIAS:
+            fuori[tf] = tuple(
+                Candela(fine - timedelta(days=quante - 1 - n),
+                        100.0 + n, 100.0 + n + 1.5, 100.0 + n - 0.2,
+                        100.0 + n + 1.2)
+                for n in range(quante)
+            )
+        return fuori
+
+    def test_archivio_fresco_da_una_bias(self) -> None:
+        from core.stato import bias_comando_dxy
+
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        bias = bias_comando_dxy(self.storico(adesso - timedelta(hours=2)), adesso)
+        self.assertNotEqual(bias.value, "NESSUNA")
+
+    def test_archivio_vecchio_non_da_nessuna_bias(self) -> None:
+        from core.parametri import RITARDO_MASSIMO_DXY_GIORNI
+        from core.stato import bias_comando_dxy
+
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        vecchio = adesso - timedelta(days=RITARDO_MASSIMO_DXY_GIORNI + 1)
+        self.assertEqual(
+            bias_comando_dxy(self.storico(vecchio), adesso).value, "NESSUNA",
+            "una bias del DXY vecchia di giorni non e' una bias: e' un guasto")
+
+    def test_il_ponte_di_natale_non_e_un_guasto(self) -> None:
+        """La chiusura piu' lunga che il forex conosce: fine settimana + festa.
+
+        Con la soglia a quattro giorni il bot si sarebbe zittito da solo il
+        28 dicembre, senza che niente fosse rotto.
+        """
+        from core.stato import bias_comando_dxy
+
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        bias = bias_comando_dxy(
+            self.storico(adesso - timedelta(days=4, hours=12)), adesso)
+        self.assertNotEqual(bias.value, "NESSUNA",
+                            "quattro giorni e mezzo sono calendario, non guasto")
+
+    def test_una_settimana_e_un_guasto(self) -> None:
+        from core.stato import bias_comando_dxy
+
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        self.assertEqual(
+            bias_comando_dxy(self.storico(adesso - timedelta(days=7)),
+                             adesso).value,
+            "NESSUNA", "il mercato non chiude mai per una settimana")
+
+    def test_archivio_vuoto(self) -> None:
+        from core.stato import bias_comando_dxy
+
+        adesso = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+        self.assertEqual(bias_comando_dxy({}, adesso).value, "NESSUNA")

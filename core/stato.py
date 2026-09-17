@@ -23,7 +23,7 @@ scorciatoia.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Mapping, Optional, Sequence
 
 from core.definizioni import (
@@ -45,15 +45,20 @@ from core.definizioni import (
     presa_key_level,
     timeframe_utilizzabile,
 )
+
 from core.motore import candele_visibili
+from core.log import diario
 from core.parametri import (
     LOOKBACK_ANNI,
     ORDINE_SCANSIONE_TARGET,
+    RITARDO_MASSIMO_DXY_GIORNI,
     TF,
     TF_BIAS,
     TF_KEY_LEVEL,
     ordine_scansione_gap,
 )
+
+log = diario("stato")
 
 # Uno storico e' una mappa timeframe -> candele chiuse, in ordine qualsiasi.
 Storico = Mapping[TF, Sequence[Candela]]
@@ -128,8 +133,40 @@ def bias_comando_dxy(storico_dxy: Storico, istante: datetime) -> Bias:
     `NESSUNA` per DEF-26 e `bias_comando` torna `NESSUNA`: e SETUP-19 dice
     che con bias DXY NESSUNA **non si opera su alcuna coppia**. E'
     l'astensione giusta, non un caso degenere da aggirare.
+
+    Assente e corto non sono pero' gli unici modi in cui questo archivio puo'
+    essere inservibile. Il terzo e' **vecchio**, e DEF-26 non lo vede: conta
+    le candele, non ne guarda la data. Un archivio del DXY fermo a settimane
+    prima ne ha quante se ne vuole, quindi produce una bias, e quella bias
+    apre o blocca ogni operazione su cinque coppie su sei come se fosse di
+    oggi. E' successo: sei costituenti scaricati a meta' per un guasto di
+    rete, l'indice fermo a quarantasette giorni prima, e nessuna riga di log
+    a dirlo -- perche' dal conteggio un archivio vecchio e uno aggiornato
+    sono identici.
+
+    Oltre `RITARDO_MASSIMO_DXY_GIORNI` la bias non e' vecchia: non si sa. E
+    non sapere, qui, si scrive `NESSUNA`.
     """
     from core.setup import bias_comando
+
+    piu_recente = max(
+        (c.orario for candele in storico_dxy.values() for c in candele),
+        default=None,
+    )
+    if piu_recente is None:
+        return Bias.NESSUNA
+    if piu_recente.tzinfo is None:
+        piu_recente = piu_recente.replace(tzinfo=timezone.utc)
+    ritardo = istante - piu_recente
+    if ritardo > timedelta(days=RITARDO_MASSIMO_DXY_GIORNI):
+        log.warning(
+            "archivio del DXY fermo a %s, %.1f giorni fa: la bias di comando "
+            "non e' piu' utilizzabile e SETUP-19 non abilita nulla. Rilancia "
+            "`python importa_dxy.py`.",
+            piu_recente.strftime("%Y-%m-%d %H:%M"),
+            ritardo.total_seconds() / 86400,
+        )
+        return Bias.NESSUNA
 
     comando, _ = bias_comando(bias_per_timeframe(storico_dxy, istante), {})
     return comando

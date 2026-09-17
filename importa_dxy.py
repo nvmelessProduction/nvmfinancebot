@@ -33,27 +33,41 @@ from datetime import datetime, timezone
 from core import storage
 from core.definizioni import Candela
 from core.duka_dxy import NOME_ARCHIVIO, PESI, componi
-from core.fonte_dukascopy import orarie_del_mese
+from core.fonte_dukascopy import MeseNonScaricato, orarie_del_mese
 from core.log import configura as configura_log
 from core.mercato_duka import costruisci
 
 ORIGINE = "dukascopy"
 
 
-def scarica(da: int, a: int, paralleli: int = 12) -> dict[str, list[Candela]]:
-    """Le orarie dei sei costituenti fra due anni."""
+def scarica(
+    da: int, a: int, paralleli: int = 12
+) -> tuple[dict[str, list[Candela]], list[str]]:
+    """Le orarie dei sei costituenti fra due anni, e cosa non e' arrivato.
+
+    I mesi non arrivati si restituiscono invece di ignorarli. Un mese che
+    non arriva e un mese che non esiste producevano la stessa tupla vuota, e
+    la conseguenza era un archivio troncato annunciato come completo: sei
+    coppie a 10.000 ore ciascuna, la loro intersezione ferma a quarantasette
+    giorni prima, e sotto la scritta "Fatto".
+    """
     mesi = [(anno, m) for anno in range(da, a + 1) for m in range(1, 13)]
     serie: dict[str, list[Candela]] = {s: [] for s in PESI}
+    falliti: list[str] = []
     lavori_totali = len(mesi) * len(PESI)
     fatti = 0
 
     with cf.ThreadPoolExecutor(max_workers=paralleli) as pool:
         lavori = {
-            pool.submit(orarie_del_mese, s, anno, mese): s
+            pool.submit(orarie_del_mese, s, anno, mese, "BID", True): (s, anno, mese)
             for s in PESI for anno, mese in mesi
         }
         for compito in cf.as_completed(lavori):
-            serie[lavori[compito]].extend(compito.result())
+            simbolo, anno, mese = lavori[compito]
+            try:
+                serie[simbolo].extend(compito.result())
+            except MeseNonScaricato:
+                falliti.append(f"{simbolo} {anno}-{mese:02d}")
             fatti += 1
             if fatti % 24 == 0 or fatti == lavori_totali:
                 print(f"    {fatti:4d}/{lavori_totali} mesi", flush=True)
@@ -61,7 +75,7 @@ def scarica(da: int, a: int, paralleli: int = 12) -> dict[str, list[Candela]]:
     for s in serie:
         serie[s].sort(key=lambda c: c.orario)
         print(f"  {s:8s} {len(serie[s]):7d} ore")
-    return serie
+    return serie, falliti
 
 
 def main() -> int:
@@ -77,7 +91,7 @@ def main() -> int:
     storage.inizializza()
 
     print(f"DXY dai sei costituenti ({scelte.da}-{scelte.a})")
-    serie = scarica(scelte.da, scelte.a)
+    serie, falliti = scarica(scelte.da, scelte.a)
 
     dxy = componi(serie)
     if not dxy:
@@ -99,8 +113,39 @@ def main() -> int:
         nuove, _ = storage.salva_candele(righe, origine=ORIGINE)
         print(f"  {tf.value:9s} {len(candele):7d} candele  ({nuove} nuove)")
 
-    print(f"\nFatto. SETUP-19 ha la bias su cui decidere.")
-    return 0
+    # --- Cio' che manca si dice PRIMA di dichiarare finito ----------------
+    #
+    # L'indice esiste solo nelle ore in cui TUTTI E SEI i costituenti hanno
+    # una candela: un mese mancante a uno solo di essi cancella quel mese
+    # dall'indice. Per questo il buco va detto qui e non lasciato dedurre dai
+    # conteggi, che sembrano tutti generosi.
+    ritardo = (oggi - dxy[-1].orario).total_seconds() / 86400
+    completo = True
+
+    if falliti:
+        completo = False
+        print(f"\n  {len(falliti)} mesi NON scaricati (rete, non assenza):")
+        for f in sorted(falliti)[:12]:
+            print(f"    {f}")
+        if len(falliti) > 12:
+            print(f"    ... e altri {len(falliti) - 12}")
+
+    # Tre giorni coprono un fine settimana lungo. Oltre, l'indice e' vecchio.
+    if ritardo > 3:
+        completo = False
+        print(f"\n  L'indice si ferma a {dxy[-1].orario:%Y-%m-%d %H:%M}, "
+              f"{ritardo:.0f} giorni fa.")
+
+    if completo:
+        print("\nFatto. SETUP-19 ha la bias su cui decidere.")
+        return 0
+
+    print("\nARCHIVIO INCOMPLETO. Le candele scaricate sono in archivio e non")
+    print("vanno perse: rilancia `python importa_dxy.py` e riprovera' SOLO i")
+    print("mesi mancanti. Ripeti finche' questo messaggio non compare piu'.")
+    print("Finche' compare, la bias del DXY e' vecchia o assente e SETUP-19")
+    print("si comporta di conseguenza.")
+    return 1
 
 
 if __name__ == "__main__":

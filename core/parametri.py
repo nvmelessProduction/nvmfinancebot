@@ -167,6 +167,25 @@ TOLLERANZA_CONFRONTO_PREZZI: Final[float] = 0.0
 LOOKBACK_ANNI: Final[int] = 5
 MINIMO_CANDELE_CHIUSE_PER_TF: Final[int] = 3
 
+# Quanti giorni puo' essere vecchio l'archivio del DXY prima che la sua bias
+# smetta di valere. DEF-26 conta le candele e non guarda la data: una serie
+# ferma a quarantasette giorni fa ne ha in abbondanza, quindi una bias la
+# produce, e SETUP-19 ci fa passare o bloccare ogni operazione su cinque
+# coppie su sei. E' successo davvero, in silenzio, perche' un archivio
+# vecchio e uno aggiornato hanno lo stesso aspetto dal conteggio.
+#
+# Sei giorni, e la soglia va scelta guardando il calendario vero del forex,
+# non a occhio. La chiusura piu' lunga e' il fine settimana: venerdi' 22:00
+# UTC fino a domenica 22:00, cioe' due giorni. A Natale e Capodanno il ponte
+# con il fine settimana puo' arrivare a quattro giorni e mezzo.
+#
+# Con quattro giorni -- il primo valore che avevo scritto -- il bot si
+# sarebbe zittito da solo il 28 dicembre, senza che niente fosse rotto. Con
+# sei c'e' un giorno e mezzo di margine sopra la chiusura piu' lunga che
+# esista, e un guasto vero lo supera comunque: l'archivio non aggiornato che
+# ha fatto nascere questo parametro era indietro di quarantasette giorni.
+RITARDO_MASSIMO_DXY_GIORNI: Final[int] = 6
+
 # DEF-44. Unico indicatore ammesso per generare un dato (ESCL-15 a).
 RSI_PERIODO: Final[int] = 14
 

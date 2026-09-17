@@ -75,6 +75,12 @@ def _decodifica(grezzo: bytes, inizio: datetime, scala: float) -> list[Candela]:
     return fuori
 
 
+# Quali percorsi hanno risposto 404, cioe' "questo mese non esiste". Serve a
+# `severo`: senza, un 404 e un guasto di rete sono indistinguibili da fuori,
+# perche' entrambi tornano None.
+_e_mancante: dict[str, bool] = {}
+
+
 def _con_tentativi(
     percorso: str, etichetta: str, tentativi: int = 5
 ) -> Optional[httpx.Response]:
@@ -106,7 +112,8 @@ def _con_tentativi(
             continue
 
         if risposta.status_code == 404:
-            return None                    # non esiste: non e' un guasto
+            _e_mancante[percorso] = True   # non esiste: non e' un guasto
+            return None
         if risposta.status_code == 200:
             return risposta
 
@@ -120,19 +127,46 @@ def _con_tentativi(
     return None
 
 
+class MeseNonScaricato(Exception):
+    """I tentativi sono finiti e il mese non e' arrivato.
+
+    Esiste per separare due esiti che `orarie_del_mese` restituiva allo
+    stesso modo -- una tupla vuota -- e che vogliono due reazioni opposte:
+
+    - **il mese non c'e'** (404: e' nel futuro, o Dukascopy non l'ha ancora
+      pubblicato). Chi semina va avanti;
+    - **il mese non e' arrivato** (503 a raffica, connessione caduta). Chi
+      semina ha in mano un archivio con un buco, e se lo tratta come "quel
+      mese e' vuoto" produce una serie troncata dichiarando di aver
+      finito. E' successo: un archivio del DXY fermo a 47 giorni fa, con
+      scritto sotto "Fatto".
+
+    Il ciclo dal vivo non la vuole -- per lui un giro a vuoto e' normale e
+    riprova dopo -- quindi si alza solo con `severo=True`.
+    """
+
+
 def orarie_del_mese(
-    simbolo: str, anno: int, mese: int, lato: str = "BID"
+    simbolo: str, anno: int, mese: int, lato: str = "BID", severo: bool = False
 ) -> tuple[Candela, ...]:
     """Le candele orarie di un mese. Vuoto se il mese non esiste ancora.
 
     `mese` e' 1-12 come lo scrive un essere umano; l'URL vuole 0-11 e la
     conversione avviene qui, una volta sola.
+
+    Con `severo` un mese che **non e' arrivato** alza `MeseNonScaricato`
+    invece di sembrare vuoto: lo usa chi semina, per cui la differenza fra
+    "non c'e'" e "non e' arrivato" e' la differenza fra un archivio completo
+    e uno bucato.
     """
     percorso = (
         f"{simbolo}/{anno}/{mese - 1:02d}/{lato}_candles_hour_1.bi5"
     )
-    risposta = _con_tentativi(percorso, f"{simbolo} {anno}-{mese:02d}")
+    etichetta = f"{simbolo} {anno}-{mese:02d}"
+    risposta = _con_tentativi(percorso, etichetta)
     if risposta is None:
+        if severo and not _e_mancante.get(percorso):
+            raise MeseNonScaricato(etichetta)
         return ()
     if not risposta.content:
         return ()
