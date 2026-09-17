@@ -20,6 +20,10 @@ venv/
 .vscode/
 .idea/
 
+# Impostazioni locali di Claude Code: permessi di questa macchina, non del
+# progetto.
+.claude/
+
 # Calendario news locale: stato di questa macchina, non del progetto.
 # Il modello dati/news.example.csv resta tracciato, cosi' chi scarica il
 # progetto trova la cartella e sa che formato deve avere il file.

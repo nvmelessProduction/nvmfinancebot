@@ -37,6 +37,7 @@ from core import pannello
 from core.models import AlertIn, Decision, Esito
 from core.mercato import mercato
 from core.mercato_duka import mercato_duka
+from core.mercato_mt5 import mercato_mt5
 from core.sentinella import sentinella
 from core.simboli import simbolo_esecuzione
 from core.strategy import valuta
@@ -58,7 +59,7 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
     log.info("=" * 60)
     log.info("avvio impianto | modalita' %s | archivio %s", cfg.MODE, cfg.DB_PATH)
 
-    if not cfg.webhook_configurato and cfg.FORNITORE_DATI != "mercato":
+    if not cfg.webhook_configurato and cfg.FORNITORE_DATI not in ("mercato", "mt5"):
         log.error("WEBHOOK_SECRET non impostato: /webhook rifiutera' ogni richiesta")
     if not cfg.telegram_configurato:
         log.warning("Telegram non configurato: le notifiche finiranno solo nel log")
@@ -75,7 +76,7 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         log.info("MT5 non contattato (modalita' dry_run)")
 
     # --- Fornitore dei dati di analisi ------------------------------------
-    if cfg.FORNITORE_DATI in ("tradingview", "mercato", "dukascopy"):
+    if cfg.FORNITORE_DATI in ("tradingview", "mercato", "dukascopy", "mt5"):
         from core.fornitore_tradingview import collega
 
         collega(suffisso_broker=cfg.MT5_SUFFISSO_SIMBOLI)
@@ -104,6 +105,19 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
         mercato_duka.segreto = cfg.WEBHOOK_SECRET or ""
         mercato_duka.avvia()
         log.info("candele da Dukascopy: prezzi scambiati, spread misurato")
+    elif cfg.FORNITORE_DATI == "mt5":
+        # Nessun limite di richieste, gia' connesso: risolve lo stallo di
+        # ore che Dukascopy impone quando limita questo indirizzo. H4 e'
+        # ricostruito dalle orarie sui confini di Dukascopy (vedi
+        # mercato_mt5.TIMEFRAME_DAL_VIVO); D1/W1/M1 restano quelli
+        # dell'archivio Dukascopy, meno freschi finche' non si risolve
+        # anche per loro lo stesso disallineamento di confine.
+        mercato_mt5.intervallo_sec = cfg.MERCATO_INTERVALLO_SEC
+        mercato_mt5.su_candela = processa_alert
+        mercato_mt5.segreto = cfg.WEBHOOK_SECRET or ""
+        mercato_mt5.suffisso = cfg.MT5_SUFFISSO_SIMBOLI
+        mercato_mt5.avvia()
+        log.info("candele da MT5: nessun limite di richieste, H4 ricostruito dalle orarie")
 
     # La sentinella serve se c'e' qualcosa da sorvegliare, adesso o fra poco.
     aperte = storage.posizioni_aperte()
@@ -119,6 +133,7 @@ async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     mercato.ferma()
+    mercato_mt5.ferma()
     sentinella.ferma()
     broker.disconnetti()
     log.info("impianto fermato")
@@ -545,6 +560,8 @@ def _gestisci_posizioni_aperte(alert: AlertIn) -> int:
     piu' nessuno che ne sorvegli lo stop. Al contrario, un broker chiuso e un
     archivio non aggiornato viene riconciliato dalla sentinella al giro dopo.
     """
+    from core import strategy
+
     try:
         azioni = strategy.gestisci_aperte(alert)
     except Exception:
@@ -880,7 +897,16 @@ def salute() -> dict[str, Any]:
             "valutazioni": mercato.valutazioni,
             "ultimo_errore": mercato.ultimo_errore,
         }
-    if cfg.FORNITORE_DATI in ("tradingview", "mercato"):
+    if cfg.FORNITORE_DATI == "mt5":
+        fornitore["mt5"] = {
+            "in_funzione": mercato_mt5.in_funzione,
+            "intervallo_sec": cfg.MERCATO_INTERVALLO_SEC,
+            "giri": mercato_mt5.giri,
+            "candele_raccolte": mercato_mt5.candele_nuove,
+            "valutazioni": mercato_mt5.valutazioni,
+            "ultimo_errore": mercato_mt5.ultimo_errore,
+        }
+    if cfg.FORNITORE_DATI in ("tradingview", "mercato", "mt5"):
         # La copertura dell'archivio va guardata prima di fidarsi: senza
         # storia sufficiente DEF-26 fa tacere i timeframe, e il bot non opera
         # senza che sia evidente il perche'.

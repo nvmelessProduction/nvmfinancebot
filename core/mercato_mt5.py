@@ -77,6 +77,22 @@ QUANTE: dict[TF, int] = {
     TF.H1: 800, TF.H4: 500, TF.D1: 400, TF.W1: 200, TF.M1: 120,
 }
 
+# Le uniche native da chiedere dal vivo. TF.H4 (e D1/W1/M1) di MT5 nascono
+# dal calendario del server, non da UTC: misurato su questo conto, l'H4
+# nativo chiude alle 1-5-9-13-17-21 UTC contro le 0-4-8-12-16-20 su cui ogni
+# misura del progetto e' stata fatta (+0,3613 R su 4h->15m). Usarlo live
+# sposterebbe il range su cui il CRT cerca il key level su un'altra serie,
+# senza che nulla lo segnali: stesso aspetto, range diverso.
+#
+# TF.H4 si ricostruisce dalle orarie con `aggrega_orarie` (confini UTC
+# 0/4/8/12/16/20, la stessa funzione gia' misurata identica per Dukascopy).
+# D1/W1/M1 restano quelli dell'archivio Dukascopy finche' non si risolve
+# anche per loro lo stesso disallineamento: il loro confine nativo MT5 e'
+# le 21:00 UTC fisse (misurato), mentre Dukascopy oscilla con l'ora legale
+# di New York. Restano quindi meno freschi degli intraday quando questo
+# motore e' attivo, ma sono dati veri, non un'altra costruzione.
+TIMEFRAME_DAL_VIVO: tuple[TF, ...] = (TF.MIN1, TF.MIN5, TF.MIN15, TF.H1)
+
 
 def in_candele(barre: list[dict], tf: TF) -> list[Candela]:
     """Da barre MT5 a candele del motore.
@@ -195,7 +211,8 @@ class MercatoMT5:
         simbolo = simbolo_esecuzione(strumento, self.suffisso)
         ultime: dict[TF, Candela] = {}
 
-        for tf, codice in TIMEFRAME_MT5.items():
+        for tf in TIMEFRAME_DAL_VIVO:
+            codice = TIMEFRAME_MT5[tf]
             if not self.serie_da_chiedere(strumento, tf, adesso):
                 continue
             ok, barre, messaggio = broker.candele(simbolo, codice, QUANTE[tf])
@@ -215,7 +232,48 @@ class MercatoMT5:
             self.candele_nuove += nuove
             if nuove:
                 ultime[tf] = candele[-1]
+
+        if TF.H1 in ultime:
+            nuova_h4 = self._ricostruisci_h4(strumento)
+            if nuova_h4 is not None:
+                ultime[TF.H4] = nuova_h4
         return ultime
+
+    def _ricostruisci_h4(self, strumento: str) -> Optional[Candela]:
+        """TF_H4 dalle orarie appena aggiornate, sui confini di Dukascopy.
+
+        `aggrega_orarie` raggruppa per blocchi UTC 0/4/8/12/16/20 - gli stessi
+        su cui il progetto ha misurato +0,3613 R - non sul confine nativo di
+        MT5 (1/5/9/13/17/21, misurato su questo conto). 40 orarie bastano a
+        coprire un riavvio: sono dieci blocchi da quattro, ben oltre il
+        singolo blocco che puo' essersi appena chiuso.
+        """
+        from core.aggregazione import aggrega_orarie
+
+        righe = storage.candele_archiviate(strumento, TF.H1.value, limite=40)
+        if len(righe) < 4:
+            return None
+        orarie = [
+            Candela(
+                orario=datetime.fromisoformat(
+                    str(r["chiusura_utc"]).replace("Z", "+00:00")),
+                apertura=float(r["apertura"]), massimo=float(r["massimo"]),
+                minimo=float(r["minimo"]), chiusura=float(r["chiusura"]),
+            )
+            for r in righe
+        ]
+        blocchi = aggrega_orarie(orarie, quante=4)
+        if not blocchi:
+            return None
+        righe_h4 = [{
+            "strumento": strumento, "tf": TF.H4.value,
+            "chiusura_utc": c.orario.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "apertura": c.apertura, "massimo": c.massimo,
+            "minimo": c.minimo, "chiusura": c.chiusura,
+        } for c in blocchi]
+        nuove, _ = storage.salva_candele(righe_h4, origine="mt5")
+        self.candele_nuove += nuove
+        return blocchi[-1] if nuove else None
 
     def _valuta(self, strumento: str, per_tf: dict[TF, Candela]) -> None:
         """Una valutazione per ogni timeframe aggiornato che conta."""
