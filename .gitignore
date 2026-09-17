@@ -46,3 +46,6 @@ duka_serie.pickle
 # Il calendario messo al sicuro da aggiorna.bat, se lo script viene
 # interrotto a meta.
 news.csv.salvato
+
+# La cache dei file mensili di Dukascopy: si riscarica da sola.
+dukascopy_ore

@@ -34,9 +34,12 @@ qui sposta tutta la serie di un mese e non produce alcun errore visibile.
 from __future__ import annotations
 
 import lzma
+import random
 import struct
+import threading
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional, Sequence
 
 import httpx
@@ -48,6 +51,17 @@ log = diario("dukascopy")
 
 BASE = "https://datafeed.dukascopy.com/datafeed"
 CAPO = {"User-Agent": "nvmfinancebot/1.0"}
+
+# I file mensili gia' presi restano su disco. Un mese chiuso non cambia piu',
+# quindi richiederlo e' solo carico inutile sulla fonte -- e soprattutto:
+# quando meta' dei mesi falliscono per 503, il rilancio deve riprendere da
+# dove si era fermato invece di ricominciare da capo. Senza questa cache
+# "rilancia finche' il messaggio non sparisce" era un consiglio che poteva
+# non finire mai, perche' ogni giro rimetteva sotto sforzo anche i mesi gia'
+# riusciti.
+#
+# Il mese IN CORSO non si mette in cache: cresce mentre lo si guarda.
+DEPOSITO_ORE = Path("dukascopy_ore")
 
 # Lo yen e l'oro quotano a tre decimali, tutto il resto a cinque.
 SCALA: dict[str, float] = {"USDJPY": 1e3, "XAUUSD": 1e3}
@@ -81,6 +95,65 @@ def _decodifica(grezzo: bytes, inizio: datetime, scala: float) -> list[Candela]:
 _e_mancante: dict[str, bool] = {}
 
 
+class Freno:
+    """Un rallentatore condiviso da TUTTI i richiedenti insieme.
+
+    Serve perche' l'attesa crescente del singolo tentativo non basta, e il
+    motivo e' aritmetico: con dodici richieste in parallelo, quando la fonte
+    protesta ognuna raddoppia la **propria** attesa, ma le altre undici
+    continuano. La pressione complessiva non cala, i 503 si moltiplicano, e
+    quel che si vede e' un muro di righe rosse in cui ogni singolo tentativo
+    sta facendo la cosa giusta.
+
+    E' successo due volte in questo progetto: nel ciclo dal vivo, dove aveva
+    fatto smettere Dukascopy di rispondere del tutto, e poi di nuovo nel
+    seminatore, dove avevo corretto il primo e lasciato il secondo.
+
+    Qui l'attesa e' una sola, e vale per chiunque chieda. Raddoppia a ogni
+    protesta e cala piano a ogni successo, cosi' si trova da sola il passo
+    che la fonte accetta invece di indovinarlo a priori -- e il passo giusto
+    non e' una costante: dipende da quanto quell'indirizzo ha gia' chiesto
+    oggi, cosa che dallo script non si puo' sapere.
+    """
+
+    def __init__(self, attesa_minima: float = 0.0, attesa_massima: float = 20.0):
+        self._lucchetto = threading.Lock()
+        self._attesa = attesa_minima
+        self._minima = attesa_minima
+        self._massima = attesa_massima
+        self._prossima = 0.0
+
+    def aspetta(self) -> None:
+        """Prende il proprio turno. Va chiamata PRIMA di ogni richiesta."""
+        with self._lucchetto:
+            adesso = time.monotonic()
+            turno = max(adesso, self._prossima)
+            # Un pizzico di casualita': senza, dopo una protesta tutti i
+            # richiedenti ripartono nello stesso istante e la fonte riceve
+            # di nuovo una raffica invece di un flusso.
+            self._prossima = turno + self._attesa * random.uniform(0.85, 1.15)
+        pausa = turno - time.monotonic()
+        if pausa > 0:
+            time.sleep(pausa)
+
+    def protesta(self) -> None:
+        """La fonte ha detto no: tutti rallentano, non solo chi ha chiesto."""
+        with self._lucchetto:
+            self._attesa = min(max(self._attesa * 2, 0.5), self._massima)
+
+    def contento(self) -> None:
+        """Una richiesta e' andata bene: si riaccelera, ma piano."""
+        with self._lucchetto:
+            self._attesa = max(self._attesa * 0.85, self._minima)
+
+    @property
+    def attesa(self) -> float:
+        return self._attesa
+
+
+freno = Freno()
+
+
 def _con_tentativi(
     percorso: str, etichetta: str, tentativi: int = 5
 ) -> Optional[httpx.Response]:
@@ -101,25 +174,30 @@ def _con_tentativi(
     """
     attesa = 1.0
     for n in range(tentativi):
+        freno.aspetta()
         try:
             risposta = httpx.get(
                 f"{BASE}/{percorso}", headers=CAPO, timeout=90, follow_redirects=True
             )
         except httpx.HTTPError as errore:
+            freno.protesta()
             log.warning("%s: tentativo %d/%d fallito (%r)", etichetta, n + 1, tentativi, errore)
-            time.sleep(attesa)
+            time.sleep(attesa * random.uniform(0.85, 1.15))
             attesa *= 2
             continue
 
         if risposta.status_code == 404:
             _e_mancante[percorso] = True   # non esiste: non e' un guasto
+            freno.contento()
             return None
         if risposta.status_code == 200:
+            freno.contento()
             return risposta
 
-        log.warning("%s: HTTP %s, tentativo %d/%d",
-                    etichetta, risposta.status_code, n + 1, tentativi)
-        time.sleep(attesa)
+        freno.protesta()
+        log.warning("%s: HTTP %s, tentativo %d/%d (il freno e' a %.1fs)",
+                    etichetta, risposta.status_code, n + 1, tentativi, freno.attesa)
+        time.sleep(attesa * random.uniform(0.85, 1.15))
         attesa *= 2
 
     log.error("%s: nessun tentativo riuscito. L'archivio restera' incompleto "
@@ -146,6 +224,20 @@ class MeseNonScaricato(Exception):
     """
 
 
+def _scrivi_cache(percorso: Path, contenuto: bytes) -> None:
+    """Mette da parte un mese chiuso. Un guasto qui non deve fermare nulla.
+
+    La cache e' una comodita': se il disco e' pieno o la cartella non e'
+    scrivibile, si continua a scaricare. Alzare un'eccezione qui farebbe
+    fallire una semina che stava andando bene.
+    """
+    try:
+        percorso.parent.mkdir(parents=True, exist_ok=True)
+        percorso.write_bytes(contenuto)
+    except OSError as errore:
+        log.debug("cache non scritta (%s): %r", percorso.name, errore)
+
+
 def orarie_del_mese(
     simbolo: str, anno: int, mese: int, lato: str = "BID", severo: bool = False
 ) -> tuple[Candela, ...]:
@@ -163,18 +255,39 @@ def orarie_del_mese(
         f"{simbolo}/{anno}/{mese - 1:02d}/{lato}_candles_hour_1.bi5"
     )
     etichetta = f"{simbolo} {anno}-{mese:02d}"
-    risposta = _con_tentativi(percorso, etichetta)
-    if risposta is None:
-        if severo and not _e_mancante.get(percorso):
-            raise MeseNonScaricato(etichetta)
-        return ()
-    if not risposta.content:
+
+    adesso = datetime.now(timezone.utc)
+    chiuso = (anno, mese) < (adesso.year, adesso.month)
+    cache = DEPOSITO_ORE / percorso.replace("/", "_")
+
+    if chiuso and cache.exists():
+        contenuto = cache.read_bytes()
+        if not contenuto:
+            # Il vuoto in cache e' la memoria di un 404: quel mese non
+            # esiste, e non va confuso con un mese non arrivato.
+            _e_mancante[percorso] = True
+            return ()
+    else:
+        risposta = _con_tentativi(percorso, etichetta)
+        if risposta is None:
+            if severo and not _e_mancante.get(percorso):
+                raise MeseNonScaricato(etichetta)
+            if chiuso:
+                _scrivi_cache(cache, b"")      # 404 di un mese chiuso: definitivo
+            return ()
+        contenuto = risposta.content
+        if chiuso:
+            _scrivi_cache(cache, contenuto)
+
+    if not contenuto:
         return ()
 
     try:
-        grezzo = lzma.LZMADecompressor().decompress(risposta.content)
+        grezzo = lzma.LZMADecompressor().decompress(contenuto)
     except lzma.LZMAError:
         log.warning("%s %d-%02d: file illeggibile", simbolo, anno, mese)
+        if chiuso:
+            cache.unlink(missing_ok=True)      # non ricordare un file rotto
         return ()
 
     inizio = datetime(anno, mese, 1, tzinfo=timezone.utc)

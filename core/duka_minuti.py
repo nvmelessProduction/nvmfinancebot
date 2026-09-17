@@ -48,6 +48,7 @@ from typing import Optional, Sequence
 import httpx
 
 from core.definizioni import Candela
+from core.fonte_dukascopy import freno
 from core.log import diario
 from core.parametri import TF
 
@@ -111,21 +112,30 @@ def _scarica(
 
     attesa = 1.0
     for _ in range(tentativi):
+        # Lo stesso freno delle orarie, e per la stessa ragione: e' condiviso
+        # fra tutti i richiedenti, quindi quando la fonte protesta rallenta
+        # l'insieme e non solo chi ha preso il no. Con sedici lavoratori in
+        # parallelo l'attesa del singolo non sposta niente.
+        freno.aspetta()
         try:
             r = httpx.get(f"{BASE}/{percorso}", headers=CAPO,
                           timeout=90, follow_redirects=True)
         except httpx.HTTPError:
+            freno.protesta()
             time.sleep(attesa)
             attesa *= 2
             continue
         if r.status_code == 404:
+            freno.contento()
             if not fresco:
                 cache.write_bytes(b"")      # il giorno non esiste: ricordalo
             return None
         if r.status_code == 200:
+            freno.contento()
             if not fresco:
                 cache.write_bytes(r.content)
             return r.content or None
+        freno.protesta()
         time.sleep(attesa)
         attesa *= 2
     return None

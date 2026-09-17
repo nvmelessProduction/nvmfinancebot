@@ -64,7 +64,7 @@ def giorni_di(da: date, a: date) -> list[date]:
     return fuori
 
 
-def importa(simbolo: str, da: date, a: date, paralleli: int = 16) -> None:
+def importa(simbolo: str, da: date, a: date, paralleli: int = 6) -> None:
     giorni = giorni_di(da, a)
     print(f"\n{simbolo}  ({da} -> {a}, {len(giorni)} giorni)")
 

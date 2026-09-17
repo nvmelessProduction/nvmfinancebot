@@ -41,7 +41,7 @@ ORIGINE = "dukascopy"
 
 
 def scarica(
-    da: int, a: int, paralleli: int = 12
+    da: int, a: int, paralleli: int = 4
 ) -> tuple[dict[str, list[Candela]], list[str]]:
     """Le orarie dei sei costituenti fra due anni, e cosa non e' arrivato.
 
@@ -85,13 +85,19 @@ def main() -> int:
     # esattamente la bias che serve qui.
     p.add_argument("--da", type=int, default=oggi.year - 5)
     p.add_argument("--a", type=int, default=oggi.year)
+    # Quattro, non dodici. Con dodici Dukascopy risponde 503 a raffica e il
+    # risultato e' piu' lento, non piu' veloce: i mesi vanno riprovati tutti.
+    # Se la fonte protesta comunque, il freno in `core/fonte_dukascopy.py`
+    # rallenta da solo; questo numero e' solo il punto di partenza.
+    p.add_argument("--paralleli", type=int, default=4,
+                   help="quante richieste insieme (predefinito 4)")
     scelte = p.parse_args()
 
     configura_log()
     storage.inizializza()
 
     print(f"DXY dai sei costituenti ({scelte.da}-{scelte.a})")
-    serie, falliti = scarica(scelte.da, scelte.a)
+    serie, falliti = scarica(scelte.da, scelte.a, scelte.paralleli)
 
     dxy = componi(serie)
     if not dxy:
@@ -140,11 +146,19 @@ def main() -> int:
         print("\nFatto. SETUP-19 ha la bias su cui decidere.")
         return 0
 
-    print("\nARCHIVIO INCOMPLETO. Le candele scaricate sono in archivio e non")
-    print("vanno perse: rilancia `python importa_dxy.py` e riprovera' SOLO i")
-    print("mesi mancanti. Ripeti finche' questo messaggio non compare piu'.")
-    print("Finche' compare, la bias del DXY e' vecchia o assente e SETUP-19")
-    print("si comporta di conseguenza.")
+    print("\nARCHIVIO INCOMPLETO. Nulla e' andato perso: i mesi gia' presi")
+    print("sono su disco in `dukascopy_ore` e il rilancio NON li richiede.")
+    print("Rilancia `python importa_dxy.py`: riprovera' solo cio' che manca,")
+    print("e ogni giro parte da piu' avanti del precedente.")
+    print()
+    print("Se i messaggi sono 'connessione chiusa' o 'host non risponde' e non")
+    print("503, Dukascopy ha smesso di rispondere a questo indirizzo: e' una")
+    print("misura temporanea contro chi chiede troppo. Insistere la allunga.")
+    print("Aspetta un'ora e rilancia, oppure prova con meno richieste insieme:")
+    print("    python importa_dxy.py --paralleli 2")
+    print()
+    print("Finche' questo messaggio compare, la bias del DXY e' vecchia o")
+    print("assente e SETUP-19 non abilita nulla sulle cinque coppie FX.")
     return 1
 
 
