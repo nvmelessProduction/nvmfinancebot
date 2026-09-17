@@ -605,14 +605,32 @@ def candele(simbolo: str, timeframe_mt5: int, quante: int) -> tuple[bool, list[d
             codice, descrizione = _errore_mt5()
             return False, [], f"simbolo {simbolo} non selezionabile: [{codice}] {descrizione}"
         barre = mt5.copy_rates_from_pos(simbolo, timeframe_mt5, 0, quante)
+        tick = mt5.symbol_info_tick(simbolo)
 
     if barre is None or len(barre) == 0:
         codice, descrizione = _errore_mt5()
         return False, [], f"nessuna barra per {simbolo}: [{codice}] {descrizione}"
 
+    # DEF-03: il server del broker non e' in UTC (documentato per FP Markets
+    # come UTC+2 solare / UTC+3 legale, ma il conto collegato oggi e' Ultima
+    # Markets: il nome del broker cambia, quindi si misura l'offset invece di
+    # fidarsi del documento). MT5 marca ogni barra con l'orologio del server e
+    # la consegna come se fosse gia' UTC: senza correggerla, ogni candela
+    # risulta spostata dell'offset del server. Misurato il 2026-09-18 su
+    # questo conto: -3h (ora legale), confermato allineando le chiusure H1
+    # contro l'archivio Dukascopy (2,6 pip di scarto medio contro ~70 senza
+    # correzione). Si arrotonda all'ora perche' DEF-03 non prevede offset
+    # frazionari.
+    scarto_server = timedelta(0)
+    if tick is not None and tick.time:
+        ora_server_come_utc = datetime.fromtimestamp(int(tick.time), tz=timezone.utc)
+        ora_vera = datetime.now(timezone.utc)
+        ore = round((ora_server_come_utc - ora_vera).total_seconds() / 3600)
+        scarto_server = timedelta(hours=ore)
+
     lette = [
         {
-            "apertura_utc": datetime.fromtimestamp(int(barra["time"]), tz=timezone.utc),
+            "apertura_utc": datetime.fromtimestamp(int(barra["time"]), tz=timezone.utc) - scarto_server,
             "open": float(barra["open"]),
             "high": float(barra["high"]),
             "low": float(barra["low"]),
