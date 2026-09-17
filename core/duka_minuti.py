@@ -244,3 +244,53 @@ def aggrega(
             pezzi[-1].chiusura,
         ))
     return fuori
+
+
+def orarie_dai_minuti(
+    simbolo: str, da: date, a: date, oggi: Optional[date] = None
+) -> list[Candela]:
+    """Le candele ORARIE ricostruite dai file al minuto.
+
+    ## Perche' serve
+
+    Dukascopy pubblica i file orari **un mese alla volta, a mese chiuso**. Il
+    mese in corso risponde `404`, non un file parziale: fino al primo del mese
+    successivo quelle ore semplicemente non esistono come file orario.
+
+    La conseguenza, se non si rimedia, e' che `H1`, `H4`, `D1` -- dove vive il
+    range del CRT -- restano fermi all'ultimo giorno del mese scorso, per un
+    tempo che cresce fino a trentun giorni. Il bot vedrebbe un grafico
+    congelato senza che nulla lo dica, e con la protezione di
+    `archivio_vecchio` si asterrebbe per quasi tutto il mese.
+
+    I file al **minuto** invece sono giornalieri e ci sono anche per oggi.
+    Un'ora sono sessanta minuti, e l'informazione c'e' tutta.
+
+    ## Sono davvero le stesse candele?
+
+    Misurato, non supposto: una settimana di agosto 2026 su `EURUSD`,
+    ricostruita dai minuti e confrontata col file orario. **117 ore su 117
+    identiche**, apertura massimo minimo e chiusura, scostamento zero.
+
+    Era il risultato atteso -- il massimo di un'ora e' il massimo dei suoi
+    minuti -- ma "atteso" e "verificato" non sono la stessa cosa, e qui in
+    mezzo c'erano due aggregazioni e un fuso orario.
+
+    `oggi` serve alle prove: il giorno in corso si riscarica sempre, gli altri
+    vengono dalla cache.
+    """
+    oggi = oggi or datetime.now(timezone.utc).date()
+    minuti: list[Candela] = []
+    giorno = da
+    while giorno <= a:
+        if giorno.weekday() != 5:                 # il sabato e' chiuso
+            minuti.extend(minuti_del_giorno(simbolo, giorno,
+                                            fresco=(giorno >= oggi)))
+        giorno += timedelta(days=1)
+    if len(minuti) < 2:
+        return []
+    minuti.sort(key=lambda c: c.orario)
+    # L'ultimo minuto si scarta (puo' essere incompleto) e `fino_a` scarta
+    # l'ora ancora aperta: ESCL-13 vale qui come sui quarti d'ora.
+    chiusi = minuti[:-1]
+    return aggrega(chiusi, 60, fino_a=chiusi[-1].orario)

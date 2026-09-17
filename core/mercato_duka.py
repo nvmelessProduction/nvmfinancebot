@@ -36,7 +36,12 @@ from typing import Callable, Optional
 from core import storage
 from core.definizioni import Candela
 from core import duka_dxy
-from core.duka_minuti import BLOCCHI, aggrega, minuti_del_giorno
+from core.duka_minuti import (
+    BLOCCHI,
+    aggrega,
+    minuti_del_giorno,
+    orarie_dai_minuti,
+)
 from core.fonte_dukascopy import orarie_del_mese
 from core.log import diario
 from core.models import AlertIn
@@ -369,6 +374,21 @@ class MercatoDukascopy:
         for anno, mese in self._mesi_da_chiedere(strumento, adesso):
             self.richieste += 1
             orarie.extend(orarie_del_mese(strumento, anno, mese))
+
+        # Il mese IN CORSO non c'e' come file orario: Dukascopy li pubblica a
+        # mese chiuso e prima risponde 404. Senza questo pezzo H1, H4 e D1 --
+        # dove vive il range del CRT -- resterebbero fermi all'ultimo giorno
+        # del mese scorso per un tempo che cresce fino a trentun giorni, e il
+        # bot vedrebbe un grafico congelato senza che nulla lo dica.
+        #
+        # E' la spiegazione vera dell'archivio della VPS fermo al 31 agosto,
+        # che avevo attribuito ai 503. I 503 c'erano; la causa era un'altra.
+        #
+        # I file al minuto invece sono giornalieri e ci sono anche per oggi.
+        primo = adesso.date().replace(day=1)
+        orarie.extend(orarie_dai_minuti(strumento, primo, adesso.date()))
+        self.richieste += (adesso.day + 1) // 2      # stima: i chiusi sono in cache
+
         if not orarie:
             self._guasto(chiave, adesso)
             return {}
@@ -389,12 +409,15 @@ class MercatoDukascopy:
         primo avvio.
         """
         ultima = ultima_archiviata(strumento, TF.H1)
-        mesi = [(adesso.year, adesso.month)]
+        # Il mese in corso NON e' nell'elenco: come file orario non esiste
+        # ancora (404 fino a mese chiuso) e lo si ricostruisce dai minuti.
+        # Chiederlo sarebbe una richiesta buttata a ogni giro.
+        mesi: list[tuple[int, int]] = []
         if ultima is None:
             indietro = MESI_ORARIE_MASSIMI
         else:
             indietro = (adesso.year - ultima.year) * 12 + adesso.month - ultima.month
-            indietro = min(indietro, MESI_ORARIE_MASSIMI)
+            indietro = max(1, min(indietro, MESI_ORARIE_MASSIMI))
         for passo in range(1, indietro + 1):
             anno, mese = adesso.year, adesso.month - passo
             while mese <= 0:

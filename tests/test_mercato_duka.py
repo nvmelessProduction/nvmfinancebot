@@ -79,30 +79,42 @@ class ProvaMesiEGiorni(unittest.TestCase):
     def tearDown(self) -> None:
         md.ultima_archiviata = self._vera
 
-    def test_archivio_aggiornato_chiede_solo_il_mese_in_corso(self) -> None:
+    def test_il_mese_in_corso_non_si_chiede_mai(self) -> None:
+        """Come file orario non esiste: Dukascopy risponde 404 fino a mese
+        chiuso, e lo si ricostruisce dai minuti. Chiederlo sarebbe una
+        richiesta buttata a ogni giro."""
         adesso = datetime(2026, 9, 16, 13, 5, tzinfo=UTC)
         self.archivio[("EURUSD", TF.H1)] = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
-        self.assertEqual(self.ciclo._mesi_da_chiedere("EURUSD", adesso),
-                         [(2026, 9)])
+        mesi = self.ciclo._mesi_da_chiedere("EURUSD", adesso)
+        self.assertNotIn((2026, 9), mesi)
+        self.assertEqual(mesi, [(2026, 8)])
 
-    def test_archivio_indietro_di_un_mese_ne_chiede_due(self) -> None:
+    def test_archivio_indietro_di_un_mese(self) -> None:
         adesso = datetime(2026, 9, 16, 13, 5, tzinfo=UTC)
         self.archivio[("EURUSD", TF.H1)] = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
         self.assertEqual(self.ciclo._mesi_da_chiedere("EURUSD", adesso),
-                         [(2026, 8), (2026, 9)])
+                         [(2026, 8)])
 
     def test_il_recupero_ha_un_tetto(self) -> None:
         """Dieci anni di buco non si riempiono un file alla volta dentro al ciclo."""
         adesso = datetime(2026, 9, 16, 13, 5, tzinfo=UTC)
         self.archivio[("EURUSD", TF.H1)] = datetime(2016, 1, 1, tzinfo=UTC)
         mesi = self.ciclo._mesi_da_chiedere("EURUSD", adesso)
-        self.assertEqual(len(mesi), md.MESI_ORARIE_MASSIMI + 1)
+        self.assertEqual(len(mesi), md.MESI_ORARIE_MASSIMI)
+
+    def test_un_mese_chiuso_si_chiede_sempre(self) -> None:
+        """Anche con l'archivio fresco: il mese scorso puo' essere stato
+        pubblicato da poco, e prima si aveva solo la sua ricostruzione."""
+        adesso = datetime(2026, 9, 1, 2, 0, tzinfo=UTC)
+        self.archivio[("EURUSD", TF.H1)] = datetime(2026, 9, 1, 1, 0, tzinfo=UTC)
+        self.assertEqual(self.ciclo._mesi_da_chiedere("EURUSD", adesso),
+                         [(2026, 8)])
 
     def test_il_confine_di_anno_non_produce_mese_zero(self) -> None:
         adesso = datetime(2026, 1, 3, 13, 5, tzinfo=UTC)
         self.archivio[("EURUSD", TF.H1)] = datetime(2025, 11, 30, tzinfo=UTC)
         self.assertEqual(self.ciclo._mesi_da_chiedere("EURUSD", adesso),
-                         [(2025, 11), (2025, 12), (2026, 1)])
+                         [(2025, 11), (2025, 12)])
 
     def test_minuti_aggiornati_chiede_solo_oggi(self) -> None:
         adesso = datetime(2026, 9, 16, 13, 5, tzinfo=UTC)
