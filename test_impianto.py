@@ -36,6 +36,10 @@ os.environ.update(
         "TELEGRAM_CHAT_ID": "",
         "FILE_BLOCCO": os.path.join(_CARTELLA, "STOP"),
         "SENTINELLA_ATTIVA": "false",
+        # Isolamento dal .env vero: su una macchina con un broker gia'
+        # configurato, MT5_SUFFISSO_SIMBOLI non vuoto filtrerebbe nei
+        # collaudi che assumono il simbolo senza suffisso.
+        "MT5_SUFFISSO_SIMBOLI": "",
         # Il ciclo di mercato va a prendere candele vere da internet: nei
         # collaudi non deve partire mai. Le sue prove usano risposte finte.
         "FORNITORE_DATI": "nessuno",
@@ -307,21 +311,28 @@ class ProvaCatenaDukascopy(BaseCollaudo):
     def semina_calendario(self) -> None:
         """PA-55 vuole un calendario compilato, o il motore si astiene prima
         ancora di guardare il grafico. Qui serve solo che ci sia: gli eventi
-        stanno lontani dall'istante della prova."""
+        stanno lontani dall'istante della prova.
+
+        Scrive nella cartella isolata del collaudo, mai in `dati/news.csv`
+        vero: quel file e' il calendario compilato a mano dall'autore, e
+        scriverci sopra (per di piu' cancellandolo poi in cleanup) lo
+        distruggerebbe ad ogni collaudo. Successo davvero una volta.
+        """
         from datetime import timedelta as td
         from pathlib import Path
+        from unittest.mock import patch
 
-        from core.parametri import PERCORSO_CALENDARIO_NEWS
-
-        percorso = Path(PERCORSO_CALENDARIO_NEWS)
-        percorso.parent.mkdir(parents=True, exist_ok=True)
+        percorso = Path(_CARTELLA) / "news.csv"
         adesso = datetime.now(timezone.utc)
         righe = ["data_ora_utc,valuta,stelle,descrizione"]
         for giorni in (-3, -1, 4, 9):
             quando = adesso + td(days=giorni)
             righe.append(f"{quando:%Y-%m-%dT%H:%M:%SZ},USD,3,evento di collaudo")
         percorso.write_text("\n".join(righe) + "\n", encoding="utf-8")
-        self.addCleanup(lambda: percorso.unlink(missing_ok=True))
+
+        patcher = patch("core.parametri.PERCORSO_CALENDARIO_NEWS", str(percorso))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def semina_tutto(self) -> None:
         from core.duka_dxy import NOME_ARCHIVIO as DXY
