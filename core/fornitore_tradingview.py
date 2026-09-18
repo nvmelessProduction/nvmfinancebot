@@ -232,15 +232,20 @@ class FornitoreTradingView:
 
         - TradingView e il ciclo su fonte gratuita archiviano il **future**
           (`6E`, `GC`), perche' e' quello che scaricano (DEF-32);
-        - Dukascopy serve il book di un broker, che e' della stessa famiglia
-          del CFD: quelle candele sono archiviate sotto `EURUSD`, `XAUUSD`.
+        - Dukascopy e MT5 servono il book di un broker, che e' della stessa
+          famiglia del CFD: quelle candele sono archiviate sotto `EURUSD`,
+          `XAUUSD` (entrambi iterano `UNIVERSO` e salvano con quel nome).
 
         Leggere col nome sbagliato non produce alcun errore: produce un
         archivio vuoto, quindi `DEF-26` fa tacere ogni timeframe, quindi il
         bot non opera mai — e nei log non compare nulla di anomalo. E' il
-        modo piu' silenzioso possibile di avere un bot spento.
+        modo piu' silenzioso possibile di avere un bot spento. E' successo
+        davvero: aggiunto "mt5" come motore senza aggiornare questo confronto,
+        il 2026-09-18 ogni valutazione leggeva l'archivio delle "6E"/"GC" da
+        2,4 anni (l'isola vecchia di TradingView) invece di quello vero da
+        vent'anni, e DEF-26 taceva su M15/M5/M1min per ogni singolo alert.
         """
-        if impostazioni().FORNITORE_DATI != "dukascopy":
+        if impostazioni().FORNITORE_DATI not in ("dukascopy", "mt5"):
             return future
         return cfd_di(future) or future
 
