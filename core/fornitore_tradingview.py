@@ -223,6 +223,12 @@ class FornitoreTradingView:
     """Costruisce la Fotografia dai prezzi archiviati e dal conto MT5."""
 
     suffisso_broker: str = ""
+    # Un avviso di storia corta/assente non cambia da un alert all'altro se
+    # nessuno alimenta quel timeframe (TF_H6/TF_H12, oggi, su questo
+    # impianto): ripeterlo ad ogni singola valutazione produce solo rumore,
+    # e il rumore ha gia' nascosto un guasto vero una volta. Un avviso per
+    # ogni combinazione (strumento, timeframe, stato) basta.
+    _avvisata: set = field(default_factory=set, init=False, repr=False)
 
     # -- storico ----------------------------------------------------------
     def nome_in_archivio(self, future: str) -> str:
@@ -275,18 +281,24 @@ class FornitoreTradingView:
         soglia = datetime.now(timezone.utc) - timedelta(days=365 * LOOKBACK_ANNI)
         for tf, candele in storico.items():
             if len(candele) < 3:
-                log.warning(
-                    "%s %s: %d candele, DEF-26 ne vuole almeno 3: il timeframe tace",
-                    future, tf.value, len(candele),
-                )
+                chiave = (future, tf.value, "vuoto")
+                if chiave not in self._avvisata:
+                    self._avvisata.add(chiave)
+                    log.warning(
+                        "%s %s: %d candele, DEF-26 ne vuole almeno 3: il timeframe tace",
+                        future, tf.value, len(candele),
+                    )
             elif candele[0].orario > soglia:
-                anni = (candele[-1].orario - candele[0].orario).days / 365.0
-                log.info(
-                    "%s %s: %.1f anni di storia, DEF-26 ne vuole %d "
-                    "(sulle orarie la fonte gratuita copre 2 anni: il resto "
-                    "si accumula girando)",
-                    future, tf.value, anni, LOOKBACK_ANNI,
-                )
+                chiave = (future, tf.value, "corta")
+                if chiave not in self._avvisata:
+                    self._avvisata.add(chiave)
+                    anni = (candele[-1].orario - candele[0].orario).days / 365.0
+                    log.info(
+                        "%s %s: %.1f anni di storia, DEF-26 ne vuole %d "
+                        "(sulle orarie la fonte gratuita copre 2 anni: il resto "
+                        "si accumula girando)",
+                        future, tf.value, anni, LOOKBACK_ANNI,
+                    )
 
     # -- conto (solo da MT5) ----------------------------------------------
     def conto(self, cfd: str) -> Optional[Conto]:
