@@ -4,6 +4,7 @@ Se token o chat_id non sono configurati il messaggio finisce a console:
 l'impianto deve poter girare anche senza Telegram.
 """
 
+import os
 import threading
 import time
 from typing import Optional
@@ -17,6 +18,34 @@ from core.models import AlertIn, Decision
 log = diario("telegram")
 
 URL_BASE: str = "https://api.telegram.org/bot{token}/{metodo}"
+
+# Interruttore per le prove. Con questa variabile d'ambiente valorizzata
+# nessun messaggio esce: finisce a diario e basta.
+VARIABILE_SILENZIO: str = "NVMBOT_NIENTE_TELEGRAM"
+
+
+def in_prova() -> bool:
+    """Stiamo girando dentro una suite di test?
+
+    Serve perche' `arma()` notifica, e la suite `arma()` lo chiama davvero:
+    ogni `pytest tests/` mandava sul telefono dell'utente una decina di
+    "EURUSD: setup ribassista armato su 4 ore, spazzato 110,000" -- i valori
+    inventati del fixture, che infatti non somigliano a un cambio. Fra tutte
+    le esecuzioni della suite sono diventate migliaia di notifiche, e hanno
+    sepolto i messaggi veri: il riepilogo partiva e non si vedeva, perche'
+    stava in mezzo a una fila di avvisi finti.
+
+    Il rimedio non puo' essere "ricordarsi di simulare il notificatore in
+    ogni test che tocca `arma()`": e' esattamente il tipo di promemoria che
+    salta al prossimo test scritto di fretta. Qui la porta e' chiusa, e i
+    test che vogliono controllare il TESTO del messaggio simulano comunque
+    `invia_appena_possibile`, che e' quello che gia' fanno.
+
+    `PYTEST_CURRENT_TEST` lo mette pytest da solo ad ogni test, quindi
+    protegge anche un file di prove nuovo che si dimenticasse di tutto.
+    """
+    return bool(os.environ.get(VARIABILE_SILENZIO)
+                or os.environ.get("PYTEST_CURRENT_TEST"))
 
 
 def _url(metodo: str) -> str:
@@ -40,6 +69,10 @@ def invia(testo: str) -> tuple[bool, str]:
 
     Non solleva mai: una notifica persa non deve far cadere un ordine.
     """
+    if in_prova():
+        log.info("[prova, non inviato] %s", testo.replace("\n", " | ")[:160])
+        return False, "siamo in una prova: nessun messaggio e' uscito"
+
     cfg = impostazioni()
     if not cfg.telegram_configurato:
         log.info("[telegram spento] %s", testo.replace("\n", " | "))
@@ -74,6 +107,14 @@ def invia(testo: str) -> tuple[bool, str]:
 
 def _invia_a(destinatario: str, testo: str) -> tuple[bool, str]:
     """Una consegna, con i suoi tentativi."""
+    # Anche qui, e non solo in `invia`: questa e' la funzione che parla con
+    # la rete, ed e' l'ultimo punto in cui si puo' fermare un messaggio.
+    # Chiuderla solo a monte lascerebbe aperta la porta a chi la chiama
+    # direttamente, cosa che e' gia' successa.
+    if in_prova():
+        log.info("[prova, non inviato] %s", testo.replace("\n", " | ")[:160])
+        return False, "siamo in una prova: nessun messaggio e' uscito"
+
     cfg = impostazioni()
     tentativi = max(1, cfg.TELEGRAM_TENTATIVI)
     ultimo_dettaglio = ""

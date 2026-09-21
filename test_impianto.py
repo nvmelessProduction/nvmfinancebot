@@ -34,6 +34,11 @@ os.environ.update(
         "MODE": "dry_run",
         "TELEGRAM_TOKEN": "",
         "TELEGRAM_CHAT_ID": "",
+        # Le credenziali vuote qui sopra gia' bastano, ma non sono una
+        # chiusura: bastava che un collaudo futuro ne valorizzasse una per
+        # ritrovarsi a spedire sul telefono di qualcuno. Questa lo vieta e
+        # basta. Vedi `core.notifier.in_prova`.
+        "NVMBOT_NIENTE_TELEGRAM": "1",
         "FILE_BLOCCO": os.path.join(_CARTELLA, "STOP"),
         "SENTINELLA_ATTIVA": "false",
         # Isolamento dal .env vero: su una macchina con un broker gia'
