@@ -682,47 +682,6 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
                 return replace(fermata, responso_romeo=responso_romeo)
             applicate.append("GIUD-02")
 
-    # --- 4bis. Il filtro DXY (SETUP-19, RISK-05, PRIN-09, PA-05) ----------
-    #
-    # SETUP-19 e' scritta in direzioni **CFD**, il CRT e' rilevato sul future:
-    # le due si confrontano solo dopo DEF-33. La regola descrive tre passi e
-    # qui ci sono tutti e tre.
-    #
-    # `XAUUSD` non deriva dal DXY (PRIN-09): `direzione_da_dxy` torna None e
-    # `strumento_eleggibile` lascia passare il setup proprio (PA-05).
-    #
-    # Con bias DXY NESSUNA, SETUP-19 dice "nessuna operazione su alcuna
-    # coppia": `direzione_da_dxy` torna None e `strumento_eleggibile` blocca.
-    applicate.extend(["SETUP-19", "RISK-05"])
-    verso_del_setup = _verso_sul_cfd(foto, crt.direzione)            # passo 2
-    verso_dal_dxy = stp.direzione_da_dxy(foto.bias_dxy, foto.strumento)  # passo 1
-    if not risk.strumento_eleggibile(                                # passo 3
-        strumento=foto.strumento,
-        direzione_dal_dxy=verso_dal_dxy.value if verso_dal_dxy else None,
-        ha_setup_proprio=True,
-        direzione_del_setup=verso_del_setup.value,
-    ):
-        motivo = (
-            f"bias DXY {foto.bias_dxy.value}: SETUP-19 non abilita alcuna "
-            f"operazione su {foto.strumento}"
-            if verso_dal_dxy is None else
-            f"bias DXY {foto.bias_dxy.value} vuole {verso_dal_dxy.value} su "
-            f"{foto.strumento}, il CRT porta a {verso_del_setup.value}"
-        )
-        blocchi_dxy = ["RISK-05"] + indipendenti
-        # Su un range alto la bias del dollaro e' il contesto che domina
-        # l'operazione e ferma da sola; su uno scalp e' rumore, e la parola
-        # passa al giudizio. Vedi `RISK_05_BLOCCA_DA_SOLA` in core/parametri.
-        assoluta = crt.tf.value in RISK_05_BLOCCA_DA_SOLA
-        cade = (not assoluta
-                and _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo))
-        if not cade:
-            return _non_operare(
-                foto.strumento, blocchi_dxy, motivo, applicate,
-                direzione=crt.direzione, tf_crt=crt.tf,
-            )
-        applicate.append("GIUD-02")
-
     # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, GEST-08) --------
     # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):
     #
@@ -784,6 +743,60 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
 
     rapporto = ctx.rapporto_rischio_rendimento(prezzo_ingresso, stop, obiettivo_1)
+
+    # --- 4ter. Il filtro DXY, DOPO i livelli (SETUP-19, RISK-05) ---------
+    #
+    # Sta qui e non prima perche' sotto le quattro ore questa obiezione
+    # passa al GIUDIZIO, e un giudizio su un'operazione di cui non si
+    # conosce ne' lo stop ne' il bersaglio e' un giudizio su meta' dei
+    # fatti. Prima il dossier arrivava con stop, tp1, size e rapporto a
+    # null -- il 2026-09-21 il giudizio stesso l'ha fatto notare: "il
+    # motore non ha nemmeno prodotto stop, tp1 o size, quindi non esiste
+    # un ordine costruito da far partire".
+    #
+    # Spostarlo qui non cambia cosa blocca: cambia che, quando tocca al
+    # giudizio, il dossier contiene anche la distanza di stop e quanto
+    # dell'R se ne va in spread, che e' il numero che decide.
+    #
+    # SETUP-19 e' scritta in direzioni **CFD**, il CRT e' rilevato sul future:
+    # le due si confrontano solo dopo DEF-33. La regola descrive tre passi e
+    # qui ci sono tutti e tre.
+    #
+    # `XAUUSD` non deriva dal DXY (PRIN-09): `direzione_da_dxy` torna None e
+    # `strumento_eleggibile` lascia passare il setup proprio (PA-05).
+    #
+    # Con bias DXY NESSUNA, SETUP-19 dice "nessuna operazione su alcuna
+    # coppia": `direzione_da_dxy` torna None e `strumento_eleggibile` blocca.
+    applicate.extend(["SETUP-19", "RISK-05"])
+    verso_del_setup = _verso_sul_cfd(foto, crt.direzione)            # passo 2
+    verso_dal_dxy = stp.direzione_da_dxy(foto.bias_dxy, foto.strumento)  # passo 1
+    if not risk.strumento_eleggibile(                                # passo 3
+        strumento=foto.strumento,
+        direzione_dal_dxy=verso_dal_dxy.value if verso_dal_dxy else None,
+        ha_setup_proprio=True,
+        direzione_del_setup=verso_del_setup.value,
+    ):
+        motivo = (
+            f"bias DXY {foto.bias_dxy.value}: SETUP-19 non abilita alcuna "
+            f"operazione su {foto.strumento}"
+            if verso_dal_dxy is None else
+            f"bias DXY {foto.bias_dxy.value} vuole {verso_dal_dxy.value} su "
+            f"{foto.strumento}, il CRT porta a {verso_del_setup.value}"
+        )
+        blocchi_dxy = ["RISK-05"] + indipendenti
+        # Su un range alto la bias del dollaro e' il contesto che domina
+        # l'operazione e ferma da sola; su uno scalp e' rumore, e la parola
+        # passa al giudizio. Vedi `RISK_05_BLOCCA_DA_SOLA` in core/parametri.
+        assoluta = crt.tf.value in RISK_05_BLOCCA_DA_SOLA
+        cade = (not assoluta
+                and _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo))
+        if not cade:
+            return _non_operare(
+                foto.strumento, blocchi_dxy, motivo, applicate,
+                direzione=crt.direzione, tf_crt=crt.tf,
+            )
+        applicate.append("GIUD-02")
+
 
     # --- 5. Filtri uniti: CTX-01 + SETUP-15 (REV-17, PREC-04) -------------
     allineato = stp.allineamento_soddisfatto(crt.tf, foto.sbilanciamenti, crt.direzione)

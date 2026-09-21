@@ -19,6 +19,21 @@ from core.parametri import TF
 from core.stato import candele_visibili
 
 
+def _pip(strumento: str) -> float:
+    """Quanto vale un pip su questo strumento.
+
+    Convenzione, non misura: sui cambi e' il quarto decimale, sulle coppie in
+    yen il secondo, sull'oro il secondo. Serve solo a rendere leggibili le
+    distanze -- i calcoli restano sui prezzi -- ma va scritta da qualche
+    parte, perche' lasciarla indovinare e' gia' costato un verdetto.
+    """
+    if strumento.endswith("JPY"):
+        return 0.01
+    if strumento.startswith("XAU"):
+        return 0.01
+    return 0.0001
+
+
 def costruisci(
     foto: Fotografia,
     decisione: Decisione,
@@ -76,6 +91,47 @@ def costruisci(
             dossier["sweep_oltre_n1"] = round(n2.massimo - n1.massimo, 6)
         elif decisione.direzione is Bias.LONG:
             dossier["sweep_oltre_n1"] = round(n1.minimo - n2.minimo, 6)
+
+    # --- Le stesse distanze, in unita' che non si possono fraintendere ----
+    #
+    # Il dossier dava solo prezzi grezzi, e chi legge doveva indovinare cosa
+    # fosse un pip su quello strumento. Il 2026-09-21, in produzione, il
+    # giudizio ha letto uno spread di `1.0e-05` su GBPUSD e l'ha chiamato
+    # "1,0 pip": e' 0,1. Sbagliato di dieci volte, e nella direzione che fa
+    # sembrare ogni setup non profittevole -- "range di 1,2 pip contro uno
+    # spread di 1,0" invece di 1,2 contro 0,1. Quel rifiuto era motivato da
+    # un numero che non esisteva.
+    #
+    # Le distanze si danno quindi anche in PIP, con la dimensione del pip
+    # dichiarata accanto, e soprattutto in MULTIPLI DELLO SPREAD -- che non
+    # ha bisogno di nessuna convenzione ed e' il rapporto che decide se
+    # un'operazione puo' pagarsi.
+    pip = _pip(foto.strumento)
+    spread = float(foto.spread or 0.0)
+    dossier["dimensione_pip"] = pip
+    dossier["spread_in_pip"] = round(spread / pip, 2) if pip else None
+
+    def _in_pip(valore):
+        return round(valore / pip, 2) if (pip and valore is not None) else None
+
+    def _in_spread(valore):
+        return round(valore / spread, 1) if (spread > 0 and valore is not None) else None
+
+    if n1 is not None and n2 is not None:
+        dossier["range_n1_in_pip"] = _in_pip(n1.massimo - n1.minimo)
+        dossier["range_n1_in_spread"] = _in_spread(n1.massimo - n1.minimo)
+        if dossier.get("sweep_oltre_n1") is not None:
+            dossier["sweep_in_pip"] = _in_pip(dossier["sweep_oltre_n1"])
+            dossier["sweep_in_spread"] = _in_spread(dossier["sweep_oltre_n1"])
+
+    if decisione.livello_stop and foto.prezzo_cfd:
+        rischio = abs(foto.prezzo_cfd - decisione.livello_stop)
+        dossier["distanza_stop_in_pip"] = _in_pip(rischio)
+        dossier["distanza_stop_in_spread"] = _in_spread(rischio)
+        # Quanto dell'R se ne va in spread. E' il numero che dice se
+        # l'operazione puo' pagarsi: a 0,3 serve un winrate molto piu' alto.
+        dossier["costo_spread_in_r"] = (
+            round(spread / rischio, 3) if rischio > 0 else None)
 
     # --- Il responso di TUTTE le conferme di Romeo (CRT-14) ---------------
     #
