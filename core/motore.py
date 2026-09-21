@@ -271,6 +271,16 @@ OBIEZIONI_SOPPESABILI: frozenset[str] = frozenset({
 })
 
 
+def _apri_ogni_crt() -> bool:
+    """Siamo nel modo diagnostico che apre su ogni CRT?
+
+    Vedi `APRI_OGNI_CRT` in core/config: non e' una strategia, e' una prova
+    per vedere che la catena arriva fino all'ordine. Si legge ad ogni
+    chiamata e non si mette in cache, cosi' spegnerla non richiede altro.
+    """
+    return bool(getattr(impostazioni(), "APRI_OGNI_CRT", False))
+
+
 def _obiezione_da_giudicare(blocchi: Sequence[str]) -> Optional[str]:
     """L'unica obiezione che vale la pena sottoporre al giudizio, se c'e'.
 
@@ -669,6 +679,8 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             strumento=foto.strumento,
             crt_per_tf=foto.crt_per_tf,
         )
+        if not ok_romeo and _apri_ogni_crt():
+            ok_romeo, blocchi_romeo = True, ()
         if not ok_romeo:
             motivo_romeo = ("conferme di Romeo non soddisfatte: "
                             + ", ".join(SPIEGAZIONE_CRT.get(x, x) for x in blocchi_romeo))
@@ -787,9 +799,11 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         # Su un range alto la bias del dollaro e' il contesto che domina
         # l'operazione e ferma da sola; su uno scalp e' rumore, e la parola
         # passa al giudizio. Vedi `RISK_05_BLOCCA_DA_SOLA` in core/parametri.
-        assoluta = crt.tf.value in RISK_05_BLOCCA_DA_SOLA
-        cade = (not assoluta
-                and _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo))
+        assoluta = (crt.tf.value in RISK_05_BLOCCA_DA_SOLA
+                    and not _apri_ogni_crt())
+        cade = _apri_ogni_crt() or (
+            not assoluta
+            and _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo))
         if not cade:
             return _non_operare(
                 foto.strumento, blocchi_dxy, motivo, applicate,
@@ -838,6 +852,14 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         _, blocchi_gap = stp.ingresso_da_gap_ammesso(foto.gap_fase, foto.mitigazione)
 
     blocchi = [f.regola for f in filtri] + list(esclusi) + list(blocchi_gap) + indipendenti
+
+    if _apri_ogni_crt():
+        # Restano solo i muri: tutto cio' che un trader potrebbe soppesare
+        # cade, il resto no. L'elenco e' quello di `OBIEZIONI_SOPPESABILI`,
+        # scritto per inclusione, piu' GEST-01.
+        morbide = OBIEZIONI_SOPPESABILI | {"GEST-01"}
+        filtri = tuple(f for f in filtri if f.regola not in morbide)
+        blocchi = [b for b in blocchi if b not in morbide]
 
     motivo_filtri = ("; ".join(f"{f.regola}: {f.motivo}" for f in filtri)
                      or "condizioni non soddisfatte")

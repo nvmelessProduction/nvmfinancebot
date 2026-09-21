@@ -155,6 +155,12 @@ def _passa_dal_giudizio(
         return decisione
     if not getattr(impostazioni(), "GIUDIZIO_ATTIVO", False):
         return decisione
+    if getattr(impostazioni(), "APRI_OGNI_CRT", False):
+        # Nel modo diagnostico ogni ordine passerebbe di qui, e ogni ordine
+        # sarebbe una chiamata a pagamento fuori da qualunque tetto. La prova
+        # e' meccanica: serve a vedere la catena, non a chiedere un parere.
+        log.info("APRI_OGNI_CRT: veto del giudizio saltato su %s", decisione.strumento)
+        return decisione
 
     from core.dossier import costruisci
     from core.giudizio_claude import giudica

@@ -110,7 +110,25 @@ ORDINE_SCANSIONE_TARGET: Final[tuple[TF, ...]] = (
 
 # DEF-46: target di un singolo timeframe = key level del TF immediatamente
 # superiore. TF_12M e' il caso speciale: usa il target globale di DEF-22.
+#
+# I tre intraday puntano a `TF_H4` per la stessa ragione per cui ci punta
+# `TF_H1`: sotto le quattro ore nessun timeframe produce key level propri
+# (`TF_KEY_LEVEL` qui sopra), quindi il primo disponibile e' quello.
+#
+# Mancavano, e mancare qui non fa rumore: `target_iniziale` restituisce None,
+# il motore applica `PRIN-99` -- "una posizione senza bersaglio non ha ragione
+# di essere aperta" -- e non si apre. Mai, qualunque cosa dicano tutte le
+# altre regole. Questa tabella e' stata scritta quando il bot operava da
+# `TF_H1` in su, e nessuno l'ha estesa quando `M15`, `M5` e `M1min` sono
+# diventati timeframe di innesco: da allora meta' delle coppie di `CRT-04`
+# non poteva produrre un ordine nemmeno con ogni filtro spento.
+#
+# Trovato il 2026-09-21 accendendo il modo diagnostico che apre su ogni CRT:
+# quattro CRT superavano tutto e morivano qui, su `SETUP-14` e `PRIN-99`.
 TARGET_DI: Final[dict[TF, Optional[TF]]] = {
+    TF.MIN1: TF.H4,
+    TF.MIN5: TF.H4,
+    TF.MIN15: TF.H4,
     TF.H1: TF.H4,
     TF.H4: TF.D1,
     TF.D1: TF.W1,
@@ -1344,13 +1362,22 @@ def verifica() -> None:
             | set(TF_INTRADAY)) == set(TF)
     assert not (set(TF_BIAS) & set(TF_SOLO_GAP))
 
-    # DEF-46 copre tutti i timeframe di bias ed esecuzione, e solo quelli.
-    assert set(TARGET_DI) == set(TF) - set(TF_SOLO_GAP) - set(TF_INTRADAY)
+    # DEF-46 copre tutti i timeframe da cui puo' nascere un ordine. Gli
+    # intraday ci sono: sono timeframe di innesco di CRT-04, e senza un
+    # bersaglio `target_iniziale` torna None e PRIN-99 impedisce l'apertura.
+    assert set(TARGET_DI) == set(TF) - set(TF_SOLO_GAP)
     # E il target di un TF e' davvero quello immediatamente superiore nella
     # gerarchia ridotta: e' cio' che DEF-46 dichiara di essere.
     for tf, superiore in TARGET_DI.items():
         if superiore is None:
             assert tf is TF.M12, f"solo TF_12M puo' non avere superiore, non {tf}"
+            continue
+        if tf in TF_INTRADAY or tf is TF.H1:
+            # Sotto le quattro ore nessun timeframe produce key level propri
+            # (`TF_KEY_LEVEL`), quindi il primo disponibile e' TF_H4 per
+            # tutti: non e' "quello immediatamente superiore" ma "il primo
+            # che ha davvero un key level da offrire".
+            assert superiore is TF.H4, f"{tf}: atteso TF_H4, non {superiore}"
             continue
         indice = GERARCHIA_RIDOTTA.index(tf)
         assert GERARCHIA_RIDOTTA[indice - 1] is superiore, f"{tf}: atteso {superiore}"

@@ -54,6 +54,24 @@ class Impostazioni(BaseSettings):
     # 46 -- che deduplicati sul CRT diventano 14.
     GIUDIZIO_SULLE_OBIEZIONI: bool = False
 
+    # MODO DIAGNOSTICO: apri OGNI CRT che il motore riconosce.
+    #
+    # Non e' una configurazione di strategia, e' una prova: spegne tutte le
+    # obiezioni che un trader puo' soppesare -- SETUP-05, SETUP-07, GEST-01,
+    # RISK-05, le conferme di Romeo -- e anche il veto del giudizio, che su
+    # ogni ordine costerebbe una chiamata a pagamento.
+    #
+    # Serve a vedere con gli occhi che la catena arriva fino all'ordine, e a
+    # contare quanti CRT ci sono davvero. NON serve a fare trading: le regole
+    # che si spengono qui sono quelle che distinguono un setup da una candela
+    # qualunque, e senza di esse il bot apre su tutto.
+    #
+    # Restano in piedi i muri: SETUP-00 (senza CRT non c'e' niente da aprire),
+    # PRIN-99, le esclusioni, i limiti di perdita RISK-07/08/09, il tetto di
+    # posizioni, il freno a mano, il tetto di volume e il divieto di operare
+    # su conto reale. Con questo acceso si sta su DEMO, punto.
+    APRI_OGNI_CRT: bool = False
+
     # Tetto di spesa al giorno per i giudizi, in euro. A zero il freno e'
     # spento. Si misura sul consumo dichiarato dall'API, non su una stima:
     # `giudica` usa thinking adattivo con effort alto, e i token di

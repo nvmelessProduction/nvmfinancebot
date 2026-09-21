@@ -50,6 +50,12 @@ def niente_chiamate_a_pagamento(monkeypatch):
     cfg = impostazioni()
     monkeypatch.setattr(cfg, "GIUDIZIO_ATTIVO", False, raising=False)
     monkeypatch.setattr(cfg, "GIUDIZIO_SULLE_OBIEZIONI", False, raising=False)
+    # E il modo diagnostico che apre su ogni CRT: acceso nel .env spegne i
+    # filtri che meta' delle prove verificano, e quelle prove falliscono per
+    # una ragione che non ha niente a che vedere con cio' che collaudano.
+    # Una prova deve dipendere da cio' che dichiara, non da come e'
+    # configurata la macchina su cui gira.
+    monkeypatch.setattr(cfg, "APRI_OGNI_CRT", False, raising=False)
 
 
 @pytest.fixture(autouse=True)
