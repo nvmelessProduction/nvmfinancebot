@@ -98,9 +98,25 @@ TF_ESECUZIONE: Final[tuple[TF, ...]] = (TF.D1, TF.H4, TF.H1)
 #
 # Adottata la lettura che le tiene tutte: i key level si calcolano anche su
 # `TF_H4`, con la stessa formula di DEF-36 sulla sua `C1`. `TF_H12` e `TF_H6`
-# restano fuori (DEF-31, REV-11) e `TF_H1` non ne produce di propri, perche'
-# sotto di lui non c'e' nessun trigger.
-TF_KEY_LEVEL: Final[tuple[TF, ...]] = TF_BIAS + (TF.H4,)
+# restano fuori (DEF-31, REV-11).
+#
+# `TF_H1`, `TF_M15` e `TF_M5` ne producono per la STESSA ragione, che prima
+# era scritta al contrario: la riga diceva "TF_H1 non ne produce di propri,
+# perche' sotto di lui non c'e' nessun trigger". Era vero quando `TF_H1` era
+# il trigger piu' basso. Oggi `COPPIE_CRT` ha `H1 -> M5` e `M15 -> M1min`:
+# sotto `TF_H1` ci sono tre trigger, e senza key level propri quei timeframe
+# non hanno NIENTE da spazzare.
+#
+# La conseguenza era pesante e silenziosa: `SETUP-02` vuole che `N2` prenda
+# un key level di timeframe strettamente superiore, quindi un CRT su un
+# minuto doveva andare a spazzare un livello a quattro ore. Misurato il
+# 2026-09-21: 33 decisioni su 40 fermate da `SETUP-00` -- "nessun CRT
+# valido: serve la presa di un key level di timeframe superiore" -- che
+# sembrava selettivita' della strategia ed era una tabella mai estesa.
+#
+# `TF_M1min` resta fuori: sotto di lui non c'e' nessun trigger, e stavolta
+# e' vero.
+TF_KEY_LEVEL: Final[tuple[TF, ...]] = TF_BIAS + (TF.H4, TF.H1, TF.MIN15, TF.MIN5)
 
 # DEF-22 passo 1: ordine di scansione per il target direzionale globale.
 # Nota: salta TF_H12 e TF_H6, coerentemente con DEF-28.

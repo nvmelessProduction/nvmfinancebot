@@ -125,10 +125,9 @@ class TestKeyLevel:
         assert any(l.tf is TF.H4 for l in st.key_level_correnti(storico, adesso))
         assert st.sbilanciamenti_per_timeframe(storico, adesso).get(TF.H4) is Bias.LONG
 
-    def test_rev48_tf_h1_e_tf_h6_non_producono_key_level(self) -> None:
-        """L'estensione si ferma a TF_H4: sotto non c'e' nessun trigger da
-        servire, e DEF-31 riserva TF_H12 e TF_H6 ai soli gap (REV-11)."""
-        for tf in (TF.H1, TF.H6, TF.H12):
+    def test_h6_e_h12_restano_ai_soli_gap(self) -> None:
+        """DEF-31 li riserva ai gap (REV-11): niente key level, mai."""
+        for tf in (TF.H6, TF.H12):
             storico = {tf: [
                 c(100, 105, 95, 102, 0),
                 c(102, 110, 100, 108, 1),
@@ -136,6 +135,35 @@ class TestKeyLevel:
             ]}
             livelli = st.key_level_correnti(storico, INIZIO + timedelta(days=5))
             assert livelli == [], f"{tf.value} non deve produrre key level"
+
+    def test_i_timeframe_intraday_ne_producono(self) -> None:
+        """Questo collaudo pretendeva il contrario, e la sua ragione era:
+        "sotto TF_H4 non c'e' nessun trigger da servire".
+
+        Non e' piu' vero. `COPPIE_CRT` ha `H1 -> M5` e `M15 -> M1min`, quindi
+        sotto `TF_H1` ci sono tre trigger. Senza key level propri quei
+        timeframe non hanno niente da spazzare, e `SETUP-02` chiede che `N2`
+        prenda un livello di timeframe strettamente superiore: un CRT su un
+        minuto doveva andare a spazzare un livello a quattro ore.
+
+        Misurato il 2026-09-21 sul bot vivo: 33 decisioni su 40 fermate da
+        `SETUP-00`, che sembrava selettivita' della strategia ed era una
+        tabella mai estesa.
+        """
+        for tf in (TF.H1, TF.MIN15, TF.MIN5):
+            storico = {tf: [
+                c(100, 105, 95, 102, 0),
+                c(102, 110, 100, 108, 1),
+                c(108, 115, 107, 112, 2),
+            ]}
+            livelli = st.key_level_correnti(storico, INIZIO + timedelta(days=5))
+            assert livelli, f"{tf.value} deve produrre key level"
+
+    def test_sotto_il_minuto_non_c_e_niente_da_servire(self) -> None:
+        """`TF_M1min` resta fuori, e stavolta la ragione tiene: non esiste
+        nessun trigger sotto di lui."""
+        from core.parametri import TF_KEY_LEVEL
+        assert TF.MIN1 not in TF_KEY_LEVEL
 
     def test_chi_spazza_entrambi_i_lati_non_sbilancia(self) -> None:
         """Come DEF-16 passo 1: rompere sopra e sotto non dice nulla."""
