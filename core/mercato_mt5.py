@@ -43,7 +43,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from core import storage
 from core.definizioni import Candela
@@ -69,29 +69,41 @@ TIMEFRAME_MT5: dict[TF, int] = {
     TF.M1: 49153,
 }
 
-# Quante barre chiedere per timeframe. Serve a coprire un riavvio e a dare al
-# motore la storia che DEF-26 vuole; la storia profonda sta gia' in archivio e
-# non si richiede a ogni giro.
+# Quante barre chiedere per timeframe. Serve a coprire un riavvio, non a
+# riportare la storia: quella sta gia' in archivio e non si richiede a ogni
+# giro. Numeri scesi il 2026-09-21 (erano 1500/1000/1000/800): con sei
+# strumenti e quattro serie ciascuno sono ventiquattro chiamate a giro, e
+# chiedere millecinquecento barre al minuto per scoprire che ne e' arrivata
+# una sola costava minuti di giro — il ciclo era passato da uno a sette
+# minuti, fino a non rispondere piu' su /salute. Quel che resta copre
+# comunque uno spegnimento di ore.
 QUANTE: dict[TF, int] = {
-    TF.MIN1: 1500, TF.MIN5: 1000, TF.MIN15: 1000,
-    TF.H1: 800, TF.H4: 500, TF.D1: 400, TF.W1: 200, TF.M1: 120,
+    TF.MIN1: 400, TF.MIN5: 300, TF.MIN15: 300,
+    TF.H1: 400, TF.H4: 500, TF.D1: 400, TF.W1: 200, TF.M1: 120,
 }
 
-# Le uniche native da chiedere dal vivo. TF.H4 (e D1/W1/M1) di MT5 nascono
+# Le uniche native da chiedere dal vivo. TF.H4, D1, W1 e M1 di MT5 nascono
 # dal calendario del server, non da UTC: misurato su questo conto, l'H4
 # nativo chiude alle 1-5-9-13-17-21 UTC contro le 0-4-8-12-16-20 su cui ogni
-# misura del progetto e' stata fatta (+0,3613 R su 4h->15m). Usarlo live
+# misura del progetto e' stata fatta (+0,3613 R su 4h->15m), e il D1 nativo
+# chiude alle 21:00 fisse contro le 22:00 di Dukascopy. Usarli live
 # sposterebbe il range su cui il CRT cerca il key level su un'altra serie,
 # senza che nulla lo segnali: stesso aspetto, range diverso.
 #
-# TF.H4 si ricostruisce dalle orarie con `aggrega_orarie` (confini UTC
-# 0/4/8/12/16/20, la stessa funzione gia' misurata identica per Dukascopy).
-# D1/W1/M1 restano quelli dell'archivio Dukascopy finche' non si risolve
-# anche per loro lo stesso disallineamento: il loro confine nativo MT5 e'
-# le 21:00 UTC fisse (misurato), mentre Dukascopy oscilla con l'ora legale
-# di New York. Restano quindi meno freschi degli intraday quando questo
-# motore e' attivo, ma sono dati veri, non un'altra costruzione.
+# Si ricostruiscono tutti dalle orarie (`_ricostruisci_superiori`), con le
+# funzioni di `core/aggregazione` misurate contro l'archivio Dukascopy:
+# D1 identico al 99,8%, W1 al 98%, M1 al 99% sugli stessi orari.
 TIMEFRAME_DAL_VIVO: tuple[TF, ...] = (TF.MIN1, TF.MIN5, TF.MIN15, TF.H1)
+
+# Quante orarie leggere dall'archivio per ricostruire i timeframe superiori.
+# Con ~2.500 ore si coprono tre mesi e mezzo: abbastanza perche' il mensile
+# abbia almeno due mesi interi fra quello troncato dall'inizio della finestra
+# e quello ancora in formazione.
+ORARIE_PER_SUPERIORI = 2500
+
+# I timeframe ricostruiti dalle orarie, nell'ordine in cui dipendono l'uno
+# dall'altro (settimanale e mensile si costruiscono dalle giornaliere).
+SUPERIORI_RICOSTRUITI: tuple[TF, ...] = (TF.H4, TF.D1, TF.W1, TF.M1)
 
 
 def in_candele(barre: list[dict], tf: TF) -> list[Candela]:
@@ -130,6 +142,10 @@ class MercatoMT5:
     candele_nuove: int = field(default=0, init=False)
     valutazioni: int = field(default=0, init=False)
     ultimo_errore: Optional[str] = field(default=None, init=False)
+    # Quando e' partito l'ultimo riepilogo su Telegram. `None` significa
+    # "mai in questo processo": il primo parte al primo giro utile, cosi'
+    # dopo un riavvio si sa subito che il bot e' tornato a lavorare.
+    _ultimo_riepilogo: Optional[datetime] = field(default=None, init=False, repr=False)
 
     def avvia(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -158,6 +174,30 @@ class MercatoMT5:
             except Exception as errore:
                 self.ultimo_errore = repr(errore)
                 log.exception("giro di mercato fallito")
+            # Fuori dal try del giro: un riepilogo che fallisce non deve
+            # contare come un giro fallito, e un giro fallito e' anzi il
+            # momento in cui il riepilogo serve di piu'.
+            self._forse_riepilogo()
+
+    def _forse_riepilogo(self) -> None:
+        """Il riepilogo periodico su Telegram, se e' passato abbastanza.
+
+        Sta qui e non in un thread suo perche' il ciclo di mercato e' gia'
+        un orologio che batte: aggiungerne un secondo per mandare un
+        messaggio ogni sei ore sarebbe una parte in piu' che puo' rompersi.
+        """
+        from core.riepilogo import ORE_FRA_RIEPILOGHI, manda
+
+        adesso = datetime.now(timezone.utc)
+        if self._ultimo_riepilogo is not None:
+            passate = (adesso - self._ultimo_riepilogo).total_seconds() / 3600
+            if passate < ORE_FRA_RIEPILOGHI:
+                return
+        self._ultimo_riepilogo = adesso
+        try:
+            manda()
+        except Exception:
+            log.exception("riepilogo non inviato")
 
     def giro(self, adesso: Optional[datetime] = None) -> dict:
         """Un passaggio su tutti gli strumenti. Archivia, poi valuta.
@@ -170,6 +210,15 @@ class MercatoMT5:
         adesso = adesso or datetime.now(timezone.utc)
         self.giri += 1
         nuove_per_strumento: dict[str, dict[TF, Candela]] = {}
+
+        # Il DXY per primo, e per la stessa ragione di CTX-10: SETUP-19 e
+        # RISK-05 lo leggono ad ogni valutazione, quindi aggiornarlo dopo
+        # significherebbe decidere su una bias vecchia di un giro.
+        try:
+            self.aggiorna_dxy(adesso)
+        except Exception as errore:
+            self.ultimo_errore = f"DXY: {errore!r}"
+            log.warning("aggiornamento del DXY fallito: %r", errore)
 
         for strumento in UNIVERSO:
             if self._stop.is_set():
@@ -233,27 +282,23 @@ class MercatoMT5:
             if nuove:
                 ultime[tf] = candele[-1]
 
-        if TF.H1 in ultime:
-            nuova_h4 = self._ricostruisci_h4(strumento)
-            if nuova_h4 is not None:
-                ultime[TF.H4] = nuova_h4
+        # Si ricostruisce quando arriva un'ora nuova, ma anche quando uno dei
+        # superiori e' scaduto per conto suo: senza la seconda condizione, un
+        # bot rimasto spento due giorni non avrebbe mai richiuso il buco nelle
+        # giornaliere — aspettava un'ora nuova che intanto era gia' arrivata.
+        superiori_scaduti = any(
+            self.serie_da_chiedere(strumento, tf, adesso)
+            for tf in SUPERIORI_RICOSTRUITI
+        )
+        if TF.H1 in ultime or superiori_scaduti:
+            ultime.update(self._ricostruisci_superiori(strumento))
         return ultime
 
-    def _ricostruisci_h4(self, strumento: str) -> Optional[Candela]:
-        """TF_H4 dalle orarie appena aggiornate, sui confini di Dukascopy.
-
-        `aggrega_orarie` raggruppa per blocchi UTC 0/4/8/12/16/20 - gli stessi
-        su cui il progetto ha misurato +0,3613 R - non sul confine nativo di
-        MT5 (1/5/9/13/17/21, misurato su questo conto). 40 orarie bastano a
-        coprire un riavvio: sono dieci blocchi da quattro, ben oltre il
-        singolo blocco che puo' essersi appena chiuso.
-        """
-        from core.aggregazione import aggrega_orarie
-
-        righe = storage.candele_archiviate(strumento, TF.H1.value, limite=40)
-        if len(righe) < 4:
-            return None
-        orarie = [
+    def _orarie_archiviate(self, strumento: str) -> list[Candela]:
+        """Le ultime orarie in archivio, gia' come candele del motore."""
+        righe = storage.candele_archiviate(
+            strumento, TF.H1.value, limite=ORARIE_PER_SUPERIORI)
+        return [
             Candela(
                 orario=datetime.fromisoformat(
                     str(r["chiusura_utc"]).replace("Z", "+00:00")),
@@ -262,18 +307,118 @@ class MercatoMT5:
             )
             for r in righe
         ]
-        blocchi = aggrega_orarie(orarie, quante=4)
-        if not blocchi:
-            return None
-        righe_h4 = [{
-            "strumento": strumento, "tf": TF.H4.value,
+
+    def _ricostruisci_superiori(self, strumento: str) -> dict[TF, Candela]:
+        """H4, giornaliero, settimanale e mensile dalle orarie.
+
+        Nessuno di questi quattro si chiede a MT5: i suoi confini sono quelli
+        del server del broker, non quelli su cui il progetto ha misurato.
+        `core/aggregazione` li ricostruisce sui confini di Dukascopy (H4 a
+        0/4/8/12/16/20 UTC, giornata che chiude alle 22:00 UTC), e il
+        risultato e' stato confrontato con l'archivio vero: giornaliere
+        identiche al 99,8%, settimanali al 98%, mensili al 99%.
+
+        Perche' conta: senza questa ricostruzione D1, W1 e mensile restavano
+        fermi al giorno in cui Dukascopy ha smesso di girare — cinque giorni
+        il giornaliero, venti il mensile — e `SETUP-05` continuava a chiedersi
+        se i timeframe superiori fossero allineati leggendo candele vecchie di
+        una settimana, senza che nulla lo segnalasse.
+        """
+        from core.aggregazione import (
+            aggrega_giornaliere, aggrega_mensili, aggrega_orarie,
+            aggrega_settimanali,
+        )
+
+        orarie = self._orarie_archiviate(strumento)
+        if len(orarie) < 4:
+            return {}
+
+        giornaliere = aggrega_giornaliere(orarie)
+        per_tf: dict[TF, Sequence[Candela]] = {
+            TF.H4: aggrega_orarie(orarie, quante=4),
+            TF.D1: giornaliere,
+            TF.W1: aggrega_settimanali(giornaliere),
+            TF.M1: aggrega_mensili(giornaliere),
+        }
+
+        ultime: dict[TF, Candela] = {}
+        for tf, serie in per_tf.items():
+            # Si scarta il PRIMO periodo: la finestra comincia a meta'
+            # giornata (o a meta' mese) e quel gruppo e' troncato, quindi
+            # avrebbe l'apertura sbagliata e forse estremi mancanti.
+            # L'ultimo, quello in formazione, lo scarta gia' l'aggregatore.
+            # Tutti gli altri si riscrivono ad ogni giro: `salva_candele`
+            # ignora quelli gia' presenti, e cosi' un buco lasciato da uno
+            # spegnimento lungo si richiude da solo invece di restare li'.
+            coda = serie[1:]
+            if not coda:
+                continue
+            righe = [{
+                "strumento": strumento, "tf": tf.value,
+                "chiusura_utc": c.orario.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "apertura": c.apertura, "massimo": c.massimo,
+                "minimo": c.minimo, "chiusura": c.chiusura,
+            } for c in coda]
+            nuove, _ = storage.salva_candele(righe, origine="mt5")
+            self.candele_nuove += nuove
+            if nuove:
+                ultime[tf] = coda[-1]
+        return ultime
+
+    def aggiorna_dxy(self, adesso: datetime) -> int:
+        """Il DXY, calcolato dal vivo dai suoi sei costituenti su MT5.
+
+        `SETUP-19` non abilita alcuna operazione su cinque coppie su sei senza
+        la bias del dollaro, e `RISK-05` blocca ogni CRT che le vada contro.
+        Finche' il DXY lo costruiva `importa_dxy.py` da Dukascopy, spegnere
+        Dukascopy ha significato congelarlo: il 2026-09-21 era fermo a otto
+        giorni prima, e ogni singolo blocco RISK-05 nel diario citava la
+        stessa bias SHORT — una fotografia vecchia di una settimana che
+        continuava a decidere.
+
+        I sei costituenti (`core/duka_dxy.PESI`) sono quotati da MT5 come
+        tutto il resto, USDCAD e USDSEK compresi. **Restano ingredienti, non
+        strumenti**: si leggono in memoria, entrano nella formula dell'indice
+        e non vengono ne' archiviati col loro nome ne' passati al motore.
+        L'universo operativo resta quello di `PRIN-08`, sei strumenti, e il
+        DXY resta di sola analisi (`SOLO_ANALISI` in `core/simboli`).
+        """
+        from core import broker
+        from core.duka_dxy import NOME_ARCHIVIO, PESI, componi
+
+        if not self.serie_da_chiedere(NOME_ARCHIVIO, TF.H1, adesso):
+            return 0
+
+        serie: dict[str, list[Candela]] = {}
+        for costituente in PESI:
+            simbolo = simbolo_esecuzione(costituente, self.suffisso)
+            ok, barre, messaggio = broker.candele(
+                simbolo, TIMEFRAME_MT5[TF.H1], QUANTE[TF.H1])
+            if not ok:
+                log.warning("DXY: %s non leggibile: %s", simbolo, messaggio)
+                return 0
+            serie[costituente] = in_candele(barre, TF.H1)
+
+        orarie = componi(serie)
+        if not orarie:
+            log.warning("DXY: nessuna ora in comune fra i sei costituenti")
+            return 0
+
+        righe = [{
+            "strumento": NOME_ARCHIVIO, "tf": TF.H1.value,
             "chiusura_utc": c.orario.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "apertura": c.apertura, "massimo": c.massimo,
             "minimo": c.minimo, "chiusura": c.chiusura,
-        } for c in blocchi]
-        nuove, _ = storage.salva_candele(righe_h4, origine="mt5")
+        } for c in orarie]
+        nuove, _ = storage.salva_candele(righe, origine="mt5")
         self.candele_nuove += nuove
-        return blocchi[-1] if nuove else None
+        if nuove:
+            # Gli stessi superiori degli strumenti operativi: la bias di
+            # SETUP-19 si legge sul giornaliero, non sull'ora.
+            self._ricostruisci_superiori(NOME_ARCHIVIO)
+            log.info("DXY aggiornato: %d ore nuove, ultima %s",
+                     nuove, orarie[-1].orario.strftime("%Y-%m-%d %H:%M"))
+        return nuove
 
     def _valuta(self, strumento: str, per_tf: dict[TF, Candela]) -> None:
         """Una valutazione per ogni timeframe aggiornato che conta."""

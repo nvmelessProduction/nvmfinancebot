@@ -29,6 +29,99 @@ MENSILI_PER_TIMEFRAME: dict[TF, int] = {
     TF.M12: 12,
 }
 
+# L'ora UTC a cui Dukascopy chiude la giornata, e con essa la settimana e il
+# mese. Non e' una convenzione dedotta: e' misurata sull'archivio di questo
+# progetto, quello su cui ogni risultato e' stato ottenuto. Su 4.000 candele
+# `EURUSD TF_1D`, 3.507 chiudono alle 22:00 UTC, e 22:00 resta l'ora dominante
+# in **tutti e dodici i mesi** — quindi non segue l'ora legale, e' fissa.
+# Le settimanali chiudono la domenica alla stessa ora, le mensili l'ultimo
+# giorno del mese.
+#
+# Sbagliare questo confine non darebbe un errore: darebbe candele giornaliere
+# spostate di un'ora rispetto ai vent'anni di storia con cui vengono
+# confrontate, e nessuna regola se ne accorgerebbe.
+CONFINE_GIORNO_UTC: int = 22
+
+
+def _appartenenza(candela: Candela, confine_ore: int = CONFINE_GIORNO_UTC):
+    """A quale giornata appartiene questa candela, in un tempo spostato.
+
+    Due correzioni in una:
+
+    - `orario` e' la CHIUSURA (DEF-02), quindi la candela che chiude alle
+      22:00 appartiene al periodo che *finisce* li', non a quello che comincia:
+      si guarda l'istante immediatamente precedente;
+    - spostando avanti di `24 - confine_ore` ore, la chiusura di giornata
+      cade a mezzanotte del tempo spostato. Cosi' raggruppare per data, per
+      settimana ISO o per mese diventa esatto senza aritmetica sui confini.
+    """
+    return (candela.orario
+            - timedelta(microseconds=1)
+            + timedelta(hours=24 - confine_ore))
+
+
+def _unisci(gruppo: Sequence[Candela]) -> Candela:
+    """Apertura della prima, chiusura dell'ultima, estremi di tutte."""
+    return Candela(
+        orario=gruppo[-1].orario,
+        apertura=gruppo[0].apertura,
+        massimo=max(c.massimo for c in gruppo),
+        minimo=min(c.minimo for c in gruppo),
+        chiusura=gruppo[-1].chiusura,
+    )
+
+
+def _per_gruppi(candele: Sequence[Candela], chiave_di) -> tuple[Candela, ...]:
+    """Aggrega per una chiave qualsiasi, scartando l'ultimo gruppo.
+
+    **L'ultimo gruppo si scarta sempre**: e' quello in formazione, e `ESCL-13`
+    vieta di valutare una candela che non ha finito di formarsi. Non si puo'
+    riconoscerlo contando gli elementi come fa `aggrega_orarie`, perche' una
+    giornata di cambi non ha un numero fisso di ore: ci sono festivita', il
+    fine settimana e le ore senza scambi. L'unica prova che un periodo e'
+    chiuso e' che ne esista gia' uno successivo.
+    """
+    gruppi: dict = {}
+    for candela in sorted(candele, key=lambda c: c.orario):
+        gruppi.setdefault(chiave_di(candela), []).append(candela)
+    chiavi = sorted(gruppi)
+    return tuple(_unisci(gruppi[c]) for c in chiavi[:-1])
+
+
+def aggrega_giornaliere(
+    orarie: Sequence[Candela], confine_ore: int = CONFINE_GIORNO_UTC
+) -> tuple[Candela, ...]:
+    """`TF_1D` dalle orarie, sul confine di giornata di Dukascopy."""
+    return _per_gruppi(orarie, lambda c: _appartenenza(c, confine_ore).date())
+
+
+def aggrega_settimanali(
+    giornaliere: Sequence[Candela], confine_ore: int = CONFINE_GIORNO_UTC
+) -> tuple[Candela, ...]:
+    """`TF_1W` dalle giornaliere: la settimana chiude la domenica al confine.
+
+    Nel tempo spostato da `_appartenenza` la settimana dei cambi — da domenica
+    sera a domenica sera — coincide esattamente con la settimana ISO, che va
+    da lunedi' a domenica. Raggruppare per `(anno, settimana ISO)` basta.
+    """
+    return _per_gruppi(
+        giornaliere,
+        lambda c: _appartenenza(c, confine_ore).isocalendar()[:2],
+    )
+
+
+def aggrega_mensili(
+    giornaliere: Sequence[Candela], confine_ore: int = CONFINE_GIORNO_UTC
+) -> tuple[Candela, ...]:
+    """`TF_1M` dalle giornaliere, sullo stesso confine.
+
+    Non usa `aggrega_per_mese`: quella guarda l'istante prima della chiusura
+    senza spostare nulla, e con giornaliere che chiudono alle 22:00 farebbe
+    finire l'ultimo giorno del mese nel mese giusto solo per caso.
+    """
+    momento = lambda c: _appartenenza(c, confine_ore)          # noqa: E731
+    return _per_gruppi(giornaliere, lambda c: (momento(c).year, momento(c).month))
+
 # Mese in cui comincia ciascun gruppo, contando da gennaio.
 # Un trimestre parte a gennaio, aprile, luglio o ottobre; un semestre a
 # gennaio o luglio; l'anno a gennaio.
