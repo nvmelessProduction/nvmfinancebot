@@ -195,6 +195,40 @@ def _astieniti(motivo: str) -> Verdetto:
     )
 
 
+# Per il giudizio sulle obiezioni le parole "ACCETTA" e "RIFIUTA" sono
+# ambigue, e l'ambiguita' e' costata un verdetto capovolto: il modello ha
+# risposto ACCETTA intendendo "accetto l'obiezione, quindi non aprire", e il
+# codice l'ha letta come "l'obiezione cade, quindi apri". Un rifiuto
+# trasformato in via libera.
+#
+# Qui la domanda e' una sola -- l'obiezione regge? -- e le due risposte si
+# chiamano come la cosa che descrivono. REGGE non si puo' leggere come "apri".
+SCHEMA_OBIEZIONE: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "obiezione": {
+            "type": "string",
+            "enum": ["REGGE", "CADE"],
+            "description": (
+                "REGGE = l'obiezione della regola e' fondata, NON si apre "
+                "nulla. CADE = l'obiezione non regge in questo caso, e "
+                "l'ordine parte."
+            ),
+        },
+        "motivo": {
+            "type": "string",
+            "description": (
+                "Una o due frasi. Deve citare almeno un dato concreto del "
+                "dossier, non una massima generale."
+            ),
+        },
+        "fiducia": {"type": "string", "enum": ["bassa", "media", "alta"]},
+    },
+    "required": ["obiezione", "motivo", "fiducia"],
+    "additionalProperties": False,
+}
+
+
 ISTRUZIONI_OBIEZIONE = """\
 Sei il trader discrezionale di un bot che opera la Candle Range Theory di
 @Romeotpt. Qui NON ricevi un setup approvato: ricevi un CRT che il bot
@@ -227,8 +261,18 @@ misure, non su impressioni. Per lasciarla cadere ti serve qualcosa di
 **specifico in questo dossier** che la regola non sta vedendo. "Il contesto
 sembra buono" non basta, ed e' il modo tipico di sbagliare qui.
 
-In dubbio, sostieni l'obiezione. Un'occasione persa costa zero; un'operazione
-presa contro una regola valida costa un R. Non c'e' simmetria.
+# Come si risponde
+
+Un campo solo, `obiezione`, e vuole una di due parole:
+
+- **REGGE** -> l'obiezione della regola e' fondata. NON si apre niente.
+- **CADE**  -> l'obiezione non regge in questo caso. L'ordine parte.
+
+La domanda e' sulla REGOLA, non sull'operazione: se stai pensando "sostengo
+l'obiezione", la risposta e' REGGE.
+
+In dubbio, REGGE. Un'occasione persa costa zero; un'operazione presa contro
+una regola valida costa un R. Non c'e' simmetria.
 
 Cita sempre almeno un numero del dossier nel motivo.\
 """
@@ -264,7 +308,11 @@ def _contabilizza(risposta: Any) -> None:
 
 
 def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0,
-            istruzioni: str = ISTRUZIONI) -> Verdetto:
+            istruzioni: str = ISTRUZIONI,
+            schema: Optional[dict[str, Any]] = None,
+            campo: str = "verdetto",
+            valore_affermativo: str = "ACCETTA",
+            valori_ammessi: tuple[str, ...] = ("ACCETTA", "RIFIUTA")) -> Verdetto:
     """Chiede a Claude se eseguire questo setup. Rifiuta in ogni caso dubbio.
 
     `dossier` e' il quadro numerico costruito da `core/dossier.py`. Va passato
@@ -326,7 +374,7 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0,
                 "effort": "high",
                 "format": {
                     "type": "json_schema",
-                    "schema": SCHEMA_VERDETTO,
+                    "schema": schema or SCHEMA_VERDETTO,
                 },
             },
             messages=[{
@@ -361,12 +409,14 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0,
     except json.JSONDecodeError as errore:
         return _astieniti(f"verdetto non e' JSON valido: {errore}")
 
-    verdetto = dati.get("verdetto")
-    if verdetto not in ("ACCETTA", "RIFIUTA"):
-        return _astieniti(f"verdetto non riconosciuto: {verdetto!r}")
+    verdetto = dati.get(campo)
+    if verdetto not in valori_ammessi:
+        # Fallimento chiuso: una parola che non riconosciamo non e' un si'.
+        return _astieniti(
+            f"{campo} non riconosciuto: {verdetto!r} (attesi {valori_ammessi})")
 
     return Verdetto(
-        accetta=(verdetto == "ACCETTA"),
+        accetta=(verdetto == valore_affermativo),
         motivo=str(dati.get("motivo", ""))[:500],
         fiducia=str(dati.get("fiducia", "bassa")),
         modello=risposta.model,
@@ -393,4 +443,13 @@ def giudica_obiezione(
         "regola": obiezione,
         "cosa_dice": spiegazione,
     }
-    return giudica(completo, timeout_sec, istruzioni=ISTRUZIONI_OBIEZIONE)
+    return giudica(
+        completo, timeout_sec,
+        istruzioni=ISTRUZIONI_OBIEZIONE,
+        schema=SCHEMA_OBIEZIONE,
+        campo="obiezione",
+        # L'unica risposta che apre qualcosa. Tutto il resto -- REGGE, una
+        # parola non prevista, un errore di rete -- sostiene l'obiezione.
+        valore_affermativo="CADE",
+        valori_ammessi=("REGGE", "CADE"),
+    )

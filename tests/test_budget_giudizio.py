@@ -148,3 +148,42 @@ def test_la_scrittura_della_cache_costa_piu_della_lettura(monkeypatch):
     rilegge = budget.costo(200, 0, 3000, 500)
     assert scrive > rilegge
     assert (scrive - rilegge) == pytest.approx(3000 * (6.25 - 0.50) / 1e6)
+
+
+class TestVerdettoNonSiCapovolge:
+    """Il difetto piu' pericoloso della giornata: un rifiuto letto come si'.
+
+    Il 2026-09-21, in produzione, il giudizio ha risposto `ACCETTA` scrivendo
+    nel motivo "Sostengo l'obiezione RISK-05". Il modello intendeva "accetto
+    l'obiezione, quindi NON aprire"; il codice l'ha letta come "l'obiezione
+    cade, quindi apri". Le due parole erano ambigue perche' venivano da un
+    altro contesto, dove si giudicava l'ORDINE e non la REGOLA.
+
+    Ora il campo si chiama `obiezione` e vale REGGE o CADE: parole che
+    descrivono la cosa di cui parlano e non si possono capovolgere.
+    """
+
+    def test_le_due_parole_dicono_di_cosa_parlano(self):
+        from core.giudizio_claude import SCHEMA_OBIEZIONE
+        assert SCHEMA_OBIEZIONE["properties"]["obiezione"]["enum"] == ["REGGE", "CADE"]
+        assert "obiezione" in SCHEMA_OBIEZIONE["required"]
+        assert "verdetto" not in SCHEMA_OBIEZIONE["properties"]
+
+    def test_solo_cade_apre(self, monkeypatch):
+        """REGGE, una parola imprevista o un guasto: non si apre."""
+        from core import giudizio_claude as g
+
+        for risposta, apre in (("CADE", True), ("REGGE", False),
+                               ("ACCETTA", False), ("", False), (None, False)):
+            monkeypatch.setattr(g, "giudica",
+                                lambda *a, **k: g.Verdetto(
+                                    accetta=(k.get("valore_affermativo") == risposta),
+                                    motivo="", fiducia="alta", modello="finto"))
+            v = g.giudica_obiezione({"x": 1}, "RISK-05", "y")
+            assert v.accetta is apre, f"{risposta!r} non deve dare {v.accetta}"
+
+    def test_le_istruzioni_chiedono_le_parole_giuste(self):
+        from core.giudizio_claude import ISTRUZIONI_OBIEZIONE
+        assert "REGGE" in ISTRUZIONI_OBIEZIONE
+        assert "CADE" in ISTRUZIONI_OBIEZIONE
+        assert "In dubbio, REGGE" in ISTRUZIONI_OBIEZIONE
