@@ -35,6 +35,7 @@ from core.config import impostazioni
 from core.log import configura as configura_log
 from core.parametri import UNIVERSO
 from core.sentinella import Sentinella
+from core.simboli import simbolo_esecuzione
 
 OK = "OK     "
 KO = "ERRORE "
@@ -97,23 +98,40 @@ def leggi_specifiche() -> dict[str, dict]:
           f"{'tick size':>11} {'tick value':>11} {'valore punto':>13}")
     print(f"{NOTA} {'-' * 66}")
 
+    suffisso = impostazioni().MT5_SUFFISSO_SIMBOLI
+
     trovate: dict[str, dict] = {}
     for cfd in UNIVERSO:
-        ok, specifiche, messaggio = broker.specifiche_simbolo(cfd)
+        # Il nome del broker, non quello di PRIN-08. Qui si chiedeva `cfd`
+        # nudo, e su un conto con suffisso sono due cose diverse: su Ultima
+        # Markets `XAUUSD` e `USDCHF` non esistono affatto (la prova diceva
+        # "non trovati" e consigliava di configurare un suffisso che era gia'
+        # configurato), mentre `EURUSD` esiste ma e' un **altro contratto**
+        # da `EURUSD+`. Quindi la prova mostrava dei `valore_punto` presi dal
+        # simbolo sbagliato: il numero con cui RISK-03 dimensiona la size, che
+        # e' esattamente la ragione per cui questa prova esiste.
+        simbolo = simbolo_esecuzione(cfd, suffisso)
+        ok, specifiche, messaggio = broker.specifiche_simbolo(simbolo)
         if not ok or specifiche is None:
-            print(f"{KO} {cfd:<10} {messaggio}")
+            print(f"{KO} {simbolo:<10} {messaggio}")
             continue
         trovate[cfd] = specifiche
-        print(f"{NOTA} {cfd:<10} {specifiche['volume_min']:>8} "
+        print(f"{NOTA} {simbolo:<10} {specifiche['volume_min']:>8} "
               f"{specifiche['volume_step']:>8} {specifiche['trade_tick_size']:>11} "
               f"{specifiche['trade_tick_value']:>11} {specifiche['valore_punto']:>13.2f}")
 
     mancanti = sorted(set(UNIVERSO) - set(trovate))
     if mancanti:
         print()
-        print(f"{KO} strumenti non trovati sul broker: {', '.join(mancanti)}")
-        print(f"{NOTA} i nomi su FP Markets possono avere un suffisso "
-              f"(EURUSD.a, XAUUSD.pro...). Vanno mappati prima di operare.")
+        print(f"{KO} strumenti non trovati sul broker: "
+              f"{', '.join(simbolo_esecuzione(c, suffisso) for c in mancanti)}")
+        if suffisso:
+            print(f"{NOTA} il suffisso configurato e' '{suffisso}'. Se i nomi giusti "
+                  f"sono altri, si correggono in MT5_SUFFISSO_SIMBOLI.")
+        else:
+            print(f"{NOTA} nessun suffisso configurato, ma molti broker ne usano uno "
+                  f"(EURUSD+, EURUSD.a, XAUUSD.pro...). Si mette in "
+                  f"MT5_SUFFISSO_SIMBOLI.")
     else:
         print()
         print(f"{OK} tutti e sei gli strumenti di PRIN-08 sono raggiungibili")
@@ -247,7 +265,13 @@ def main() -> int:
         print(f"{KO} {opzioni.strumento} non e' fra gli strumenti raggiungibili.")
         return 1
 
-    riuscito = prova_ordine(opzioni.strumento, specifiche[opzioni.strumento])
+    # Anche qui il nome del broker: `--ordine` manda un ordine vero, e col
+    # nome nudo lo manderebbe su un contratto diverso da quello su cui opera
+    # il bot -- cioe' proverebbe un percorso che non e' quello dei soldi.
+    riuscito = prova_ordine(
+        simbolo_esecuzione(opzioni.strumento, cfg.MT5_SUFFISSO_SIMBOLI),
+        specifiche[opzioni.strumento],
+    )
 
     print()
     print("=" * 72)
