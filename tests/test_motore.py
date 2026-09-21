@@ -721,3 +721,59 @@ class TestOperativitaDomenicale:
             TF.W1,
         )
         assert "PRIN-13" not in decisione.regole_che_bloccano
+
+
+# ===========================================================================
+# GEST-04 — un parziale dietro le spalle non e' un parziale
+# ===========================================================================
+class TestTp1DietroIlPrezzo:
+    """TP1 nasce come 50% di `N1` (GEST-07): un livello del RANGE.
+
+    Con il prezzo di ingresso non lo confronta nessuno, e quando il prezzo
+    l'ha gia' superato TP1 finisce dalla parte dello stop. Li'
+    `gestione.raggiunge_tp1` lo trova centrato al primo giro di sentinella:
+    parziale chiuso e stop a break even, cioe' a due spread dall'ingresso,
+    dove il tick dopo lo prende.
+
+    Misurato sulle 17 posizioni aperte in prova il 2026-09-21: dodici
+    avevano TP1 dal lato sbagliato e sono vissute in media sei secondi.
+    """
+
+    # N2 spazza 111 come sempre, ma richiude a 101: il prezzo ha gia'
+    # attraversato il 50% di N1, che sta a 105.
+    N2_OLTRE = cand(massimo=111, minimo=100, chiusura=101, apertura=110)
+
+    def _oltre(self) -> object:
+        return m.valuta(
+            foto(candele_per_tf={TF.H4: [N1, self.N2_OLTRE]}, prezzo_cfd=101.0),
+            TF.H4,
+        )
+
+    def test_un_tp1_gia_superato_non_arriva_al_broker(self) -> None:
+        assert self._oltre().tp1 is None
+
+    def test_in_esercizio_e_GEST_01_a_fermarla(self) -> None:
+        """Il rapporto su un TP1 alle spalle non esiste, e GEST-01 blocca.
+
+        E' la rete che ha tenuto finora: in esercizio queste operazioni non
+        partono. Col modo diagnostico GEST-01 e' spento -- e' soppesabile --
+        e allora il livello incoerente arriverebbe al broker. Per questo il
+        parziale si toglie qui e non li'.
+        """
+        decisione = self._oltre()
+        assert decisione.azione == "NONE"
+        assert "GEST-01" in decisione.regole_che_bloccano
+        assert decisione.rapporto_su_tp1 is None
+        # Lo stop resta quello vero: si toglie il parziale, non l'operazione.
+        assert decisione.livello_stop == pytest.approx(111.0)
+
+    def test_un_tp1_davanti_al_prezzo_resta(self) -> None:
+        decisione = m.valuta(foto(), TF.H4)
+        assert decisione.tp1 == pytest.approx(105.0)
+        assert decisione.tp1 < 109.0, "su uno short il parziale sta sotto"
+
+    def test_il_parziale_sta_sempre_dal_lato_del_guadagno(self) -> None:
+        """L'invariante, provata sui due casi: se TP1 c'e', e' davanti."""
+        for decisione, prezzo in ((self._oltre(), 101.0), (m.valuta(foto(), TF.H4), 109.0)):
+            if decisione.tp1 is not None:
+                assert decisione.tp1 < prezzo, decisione.spiegazione()

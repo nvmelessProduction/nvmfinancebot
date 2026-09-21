@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Sequence
 
 from core.parametri import (
+    LEVA_MASSIMA,
     LIMITE_GIORNALIERO,
     LIMITE_MENSILE,
     LIMITE_SETTIMANALE,
@@ -192,6 +193,30 @@ def calcola_size(
             relativa,
             f"RISK-03: {lotti_esatti:.6f} lotti arrotondati per difetto danno zero",
         )
+
+    # --- Il tetto sulla LEVA, che e' cosa diversa dal rischio -------------
+    #
+    # `valore_punto` e' quanto vale un'unita' di prezzo per un lotto, quindi
+    # `valore_punto x prezzo` e' il nozionale di un lotto. Con uno stop
+    # vicino il rischio resta l'1% ma il nozionale esplode, e a quel punto
+    # uno scivolamento sullo stop non costa piu' l'1%.
+    nozionale = lotti * valore_punto * prezzo_cfd
+    tetto = LEVA_MASSIMA * equity
+    if nozionale > tetto:
+        ridotti = _arrotonda_per_difetto(
+            tetto / (valore_punto * prezzo_cfd), passo_broker)
+        if ridotti <= 0:
+            return EsitoSize(
+                None, rischio, relativa,
+                f"RISK-03: con la leva massima di {LEVA_MASSIMA:.0f}x il volume "
+                f"scende sotto il passo del broker",
+            )
+        return EsitoSize(
+            ridotti, rischio, relativa,
+            f"size ridotta da {lotti} a {ridotti} lotti: il nozionale era "
+            f"{nozionale / equity:.0f}x l'equity, il tetto e' {LEVA_MASSIMA:.0f}x",
+        )
+
     return EsitoSize(lotti, rischio, relativa, "size calcolata")
 
 

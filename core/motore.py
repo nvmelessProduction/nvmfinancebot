@@ -47,7 +47,8 @@ from core.config import impostazioni
 from core.log import diario
 from core.parametri import (
     CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
-    MAX_POSIZIONI_PER_STRUMENTO, RISK_05_BLOCCA_DA_SOLA, TF, UNIVERSO,
+    COSTO_SPREAD_MASSIMO_IN_R, MAX_POSIZIONI_PER_STRUMENTO,
+    RISK_05_BLOCCA_DA_SOLA, TF, UNIVERSO,
 )
 
 log = diario("motore")
@@ -510,6 +511,27 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
 
     applicate = ["CRT-13", "SETUP-13", "GEST-02"]
 
+    # --- Lo stop deve stare FUORI dal costo (RISK-03) ---------------------
+    #
+    # Uno stop piu' vicino di dieci spread non e' uno stop stretto: e' uno
+    # stop dentro il rumore che lo spread stesso produce. Vedi
+    # `COSTO_SPREAD_MASSIMO_IN_R` per i numeri misurati.
+    #
+    # Sta qui e non all'armamento perche' qui il prezzo d'ingresso esiste:
+    # e' lo stesso motivo per cui ci sta GEST-01.
+    rischio_ingresso = abs(ingresso.prezzo - ingresso.stop)
+    if foto.spread > 0 and rischio_ingresso > 0:
+        costo = foto.spread / rischio_ingresso
+        if costo > COSTO_SPREAD_MASSIMO_IN_R:
+            return _non_operare(
+                foto.strumento, ["RISK-03"],
+                f"lo spread costerebbe {costo:.2f} R: lo stop dista "
+                f"{rischio_ingresso / foto.spread:.1f} spread dall'ingresso, "
+                f"il minimo e' {1 / COSTO_SPREAD_MASSIMO_IN_R:.0f}",
+                applicate, direzione=ingresso.direzione, tf_crt=tf_trigger,
+                livello_stop=ingresso.stop, tp1=ingresso.bersaglio_1,
+            )
+
     # --- I controlli di rischio, rifatti adesso ---------------------------
     limiti = risk.limiti_raggiunti(
         foto.pnl_giornaliero, foto.equity_inizio_giornata,
@@ -755,6 +777,39 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
 
     rapporto = ctx.rapporto_rischio_rendimento(prezzo_ingresso, stop, obiettivo_1)
+
+    # --- 4bis-ter. Un parziale dietro le spalle non e' un parziale -------
+    #
+    # `obiettivo_1` nasce come 50% di `N1` (GEST-07): un livello del RANGE,
+    # che con il prezzo di ingresso non lo confronta nessuno. Quando il
+    # prezzo l'ha gia' superato, TP1 sta dalla parte dello stop, e
+    # `gestione.raggiunge_tp1` lo trova centrato al primo giro di sentinella:
+    # chiude il parziale e porta il resto a break even, cioe' a due spread
+    # dall'ingresso, dove il tick dopo lo prende.
+    #
+    # Misurato il 2026-09-21 sulle 17 posizioni aperte in prova: 12 avevano
+    # TP1 dal lato sbagliato, e sono vissute in media sei secondi -- aperte e
+    # chiuse prima che si potessero vedere.
+    #
+    # In esercizio GEST-01 le ferma prima, perche' `rapporto` qui vale None
+    # e CTX le blocca. Col modo diagnostico GEST-01 e' spento, e allora il
+    # livello incoerente arriva al broker. Ma GEST-01 e' un filtro che si
+    # puo' soppesare, e questo non lo e': un parziale alle spalle del prezzo
+    # non e' un'operazione sfortunata, e' un parziale che non esiste. Si
+    # toglie, e la posizione vive sul suo stop e sul suo bersaglio finale --
+    # che e' esattamente cio' che GEST-04 prevede quando TP1 non c'e'.
+    #
+    # L'altra meta' di CRT-13 questo controllo ce l'ha gia': in
+    # `ingresso_ltf.controlla` il bersaglio superato scala al lato opposto
+    # (CRT-16). Qui mancava perche' qui il primo bersaglio e' uno solo.
+    if rapporto is None and obiettivo_1 is not None:
+        dietro = (obiettivo_1 <= prezzo_ingresso if crt.direzione is Bias.LONG
+                  else obiettivo_1 >= prezzo_ingresso)
+        if dietro:
+            log.info("%s: TP1 %.5f gia' superato dal prezzo %.5f, nessun "
+                     "parziale (GEST-04 non si applica)",
+                     foto.strumento, obiettivo_1, prezzo_ingresso)
+            obiettivo_1 = None
 
     # --- 4ter. Il filtro DXY, DOPO i livelli (SETUP-19, RISK-05) ---------
     #

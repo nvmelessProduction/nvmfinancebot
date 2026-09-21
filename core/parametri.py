@@ -155,6 +155,45 @@ TARGET_DI: Final[dict[TF, Optional[TF]]] = {
     TF.M12: None,  # vedi DEF-22
 }
 
+# Quanto dell'R puo' costare lo spread, al massimo.
+#
+# Lo spread non e' una tassa proporzionale sul guadagno: e' una sottrazione
+# fissa dall'aspettativa, e quanto pesa dipende solo da quanto e' lontano lo
+# stop. Con uno stop a due spread se ne va mezzo R prima di cominciare, e
+# l'operazione deve vincere molto piu' spesso solo per pareggiare.
+#
+# Misurato sul conto demo il 2026-09-21, con il modo diagnostico acceso: le
+# quattro operazioni aperte avevano stop a 1,8 - 8,0 volte lo spread, e sono
+# morte tutte in 5-30 secondi. Non erano "stop stretti": erano stop dentro il
+# rumore che lo spread stesso produce.
+#
+# C'e' una seconda conseguenza, meno visibile e piu' pericolosa: `RISK-03`
+# dimensiona sul rischio, quindi uno stop minuscolo produce una size enorme.
+# Quella sera AUDUSD e' stato aperto con 0,88 lotti su un conto da 1.000 EUR
+# -- circa 88.000 di nozionale -- e il tetto `VOLUME_MASSIMO` l'ha presa per
+# un soffio. Il rischio dichiarato restava l'1%, ma con quella leva basta uno
+# scivolamento per sfondarlo.
+#
+# A 0,10 lo stop deve stare ad almeno dieci spread. E' una soglia scelta, non
+# misurata, e sta dalla parte prudente: la misura definitiva del progetto
+# dice che lo spread costa fra 0,15 e 0,35 R ed e' gia' abbastanza per
+# rendere la strategia perdente.
+COSTO_SPREAD_MASSIMO_IN_R: Final[float] = 0.10
+
+# Quante volte l'equity puo' valere il nozionale di una singola posizione.
+#
+# `RISK-03` controlla il RISCHIO, non la LEVA, e i due divergono proprio
+# quando lo stop e' vicino: rischiare l'1% con uno stop di due pip significa
+# muovere un nozionale enorme. Misurato sul demo il 2026-09-21: AUDUSD aperto
+# con 0,88 lotti su un conto da 1.000 EUR, circa 54.000 di nozionale, cioe'
+# 54 volte l'equity. Il rischio dichiarato era sempre l'1%, ma a quella leva
+# basta uno scivolamento sullo stop per pagarne molto di piu' -- ed e'
+# esattamente quando i prezzi corrono che lo stop scivola.
+#
+# Non sostituisce `VOLUME_MASSIMO`, che e' un tetto assoluto contro gli
+# errori di scala: questo e' un tetto RELATIVO al conto, e cresce con lui.
+LEVA_MASSIMA: Final[float] = 20.0
+
 # SETUP-05, "regola dei due timeframe superiori".
 # TF_H12 e TF_H6 non compaiono: la regola lo dice esplicitamente. E' la
 # ragione per cui un CRT su quei due timeframe non e' eseguibile (REV-11).
