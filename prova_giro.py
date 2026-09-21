@@ -131,7 +131,7 @@ def prova_calendario(adesso: datetime) -> bool:
     """Il calendario non ferma piu' il bot, ma quel che perde va detto."""
     from pathlib import Path
 
-    from core import calendario
+    from core import calendario, contesto
     from core.parametri import (
         ETA_MASSIMA_CALENDARIO_ORE,
         PERCORSO_CALENDARIO_NEWS,
@@ -143,24 +143,39 @@ def prova_calendario(adesso: datetime) -> bool:
     eventi, eta, motivo = calendario.carica(Path(PERCORSO_CALENDARIO_NEWS), adesso)
 
     if eventi:
-        # Quel che decide se CTX-02 puo' ancora bloccare qualcosa non e'
-        # l'eta' del FILE ma il contenuto: `dentro_finestra_news` confronta
-        # l'ora di adesso con l'orario di ogni evento, quindi serve almeno un
-        # evento ancora da venire. Un file vecchio di giorni ma compilato fino
-        # a fine mese protegge benissimo; un file salvato un minuto fa ma con
-        # soli eventi passati non protegge affatto.
+        # Due condizioni distinte, e servono tutte e due.
         #
-        # Prima qui si guardava solo l'eta' e si concludeva "sono tutti
-        # passati": con 33 eventi di cui 20 ancora futuri la prova dichiarava
-        # spento un filtro che era acceso.
+        # La prima e' il contenuto: `dentro_finestra_news` confronta l'ora di
+        # adesso con l'orario di ogni evento, quindi serve almeno un evento
+        # ancora da venire. Un file pieno di soli eventi passati non protegge
+        # da niente. Prima qui si guardava solo l'eta' e si concludeva "sono
+        # tutti passati": con 33 eventi di cui 20 ancora futuri la prova
+        # dichiarava spento un filtro che era acceso.
+        #
+        # La seconda e' l'eta', e non e' una ridondanza: il motore non legge
+        # gli eventi direttamente, passa da `calendario_utilizzabile`, che
+        # scarta **tutto il file** oltre ETA_MASSIMA_CALENDARIO_ORE. Un file
+        # compilato fino a fine mese ma salvato tre giorni fa ha eventi futuri
+        # e viene comunque ignorato. Guardare solo il contenuto e' come
+        # correggere l'errore di prima al contrario.
         futuri = [e for e in eventi if e.orario_utc > adesso]
         eta_detta = f"{eta:.0f} ore" if eta is not None else "eta' ignota"
-        if futuri:
+        fresco = contesto.calendario_utilizzabile(eventi, eta)
+        if futuri and fresco:
             prossimo = min(futuri, key=lambda e: e.orario_utc)
             riga(OK, f"{len(eventi)} eventi, {len(futuri)} ancora futuri "
                      f"(file di {eta_detta}): CTX-02 funziona, prossimo "
                      f"{prossimo.orario_utc:%d/%m %H:%M} {prossimo.valuta} "
                      f"{prossimo.stelle} stelle")
+        elif not fresco:
+            quale = NO if lettura == "astieniti" else FORSE
+            conseguenza = ("PA-55 vale 'astieniti': il bot non aprira' nulla"
+                           if lettura == "astieniti"
+                           else "PA-55 vale 'opera': il bot lavora, ma senza CTX-02")
+            riga(quale, f"{len(eventi)} eventi ({len(futuri)} futuri) ma il file "
+                        f"e' di {eta_detta}, oltre le {ETA_MASSIMA_CALENDARIO_ORE} "
+                        f"ammesse: il motore lo scarta tutto. {conseguenza}")
+            return lettura != "astieniti"
         else:
             riga(FORSE, f"{len(eventi)} eventi ma tutti gia' passati "
                         f"(file di {eta_detta}): CTX-02 non ha piu' nulla "

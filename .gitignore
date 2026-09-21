@@ -7,6 +7,9 @@
 bot.db
 bot.db-wal
 bot.db-shm
+# Le copie fatte prima di una pulizia dell'archivio: stesso contenuto del
+# bot.db, stesso peso (centinaia di MB), stesso motivo per non committarle.
+bot.db.*
 *.log
 *.log.*
 STOP
