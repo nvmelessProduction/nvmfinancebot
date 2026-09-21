@@ -4,6 +4,7 @@ Se token o chat_id non sono configurati il messaggio finisce a console:
 l'impianto deve poter girare anche senza Telegram.
 """
 
+import threading
 import time
 from typing import Optional
 
@@ -119,6 +120,34 @@ def verifica_credenziali() -> tuple[bool, str]:
         return False, f"token rifiutato: {corpo}"
     nome = corpo.get("result", {}).get("username", "?")
     return True, f"token valido, bot @{nome}"
+
+
+def invia_appena_possibile(testo: str) -> None:
+    """Come `invia`, ma senza far aspettare chi chiama.
+
+    `invia` puo' bloccare a lungo: `TELEGRAM_TENTATIVI` tentativi per ogni
+    destinatario, con attese crescenti fra l'uno e l'altro piu' il timeout
+    HTTP di ciascuno. Sono decine di secondi quando Telegram non risponde.
+
+    Va bene per un avviso mandato da uno script, non per chi sta decidendo su
+    una candela appena chiusa: `arma()` gira dentro `processa_alert`, quindi
+    sul thread del mercato e sulla richiesta `/webhook`, e un CRT armato non
+    puo' costare mezzo minuto di attesa perche' la rete e' lenta. Stessa cosa
+    per il riepilogo periodico, che parte dal ciclo di mercato.
+
+    Il messaggio parte su un thread suo e chi chiama torna subito. Se la
+    consegna fallisce lo dice il diario: non c'e' nulla da decidere in base
+    all'esito, quindi non serve aspettarlo.
+    """
+    def _manda() -> None:
+        try:
+            inviato, dettaglio = invia(testo)
+            if not inviato:
+                log.warning("notifica non consegnata: %s", dettaglio)
+        except Exception:                              # pragma: no cover
+            log.exception("notifica non inviata")
+
+    threading.Thread(target=_manda, name="telegram", daemon=True).start()
 
 
 def messaggio_decisione(

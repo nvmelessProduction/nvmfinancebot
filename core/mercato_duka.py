@@ -46,6 +46,7 @@ from core.fonte_dukascopy import orarie_del_mese
 from core.log import diario
 from core.models import AlertIn
 from core.parametri import GERARCHIA_COMPLETA, TF, UNIVERSO
+from core import riepilogo
 
 log = diario("mercato_duka")
 
@@ -259,6 +260,10 @@ class MercatoDukascopy:
             except Exception as errore:
                 self.ultimo_errore = repr(errore)
                 log.exception("giro di mercato fallito")
+            # Fuori dal try del giro: un riepilogo che fallisce non deve
+            # contare come un giro fallito, e un giro fallito e' anzi il
+            # momento in cui il riepilogo serve di piu'.
+            riepilogo.forse_manda()
 
     def giro(self, adesso: Optional[datetime] = None) -> dict:
         """Un passaggio su tutti gli strumenti. Archivia, poi valuta.

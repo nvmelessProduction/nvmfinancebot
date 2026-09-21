@@ -132,7 +132,7 @@ def arma(
     # sempre - avvisava solo su un ordine mandato o bloccato - e un'attesa di
     # ore o minuti (l'ingresso vero arriva su un timeframe diverso) passava
     # inosservata a chi non tiene aperto il pannello.
-    notifier.invia(
+    notifier.invia_appena_possibile(
         f"CRT-13 armato: {strumento} {direzione.value} su {tf_crt.value}, "
         f"attende il ritorno nell'FVG su {tf_ingresso.value}.\n"
         f"Sweep a {estremo_sweep:.5f}, primo bersaglio {eq_range:.5f}."
@@ -336,7 +336,7 @@ def valuta_armati(
         if setup.barre_attesa + 1 >= ATTESA_MASSIMA_BARRE:
             chiudi(setup.id_setup, "decaduto", motivo)
             log.info("setup %s decaduto: %s", setup.id_setup, motivo)
-            notifier.invia(
+            notifier.invia_appena_possibile(
                 f"CRT-13 decaduto: {setup.strumento} {setup.direzione.value} "
                 f"su {setup.tf_crt} senza ingresso entro {ATTESA_MASSIMA_BARRE} "
                 f"barre su {setup.tf_ingresso}. {motivo}"

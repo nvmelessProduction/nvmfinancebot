@@ -157,12 +157,52 @@ def _freschezza() -> list[str]:
         return ["nessuna serie leggibile"]
 
     peggiore = max(ritardi.items(), key=lambda x: x[1])
-    quante_indietro = sum(1 for ore in ritardi.values() if ore > 26)
     fuori = [f"{len(ritardi)} serie su {len(UNIVERSO)} strumenti"]
-    if quante_indietro:
-        fuori.append(f"ATTENZIONE: {quante_indietro} indietro di oltre un giorno")
+    indietro = [nome for nome, ore in ritardi.items() if _in_ritardo(nome, ore)]
+    if indietro:
+        fuori.append(f"ATTENZIONE: {len(indietro)} serie indietro ({indietro[0]})")
     fuori.append(f"la piu' vecchia: {peggiore[0]}, {_quanto_fa(peggiore[1])}")
     return fuori
+
+
+def mercato_aperto(quando: datetime) -> bool:
+    """I cambi sono aperti da domenica 22:00 a venerdi' 22:00 UTC.
+
+    Non e' una convenzione presa da un manuale: e' misurata sull'archivio
+    Dukascopy di questo progetto. Su 129.000 orarie di EURUSD, il sabato non
+    ne esiste **nessuna**, la domenica cominciano alle 22:00 e il venerdi'
+    finiscono alle 22:00.
+    """
+    giorno, ora = quando.weekday(), quando.hour
+    if giorno == 5:
+        return False
+    if giorno == 6:
+        return ora >= 22
+    if giorno == 4:
+        return ora <= 22
+    return True
+
+
+def _in_ritardo(nome_serie: str, ore: float) -> bool:
+    """Questa serie e' indietro davvero, o e' solo il fine settimana?
+
+    Una soglia unica non puo' andare bene per tutte: un 5 minuti fermo da
+    venticinque ore e' un disastro, un giornaliero fermo da venticinque ore e'
+    la normalita'. E a mercato chiuso sono ferme tutte per definizione: la
+    soglia fissa a 26 ore faceva scattare "ATTENZIONE: 24 serie indietro" ogni
+    domenica, due volte a fine settimana, in un messaggio il cui senso e'
+    che venga letto.
+    """
+    if not mercato_aperto(datetime.now(timezone.utc)):
+        return False
+    attese = {"1 min": 1 / 60, "5 min": 5 / 60, "15 min": 0.25,
+              "1 ora": 1.0, "giornaliero": 24.0}
+    for nome, durata in attese.items():
+        if nome_serie.endswith(nome):
+            # Tre periodi di ritardo: uno puo' mancare per un buco della
+            # fonte, tre vogliono dire che la serie non avanza piu'.
+            return ore > durata * 3 + 0.5
+    return ore > 26
 
 
 def _crt_per_strumento(da: datetime) -> list[tuple[str, int]]:
@@ -242,7 +282,7 @@ def componi(ore: float = ORE_FRA_RIEPILOGHI) -> str:
     except Exception:                                  # pragma: no cover
         log.warning("setup armati non leggibili", exc_info=True)
     righe.append(f"Setup armati: {len(in_attesa)}")
-    righe.append(f"Operazioni aperte: {operazioni}")
+    righe.append(f"Ordini decisi: {operazioni}")
     for setup in in_attesa[:3]:
         righe.append(
             f"  -> {setup.strumento} {setup.direzione.value} da "
@@ -302,5 +342,39 @@ def manda(ore: float = ORE_FRA_RIEPILOGHI) -> bool:
     except Exception:
         log.exception("riepilogo non componibile")
         return False
-    inviato, _ = notifier.invia(testo)
-    return inviato
+    notifier.invia_appena_possibile(testo)
+    return True
+
+
+# Quando e' partito l'ultimo riepilogo. `None` significa "mai in questo
+# processo": il primo parte al primo giro utile, cosi' dopo un riavvio si sa
+# subito che il bot e' tornato a lavorare.
+_ultimo: Optional[datetime] = None
+
+
+def forse_manda(ore: float = ORE_FRA_RIEPILOGHI) -> bool:
+    """Manda il riepilogo se e' passato abbastanza tempo dall'ultimo.
+
+    La cadenza sta qui e non dentro un motore di mercato per due motivi.
+    Il primo e' che i motori sono due, Dukascopy e MT5, e un riepilogo scritto
+    dentro uno solo tace se l'impianto gira sull'altro -- che e' quello che
+    succedeva, visto che `FORNITORE_DATI` di suo vale ancora "dukascopy".
+    Il secondo e' che se un giorno girassero tutti e due insieme, un contatore
+    per motore manderebbe due messaggi uguali a sei ore di distanza: il
+    momento dell'ultimo invio e' una proprieta' del riepilogo, non di chi lo
+    chiede.
+
+    Sta attaccato al ciclo di mercato, che e' gia' un orologio che batte,
+    invece di avere un thread suo: una parte in meno che puo' rompersi.
+    """
+    global _ultimo
+
+    adesso = datetime.now(timezone.utc)
+    if _ultimo is not None and (adesso - _ultimo).total_seconds() / 3600 < ore:
+        return False
+    _ultimo = adesso
+    try:
+        return manda(ore)
+    except Exception:                                      # pragma: no cover
+        log.exception("riepilogo non inviato")
+        return False
