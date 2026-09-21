@@ -277,6 +277,16 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0,
     piu' bassi andrebbe rivisto, e con esso l'idea stessa di chiamare un
     modello dentro il percorso dell'ordine.
     """
+    # Prima di tutto: una prova non chiama l'API. Ogni chiamata costa, e una
+    # suite che ne fa dieci brucia credito vero senza che il tetto di spesa
+    # se ne accorga -- le prove tengono il loro conto in un archivio
+    # temporaneo. Misurato: accendendo il giudizio, `pytest tests/` e' passata
+    # da 5 secondi a 135.
+    from core.ambiente import in_prova
+
+    if in_prova():
+        return _astieniti("siamo in una prova: nessuna chiamata all'API")
+
     if anthropic is None:
         return _astieniti("libreria anthropic non installata")
 

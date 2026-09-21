@@ -32,6 +32,27 @@ def niente_telegram_nelle_prove():
 
 
 @pytest.fixture(autouse=True)
+def niente_chiamate_a_pagamento(monkeypatch):
+    """Nessuna prova chiama l'API di Claude.
+
+    Da quando il giudizio viene interpellato anche sui CRT rifiutati, una
+    valutazione dentro una prova e' una chiamata a pagamento. Acceso il
+    giudizio, `pytest tests/` e' passata da 5 secondi a 135 e ha bruciato
+    credito vero -- e il tetto di spesa non se ne e' accorto, perche' le
+    prove tengono il loro conto in un archivio temporaneo.
+
+    `core.giudizio_claude` ha la sua chiusura propria; qui si spengono anche
+    gli interruttori di configurazione, cosi' il percorso non parte proprio.
+    """
+    from core.config import impostazioni
+
+    monkeypatch.setenv("NVMBOT_IN_PROVA", "1")
+    cfg = impostazioni()
+    monkeypatch.setattr(cfg, "GIUDIZIO_ATTIVO", False, raising=False)
+    monkeypatch.setattr(cfg, "GIUDIZIO_SULLE_OBIEZIONI", False, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def archivio_isolato(tmp_path, monkeypatch):
     """Nessuna prova scrive nell'archivio vero.
 

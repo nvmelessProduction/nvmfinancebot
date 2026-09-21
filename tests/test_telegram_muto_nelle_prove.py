@@ -75,3 +75,49 @@ def test_senza_variabile_ma_sotto_pytest_resta_chiusa(monkeypatch):
     monkeypatch.delenv(notifier.VARIABILE_SILENZIO, raising=False)
     assert os.environ.get("PYTEST_CURRENT_TEST")
     assert notifier.in_prova()
+
+
+class TestNienteChiamateAPagamento:
+    """L'altra porta che da' sul mondo e costa: l'API di Claude.
+
+    Da quando il giudizio viene interpellato anche sui CRT rifiutati, una
+    valutazione dentro una prova e' una chiamata a pagamento. Acceso il
+    giudizio, questa suite e' passata da 5 secondi a 135 e ha bruciato
+    credito vero -- e il tetto di spesa non se ne e' accorto, perche' le
+    prove tengono il loro conto in un archivio temporaneo. Il tetto protegge
+    la produzione, non le prove: le prove vanno chiuse a parte.
+    """
+
+    def test_la_porta_risulta_chiusa(self):
+        from core.ambiente import in_prova
+        assert in_prova()
+
+    def test_giudica_non_chiama_l_api(self, monkeypatch):
+        from core import giudizio_claude as g
+
+        chiamate = []
+        if g.anthropic is not None:
+            monkeypatch.setattr(
+                g.anthropic, "Anthropic",
+                lambda **k: chiamate.append(k) or (_ for _ in ()).throw(
+                    AssertionError("una prova ha costruito il client Anthropic")))
+        verdetto = g.giudica({"prova": True})
+        assert chiamate == []
+        assert verdetto.accetta is False
+        assert "prova" in (verdetto.errore or "")
+
+    def test_giudica_obiezione_non_chiama_l_api(self, monkeypatch):
+        from core import giudizio_claude as g
+
+        if g.anthropic is not None:
+            monkeypatch.setattr(
+                g.anthropic, "Anthropic",
+                lambda **k: (_ for _ in ()).throw(
+                    AssertionError("una prova ha costruito il client Anthropic")))
+        verdetto = g.giudica_obiezione({"prova": True}, "RISK-05", "bias contraria")
+        assert verdetto.accetta is False
+
+    def test_un_rifiuto_non_e_un_accetta(self):
+        """Il fallimento chiuso vale anche qui: senza giudizio non si apre."""
+        from core import giudizio_claude as g
+        assert g.giudica({"prova": True}).accetta is False

@@ -4,13 +4,15 @@ Se token o chat_id non sono configurati il messaggio finisce a console:
 l'impianto deve poter girare anche senza Telegram.
 """
 
-import os
 import threading
 import time
 from typing import Optional
 
 import httpx
 
+# L'interruttore delle prove sta in `core/ambiente`: e' lo stesso per Telegram
+# e per l'API di Claude, e due copie divergerebbero.
+from core.ambiente import VARIABILE_SILENZIO, in_prova  # noqa: F401
 from core.config import impostazioni
 from core.log import diario
 from core.models import AlertIn, Decision
@@ -18,34 +20,6 @@ from core.models import AlertIn, Decision
 log = diario("telegram")
 
 URL_BASE: str = "https://api.telegram.org/bot{token}/{metodo}"
-
-# Interruttore per le prove. Con questa variabile d'ambiente valorizzata
-# nessun messaggio esce: finisce a diario e basta.
-VARIABILE_SILENZIO: str = "NVMBOT_NIENTE_TELEGRAM"
-
-
-def in_prova() -> bool:
-    """Stiamo girando dentro una suite di test?
-
-    Serve perche' `arma()` notifica, e la suite `arma()` lo chiama davvero:
-    ogni `pytest tests/` mandava sul telefono dell'utente una decina di
-    "EURUSD: setup ribassista armato su 4 ore, spazzato 110,000" -- i valori
-    inventati del fixture, che infatti non somigliano a un cambio. Fra tutte
-    le esecuzioni della suite sono diventate migliaia di notifiche, e hanno
-    sepolto i messaggi veri: il riepilogo partiva e non si vedeva, perche'
-    stava in mezzo a una fila di avvisi finti.
-
-    Il rimedio non puo' essere "ricordarsi di simulare il notificatore in
-    ogni test che tocca `arma()`": e' esattamente il tipo di promemoria che
-    salta al prossimo test scritto di fretta. Qui la porta e' chiusa, e i
-    test che vogliono controllare il TESTO del messaggio simulano comunque
-    `invia_appena_possibile`, che e' quello che gia' fanno.
-
-    `PYTEST_CURRENT_TEST` lo mette pytest da solo ad ogni test, quindi
-    protegge anche un file di prove nuovo che si dimenticasse di tutto.
-    """
-    return bool(os.environ.get(VARIABILE_SILENZIO)
-                or os.environ.get("PYTEST_CURRENT_TEST"))
 
 
 def _url(metodo: str) -> str:
