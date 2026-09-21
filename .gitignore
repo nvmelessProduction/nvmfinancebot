@@ -56,3 +56,6 @@ news.csv.salvato
 
 # La cache dei file mensili di Dukascopy: si riscarica da sola.
 dukascopy_ore
+
+# Gli esiti delle misure: si rifanno, non si versionano.
+misura_*.txt
