@@ -230,6 +230,9 @@ class FornitoreTradingView:
     # ogni combinazione (strumento, timeframe, stato) basta. Il valore e' lo
     # stato detto per ultimo, non una presenza: vedi `_segnala_storia_corta`.
     _avvisata: dict = field(default_factory=dict, init=False, repr=False)
+    # L'archivio gia' letto, per nome: {nome: (impronta, storico)}. Vedi
+    # `storico()` per perche' esiste e a che condizioni si puo' fidare.
+    _storici: dict = field(default_factory=dict, init=False, repr=False)
 
     # -- storico ----------------------------------------------------------
     def nome_in_archivio(self, future: str) -> str:
@@ -257,8 +260,43 @@ class FornitoreTradingView:
         return cfd_di(future) or future
 
     def storico(self, future: str) -> dict[TF, tuple[Candela, ...]]:
-        """Lo storico dello strumento, dall'archivio, col nome giusto."""
+        """Lo storico dello strumento, dall'archivio, col nome giusto.
+
+        Riletto solo se l'archivio e' cambiato davvero. Rileggerlo sempre
+        costava all'impianto la sua puntualita': ogni valutazione ricostruiva
+        1.460.000 oggetti Candela, quattro storici interi (lo strumento, il
+        DXY e le due compagne SMT di CRT-12), e ci metteva dieci secondi. Con
+        quattordici valutazioni a giro il ciclo passava da un minuto a sei, e
+        fra la chiusura della candela e la decisione correvano 278 secondi di
+        mediana -- oltre i 180 di `MAX_RITARDO_ALERT_SEC`, che avrebbe buttato
+        via il 74% dei segnali con "prezzo non piu' attuale". Non era ancora
+        successo solo perche' nessun segnale era mai arrivato fin li'.
+
+        Le candele lette sono le stesse, bit per bit: `impronta_candele` non
+        e' un'euristica di freschezza ma il conteggio e l'ultima chiusura di
+        ogni timeframe, e le candele non si modificano mai sul posto. Quindi
+        le decisioni non cambiano, cambia quando arrivano.
+
+        Il prezzo e' la memoria: i sette archivi tenuti da parte pesano circa
+        mezzo giga. E' un costo che il processo gia' pagava a ogni
+        valutazione, solo che lo ributtava via subito.
+
+        Senza lucchetto di proposito: il ciclo di mercato e `/webhook` possono
+        entrarci insieme, e nel caso peggiore caricano tutti e due lo stesso
+        storico. E' uno spreco raro, mentre un lucchetto terrebbe fermo il
+        webhook per i due secondi e mezzo della lettura. Scrivere nel
+        dizionario e' atomico, quindi non si vede mai una voce a meta'.
+        """
         nome = self.nome_in_archivio(future)
+        impronta = storage.impronta_candele(nome)
+        in_memoria = self._storici.get(nome)
+        if in_memoria is not None and in_memoria[0] == impronta:
+            # Copia del dizionario, non delle serie: le candele sono in tuple
+            # e nessuno puo' toccarle, ma il dizionario che le contiene si',
+            # e chi lo ricevesse potrebbe cambiarlo senza sapere che e' quello
+            # in memoria. Dieci voci copiate costano niente.
+            return dict(in_memoria[1])
+
         storico: dict[TF, tuple[Candela, ...]] = {}
         for tf in TF_DA_ALERT:
             righe = storage.candele_archiviate(nome, tf.value)
@@ -269,7 +307,10 @@ class FornitoreTradingView:
             storico[tf] = aggregate
 
         self._segnala_storia_corta(future, storico)
-        return storico
+        self._storici[nome] = (impronta, storico)
+        # Copia anche qui, per lo stesso motivo del ramo di sopra: chi legge
+        # per primo non deve ricevere proprio il dizionario in memoria.
+        return dict(storico)
 
     def _segnala_storia_corta(self, future: str, storico: dict) -> None:
         """DEF-26 vuole cinque anni. Dove non ci sono, va detto.
@@ -400,7 +441,13 @@ class FornitoreTradingView:
                 f"archivio disallineato su {future} {tf_trigger.value}: {discrepanza}")
 
         adesso = datetime.now(timezone.utc)
-        vecchiaia = archivio_vecchio(self.storico(future), adesso)
+        # Una volta sola. `storico()` rilegge l'intero archivio dello
+        # strumento -- per EURUSD sono 285.000 candele, due secondi e mezzo --
+        # e qui veniva chiamato due volte con lo stesso argomento, una per
+        # `archivio_vecchio` e una per la Fotografia, buttando via il primo
+        # risultato per ricalcolare lo stesso.
+        storico_strumento = self.storico(future)
+        vecchiaia = archivio_vecchio(storico_strumento, adesso)
         if vecchiaia is not None:
             # PRIN-99, e qui il costo di sbagliare e' massimo. Il CRT si cerca
             # sulle candele in archivio; l'ordine parte al prezzo CORRENTE.
@@ -449,7 +496,7 @@ class FornitoreTradingView:
         foto = costruisci_fotografia(
             istante=adesso,
             strumento=cfd,
-            storico=self.storico(future),
+            storico=storico_strumento,
             conto=conto,
             bias_dxy=bias_dxy,
             # CRT-12 — senza gli storici delle compagne la divergenza SMT non
