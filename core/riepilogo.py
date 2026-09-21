@@ -105,8 +105,9 @@ def _conteggi(da: datetime) -> tuple[int, int, dict[str, int], int]:
 # codice. "TF_M1min" in un messaggio sul telefono non lo legge nessuno.
 NOMI_TF: dict[str, str] = {
     "TF_M1min": "1 min", "TF_M5": "5 min", "TF_M15": "15 min",
-    "TF_H1": "1 ora", "TF_H4": "4 ore", "TF_1D": "giornaliero",
-    "TF_1W": "settimanale", "TF_1M": "mensile",
+    "TF_H1": "1 ora", "TF_H4": "4 ore", "TF_H6": "6 ore", "TF_H12": "12 ore",
+    "TF_1D": "giornaliero", "TF_1W": "settimanale", "TF_1M": "mensile",
+    "TF_3M": "trimestrale", "TF_6M": "semestrale", "TF_12M": "annuale",
 }
 
 # Le serie da cui dipende una decisione intraday. Se una di queste resta

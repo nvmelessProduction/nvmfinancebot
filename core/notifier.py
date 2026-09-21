@@ -52,10 +52,23 @@ def invia(testo: str) -> tuple[bool, str]:
     falliti = [d for ok, d in esiti if not ok]
 
     if not falliti:
+        # A voce, anche quando va bene. Senza questa riga il diario e' identico
+        # che Telegram funzioni o no, e l'unica prova che un messaggio sia
+        # partito e' il telefono di chi lo riceve: quando l'utente dice "non mi
+        # arriva niente" non c'e' modo di sapere se il bot non l'ha mandato o
+        # se Telegram non l'ha consegnato.
+        log.info("inviato a %d destinatari: %s",
+                 len(riusciti), testo.split("\n", 1)[0][:80])
         return True, f"messaggio inviato a {len(riusciti)} destinatari"
     if riusciti:
-        return True, (f"inviato a {len(riusciti)} destinatari su {len(esiti)}; "
-                      f"falliti: {'; '.join(falliti)}")
+        # Consegna parziale. Restituisce comunque True -- il messaggio e'
+        # arrivato a qualcuno -- ma va detto forte: con piu' destinatari
+        # configurati, uno che rifiuta mentre l'altro accetta sparisce del
+        # tutto, e chi non riceve piu' niente non ha nessun indizio.
+        dettaglio = (f"inviato a {len(riusciti)} destinatari su {len(esiti)}; "
+                     f"falliti: {'; '.join(falliti)}")
+        log.warning("consegna parziale: %s", dettaglio)
+        return True, dettaglio
     return False, "; ".join(falliti)
 
 

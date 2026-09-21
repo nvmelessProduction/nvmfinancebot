@@ -203,3 +203,43 @@ class TestFvg:
              barra(103, 104, 102, 102.5, 4)]
         vuoto = ltf.fvg(b, Bias.SHORT)
         assert vuoto is not None and vuoto[1] < 109, "l'ultimo, non il primo"
+
+
+class TestNonRiarmareLoStessoCrt:
+    """Il CRT identico non e' un CRT nuovo.
+
+    Un CRT vive finche' vive la sua candela di range, e il motore lo ritrova
+    uguale ad ogni valutazione. Ri-armarlo ogni volta mandava un messaggio
+    Telegram ogni volta -- l'utente riceveva una fila di avvisi identici per
+    un solo setup -- e azzerava `barre_attesa`, quindi SETUP-04 non lo faceva
+    decadere mai.
+    """
+
+    def test_lo_stesso_crt_non_manda_due_messaggi(self, monkeypatch) -> None:
+        mandati: list[str] = []
+        monkeypatch.setattr(ltf.notifier, "invia_appena_possibile", mandati.append)
+        for _ in range(5):
+            arma_short()
+        assert len(mandati) == 1
+        assert len(ltf.armati("EURUSD")) == 1
+
+    def test_lo_stesso_crt_restituisce_lo_stesso_setup(self) -> None:
+        assert arma_short() == arma_short()
+
+    def test_un_crt_davvero_nuovo_riarma_e_avvisa(self, monkeypatch) -> None:
+        """Estremo spazzato diverso = un'altra candela di range."""
+        mandati: list[str] = []
+        monkeypatch.setattr(ltf.notifier, "invia_appena_possibile", mandati.append)
+        arma_short()
+        ltf.arma("EURUSD", Bias.SHORT, TF.H4, TF.MIN15,
+                 estremo_sweep=112.0, eq_range=106.0, lato_opposto=100.0)
+        assert len(mandati) == 2
+        assert len(ltf.armati("EURUSD")) == 1, "il precedente va sostituito"
+
+    def test_le_barre_di_attesa_non_si_azzerano(self) -> None:
+        """SETUP-04 deve poter far decadere il setup."""
+        id_setup = arma_short()
+        ltf.avanza_attesa(id_setup)
+        ltf.avanza_attesa(id_setup)
+        arma_short()
+        assert ltf.armati("EURUSD")[0].barre_attesa == 2

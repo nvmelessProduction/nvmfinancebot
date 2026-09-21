@@ -75,6 +75,37 @@ class SetupArmato:
     armato_utc: str
 
 
+def _prezzo(strumento: str, valore: float) -> str:
+    """Un prezzo scritto come lo scrive il broker per quello strumento.
+
+    Cinque decimali per tutti scriveva l'oro come `4352,94000` e lo yen come
+    `157,24750`: cifre che non esistono sul book, e che fanno sembrare
+    sbagliato un numero giusto. Le cifre si ricavano dall'ordine di grandezza
+    invece che da una tabella, cosi' non c'e' un elenco da tenere allineato a
+    `PRIN-08` ogni volta che cambia.
+    """
+    grandezza = abs(valore)
+    if grandezza >= 1000:                      # oro
+        cifre = 2
+    elif grandezza >= 10:                      # yen
+        cifre = 3
+    else:                                      # i cambi
+        cifre = 5
+    return f"{valore:,.{cifre}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _nome_tf(tf: TF) -> str:
+    """`TF_M15` non dice niente a chi legge dal telefono.
+
+    L'elenco e' quello del riepilogo: due elenchi finiscono per divergere, e
+    lo stesso timeframe chiamato in due modi nei due messaggi che arrivano
+    sullo stesso telefono e' peggio di una sigla.
+    """
+    from core.riepilogo import NOMI_TF
+
+    return NOMI_TF.get(tf.value, tf.value)
+
+
 def prepara_tabella() -> None:
     with storage.connessione(scrittura=True) as conn:
         conn.execute("""
@@ -106,6 +137,29 @@ def arma(
     """Il CRT c'e': si aspetta l'ingresso. Non parte alcun ordine."""
     prepara_tabella()
     with storage.connessione(scrittura=True) as conn:
+        # Lo stesso CRT, non uno nuovo.
+        #
+        # Un CRT vive finche' vive la sua candela di range, e il motore lo
+        # ritrova identico ad ogni valutazione: stesso strumento, stessa
+        # direzione, stesso timeframe, stesso estremo spazzato. Qui sotto
+        # ogni passaggio marcava il precedente come "sostituito" e ne
+        # inseriva uno nuovo -- e ogni inserimento mandava un messaggio.
+        # Su Telegram arrivava una fila di avvisi identici per un solo CRT,
+        # che e' il modo piu' rapido di far smettere di leggerli.
+        #
+        # `barre_attesa` sta sulla riga, quindi ri-armare azzerava anche il
+        # conto delle barre di SETUP-04: un setup che avrebbe dovuto decadere
+        # restava armato per sempre.
+        gia = conn.execute(
+            "SELECT id_setup FROM setup_armato WHERE stato='armato'"
+            " AND strumento=? AND direzione=? AND tf_crt=? AND tf_ingresso=?"
+            " AND estremo_sweep=? AND eq_range=?",
+            (strumento, direzione.value, tf_crt.value, tf_ingresso.value,
+             estremo_sweep, eq_range),
+        ).fetchone()
+        if gia is not None:
+            return int(gia["id_setup"])
+
         # Un solo setup armato per strumento e direzione: due CRT consecutivi
         # nello stesso verso descrivono lo stesso movimento, e armarli
         # entrambi produrrebbe due ingressi sullo stesso setup.
@@ -132,10 +186,13 @@ def arma(
     # sempre - avvisava solo su un ordine mandato o bloccato - e un'attesa di
     # ore o minuti (l'ingresso vero arriva su un timeframe diverso) passava
     # inosservata a chi non tiene aperto il pannello.
+    verso = "rialzista" if direzione is Bias.LONG else "ribassista"
     notifier.invia_appena_possibile(
-        f"CRT-13 armato: {strumento} {direzione.value} su {tf_crt.value}, "
-        f"attende il ritorno nell'FVG su {tf_ingresso.value}.\n"
-        f"Sweep a {estremo_sweep:.5f}, primo bersaglio {eq_range:.5f}."
+        f"{strumento}: setup {verso} armato su {_nome_tf(tf_crt)}.\n"
+        f"Spazzato {_prezzo(strumento, estremo_sweep)}, "
+        f"primo bersaglio {_prezzo(strumento, eq_range)}.\n"
+        f"Ora aspetta il rientro nello squilibrio su {_nome_tf(tf_ingresso)}: "
+        f"finche' non arriva non parte nessun ordine."
     )
     return int(cur.lastrowid or 0)
 
