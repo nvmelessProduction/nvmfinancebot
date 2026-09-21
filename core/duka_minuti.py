@@ -110,6 +110,16 @@ def _scarica(
         return dati or None
     _assicura_deposito()
 
+    # Una prova non scarica da Dukascopy. Non costa soldi come le altre tre
+    # porte, ma costa l'indirizzo: la fonte limita chi chiede troppo, e una
+    # macchina finita nella lista ci resta per ore -- e' il motivo per cui
+    # questo progetto e' passato a MT5. Chi vuole scaricare davvero usa gli
+    # script, che non girano dentro una suite.
+    from core.ambiente import in_prova
+
+    if in_prova():
+        raise RuntimeError("siamo in una prova: nessuno scarico da Dukascopy")
+
     attesa = 1.0
     for _ in range(tentativi):
         # Lo stesso freno delle orarie, e per la stessa ragione: e' condiviso

@@ -29,6 +29,7 @@ import os
 
 VARIABILE_SILENZIO: str = "NVMBOT_NIENTE_TELEGRAM"
 VARIABILE_PROVE: str = "NVMBOT_IN_PROVA"
+VARIABILE_BROKER_FINTO: str = "NVMBOT_BROKER_FINTO"
 
 
 def in_prova() -> bool:
@@ -36,3 +37,18 @@ def in_prova() -> bool:
     return bool(os.environ.get(VARIABILE_PROVE)
                 or os.environ.get(VARIABILE_SILENZIO)
                 or os.environ.get("PYTEST_CURRENT_TEST"))
+
+
+def broker_finto() -> bool:
+    """Chi gira questa prova ha gia' sostituito MT5 con un doppione?
+
+    Il freno sugli ordini non puo' dedurlo: `test_impianto.py` mette il suo
+    `FintoMT5` in `sys.modules` prima di importare `core.broker`, quindi da
+    dentro `broker` il modulo finto e' indistinguibile da quello vero senza
+    ricorrere a trucchi fragili. Lo dichiara chi lo sostituisce, dove lo
+    sostituisce: e' una riga sola e si legge accanto al doppione.
+
+    Vale solo dentro una prova. Fuori, `in_prova()` e' falsa e gli ordini
+    partono comunque -- questa variabile non puo' aprire nulla in produzione.
+    """
+    return bool(os.environ.get(VARIABILE_BROKER_FINTO))

@@ -220,6 +220,10 @@ class FintoMT5(types.ModuleType):
 
 finto = FintoMT5()
 sys.modules["MetaTrader5"] = finto
+# Dichiarato qui, accanto al doppione: il freno di `core/broker.py` impedisce
+# a una prova di mandare ordini VERI, e questo collaudo deve poter esercitare
+# il percorso degli ordini perche' il broker che ha davanti e' finto.
+os.environ["NVMBOT_BROKER_FINTO"] = "1"
 
 # --------------------------------------------------------------------------
 # Ora si importano i moduli: broker trovera' il MetaTrader5 finto.

@@ -329,6 +329,26 @@ def invia_ordine(
     qui non viene calcolato nulla. Stop e target non vengono passati al
     broker di proposito (li sorveglia la sentinella).
     """
+    # Una prova non manda ordini veri al broker.
+    #
+    # Il freno non e' teorico: chiamando questa funzione da uno script di
+    # collaudo il 2026-09-21 l'ordine e' **partito**, e si e' fermato solo
+    # perche' avevo passato `EURUSD` invece di `EURUSD+` e il broker ha
+    # risposto "Trade disabled". Col nome giusto sarebbe stata una posizione
+    # aperta sul conto. Era fortuna, non una porta chiusa -- e le altre due
+    # porte che danno sul mondo, Telegram e l'API di Claude, si erano gia'
+    # aperte cosi'.
+    #
+    # Chi vuole davvero provare il percorso dei soldi usa
+    # `prova_esecuzione.py --ordine`, che non gira dentro una suite.
+    from core.ambiente import broker_finto, in_prova
+
+    if in_prova() and not broker_finto():
+        log.warning("ordine NON inviato: siamo in una prova (%s %s %s)",
+                    simbolo, direzione, volume)
+        return OrderResult(
+            ok=False, messaggio="siamo in una prova: nessun ordine e' partito")
+
     direzione = direzione.upper()
     if direzione not in ("BUY", "SELL"):
         return OrderResult(ok=False, messaggio=f"direzione non valida: {direzione}")
@@ -428,6 +448,14 @@ def chiudi_posizione(
     piu' farebbe rifiutare l'ordine intero, e una chiusura rifiutata e' il
     caso che GEST-11 vieta.
     """
+    # Come per l'invio: una prova non tocca il conto. Vedi `invia_ordine`.
+    from core.ambiente import broker_finto, in_prova
+
+    if in_prova() and not broker_finto():
+        log.warning("chiusura NON inviata: siamo in una prova (ticket %s)", ticket)
+        return OrderResult(
+            ok=False, messaggio="siamo in una prova: nessuna chiusura e' partita")
+
     ok, messaggio = _assicura_connessione()
     if not ok or mt5 is None:
         return OrderResult(ok=False, messaggio=messaggio)
