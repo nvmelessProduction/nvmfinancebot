@@ -154,28 +154,35 @@ def c_e_budget() -> tuple[bool, str]:
     return True, f"speso {s.euro:.3f} di {tetto:.2f} EUR in {s.chiamate} giudizi"
 
 
-def costo(token_ingresso: int, token_ingresso_cache: int, token_uscita: int) -> float:
+def costo(token_ingresso: int, token_cache_scritta: int,
+          token_cache_letta: int, token_uscita: int) -> float:
     """Il costo in euro di una chiamata, dai prezzi in configurazione.
 
-    I token letti dalla cache costano una frazione di quelli nuovi, e su
-    questo giudizio sono la maggior parte dell'ingresso: le istruzioni non
-    cambiano mai e vengono messe in cache apposta.
+    Scrittura e lettura della cache sono due prezzi diversi e vanno tenuti
+    separati: su Opus 5 la scrittura costa 6,25 al milione e la lettura 0,50,
+    cioe' dodici volte meno. Le istruzioni del giudizio vengono messe in cache
+    apposta, quindi la prima chiamata paga la scrittura e tutte le altre la
+    lettura -- accorparle sotto un prezzo solo sovrastima o sottostima tutto
+    il conto a seconda di quale dei due si sceglie.
     """
     from core.config import impostazioni
     cfg = impostazioni()
     p_in = float(getattr(cfg, "PREZZO_INGRESSO_PER_MILIONE", 0.0) or 0.0)
-    p_cache = float(getattr(cfg, "PREZZO_CACHE_PER_MILIONE", 0.0) or 0.0)
+    p_scrittura = float(getattr(cfg, "PREZZO_CACHE_SCRITTA_PER_MILIONE", 0.0) or 0.0)
+    p_lettura = float(getattr(cfg, "PREZZO_CACHE_LETTA_PER_MILIONE", 0.0) or 0.0)
     p_out = float(getattr(cfg, "PREZZO_USCITA_PER_MILIONE", 0.0) or 0.0)
     return (token_ingresso * p_in
-            + token_ingresso_cache * p_cache
+            + token_cache_scritta * p_scrittura
+            + token_cache_letta * p_lettura
             + token_uscita * p_out) / 1_000_000.0
 
 
-def registra(token_ingresso: int, token_ingresso_cache: int,
-             token_uscita: int) -> float:
+def registra(token_ingresso: int, token_cache_scritta: int,
+             token_cache_letta: int, token_uscita: int) -> float:
     """Somma una chiamata al conto di oggi. Restituisce l'euro speso adesso."""
     prepara_tabelle()
-    euro = costo(token_ingresso, token_ingresso_cache, token_uscita)
+    euro = costo(token_ingresso, token_cache_scritta, token_cache_letta, token_uscita)
+    token_ingresso_cache = token_cache_scritta + token_cache_letta
     with storage.connessione(scrittura=True) as conn:
         conn.execute(
             "INSERT INTO giudizio_speso (giorno, chiamate, token_ingresso,"

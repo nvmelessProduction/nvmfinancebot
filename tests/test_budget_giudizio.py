@@ -40,11 +40,14 @@ def archivio(tmp_path, monkeypatch):
     impostazioni.cache_clear()
 
 
-def _prezzi(monkeypatch, ingresso=15.0, cache=1.5, uscita=75.0, tetto=1.0):
+def _prezzi(monkeypatch, ingresso=5.0, scritta=6.25, letta=0.50,
+            uscita=25.0, tetto=1.0):
+    """I prezzi veri di Claude Opus 5, presi dal listino Anthropic."""
     from core.config import impostazioni
     cfg = impostazioni()
     monkeypatch.setattr(cfg, "PREZZO_INGRESSO_PER_MILIONE", ingresso, raising=False)
-    monkeypatch.setattr(cfg, "PREZZO_CACHE_PER_MILIONE", cache, raising=False)
+    monkeypatch.setattr(cfg, "PREZZO_CACHE_SCRITTA_PER_MILIONE", scritta, raising=False)
+    monkeypatch.setattr(cfg, "PREZZO_CACHE_LETTA_PER_MILIONE", letta, raising=False)
     monkeypatch.setattr(cfg, "PREZZO_USCITA_PER_MILIONE", uscita, raising=False)
     monkeypatch.setattr(cfg, "GIUDIZIO_EURO_AL_GIORNO", tetto, raising=False)
 
@@ -93,8 +96,8 @@ class TestTetto:
 
     def test_una_chiamata_si_somma(self, monkeypatch):
         _prezzi(monkeypatch)
-        euro = budget.registra(200, 3000, 1500)
-        atteso = (200 * 15.0 + 3000 * 1.5 + 1500 * 75.0) / 1e6
+        euro = budget.registra(200, 0, 3000, 1500)
+        atteso = (200 * 5.0 + 3000 * 0.50 + 1500 * 25.0) / 1e6
         assert euro == pytest.approx(atteso)
         s = budget.speso_oggi()
         assert s.chiamate == 1
@@ -103,16 +106,16 @@ class TestTetto:
     def test_le_chiamate_si_accumulano(self, monkeypatch):
         _prezzi(monkeypatch)
         for _ in range(3):
-            budget.registra(200, 3000, 1500)
+            budget.registra(200, 0, 3000, 1500)
         assert budget.speso_oggi().chiamate == 3
 
     def test_superato_il_tetto_non_si_spende_piu(self, monkeypatch):
-        _prezzi(monkeypatch, tetto=0.33)
+        _prezzi(monkeypatch, tetto=0.27)
         ok, _ = budget.c_e_budget()
         assert ok is True
-        # ~0,117 EUR a chiamata con questi prezzi: alla terza si sfonda
-        for _ in range(3):
-            budget.registra(200, 3000, 1500)
+        # ~0,040 EUR a chiamata coi prezzi di Opus 5: alla settima si sfonda
+        for _ in range(7):
+            budget.registra(200, 0, 3000, 1500)
         ok, dettaglio = budget.c_e_budget()
         assert ok is False
         assert "tetto giornaliero raggiunto" in dettaglio
@@ -120,13 +123,28 @@ class TestTetto:
     def test_i_token_di_ragionamento_pesano(self, monkeypatch):
         """L'uscita domina: e' li' che finiscono i token di thinking."""
         _prezzi(monkeypatch)
-        poco = budget.costo(200, 3000, 100)
-        molto = budget.costo(200, 3000, 4000)
+        poco = budget.costo(200, 0, 3000, 100)
+        molto = budget.costo(200, 0, 3000, 4000)
         assert molto > poco * 5
 
     def test_senza_prezzi_il_tetto_non_puo_fermare_nulla(self, monkeypatch):
         """Va detto: con i prezzi a zero il freno e' spento di fatto."""
-        _prezzi(monkeypatch, ingresso=0.0, cache=0.0, uscita=0.0, tetto=0.33)
-        budget.registra(999_999, 999_999, 999_999)
+        _prezzi(monkeypatch, ingresso=0.0, scritta=0.0, letta=0.0,
+                uscita=0.0, tetto=0.27)
+        budget.registra(999_999, 999_999, 999_999, 999_999)
         ok, _ = budget.c_e_budget()
         assert ok is True, "senza prezzi configurati non si puo' misurare la spesa"
+
+
+def test_la_scrittura_della_cache_costa_piu_della_lettura(monkeypatch):
+    """Su Opus 5 dodici volte tanto: accorparle falsa tutto il conto.
+
+    La prima chiamata scrive le istruzioni in cache, tutte le altre le
+    rileggono. Con un prezzo solo o si sovrastima ogni chiamata dopo la
+    prima, o si sottostima la prima.
+    """
+    _prezzi(monkeypatch)
+    scrive = budget.costo(200, 3000, 0, 500)
+    rilegge = budget.costo(200, 0, 3000, 500)
+    assert scrive > rilegge
+    assert (scrive - rilegge) == pytest.approx(3000 * (6.25 - 0.50) / 1e6)

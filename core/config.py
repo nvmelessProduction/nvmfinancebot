@@ -64,8 +64,12 @@ class Impostazioni(BaseSettings):
     # nel codice perche' cambiano, e un prezzo sbagliato scritto nel codice
     # produce un tetto che sembra rispettato e non lo e'. A zero il tetto
     # lavora sui soli conteggi e non puo' fermare nulla: vanno compilati.
+    # Scrittura e lettura della cache sono due prezzi diversi -- su Opus 5,
+    # 6,25 contro 0,50 al milione -- e vanno separati: la prima chiamata
+    # scrive le istruzioni in cache, tutte le altre le rileggono.
     PREZZO_INGRESSO_PER_MILIONE: float = 0.0
-    PREZZO_CACHE_PER_MILIONE: float = 0.0
+    PREZZO_CACHE_SCRITTA_PER_MILIONE: float = 0.0
+    PREZZO_CACHE_LETTA_PER_MILIONE: float = 0.0
     PREZZO_USCITA_PER_MILIONE: float = 0.0
 
     # La chiave per il giudizio. Deve stare QUI e non solo nell'ambiente:

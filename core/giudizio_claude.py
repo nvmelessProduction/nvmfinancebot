@@ -249,14 +249,14 @@ def _contabilizza(risposta: Any) -> None:
         if uso is None:
             return
         ingresso = int(getattr(uso, "input_tokens", 0) or 0)
-        cache = (int(getattr(uso, "cache_read_input_tokens", 0) or 0)
-                 + int(getattr(uso, "cache_creation_input_tokens", 0) or 0))
+        scritta = int(getattr(uso, "cache_creation_input_tokens", 0) or 0)
+        letta = int(getattr(uso, "cache_read_input_tokens", 0) or 0)
         uscita = int(getattr(uso, "output_tokens", 0) or 0)
-        euro = budget_giudizio.registra(ingresso, cache, uscita)
+        euro = budget_giudizio.registra(ingresso, scritta, letta, uscita)
         speso = budget_giudizio.speso_oggi()
-        log.info("giudizio: %d+%d token in, %d out, %.4f EUR "
-                 "(oggi %.3f EUR in %d chiamate)",
-                 ingresso, cache, uscita, euro, speso.euro, speso.chiamate)
+        log.info("giudizio: %d nuovi + %d cache scritta + %d cache letta in, "
+                 "%d out, %.4f EUR (oggi %.3f EUR in %d chiamate)",
+                 ingresso, scritta, letta, uscita, euro, speso.euro, speso.chiamate)
     except Exception:                                      # pragma: no cover
         # Un errore di contabilita' non deve far saltare un verdetto gia'
         # ottenuto e gia' pagato.
