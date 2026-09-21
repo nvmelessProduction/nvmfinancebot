@@ -195,7 +195,76 @@ def _astieniti(motivo: str) -> Verdetto:
     )
 
 
-def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0) -> Verdetto:
+ISTRUZIONI_OBIEZIONE = """\
+Sei il trader discrezionale di un bot che opera la Candle Range Theory di
+@Romeotpt. Qui NON ricevi un setup approvato: ricevi un CRT che il bot
+meccanico ha **rifiutato**, e una sola obiezione. Devi dire se quell'obiezione
+regge oppure va lasciata cadere.
+
+# Perche' questa domanda esiste
+
+Il bot applica le regole alla lettera, e alla lettera va bene quasi sempre. Ma
+un CRT che inciampa su UNA regola sola, con tutto il resto in ordine, e'
+esattamente il caso in cui un trader si ferma a guardare invece di scartare.
+Un CRT bocciato da tre regole insieme non arriva qui, e giustamente.
+
+# Il tuo potere, e il suo limite
+
+Puoi far cadere **quella sola obiezione**, quella scritta nel dossier, e
+nient'altro. Non puoi cambiare direzione, stop, bersaglio o size: li calcola
+il motore. Se lasci cadere l'obiezione, l'ordine parte come il motore lo ha
+costruito; se la sostieni, non si apre niente.
+
+Non arriveranno mai qui i limiti di perdita, le esclusioni, i dati
+incoerenti, il tetto di posizioni, il freno a mano o PRIN-13: quelli sono muri
+e restano muri. Se pensi che l'obiezione che hai davanti sia di quel tipo,
+sostienila.
+
+# Il metro
+
+La regola ha ragione per definizione nel caso medio: e' stata scritta su
+misure, non su impressioni. Per lasciarla cadere ti serve qualcosa di
+**specifico in questo dossier** che la regola non sta vedendo. "Il contesto
+sembra buono" non basta, ed e' il modo tipico di sbagliare qui.
+
+In dubbio, sostieni l'obiezione. Un'occasione persa costa zero; un'operazione
+presa contro una regola valida costa un R. Non c'e' simmetria.
+
+Cita sempre almeno un numero del dossier nel motivo.\
+"""
+
+
+def _contabilizza(risposta: Any) -> None:
+    """Segna sul conto di oggi quanto e' costata davvero questa chiamata.
+
+    Sul consumo dichiarato dall'API, mai su una stima: con `thinking`
+    adattivo i token di ragionamento -- fatturati come uscita -- dipendono da
+    quanto il modello decide di pensarci, e non si sanno prima. Un tetto
+    costruito su un numero inventato e' un tetto che non tiene.
+    """
+    try:
+        from core import budget_giudizio
+
+        uso = getattr(risposta, "usage", None)
+        if uso is None:
+            return
+        ingresso = int(getattr(uso, "input_tokens", 0) or 0)
+        cache = (int(getattr(uso, "cache_read_input_tokens", 0) or 0)
+                 + int(getattr(uso, "cache_creation_input_tokens", 0) or 0))
+        uscita = int(getattr(uso, "output_tokens", 0) or 0)
+        euro = budget_giudizio.registra(ingresso, cache, uscita)
+        speso = budget_giudizio.speso_oggi()
+        log.info("giudizio: %d+%d token in, %d out, %.4f EUR "
+                 "(oggi %.3f EUR in %d chiamate)",
+                 ingresso, cache, uscita, euro, speso.euro, speso.chiamate)
+    except Exception:                                      # pragma: no cover
+        # Un errore di contabilita' non deve far saltare un verdetto gia'
+        # ottenuto e gia' pagato.
+        log.exception("contabilita' del giudizio fallita")
+
+
+def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0,
+            istruzioni: str = ISTRUZIONI) -> Verdetto:
     """Chiede a Claude se eseguire questo setup. Rifiuta in ogni caso dubbio.
 
     `dossier` e' il quadro numerico costruito da `core/dossier.py`. Va passato
@@ -237,7 +306,7 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0) -> Verdetto:
             # per giudizio scende a quello del solo dossier.
             system=[{
                 "type": "text",
-                "text": ISTRUZIONI,
+                "text": istruzioni,
                 "cache_control": {"type": "ephemeral"},
             }],
             # Il verdetto e' una decisione con soldi dietro: vale la pena che
@@ -265,6 +334,8 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0) -> Verdetto:
     except Exception as errore:                              # pragma: no cover
         return _astieniti(f"errore imprevisto: {errore!r}")
 
+    _contabilizza(risposta)
+
     # Un rifiuto del modello e' un'astensione come le altre, non un ACCETTA.
     if risposta.stop_reason == "refusal":
         return _astieniti("il modello ha rifiutato di rispondere")
@@ -290,3 +361,26 @@ def giudica(dossier: dict[str, Any], timeout_sec: float = 60.0) -> Verdetto:
         fiducia=str(dati.get("fiducia", "bassa")),
         modello=risposta.model,
     )
+
+
+def giudica_obiezione(
+    dossier: dict[str, Any], obiezione: str, spiegazione: str,
+    timeout_sec: float = 60.0,
+) -> Verdetto:
+    """Un CRT rifiutato da UNA regola: quell'obiezione regge?
+
+    Domanda diversa da `giudica`, quindi istruzioni diverse. La' si chiede
+    "questo ordine gia' approvato va eseguito?"; qui "questa singola obiezione
+    la sostengo o la lascio cadere?". Usare le stesse istruzioni per le due
+    domande farebbe rispondere alla prima mentre si e' posta la seconda.
+
+    `accetta = True` significa **lasciar cadere l'obiezione**, quindi
+    l'ordine parte. Ogni altro esito la sostiene, e non si apre niente:
+    `_astieniti` vale qui come altrove, perche' non sapere e' un no.
+    """
+    completo = dict(dossier)
+    completo["obiezione_da_valutare"] = {
+        "regola": obiezione,
+        "cosa_dice": spiegazione,
+    }
+    return giudica(completo, timeout_sec, istruzioni=ISTRUZIONI_OBIEZIONE)

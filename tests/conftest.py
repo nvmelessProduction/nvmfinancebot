@@ -32,6 +32,28 @@ def niente_telegram_nelle_prove():
 
 
 @pytest.fixture(autouse=True)
+def archivio_isolato(tmp_path, monkeypatch):
+    """Nessuna prova scrive nell'archivio vero.
+
+    `storage.connessione()` apre `impostazioni().DB_PATH`, e `impostazioni()`
+    e' `lru_cache`: la PRIMA chiamata della sessione fissa il percorso per
+    tutte. Una prova che valorizzi `DB_PATH` senza svuotare la cache isola
+    quindi solo se stessa -- e solo se e' la prima a girare. Tutte le altre
+    finiscono sullo stesso archivio, o sul `bot.db` di produzione se qualcosa
+    ha gia' letto le impostazioni.
+
+    I due esiti si somigliano molto finche' non si guarda: le prove passano
+    uguale, e intanto scrivono nell'archivio su cui il bot sta decidendo.
+    """
+    from core.config import impostazioni
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "archivio-prova.db"))
+    impostazioni.cache_clear()
+    yield
+    impostazioni.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def telegram_chiuso(monkeypatch):
     """Doppia mandata, per ogni singola prova.
 

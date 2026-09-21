@@ -42,6 +42,32 @@ class Impostazioni(BaseSettings):
     # astiene e non parte nulla: fallisce chiuso, come PRIN-99 impone.
     GIUDIZIO_ATTIVO: bool = False
 
+    # Con GIUDIZIO_SULLE_OBIEZIONI=true il giudizio viene interpellato anche
+    # su un CRT che le regole hanno RIFIUTATO -- ma solo quando l'obiezione e'
+    # UNA SOLA e non e' uno dei muri (limiti di perdita, esclusioni, dati
+    # incoerenti, tetto posizioni, freno a mano, PRIN-13).
+    #
+    # E' la differenza fra un veto e un trader: un CRT fermato da tre regole
+    # insieme non e' un caso limite, e' un setup che nessuno guarderebbe.
+    # Misurato il 2026-09-21: su 1.250 valutazioni in sei ore, 1.071 non
+    # avevano alcun CRT, 104 erano bocciature triple, e i casi da trader erano
+    # 46 -- che deduplicati sul CRT diventano 14.
+    GIUDIZIO_SULLE_OBIEZIONI: bool = False
+
+    # Tetto di spesa al giorno per i giudizi, in euro. A zero il freno e'
+    # spento. Si misura sul consumo dichiarato dall'API, non su una stima:
+    # `giudica` usa thinking adattivo con effort alto, e i token di
+    # ragionamento non si sanno prima.
+    GIUDIZIO_EURO_AL_GIORNO: float = 0.0
+
+    # Prezzi del modello, per milione di token. Stanno in configurazione e non
+    # nel codice perche' cambiano, e un prezzo sbagliato scritto nel codice
+    # produce un tetto che sembra rispettato e non lo e'. A zero il tetto
+    # lavora sui soli conteggi e non puo' fermare nulla: vanno compilati.
+    PREZZO_INGRESSO_PER_MILIONE: float = 0.0
+    PREZZO_CACHE_PER_MILIONE: float = 0.0
+    PREZZO_USCITA_PER_MILIONE: float = 0.0
+
     # La chiave per il giudizio. Deve stare QUI e non solo nell'ambiente:
     # pydantic-settings legge il `.env` dentro questo oggetto, ma NON lo
     # esporta in `os.environ`. La libreria `anthropic` guarda l'ambiente,

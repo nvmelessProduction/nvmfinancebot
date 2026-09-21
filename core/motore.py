@@ -43,10 +43,14 @@ from core import setup as stp
 from core.definizioni import (
     Bias, Candela, Gap, KeyLevel, Mitigazione,
 )
+from core.config import impostazioni
+from core.log import diario
 from core.parametri import (
     CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
     MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO,
 )
+
+log = diario("motore")
 
 # Perche' ciascuna conferma di Romeo ha fermato l'operazione. Finisce nel
 # motivo della decisione, quindi in archivio e su Telegram: senza, l'utente
@@ -247,6 +251,102 @@ def _sulla_scala_del_cfd(foto: "Fotografia", livello: float, ancora: float) -> f
     return dfn.livello_di_esecuzione(
         livello, ancora, foto.prezzo_cfd, foto.strumento,
         foto.analisi_in_scala_cfd)
+
+
+# Le obiezioni che un trader discrezionale puo' soppesare. Tutto il resto e'
+# un muro: i limiti di perdita, le esclusioni, i dati incoerenti, il tetto di
+# posizioni, il freno a mano e PRIN-13 restano invalicabili anche per il
+# giudizio, e questo elenco e' scritto per inclusione proprio per questo --
+# una regola nuova non diventa scavalcabile per distrazione.
+OBIEZIONI_SOPPESABILI: frozenset[str] = frozenset({
+    "RISK-05",   # bias del DXY contraria alla direzione del CRT
+    "SETUP-05",  # meno di due timeframe superiori allineati
+    "SETUP-06",  # bias di comando NESSUNA
+    "SETUP-07",  # direzione del CRT opposta alla bias di comando
+    "SETUP-19",  # il DXY non abilita operazioni su questo strumento
+    "GEST-01",   # rapporto rischio/rendimento sotto il minimo
+    # Le otto conferme di Romeo: sono il quadro su cui si decide, non filtri.
+    "CRT-06", "CRT-10", "CRT-11", "CRT-12",
+    "CRT-15", "CRT-17", "CRT-18", "CRT-20",
+})
+
+
+def _obiezione_da_giudicare(blocchi: Sequence[str]) -> Optional[str]:
+    """L'unica obiezione che vale la pena sottoporre al giudizio, se c'e'.
+
+    Una sola, e soppesabile. Un CRT bocciato da tre regole insieme non e' un
+    caso limite: e' un setup che nessun trader guarderebbe, e interpellare il
+    giudizio su quello significa pagare una chiamata per sentirsi dire di no.
+    Misurato il 2026-09-21: su 179 CRT rifiutati in sei ore, 104 erano
+    bocciature triple e 44 avevano un'obiezione sola.
+    """
+    distinte = {b for b in blocchi if b}
+    if len(distinte) != 1:
+        return None
+    unica = next(iter(distinte))
+    return unica if unica in OBIEZIONI_SOPPESABILI else None
+
+
+def _giudizio_lascia_cadere(
+    foto: "Fotografia", crt, tf_trigger: TF, blocchi: Sequence[str], motivo: str,
+) -> bool:
+    """Il trader discrezionale scavalca questa singola obiezione?
+
+    False in ogni caso che non sia un ACCETTA esplicito: giudizio spento,
+    obiezione non soppesabile, budget esaurito, rete giu', risposta
+    malformata. E' `PRIN-99` -- se non si sa, non si opera -- e qui vale
+    doppio, perche' l'esito di "non so" e' aprire una posizione contro una
+    regola.
+
+    Lo stesso CRT non si giudica due volte: vive finche' vive la sua candela
+    di range e il motore lo ritrova identico a ogni chiusura del timeframe
+    basso. Senza questo, due CRT su USDCHF e USDJPY avrebbero prodotto
+    undici chiamate ciascuno in sei ore, con lo stesso dossier e lo stesso
+    verdetto.
+    """
+    cfg = impostazioni()
+    if not getattr(cfg, "GIUDIZIO_SULLE_OBIEZIONI", False):
+        return False
+    obiezione = _obiezione_da_giudicare(blocchi)
+    if obiezione is None:
+        return False
+
+    from core import budget_giudizio as budget
+
+    estremo = crt.n2.massimo if crt.direzione is Bias.SHORT else crt.n2.minimo
+    impronta = budget.impronta_crt(
+        foto.strumento, crt.direzione.value, crt.tf.value, estremo, obiezione)
+
+    gia = budget.gia_giudicato(impronta)
+    if gia is not None:
+        verdetto, perche = gia
+        log.info("giudizio gia' dato su %s %s (%s): %s",
+                 foto.strumento, crt.tf.value, obiezione, verdetto)
+        return verdetto == "ACCETTA"
+
+    ok, dettaglio = budget.c_e_budget()
+    if not ok:
+        log.warning("giudizio non interpellato su %s (%s): %s",
+                    foto.strumento, obiezione, dettaglio)
+        return False
+
+    from core.dossier import costruisci
+    from core.giudizio_claude import giudica_obiezione
+
+    try:
+        finta = _non_operare(foto.strumento, list(blocchi), motivo, [],
+                             direzione=crt.direzione, tf_crt=crt.tf)
+        verdetto = giudica_obiezione(
+            costruisci(foto, finta, tf_trigger), obiezione, motivo)
+    except Exception:
+        log.exception("giudizio sull'obiezione fallito, la sostengo")
+        return False
+
+    budget.ricorda(impronta, foto.strumento, obiezione,
+                   "ACCETTA" if verdetto.accetta else "RIFIUTA", verdetto.motivo)
+    log.info("giudizio su %s %s (%s): %s",
+             foto.strumento, crt.tf.value, obiezione, verdetto.registrabile)
+    return verdetto.accetta
 
 
 def _verso_sul_cfd(foto: "Fotografia", direzione) -> "Bias":
@@ -555,13 +655,17 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             crt_per_tf=foto.crt_per_tf,
         )
         if not ok_romeo:
-            fermata = _non_operare(
-                foto.strumento, list(blocchi_romeo) + indipendenti,
-                "conferme di Romeo non soddisfatte: "
-                + ", ".join(SPIEGAZIONE_CRT.get(b, b) for b in blocchi_romeo),
-                applicate, direzione=crt.direzione, tf_crt=crt.tf,
-            )
-            return replace(fermata, responso_romeo=responso_romeo)
+            motivo_romeo = ("conferme di Romeo non soddisfatte: "
+                            + ", ".join(SPIEGAZIONE_CRT.get(x, x) for x in blocchi_romeo))
+            blocchi_qui = list(blocchi_romeo) + indipendenti
+            if not _giudizio_lascia_cadere(
+                    foto, crt, tf_trigger, blocchi_qui, motivo_romeo):
+                fermata = _non_operare(
+                    foto.strumento, blocchi_qui, motivo_romeo,
+                    applicate, direzione=crt.direzione, tf_crt=crt.tf,
+                )
+                return replace(fermata, responso_romeo=responso_romeo)
+            applicate.append("GIUD-02")
 
     # --- 4bis. Il filtro DXY (SETUP-19, RISK-05, PRIN-09, PA-05) ----------
     #
@@ -590,10 +694,13 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             f"bias DXY {foto.bias_dxy.value} vuole {verso_dal_dxy.value} su "
             f"{foto.strumento}, il CRT porta a {verso_del_setup.value}"
         )
-        return _non_operare(
-            foto.strumento, ["RISK-05"] + indipendenti, motivo, applicate,
-            direzione=crt.direzione, tf_crt=crt.tf,
-        )
+        blocchi_dxy = ["RISK-05"] + indipendenti
+        if not _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo):
+            return _non_operare(
+                foto.strumento, blocchi_dxy, motivo, applicate,
+                direzione=crt.direzione, tf_crt=crt.tf,
+            )
+        applicate.append("GIUD-02")
 
     # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, GEST-08) --------
     # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):
@@ -694,10 +801,16 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
 
     blocchi = [f.regola for f in filtri] + list(esclusi) + list(blocchi_gap) + indipendenti
 
+    motivo_filtri = ("; ".join(f"{f.regola}: {f.motivo}" for f in filtri)
+                     or "condizioni non soddisfatte")
+    if blocchi and _giudizio_lascia_cadere(
+            foto, crt, tf_trigger, blocchi, motivo_filtri):
+        applicate.append("GIUD-02")
+        blocchi = []
+
     if blocchi:
         return _non_operare(
-            foto.strumento, blocchi,
-            "; ".join(f"{f.regola}: {f.motivo}" for f in filtri) or "condizioni non soddisfatte",
+            foto.strumento, blocchi, motivo_filtri,
             applicate,
             direzione=crt.direzione,
             tf_crt=crt.tf,
