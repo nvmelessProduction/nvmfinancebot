@@ -47,7 +47,7 @@ from core.config import impostazioni
 from core.log import diario
 from core.parametri import (
     CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
-    MAX_POSIZIONI_PER_STRUMENTO, TF, UNIVERSO,
+    MAX_POSIZIONI_PER_STRUMENTO, RISK_05_BLOCCA_DA_SOLA, TF, UNIVERSO,
 )
 
 log = diario("motore")
@@ -710,7 +710,13 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             f"{foto.strumento}, il CRT porta a {verso_del_setup.value}"
         )
         blocchi_dxy = ["RISK-05"] + indipendenti
-        if not _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo):
+        # Su un range alto la bias del dollaro e' il contesto che domina
+        # l'operazione e ferma da sola; su uno scalp e' rumore, e la parola
+        # passa al giudizio. Vedi `RISK_05_BLOCCA_DA_SOLA` in core/parametri.
+        assoluta = crt.tf.value in RISK_05_BLOCCA_DA_SOLA
+        cade = (not assoluta
+                and _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo))
+        if not cade:
             return _non_operare(
                 foto.strumento, blocchi_dxy, motivo, applicate,
                 direzione=crt.direzione, tf_crt=crt.tf,

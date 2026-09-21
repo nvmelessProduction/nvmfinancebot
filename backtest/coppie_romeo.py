@@ -113,8 +113,8 @@ def _spegni(quali: str) -> list[str]:
             # sbagliato. Qui si toglie del tutto la voce dal risultato.
             vera = contesto.filtri_attivi
 
-            def senza_gest01(**k):
-                return tuple(f for f in vera(**k) if f.regola != "GEST-01")
+            def senza_gest01(_vera=vera, **k):
+                return tuple(f for f in _vera(**k) if f.regola != "GEST-01")
 
             contesto.filtri_attivi = senza_gest01
             spente.append("GEST-01")
@@ -243,7 +243,19 @@ def misura(strumento: str, storico, tf_range: TF, tf_ing: TF,
     try:
         serie_range = storico[tf_range]
         serie_ing = storico[tf_ing]
-        inizio = max(0, len(serie_range) - quante_max) if quante_max else 0
+        # Non si guardano le candele di range PRIMA che esista il timeframe
+        # di ingresso: senza quelle candele un setup armato non puo' mai
+        # scattare, e valutarle e' tempo speso per forza a vuoto. Su
+        # `H1->M5` sono 774.000 valutazioni contro 6.000, perche' i minuti in
+        # archivio cominciano a giugno 2026 e le orarie nel 2006.
+        primo_ing = serie_ing[0].orario if serie_ing else None
+        inizio = 0
+        if primo_ing is not None:
+            from bisect import bisect_left
+            inizio = bisect_left([c.orario for c in serie_range], primo_ing)
+            inizio = max(0, inizio - 3)     # tre di margine per il contesto
+        if quante_max:
+            inizio = max(inizio, len(serie_range) - quante_max)
         for candela in serie_range[inizio:]:
             istante = candela.orario
             ridotto = {t: _finestra(storico[t], istante, FINESTRA.get(t, 100))
@@ -297,7 +309,11 @@ def misura(strumento: str, storico, tf_range: TF, tf_ing: TF,
             # nove setup armati non producevano un solo ingresso.
             stato: dict = {}
             vero_annota = ingresso_ltf._annota
-            ingresso_ltf._annota = lambda _id, **campi: stato.update(campi)
+            # `stato` legato come predefinito: la lambda vive dentro il
+            # ciclo e catturarlo per riferimento lo farebbe puntare al giro
+            # sbagliato. Qui non morde perche' viene usata subito, ma e' il
+            # tipo di cosa che morde appena qualcuno sposta due righe.
+            ingresso_ltf._annota = lambda _id, _s=stato, **campi: _s.update(campi)
             ingresso_trovato = None
             try:
                 for k in range(3, len(finestra_ing) + 1):

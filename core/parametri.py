@@ -543,7 +543,24 @@ INGRESSO_ROMEO: Final[bool] = True
 # con l'ingresso di CRT-13 porta il winrate dal 57,4% al 62,4%. Le altre
 # parlano al giudice, che e' il posto dove Romeo stesso le mette.
 CONFERME_CHE_BLOCCANO_DA_SOLE: Final[dict[str, bool]] = {
-    "CRT-20": True,   # peso delle ombre di N2 — misurato come veto
+    # Spenta il 2026-09-21, per decisione esplicita dell'utente.
+    #
+    # Era l'ultima delle otto ancora attiva come veto, e da sola fermava il
+    # 49% dei CRT: misurato su `D1 -> H1`, sei strumenti, 1,6 anni, 146 su
+    # 298. Dietro di lei RISK-05 ne aspettava altri 127, e il risultato era
+    # zero operazioni -- non poche: zero, su ogni coppia e su tutto lo
+    # storico.
+    #
+    # Il numero che la difendeva resta vero e va ricordato: con ombre piccole
+    # su N2 il winrate misurato e' 33,6% contro il 59,6% della base. Spegnerla
+    # NON e' una correzione, e' una scelta operativa -- si accettano setup che
+    # la misura dice peggiori, in cambio di un bot che apre. Per rimetterla
+    # basta riportare True qui.
+    #
+    # Continua a essere VALUTATA e a comparire nel responso: chi legge una
+    # decisione vede lo stesso cosa diceva CRT-20, e il giudizio discrezionale
+    # la pesa insieme alle altre. Cambia solo che non ferma da sola.
+    "CRT-20": False,  # peso delle ombre di N2 — misurato come veto
     "CRT-06": False,  # tre modelli CRT allineati
     "CRT-10": False,  # Double Purge Sweep
     "CRT-11": False,  # CISD — gia' INTRINSECO all'ingresso di CRT-13
@@ -674,6 +691,34 @@ DXY_TF_BASSI: Final[str] = "CAPITALCOM:DXY"  # CFD, per TF_H12 e inferiori
 
 # SETUP-19. Direzioni espresse in ordini **CFD**. Per gli strumenti a segno
 # invertito va poi applicato DEF-33 per sapere quale CRT cercare sul future.
+# Su quali timeframe di RANGE la bias del dollaro ferma DA SOLA un CRT?
+#
+# Non e' un interruttore acceso/spento: la regola vale, ma quanto pesa dipende
+# da quanto dura l'operazione. La bias del dollaro si legge su giornaliero e
+# superiori, e governa un movimento di ore o giorni. Un CRT su `H4` o `D1`
+# vive dentro quell'orizzonte, quindi andargli contro e' andare contro il
+# contesto che lo domina. Un CRT su `M5` vive dieci minuti: il dollaro, li',
+# e' rumore che nessuna bias giornaliera predice.
+#
+# Sotto `TF_H4` la regola non sparisce -- viene calcolata, registrata e
+# sottoposta al GIUDIZIO discrezionale, che la pesa insieme al resto del
+# dossier. Se il giudizio non e' disponibile (spento, tetto di spesa
+# esaurito, rete giu') l'obiezione REGGE e non si apre: e' PRIN-99, non
+# sapere e' un no.
+#
+# La soglia e' una scelta, non una misura: nessuno ha misurato dove stia il
+# confine. E' fissata a `TF_H4` perche' e' il range della configurazione su
+# cui il progetto ha il suo unico numero positivo (`4h -> 15m`), quindi da li'
+# in su si resta severi. Chi volesse restare severo ovunque aggiunge i
+# timeframe bassi a questo insieme.
+#
+# Contesto della scelta, 2026-09-21: con RISK-05 assoluta ovunque, 251 CRT su
+# 298 venivano fermati da lei su `D1 -> H1` e 306 su 617 su `W1 -> H4`, e in
+# tutto lo storico non arrivava all'ingresso un solo setup.
+RISK_05_BLOCCA_DA_SOLA: Final[frozenset] = frozenset({"TF_1M", "TF_1W", "TF_1D", "TF_H4"})
+
+# SETUP-19. Direzioni espresse in ordini **CFD**. Vedi `RISK_05_BLOCCA` qui
+# sopra per chi decide se questa tabella ferma davvero un ordine.
 DIREZIONE_DA_BIAS_DXY: Final[dict[str, dict[str, str]]] = {
     "LONG": {
         "EURUSD": "SELL", "GBPUSD": "SELL", "AUDUSD": "SELL",
