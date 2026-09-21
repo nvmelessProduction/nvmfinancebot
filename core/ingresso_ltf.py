@@ -36,7 +36,7 @@ lo motivava non c'e' piu'.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from core import notifier, storage

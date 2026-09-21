@@ -40,7 +40,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional
 
 import httpx
 

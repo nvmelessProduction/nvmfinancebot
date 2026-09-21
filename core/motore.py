@@ -41,7 +41,7 @@ from core import gestione as gest
 from core import rischio as risk
 from core import setup as stp
 from core.definizioni import (
-    Bias, Candela, Gap, KeyLevel, Mitigazione, direzione_cfd, livello_cfd,
+    Bias, Candela, Gap, KeyLevel, Mitigazione,
 )
 from core.parametri import (
     CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
@@ -834,15 +834,20 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # --- 8. Ordine ---------------------------------------------------------
     applicate.extend(["SETUP-03", "SETUP-04", "DEF-33"])
 
-    # DEF-33 — il CRT e' rilevato sul FUTURE, l'ordine va al CFD, e per `6J` e
-    # `6S` i due hanno segno opposto: quei future quotano yen e franco contro
-    # dollaro, i CFD quotano il dollaro contro quelle valute. Un CRT short su
-    # `6J` e' un BUY su `USDJPY`.
+    # DEF-33 — quando il CRT e' rilevato sul FUTURE l'ordine va al CFD, e per
+    # `6J` e `6S` i due hanno segno opposto: quei future quotano yen e franco
+    # contro dollaro, i CFD quotano il dollaro contro quelle valute, quindi un
+    # CRT short su `6J` e' un BUY su `USDJPY`.
     #
-    # `direzione` resta quella del future perche' e' con quel segno che il CRT
-    # e' stato letto e con quel segno vanno interpretate le regole di setup.
-    # Verso il broker parte `azione`, ed e' l'unica cosa che si converte qui:
-    # i tre livelli sono gia' passati sulla scala del CFD al punto 4bis.
+    # Quando invece si analizzano gia' le candele del CFD -- Dukascopy e MT5
+    # leggono il book del broker -- non c'e' niente da ribaltare: un CRT short
+    # su `USDJPY` e' un SELL su `USDJPY`. Decide `_verso_sul_cfd`, al punto
+    # 4bis, in base a `foto.analisi_in_scala_cfd`.
+    #
+    # `direzione` resta comunque quella letta sulle candele, perche' e' con
+    # quel segno che il CRT e' stato riconosciuto e con quel segno vanno
+    # interpretate le regole di setup. Verso il broker parte `azione`, e i tre
+    # livelli sono gia' passati dal punto 4bis.
     verso_cfd = verso_del_setup      # gia' convertito al punto 4bis
     return Decisione(
         azione="SELL" if verso_cfd is Bias.SHORT else "BUY",

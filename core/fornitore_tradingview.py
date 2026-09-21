@@ -51,7 +51,7 @@ from typing import Optional
 
 from core import broker, storage
 from core.aggregazione import costruisci_superiori
-from core.definizioni import Bias, Candela
+from core.definizioni import Candela
 from core.log import diario
 from core.models import AlertIn
 from core.motore import Fotografia

@@ -11,7 +11,7 @@ inutile, che e' il quinto errore di questo progetto e non sara' il sesto.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from core.definizioni import Bias, cisd, peso_ombre
 from core.motore import Decisione, Fotografia

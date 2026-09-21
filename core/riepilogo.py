@@ -325,7 +325,11 @@ def componi(ore: float = ORE_FRA_RIEPILOGHI) -> str:
     try:
         righe.append(f"Posizioni aperte: {len(storage.posizioni_aperte())}")
     except Exception:                                  # pragma: no cover
-        pass
+        # Non si salta la riga: un riepilogo a cui manca "Posizioni aperte"
+        # si legge come "nessuna posizione", che e' l'unica cosa che non
+        # sappiamo in questo momento.
+        log.warning("posizioni aperte non leggibili", exc_info=True)
+        righe.append("Posizioni aperte: non leggibili (vedi diario)")
     righe.append(f"Bias del dollaro: {_bias_dxy()}")
 
     righe += ["", "DATI"]

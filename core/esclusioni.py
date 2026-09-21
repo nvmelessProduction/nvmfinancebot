@@ -18,7 +18,7 @@ altre.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Optional
 
 from core.definizioni import Bias
 from core.rischio import stop_obbligatorio

@@ -28,7 +28,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from core import storage
-from core.parametri import TF
 from core.simboli import future_da_ticker, timeframe_da_intervallo
 
 # Quante candele mostrare attorno alla decisione.
