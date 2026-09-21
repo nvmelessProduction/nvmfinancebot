@@ -187,3 +187,54 @@ class TestVerdettoNonSiCapovolge:
         assert "REGGE" in ISTRUZIONI_OBIEZIONE
         assert "CADE" in ISTRUZIONI_OBIEZIONE
         assert "In dubbio, REGGE" in ISTRUZIONI_OBIEZIONE
+
+
+class TestIlRitmo:
+    """Il tetto dice QUANTO, il ritmo dice QUANDO.
+
+    Misurato il 2026-09-21 col bot vivo: sei chiamate in due minuti e mezzo,
+    perche' su `M1min` e `M5` ogni chiusura di candela porta un CRT nuovo su
+    sei strumenti. Il tetto di 0,27 EUR si sarebbe esaurito in cinque minuti
+    e le dodici ore successive sarebbero state senza giudizio -- cioe' col
+    comportamento di prima, senza che nulla lo segnalasse.
+    """
+
+    def test_il_passo_e_un_ventiquattresimo_del_tetto(self, monkeypatch):
+        _prezzi(monkeypatch, tetto=0.24)
+        ok, dettaglio = budget.c_e_budget()
+        assert ok is True
+        assert "0.0100" in dettaglio, dettaglio
+
+    def test_speso_troppo_in_un_ora_ferma(self, monkeypatch):
+        _prezzi(monkeypatch, tetto=0.24)
+        # ~0,040 EUR a chiamata: la prima sfonda gia' il passo orario
+        budget.registra(200, 0, 3000, 1500)
+        ok, dettaglio = budget.c_e_budget()
+        assert ok is False
+        assert "ritmo" in dettaglio
+
+    def test_il_tetto_giornaliero_resta_sovrano(self, monkeypatch):
+        """Superato quello, il ritmo non conta piu': si e' finito e basta."""
+        _prezzi(monkeypatch, tetto=0.02)
+        budget.registra(200, 0, 3000, 1500)
+        ok, dettaglio = budget.c_e_budget()
+        assert ok is False
+        assert "tetto giornaliero raggiunto" in dettaglio
+
+    def test_le_chiamate_vecchie_non_pesano_piu(self, monkeypatch):
+        """La finestra e' l'ULTIMA ora, non tutta la giornata."""
+        from datetime import datetime, timedelta, timezone
+        _prezzi(monkeypatch, tetto=0.24)
+        budget.registra(200, 0, 3000, 1500)
+        assert budget.c_e_budget()[0] is False
+        vecchio = (datetime.now(timezone.utc) - timedelta(hours=2)
+                   ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with storage.connessione(scrittura=True) as conn:
+            conn.execute("UPDATE giudizio_chiamata SET quando_utc = ?", (vecchio,))
+        assert budget.speso_nell_ultima_ora() == 0.0
+        assert budget.c_e_budget()[0] is True
+
+    def test_senza_tetto_non_c_e_nemmeno_ritmo(self, monkeypatch):
+        _prezzi(monkeypatch, tetto=0.0)
+        budget.registra(200, 0, 3000, 1500)
+        assert budget.c_e_budget()[0] is True

@@ -43,7 +43,7 @@ e'. Se non sono configurati il tetto lavora sui soli token.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from core import storage
@@ -67,6 +67,16 @@ def prepara_tabelle() -> None:
                 euro            REAL    NOT NULL DEFAULT 0.0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS giudizio_chiamata (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                quando_utc TEXT NOT NULL,
+                euro       REAL NOT NULL
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS i_giudizio_chiamata_quando "
+            "ON giudizio_chiamata(quando_utc)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS giudizio_visto (
                 impronta    TEXT PRIMARY KEY,
@@ -138,20 +148,57 @@ def tetto_giornaliero() -> float:
     return float(getattr(impostazioni(), "GIUDIZIO_EURO_AL_GIORNO", 0.0) or 0.0)
 
 
-def c_e_budget() -> tuple[bool, str]:
-    """Si puo' ancora interpellare il giudizio oggi?
+def speso_nell_ultima_ora() -> float:
+    """Quanto e' stato speso negli ultimi sessanta minuti."""
+    prepara_tabelle()
+    limite = (datetime.now(timezone.utc) - timedelta(hours=1)
+              ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with storage.connessione() as conn:
+        r = conn.execute(
+            "SELECT COALESCE(SUM(euro), 0) FROM giudizio_chiamata WHERE quando_utc >= ?",
+            (limite,)).fetchone()
+    return float(r[0] or 0.0)
 
-    Con tetto a zero il freno e' spento e si spende senza limite: e' una
-    scelta esplicita di chi configura, non il valore di partenza.
+
+def c_e_budget() -> tuple[bool, str]:
+    """Si puo' interpellare il giudizio ADESSO?
+
+    Due freni, e servono tutti e due.
+
+    Il **tetto giornaliero** dice quanto si puo' spendere in tutto. Da solo
+    pero' non basta, perche' non dice *quando*: misurato il 2026-09-21, con
+    il bot vivo su `M1min` e `M5`, sono partite 6 chiamate in due minuti e
+    mezzo -- sei strumenti per ogni chiusura di candela al minuto -- e il
+    tetto di 0,27 EUR si sarebbe esaurito in cinque minuti. Le dodici ore
+    successive sarebbero state senza giudizio, cioe' col comportamento di
+    prima, senza che nulla lo segnalasse.
+
+    Il **ritmo** distribuisce lo stesso tetto sulla giornata: non piu' di un
+    ventiquattresimo all'ora. Non e' una restrizione in piu', e' la stessa
+    somma spesa in modo che ci sia ancora giudizio alle quattro del mattino.
+
+    La conseguenza va detta: la maggior parte dei CRT non verra' giudicata, e
+    per quelli l'obiezione REGGE e non si apre. Con un tetto di 0,27 EUR e
+    ~0,018 per giudizio sono una quindicina di pareri al giorno, e questo
+    determina quanti setup possono passare da `RISK-05` sui timeframe bassi.
     """
     tetto = tetto_giornaliero()
     if tetto <= 0:
         return True, "nessun tetto configurato"
+
     s = speso_oggi()
     if s.euro >= tetto:
         return False, (f"tetto giornaliero raggiunto: {s.euro:.3f} di "
                        f"{tetto:.2f} EUR in {s.chiamate} giudizi")
-    return True, f"speso {s.euro:.3f} di {tetto:.2f} EUR in {s.chiamate} giudizi"
+
+    all_ora = tetto / 24.0
+    ultima_ora = speso_nell_ultima_ora()
+    if ultima_ora >= all_ora:
+        return False, (f"ritmo: {ultima_ora:.4f} EUR nell'ultima ora, il "
+                       f"passo e' {all_ora:.4f} (tetto {tetto:.2f} al giorno)")
+
+    return True, (f"speso {s.euro:.3f} di {tetto:.2f} EUR in {s.chiamate} "
+                  f"giudizi, {ultima_ora:.4f} nell'ultima ora su {all_ora:.4f}")
 
 
 def costo(token_ingresso: int, token_cache_scritta: int,
@@ -193,4 +240,10 @@ def registra(token_ingresso: int, token_cache_scritta: int,
             "   token_uscita = token_uscita + excluded.token_uscita,"
             "   euro = euro + excluded.euro",
             (_oggi(), token_ingresso + token_ingresso_cache, token_uscita, euro))
+        # Anche una riga per chiamata, col suo orario: il tetto giornaliero
+        # non sa distribuire, e senza gli orari non si puo' sapere quanto si
+        # e' speso nell'ultima ora.
+        conn.execute(
+            "INSERT INTO giudizio_chiamata (quando_utc, euro) VALUES (?, ?)",
+            (datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), euro))
     return euro
