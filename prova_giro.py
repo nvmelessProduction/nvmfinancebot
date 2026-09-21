@@ -238,7 +238,12 @@ def main() -> int:
     print(f"prova del giro  --  {adesso:%Y-%m-%d %H:%M} UTC")
     print(f"fornitore dati: {cfg.FORNITORE_DATI}   modalita': {cfg.MODE}")
 
-    if cfg.FORNITORE_DATI == "dukascopy":
+    # Lo stesso elenco di `main.py`: ogni fornitore che legge le candele
+    # dall'archivio ha bisogno che qualcuno costruisca la Fotografia.
+    # Restando fermo a "dukascopy" questa prova dava [ NO ] su ogni riga
+    # della catena col motore su MT5 — "il motore c'e' ma nessuno costruisce
+    # la Fotografia" — cioe' accusava il bot di un guasto che era solo qui.
+    if cfg.FORNITORE_DATI in ("tradingview", "mercato", "dukascopy", "mt5"):
         from core.fornitore_tradingview import collega
         collega(suffisso_broker=cfg.MT5_SUFFISSO_SIMBOLI)
 
