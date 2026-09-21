@@ -349,6 +349,21 @@ def _giudizio_lascia_cadere(
     return verdetto.accetta
 
 
+def _ingresso_differito(foto: "Fotografia", crt, tf_trigger: TF) -> bool:
+    """Questo CRT si armera' invece di ordinare subito?
+
+    Se si', il prezzo d'ingresso non esiste ancora e tutto cio' che lo
+    riguarda -- GEST-01 in testa -- va verificato dopo, quando l'ordine parte
+    davvero. Le condizioni sono le stesse del punto 7bis, e stanno qui in una
+    funzione sola perche' due copie finirebbero per divergere proprio sul
+    caso che conta.
+    """
+    if not INGRESSO_ROMEO:
+        return False
+    tf_ing = COPPIE_CRT.get(crt.tf)
+    return tf_ing is not None and bool(foto.candele_per_tf.get(tf_ing))
+
+
 def _verso_sul_cfd(foto: "Fotografia", direzione) -> "Bias":
     """La direzione del CRT, portata sul verso in cui parte l'ordine.
 
@@ -780,6 +795,10 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         eventi_news=foto.eventi_news,
         mitigazione_non_determinata=(da_gap and foto.mitigazione is Mitigazione.NON_DETERMINATA),
         dati_coerenti=foto.dati_coerenti,
+        # Con CRT-13 l'ordine parte al ritorno nell'FVG e il prezzo di
+        # ingresso qui non esiste ancora: GEST-01 si verifica la', dove i
+        # numeri sono quelli veri. Vedi `contesto.filtri_attivi`.
+        rapporto_differito=_ingresso_differito(foto, crt, tf_trigger),
     )
     esclusi = stp.esclusioni_setup(
         crt=crt,

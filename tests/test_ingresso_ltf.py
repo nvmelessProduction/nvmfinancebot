@@ -48,6 +48,27 @@ def arma_short() -> int:
     )
 
 
+def arma_short_operabile() -> int:
+    """Come sopra, ma con livelli che superano GEST-01.
+
+    `arma_short` ha uno stop a 110 e bersagli a 105/100: con l'ingresso a 102
+    il rapporto vale 0,25, cioe' un setup che nessuno prenderebbe. Andava bene
+    finche' `controlla` non guardava il rapporto -- serviva solo a provare la
+    catena CISD/FVG/ritorno -- ma ora che GEST-01 si applica sul prezzo
+    d'ingresso quei numeri fanno fallire la prova per il motivo giusto.
+
+    Qui lo stop e' vicino e il bersaglio lontano, come in un setup vero.
+    L'EQ resta SOPRA il prezzo d'ingresso perche' la prova che la usa
+    verifica il ramo di CRT-16 in cui l'EQ e' gia' stato superato e il primo
+    bersaglio diventa il lato opposto: con l'ingresso a 102 il rapporto sul
+    lato opposto vale 1,75.
+    """
+    return ltf.arma(
+        "EURUSD", Bias.SHORT, TF.H4, TF.MIN15,
+        estremo_sweep=106.0, eq_range=105.0, lato_opposto=95.0,
+    )
+
+
 class TestArmare:
     def test_un_crt_arma_e_non_ordina(self) -> None:
         id_setup = arma_short()
@@ -112,7 +133,7 @@ class TestLaCatenaDeiTrePassi:
         assert "CISD" not in motivo or "FVG" in motivo
 
     def test_la_sequenza_completa_produce_un_ingresso(self) -> None:
-        arma_short()
+        arma_short_operabile()
         setup = ltf.armati("EURUSD")[0]
 
         # 1. CISD: tre rialziste poi una che chiude sotto l'apertura della prima
@@ -144,26 +165,26 @@ class TestLaCatenaDeiTrePassi:
 
         assert ingresso is not None, motivo
         assert ingresso.direzione is Bias.SHORT
-        assert ingresso.stop == 110.0, "lo stop e' l'estremo dello sweep"
+        assert ingresso.stop == 106.0, "lo stop e' l'estremo dello sweep"
         # CRT-16 dice "prima l'EQ, poi il lato opposto". Qui il prezzo e'
         # gia' sceso sotto l'EQ (105) prima dell'ingresso a 102: quel
         # bersaglio e' alle spalle, e il primo diventa il lato opposto. Un
         # bersaglio dietro il prezzo non e' un bersaglio.
-        assert ingresso.bersaglio_1 == 100.0, "l'EQ e' gia' passato"
-        assert ingresso.bersaglio_2 == 100.0, "il lato opposto del range"
+        assert ingresso.bersaglio_1 == 95.0, "l'EQ e' gia' passato"
+        assert ingresso.bersaglio_2 == 95.0, "il lato opposto del range"
         assert ingresso.prezzo < ingresso.stop, "su uno short si entra sotto lo stop"
 
     def test_l_eq_e_il_primo_bersaglio_quando_e_ancora_davanti(self) -> None:
         """L'altro ramo di CRT-16: se il prezzo non ha ancora raggiunto l'EQ,
         e' quello il primo bersaglio."""
         ltf.arma("EURUSD", Bias.SHORT, TF.H4, TF.MIN15,
-                 estremo_sweep=110.0, eq_range=105.0, lato_opposto=100.0)
+                 estremo_sweep=110.0, eq_range=95.0, lato_opposto=90.0)
         setup = ltf.armati("EURUSD")[-1]
         ltf._annota(setup.id_setup, livello_cisd=109.0, fvg_inf=107.0, fvg_sup=108.0)
         setup = ltf.armati("EURUSD")[-1]
         ingresso, motivo = ltf.controlla(setup, [barra(108.5, 108.5, 107.5, 108.0, 9)])
         assert ingresso is not None, motivo
-        assert ingresso.bersaglio_1 == 105.0, "l'EQ e' ancora davanti"
+        assert ingresso.bersaglio_1 == 95.0, "l'EQ e' ancora davanti"
 
 
 class TestLaScadenza:
@@ -243,3 +264,43 @@ class TestNonRiarmareLoStessoCrt:
         ltf.avanza_attesa(id_setup)
         arma_short()
         assert ltf.armati("EURUSD")[0].barre_attesa == 2
+
+
+class TestGest01SulPrezzoDiIngresso:
+    """GEST-01 si verifica dove l'ordine parte, non dove il CRT si arma.
+
+    Con CRT-13 fra i due momenti passano minuti o ore, e fra i due il prezzo
+    torna INDIETRO verso lo sweep: si avvicina allo stop e si allontana dal
+    bersaglio, quindi il rapporto vero e' molto migliore di quello stimato
+    all'armamento. Misurato il 2026-09-21 su `D1 -> H1`, sei strumenti: alla
+    chiusura di N2 il rapporto risultava incalcolabile nel 68% dei casi --
+    il prezzo aveva gia' passato la meta' del range -- e GEST-01 fermava 292
+    CRT su 298. Non per la soglia: perche' il numero non esisteva.
+    """
+
+    def _con_livelli(self, estremo, eq, opposto):
+        ltf.arma("EURUSD", Bias.SHORT, TF.H4, TF.MIN15,
+                 estremo_sweep=estremo, eq_range=eq, lato_opposto=opposto)
+        setup = ltf.armati("EURUSD")[-1]
+        ltf._annota(setup.id_setup, livello_cisd=109.0, fvg_inf=107.0, fvg_sup=108.0)
+        return ltf.armati("EURUSD")[-1]
+
+    def test_un_rapporto_basso_ferma_l_ingresso(self) -> None:
+        # ingresso a 107, stop a 110 -> rischio 3; bersaglio a 105 -> 0,67
+        setup = self._con_livelli(110.0, 105.0, 100.0)
+        ingresso, motivo = ltf.controlla(setup, [barra(108.5, 108.5, 107.5, 108.0, 9)])
+        assert ingresso is None
+        assert "GEST-01" in motivo and "0.67" in motivo
+
+    def test_un_rapporto_buono_lo_lascia_passare(self) -> None:
+        # stesso ingresso e stesso stop, bersaglio a 95 -> 4,00
+        setup = self._con_livelli(110.0, 95.0, 90.0)
+        ingresso, motivo = ltf.controlla(setup, [barra(108.5, 108.5, 107.5, 108.0, 9)])
+        assert ingresso is not None, motivo
+        assert "rapporto 4.00" in motivo
+
+    def test_il_motivo_dice_su_quale_prezzo(self) -> None:
+        """Senza il prezzo nel motivo non si puo' capire perche' ha rifiutato."""
+        setup = self._con_livelli(110.0, 105.0, 100.0)
+        _, motivo = ltf.controlla(setup, [barra(108.5, 108.5, 107.5, 108.0, 9)])
+        assert "107.00000" in motivo

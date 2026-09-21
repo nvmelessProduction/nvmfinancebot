@@ -364,6 +364,7 @@ def filtri_attivi(
     eventi_news: Sequence[EventoNews],
     mitigazione_non_determinata: bool,
     dati_coerenti: bool,
+    rapporto_differito: bool = False,
 ) -> tuple[Astensione, ...]:
     """CTX-01 — Le undici condizioni che impediscono l'invio di un ordine.
 
@@ -385,10 +386,26 @@ def filtri_attivi(
         attive.append(Astensione("SETUP-07", "direzione del CRT opposta a bias_comando"))  # 3
     if not allineamento_ok:                                             # 4
         attive.append(Astensione("SETUP-05", "meno di 2 timeframe superiori allineati"))
-    if rapporto_su_tp1 is None or rapporto_su_tp1 < RR_MINIMO:          # 5
-        attive.append(
-            Astensione("GEST-01", f"rapporto su TP1 sotto {RR_MINIMO}: {rapporto_su_tp1}")
-        )
+    # 5 — GEST-01, a meno che l'ingresso non sia ancora avvenuto.
+    #
+    # Con `CRT-13` l'ordine parte al ritorno nell'FVG, non alla chiusura di
+    # `N2`: qui il prezzo d'ingresso NON ESISTE ANCORA, e `rapporto_su_tp1`
+    # e' calcolato su quello di adesso, che e' un altro numero. Fra i due il
+    # prezzo torna indietro verso lo sweep, quindi si avvicina allo stop e si
+    # allontana dal bersaglio: il rapporto vero e' molto migliore.
+    #
+    # Misurato il 2026-09-21 su `D1 -> H1`, sei strumenti: qui il rapporto
+    # risultava **incalcolabile nel 68% dei casi** -- il prezzo aveva gia'
+    # passato la meta' del range -- e GEST-01 fermava 292 CRT su 298. Non per
+    # la soglia: perche' il numero non esisteva. La regola non e' cambiata,
+    # e' cambiato dove si applica: `ingresso_ltf.controlla` la verifica sul
+    # prezzo a cui l'ordine parte davvero.
+    if not rapporto_differito:
+        if rapporto_su_tp1 is None or rapporto_su_tp1 < RR_MINIMO:
+            attive.append(
+                Astensione("GEST-01",
+                           f"rapporto su TP1 sotto {RR_MINIMO}: {rapporto_su_tp1}")
+            )
     if posizioni_aperte_strumento >= MAX_POSIZIONI_PER_STRUMENTO:       # 6
         attive.append(Astensione("RISK-06", f"gia' {posizioni_aperte_strumento} posizioni aperte"))
     if limite_rischio_raggiunto:                                        # 7

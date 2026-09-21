@@ -42,6 +42,7 @@ from typing import Optional, Sequence
 from core import notifier, storage
 from core.definizioni import Bias, Candela, cisd
 from core.log import diario
+from core.contesto import RR_MINIMO
 from core.parametri import TF
 
 log = diario("ingresso_ltf")
@@ -342,10 +343,33 @@ def controlla(
     if ancora_oltre:
         return None, "PRIN-99: nessun bersaglio davanti al prezzo di ingresso"
 
+    # --- GEST-01, qui e non all'armamento ---------------------------------
+    #
+    # Il rapporto rischio/rendimento va misurato sul prezzo a cui l'ordine
+    # parte davvero. Con l'ingresso a due tempi quel prezzo e' QUESTO -- il
+    # bordo dell'FVG appena ritestato -- non la chiusura di `N2`, che e' dove
+    # il motore lo calcolava finora perche' era l'unico prezzo che aveva.
+    #
+    # La differenza non e' una sfumatura: fra la chiusura di `N2` e il ritorno
+    # nel vuoto il prezzo torna INDIETRO verso lo sweep, quindi si avvicina
+    # allo stop e si allontana dal bersaglio. Il rapporto vero e' molto
+    # migliore di quello stimato all'armamento.
+    #
+    # Misurato il 2026-09-21 su `D1 -> H1`, sei strumenti: all'armamento il
+    # rapporto risultava **incalcolabile nel 68% dei casi** -- il prezzo aveva
+    # gia' passato la meta' del range e il bersaglio restava indietro -- e
+    # GEST-01 fermava 292 CRT su 298. Non per la soglia: perche' il numero non
+    # esisteva. Era il filtro giusto applicato al prezzo sbagliato.
+    rapporto = abs(primo - prezzo) / rischio
+    if rapporto < RR_MINIMO:
+        return None, (f"GEST-01: rapporto {rapporto:.2f} sotto {RR_MINIMO} "
+                      f"sul prezzo d'ingresso {prezzo:.5f}")
+
     return Ingresso(
         setup.id_setup, setup.strumento, direzione, prezzo,
         setup.estremo_sweep, primo, setup.lato_opposto, setup.tf_crt,
-    ), f"CRT-13: ingresso a {prezzo:.5f} sul ritorno nell'FVG"
+    ), (f"CRT-13: ingresso a {prezzo:.5f} sul ritorno nell'FVG, "
+        f"rapporto {rapporto:.2f}")
 
 
 def _annota(id_setup: int, **campi) -> None:
