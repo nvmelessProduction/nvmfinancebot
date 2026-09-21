@@ -585,6 +585,83 @@ def conto_e_demo() -> tuple[bool, str]:
         return False, f"conto {nomi.get(modo, modo)} {conto.login}: non e' un demo"
 
 
+# Lo scarto fra l'orologio del server del broker e UTC. E' una proprieta' del
+# SERVER, non del simbolo, quindi se ne tiene una sola misura per processo.
+_scarto_server: Optional[timedelta] = None
+
+# L'ultimo orario di tick visto per ciascun simbolo. Serve a distinguere un
+# mercato vivo da uno fermo: e' l'unico segnale onesto che abbiamo.
+_ultimo_tick: dict[str, int] = {}
+
+# I valori plausibili per lo scarto di un broker, in ore. DEF-03 descrive
+# questo server come UTC+2 d'inverno e UTC+3 d'estate; si lascia da 0 a +4 per
+# non legarsi a un broker solo. E' l'ultima rete: a mercato fermo il candidato
+# diventa NEGATIVO e cala di un'ora ogni ora.
+SCARTO_PLAUSIBILE_ORE = range(0, 5)
+
+
+def _scarto_del_server(
+    simbolo: str, tick: Any, adesso: datetime
+) -> Optional[timedelta]:
+    """Di quanto l'orologio del server e' avanti rispetto a UTC.
+
+    MT5 marca ogni barra con l'orologio del server e la consegna come se
+    fosse gia' UTC: senza correggerla ogni candela risulta spostata. Misurato
+    il 2026-09-18 su questo conto: +3h (ora legale), confermato allineando le
+    chiusure H1 contro l'archivio Dukascopy - 2,6 pip di scarto medio contro
+    ~70 senza correzione.
+
+    **Perche' non basta guardare il tick.** La prima versione ricalcolava lo
+    scarto ad ogni chiamata da `symbol_info_tick`. Ma quel tick si CONGELA
+    quando il mercato chiude: da li' in poi la differenza fra l'ora del tick e
+    l'ora vera cresce di un'ora ogni ora, e le barre venivano timbrate sempre
+    piu' avanti. Con orari nuovi `INSERT OR IGNORE` non le riconosceva come
+    duplicati e le archiviava: il 2026-09-21 in `bot.db` c'erano **329 candele
+    orarie su 387 scritte a mercato chiuso**, un fine settimana intero di
+    prezzi mai scambiati, che poi alimentavano giornaliere del sabato.
+
+    **Il segnale giusto e' il tick che avanza.** Un mercato fermo ha un tick
+    fermo; un mercato vivo ne ha uno che cambia. Si misura solo quando e'
+    avanzato, si tiene l'ultima misura buona quando non lo e'.
+
+    Non basta "il tick e' vecchio piu' di N minuti": al cambio dell'ora legale
+    il tick e' vivo ma lo scarto vero cambia di un'ora, e un controllo
+    sull'eta' lo scambierebbe per un tick fermo, restando bloccato sul vecchio
+    valore per sei mesi. Con l'avanzamento, invece, il nuovo valore si prende
+    subito (provato in `tests/test_orario_server.py`).
+
+    Senza nessuna misura attendibile restituisce `None`: chi chiama non
+    archivia. Meglio nessuna candela che una con l'ora sbagliata.
+    """
+    global _scarto_server
+
+    if tick is None or not getattr(tick, "time", 0):
+        return _scarto_server
+
+    ora_tick = int(tick.time)
+    precedente = _ultimo_tick.get(simbolo)
+    _ultimo_tick[simbolo] = ora_tick
+
+    if precedente is None or ora_tick == precedente:
+        # Primo avvistamento, oppure mercato fermo. In nessuno dei due casi
+        # questo tick dice che ora sia sul server: al primo giro non si sa
+        # ancora se stia avanzando, e fermo non avanza per definizione.
+        return _scarto_server
+
+    ora_server = datetime.fromtimestamp(ora_tick, tz=timezone.utc)
+    ore = round((ora_server - adesso).total_seconds() / 3600)
+    if ore not in SCARTO_PLAUSIBILE_ORE:
+        log.warning(
+            "%s: scarto del server implausibile (%+d ore), misura ignorata",
+            simbolo, ore)
+        return _scarto_server
+
+    if _scarto_server != timedelta(hours=ore):
+        log.info("scarto del server del broker: %+d ore rispetto a UTC", ore)
+    _scarto_server = timedelta(hours=ore)
+    return _scarto_server
+
+
 def candele(simbolo: str, timeframe_mt5: int, quante: int) -> tuple[bool, list[dict[str, Any]], str]:
     """Legge le barre storiche di un simbolo.
 
@@ -611,33 +688,34 @@ def candele(simbolo: str, timeframe_mt5: int, quante: int) -> tuple[bool, list[d
         codice, descrizione = _errore_mt5()
         return False, [], f"nessuna barra per {simbolo}: [{codice}] {descrizione}"
 
-    # DEF-03: il server del broker non e' in UTC (documentato per FP Markets
-    # come UTC+2 solare / UTC+3 legale, ma il conto collegato oggi e' Ultima
-    # Markets: il nome del broker cambia, quindi si misura l'offset invece di
-    # fidarsi del documento). MT5 marca ogni barra con l'orologio del server e
-    # la consegna come se fosse gia' UTC: senza correggerla, ogni candela
-    # risulta spostata dell'offset del server. Misurato il 2026-09-18 su
-    # questo conto: -3h (ora legale), confermato allineando le chiusure H1
-    # contro l'archivio Dukascopy (2,6 pip di scarto medio contro ~70 senza
-    # correzione). Si arrotonda all'ora perche' DEF-03 non prevede offset
-    # frazionari.
-    scarto_server = timedelta(0)
-    if tick is not None and tick.time:
-        ora_server_come_utc = datetime.fromtimestamp(int(tick.time), tz=timezone.utc)
-        ora_vera = datetime.now(timezone.utc)
-        ore = round((ora_server_come_utc - ora_vera).total_seconds() / 3600)
-        scarto_server = timedelta(hours=ore)
+    adesso = datetime.now(timezone.utc)
+    scarto_server = _scarto_del_server(simbolo, tick, adesso)
+    if scarto_server is None:
+        return False, [], (
+            f"{simbolo}: scarto del server non misurabile (nessun tick vivo e "
+            f"nessuna misura precedente). Non si archivia: meglio nessuna "
+            f"candela che una con l'orario sbagliato"
+        )
 
-    lette = [
-        {
-            "apertura_utc": datetime.fromtimestamp(int(barra["time"]), tz=timezone.utc) - scarto_server,
+    lette = []
+    for barra in barre:
+        apertura = datetime.fromtimestamp(int(barra["time"]), tz=timezone.utc) - scarto_server
+        # Rete di sicurezza indipendente dalla misura: una barra che si apre
+        # nel futuro non esiste. Se lo scarto fosse sbagliato in un modo non
+        # previsto, qui si ferma invece di entrare in archivio.
+        if apertura > adesso + timedelta(minutes=1):
+            log.warning("%s: barra con apertura nel futuro (%s), scartata",
+                        simbolo, apertura)
+            continue
+        lette.append({
+            "apertura_utc": apertura,
             "open": float(barra["open"]),
             "high": float(barra["high"]),
             "low": float(barra["low"]),
             "close": float(barra["close"]),
-        }
-        for barra in barre
-    ]
+        })
+    if not lette:
+        return False, [], f"{simbolo}: nessuna barra utilizzabile dopo i controlli"
     return True, lette, f"{len(lette)} barre"
 
 

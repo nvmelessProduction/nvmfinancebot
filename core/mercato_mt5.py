@@ -46,11 +46,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional, Sequence
 
 from core import storage
+from core.aggregazione import chiave_sessione
 from core.definizioni import Candela
 from core.log import diario
 from core.mercato_duka import DURATA, _alert, ultima_archiviata
 from core.models import AlertIn
 from core.parametri import GERARCHIA_COMPLETA, TF, UNIVERSO
+from core import riepilogo
 from core.simboli import simbolo_esecuzione
 
 log = diario("mercato_mt5")
@@ -74,7 +76,7 @@ TIMEFRAME_MT5: dict[TF, int] = {
 # giro. Numeri scesi il 2026-09-21 (erano 1500/1000/1000/800): con sei
 # strumenti e quattro serie ciascuno sono ventiquattro chiamate a giro, e
 # chiedere millecinquecento barre al minuto per scoprire che ne e' arrivata
-# una sola costava minuti di giro — il ciclo era passato da uno a sette
+# una sola costava minuti di giro - il ciclo era passato da uno a sette
 # minuti, fino a non rispondere piu' su /salute. Quel che resta copre
 # comunque uno spegnimento di ore.
 QUANTE: dict[TF, int] = {
@@ -142,10 +144,9 @@ class MercatoMT5:
     candele_nuove: int = field(default=0, init=False)
     valutazioni: int = field(default=0, init=False)
     ultimo_errore: Optional[str] = field(default=None, init=False)
-    # Quando e' partito l'ultimo riepilogo su Telegram. `None` significa
-    # "mai in questo processo": il primo parte al primo giro utile, cosi'
-    # dopo un riavvio si sa subito che il bot e' tornato a lavorare.
-    _ultimo_riepilogo: Optional[datetime] = field(default=None, init=False, repr=False)
+    # L'ultima oraria da cui si e' gia' ricostruito, per strumento: senza
+    # orarie nuove i timeframe superiori non possono cambiare.
+    _ultima_h1: dict = field(default_factory=dict, init=False, repr=False)
 
     def avvia(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -177,27 +178,7 @@ class MercatoMT5:
             # Fuori dal try del giro: un riepilogo che fallisce non deve
             # contare come un giro fallito, e un giro fallito e' anzi il
             # momento in cui il riepilogo serve di piu'.
-            self._forse_riepilogo()
-
-    def _forse_riepilogo(self) -> None:
-        """Il riepilogo periodico su Telegram, se e' passato abbastanza.
-
-        Sta qui e non in un thread suo perche' il ciclo di mercato e' gia'
-        un orologio che batte: aggiungerne un secondo per mandare un
-        messaggio ogni sei ore sarebbe una parte in piu' che puo' rompersi.
-        """
-        from core.riepilogo import ORE_FRA_RIEPILOGHI, manda
-
-        adesso = datetime.now(timezone.utc)
-        if self._ultimo_riepilogo is not None:
-            passate = (adesso - self._ultimo_riepilogo).total_seconds() / 3600
-            if passate < ORE_FRA_RIEPILOGHI:
-                return
-        self._ultimo_riepilogo = adesso
-        try:
-            manda()
-        except Exception:
-            log.exception("riepilogo non inviato")
+            riepilogo.forse_manda()
 
     def giro(self, adesso: Optional[datetime] = None) -> dict:
         """Un passaggio su tutti gli strumenti. Archivia, poi valuta.
@@ -285,7 +266,7 @@ class MercatoMT5:
         # Si ricostruisce quando arriva un'ora nuova, ma anche quando uno dei
         # superiori e' scaduto per conto suo: senza la seconda condizione, un
         # bot rimasto spento due giorni non avrebbe mai richiuso il buco nelle
-        # giornaliere — aspettava un'ora nuova che intanto era gia' arrivata.
+        # giornaliere - aspettava un'ora nuova che intanto era gia' arrivata.
         superiori_scaduti = any(
             self.serie_da_chiedere(strumento, tf, adesso)
             for tf in SUPERIORI_RICOSTRUITI
@@ -308,6 +289,26 @@ class MercatoMT5:
             for r in righe
         ]
 
+    def _sessioni_archiviate(self, strumento: str, tf: TF) -> set:
+        """Le sessioni gia' coperte da una candela in archivio.
+
+        Si guardano solo le piu' recenti: la ricostruzione tocca una finestra
+        di tre mesi e mezzo, e leggere vent'anni di giornaliere ad ogni giro
+        per confrontarne trenta sarebbe lo stesso spreco che ha gia' fatto
+        rallentare il ciclo.
+        """
+        quante = {TF.H4: 700, TF.D1: 200, TF.W1: 40, TF.M1: 12}.get(tf, 200)
+        righe = storage.candele_archiviate(strumento, tf.value, limite=quante)
+        fuori = set()
+        for r in righe:
+            try:
+                quando = datetime.fromisoformat(
+                    str(r["chiusura_utc"]).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                continue
+            fuori.add(chiave_sessione(tf, Candela(quando, 0.0, 0.0, 0.0, 0.0)))
+        return fuori
+
     def _ricostruisci_superiori(self, strumento: str) -> dict[TF, Candela]:
         """H4, giornaliero, settimanale e mensile dalle orarie.
 
@@ -319,8 +320,8 @@ class MercatoMT5:
         identiche al 99,8%, settimanali al 98%, mensili al 99%.
 
         Perche' conta: senza questa ricostruzione D1, W1 e mensile restavano
-        fermi al giorno in cui Dukascopy ha smesso di girare — cinque giorni
-        il giornaliero, venti il mensile — e `SETUP-05` continuava a chiedersi
+        fermi al giorno in cui Dukascopy ha smesso di girare - cinque giorni
+        il giornaliero, venti il mensile - e `SETUP-05` continuava a chiedersi
         se i timeframe superiori fossero allineati leggendo candele vecchie di
         una settimana, senza che nulla lo segnalasse.
         """
@@ -332,6 +333,15 @@ class MercatoMT5:
         orarie = self._orarie_archiviate(strumento)
         if len(orarie) < 4:
             return {}
+
+        # Senza orarie nuove non c'e' niente da ricostruire, e rifarlo a vuoto
+        # costa: a mercato chiuso `serie_da_chiedere` resta vera per giorni
+        # (il giornaliero non puo' avanzare, quindi e' sempre "scaduto"), e
+        # senza questo confronto la ricostruzione ripartiva ogni minuto
+        # leggendo 2.500 righe per strumento.
+        if self._ultima_h1.get(strumento) == orarie[-1].orario:
+            return {}
+        self._ultima_h1[strumento] = orarie[-1].orario
 
         giornaliere = aggrega_giornaliere(orarie)
         per_tf: dict[TF, Sequence[Candela]] = {
@@ -347,10 +357,19 @@ class MercatoMT5:
             # giornata (o a meta' mese) e quel gruppo e' troncato, quindi
             # avrebbe l'apertura sbagliata e forse estremi mancanti.
             # L'ultimo, quello in formazione, lo scarta gia' l'aggregatore.
-            # Tutti gli altri si riscrivono ad ogni giro: `salva_candele`
-            # ignora quelli gia' presenti, e cosi' un buco lasciato da uno
-            # spegnimento lungo si richiude da solo invece di restare li'.
-            coda = serie[1:]
+            # Tutti gli altri si riscrivono: `salva_candele` ignora quelli
+            # gia' presenti, e cosi' un buco lasciato da uno spegnimento
+            # lungo si richiude da solo invece di restare li'.
+            #
+            # `INSERT OR IGNORE` pero' confronta gli ORARI, e Dukascopy non
+            # timbra sempre al confine: si scartano quindi anche i periodi
+            # gia' coperti da una candela in archivio, riconosciuti per
+            # sessione e non per orario.
+            gia_presenti = self._sessioni_archiviate(strumento, tf)
+            coda = [
+                c for c in serie[1:]
+                if chiave_sessione(tf, c) not in gia_presenti
+            ]
             if not coda:
                 continue
             righe = [{
@@ -373,7 +392,7 @@ class MercatoMT5:
         Finche' il DXY lo costruiva `importa_dxy.py` da Dukascopy, spegnere
         Dukascopy ha significato congelarlo: il 2026-09-21 era fermo a otto
         giorni prima, e ogni singolo blocco RISK-05 nel diario citava la
-        stessa bias SHORT — una fotografia vecchia di una settimana che
+        stessa bias SHORT - una fotografia vecchia di una settimana che
         continuava a decidere.
 
         I sei costituenti (`core/duka_dxy.PESI`) sono quotati da MT5 come

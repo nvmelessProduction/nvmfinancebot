@@ -88,11 +88,52 @@ def _per_gruppi(candele: Sequence[Candela], chiave_di) -> tuple[Candela, ...]:
     return tuple(_unisci(gruppi[c]) for c in chiavi[:-1])
 
 
+def chiave_sessione(
+    tf: TF, candela: Candela, confine_ore: int = CONFINE_GIORNO_UTC
+):
+    """Quale giornata, settimana o mese copre questa candela.
+
+    Serve a riconoscere che due candele descrivono **la stessa sessione**
+    anche se portano orari diversi. Dukascopy non timbra sempre alla stessa
+    ora - il venerdi' chiude alle 21:00 invece che alle 22:00, e qualche
+    sessione finisce a un minuto strano come 21:59 - mentre la ricostruzione
+    mette sempre il confine. Senza questo confronto `INSERT OR IGNORE` non
+    vede alcun duplicato, perche' gli orari differiscono davvero, e in
+    archivio finiscono due giornaliere per lo stesso venerdi'.
+
+    Un mosaico cosi' non lascia segni: le candele ci sono tutte e sembrano
+    giuste, ma `DEF-16` confronta ogni candela con la precedente e su quei
+    punti confronta due volte lo stesso giorno.
+    """
+    momento = _appartenenza(candela, confine_ore)
+    if tf is TF.W1:
+        return ("W", *momento.isocalendar()[:2])
+    if tf is TF.M1:
+        return ("M", momento.year, momento.month)
+    if tf is TF.H4:
+        # L'H4 non usa il confine di giornata: i suoi blocchi sono ancorati
+        # all'orologio UTC (0/4/8/12/16/20), come in `aggrega_orarie`.
+        grezzo = candela.orario - timedelta(microseconds=1)
+        return ("H4", grezzo.date(), grezzo.hour // 4)
+    return ("D", momento.date())
+
+
 def aggrega_giornaliere(
     orarie: Sequence[Candela], confine_ore: int = CONFINE_GIORNO_UTC
 ) -> tuple[Candela, ...]:
-    """`TF_1D` dalle orarie, sul confine di giornata di Dukascopy."""
-    return _per_gruppi(orarie, lambda c: _appartenenza(c, confine_ore).date())
+    """`TF_1D` dalle orarie, sul confine di giornata di Dukascopy.
+
+    Il sabato si scarta: in vent'anni di archivio Dukascopy non esiste una
+    sola candela oraria di sabato ne' una giornaliera di sabato (misurato su
+    129.000 orarie e 6.100 giornaliere di EURUSD). Una giornaliera di sabato
+    puo' nascere solo da qualche ora smarrita dopo la chiusura del venerdi',
+    e sarebbe una sessione che non c'e' mai stata.
+    """
+    giorni = _per_gruppi(orarie, lambda c: _appartenenza(c, confine_ore).date())
+    return tuple(
+        c for c in giorni
+        if _appartenenza(c, confine_ore).weekday() != 5
+    )
 
 
 def aggrega_settimanali(
