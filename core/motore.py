@@ -925,6 +925,18 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         indicatori_usati=(),
     )
     divieti = esc.verifica_divieti(proposta)
+    if _apri_ogni_crt():
+        # Nel modo diagnostico cadono i DIVIETI DI STRATEGIA, non quelli che
+        # proteggono il conto. `ESCL-01` e' `SETUP-07` riscritto come muro --
+        # "ordine contro bias_comando" -- e `ESCL-03` e' `SETUP-08`: sono le
+        # stesse due regole che il modo ha gia' spento fra i filtri, e
+        # lasciarle qui significa spegnerle a meta'.
+        #
+        # Tutto il resto resta: ESCL-02 (nessun key level preso) e ESCL-04
+        # (timeframe non ammesso) sono strutturali -- senza di essi non c'e'
+        # un CRT di cui parlare -- ed ESCL-11 e' il tetto di posizioni.
+        DIVIETI_DI_STRATEGIA = {"ESCL-01", "ESCL-03"}
+        divieti = tuple(d for d in divieti if d.regola not in DIVIETI_DI_STRATEGIA)
     if divieti:
         return _non_operare(
             foto.strumento, [d.regola for d in divieti],

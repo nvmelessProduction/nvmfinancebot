@@ -74,3 +74,30 @@ def test_le_salvaguardie_dell_impianto_restano(acceso):
     assert cfg.VOLUME_MASSIMO > 0
     assert cfg.MAX_POSIZIONI_APERTE > 0
     assert cfg.CONSENTI_CONTO_REALE is False
+
+
+class TestLeEsclusioni:
+    """Il modo diagnostico toglie i divieti di STRATEGIA, non le salvaguardie.
+
+    `verifica_divieti` e' l'ultimo controllo (PREC-05) e riapplica come muri
+    regole che i filtri avevano gia' espresso: `ESCL-01` e' `SETUP-07`
+    ("ordine contro bias_comando") ed `ESCL-03` e' `SETUP-08`. Con il modo
+    acceso quei due erano gia' caduti fra i filtri e rispuntavano qui --
+    misurato il 2026-09-21: 12 CRT su 12 fermati da ESCL-01 e ESCL-03 dopo
+    aver superato tutto il resto.
+    """
+
+    def test_toglie_solo_i_due_che_duplicano_i_filtri(self):
+        import inspect
+        from core import motore
+        sorgente = inspect.getsource(motore.valuta)
+        assert '"ESCL-01", "ESCL-03"' in sorgente
+
+    def test_non_tocca_il_tetto_di_posizioni(self):
+        import inspect
+        from core import motore
+        sorgente = inspect.getsource(motore.valuta)
+        i = sorgente.index("DIVIETI_DI_STRATEGIA = ")
+        riga = sorgente[i:sorgente.index("}", i)]
+        for muro in ("ESCL-11", "ESCL-02", "ESCL-04"):
+            assert muro not in riga, f"{muro} non deve cadere"
