@@ -172,3 +172,43 @@ def test_il_mese_chiude_l_ultimo_giorno():
 def test_nessuna_aggregata_da_una_serie_troppo_corta():
     inizio = datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc)
     assert aggrega_giornaliere(_orarie(inizio, 3)) == ()
+
+
+class TestUnaGiornataNonSiFaConUnOra:
+    """La riapertura della domenica non e' una giornata.
+
+    I cambi riaprono alle 22:00 UTC. La giornata che va da sabato sera a
+    domenica sera contiene percio' UNA SOLA oraria, quella fra le 21 e le 22,
+    e diventava una giornaliera a tutti gli effetti -- per giunta la piu'
+    recente, quindi quella che il motore legge come "il giorno appena chiuso"
+    per la bias di SETUP-06 e per la struttura.
+
+    Misurato su EURUSD il 2026-09-21: la giornaliera del 20 nasceva da 1
+    oraria contro le 24 del venerdi', con range 0,00147 contro 0,00369.
+    """
+
+    def _orarie(self, quante, inizio_giorno, ora_inizio=22):
+        from datetime import datetime, timedelta, timezone
+        from core.definizioni import Candela
+        base = datetime(2026, 9, inizio_giorno, ora_inizio, tzinfo=timezone.utc)
+        return [Candela(base + timedelta(hours=i + 1), 1.0, 1.1, 0.9, 1.0)
+                for i in range(quante)]
+
+    def test_una_sola_oraria_non_fa_una_giornata(self):
+        from core.aggregazione import aggrega_giornaliere
+        # un'ora di domenica sera, poi una giornata intera di lunedi'
+        candele = self._orarie(1, 19) + self._orarie(24, 20)
+        giorni = aggrega_giornaliere(candele)
+        assert all(g.orario.weekday() != 6 for g in giorni), \
+            "la domenica da un'ora sola non deve diventare una giornaliera"
+
+    def test_una_giornata_vera_resta(self):
+        from core.aggregazione import aggrega_giornaliere
+        candele = self._orarie(24, 20) + self._orarie(24, 21)
+        assert len(aggrega_giornaliere(candele)) >= 1
+
+    def test_la_soglia_e_bassa_apposta(self):
+        """Una festivita' dimezzata deve passare: meglio una giornata corta
+        ma vera che nessuna giornata."""
+        from core.aggregazione import MINIMO_ORARIE_PER_GIORNATA
+        assert MINIMO_ORARIE_PER_GIORNATA <= 8

@@ -59,3 +59,4 @@ dukascopy_ore
 
 # Gli esiti delle misure: si rifanno, non si versionano.
 misura_*.txt
+giornaliere-rimosse.json

@@ -42,6 +42,14 @@ MENSILI_PER_TIMEFRAME: dict[TF, int] = {
 # confrontate, e nessuna regola se ne accorgerebbe.
 CONFINE_GIORNO_UTC: int = 22
 
+# Quante orarie servono perche' un gruppo sia una GIORNATA e non un avanzo.
+# I cambi riaprono la domenica alle 22:00 UTC, quindi la giornata che va da
+# sabato sera a domenica sera contiene UNA SOLA oraria e diventava una
+# giornaliera a tutti gli effetti. Una sessione vera ne ha 22-24; una
+# festivita' dimezzata resta ben sopra sei. La soglia e' bassa apposta:
+# scartare una giornata corta ma vera sarebbe peggio che tenerla.
+MINIMO_ORARIE_PER_GIORNATA: int = 6
+
 
 def _appartenenza(candela: Candela, confine_ore: int = CONFINE_GIORNO_UTC):
     """A quale giornata appartiene questa candela, in un tempo spostato.
@@ -71,7 +79,8 @@ def _unisci(gruppo: Sequence[Candela]) -> Candela:
     )
 
 
-def _per_gruppi(candele: Sequence[Candela], chiave_di) -> tuple[Candela, ...]:
+def _per_gruppi(candele: Sequence[Candela], chiave_di,
+                minimo: int = 1) -> tuple[Candela, ...]:
     """Aggrega per una chiave qualsiasi, scartando l'ultimo gruppo.
 
     **L'ultimo gruppo si scarta sempre**: e' quello in formazione, e `ESCL-13`
@@ -80,12 +89,22 @@ def _per_gruppi(candele: Sequence[Candela], chiave_di) -> tuple[Candela, ...]:
     giornata di cambi non ha un numero fisso di ore: ci sono festivita', il
     fine settimana e le ore senza scambi. L'unica prova che un periodo e'
     chiuso e' che ne esista gia' uno successivo.
+
+    `minimo` scarta i gruppi con troppo poco dietro. Serve alla riapertura
+    della domenica: i cambi riaprono alle 22:00 UTC, quindi la giornata che
+    va da sabato sera a domenica sera contiene **una sola oraria** -- quella
+    fra le 21 e le 22 -- e diventava una giornaliera a tutti gli effetti.
+    Misurato su EURUSD il 2026-09-21: la giornaliera del 20 nasceva da 1
+    oraria contro le 24 di quella del venerdi', e con range 0,00147 contro
+    0,00369. Un'ora di scambi sottili travestita da giornata intera, e per
+    giunta la PIU' RECENTE: era quella che il motore leggeva come "il giorno
+    appena chiuso" per la bias di SETUP-06 e per la struttura.
     """
     gruppi: dict = {}
     for candela in sorted(candele, key=lambda c: c.orario):
         gruppi.setdefault(chiave_di(candela), []).append(candela)
     chiavi = sorted(gruppi)
-    return tuple(_unisci(gruppi[c]) for c in chiavi[:-1])
+    return tuple(_unisci(gruppi[c]) for c in chiavi[:-1] if len(gruppi[c]) >= minimo)
 
 
 def chiave_sessione(
@@ -129,7 +148,12 @@ def aggrega_giornaliere(
     puo' nascere solo da qualche ora smarrita dopo la chiusura del venerdi',
     e sarebbe una sessione che non c'e' mai stata.
     """
-    giorni = _per_gruppi(orarie, lambda c: _appartenenza(c, confine_ore).date())
+    # Almeno sei orarie perche' un gruppo sia una giornata. Una sessione vera
+    # ne ha 22-24; la riapertura della domenica ne ha una, e una festivita'
+    # dimezzata resta comunque ben sopra le sei. La soglia e' bassa apposta:
+    # scartare una giornata corta ma vera sarebbe peggio che tenerla.
+    giorni = _per_gruppi(orarie, lambda c: _appartenenza(c, confine_ore).date(),
+                         minimo=MINIMO_ORARIE_PER_GIORNATA)
     return tuple(
         c for c in giorni
         if _appartenenza(c, confine_ore).weekday() != 5
