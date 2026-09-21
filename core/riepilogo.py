@@ -54,7 +54,7 @@ SPIEGAZIONI: dict[str, str] = {
     "CTX-04": "giorno di festivita'",
     "DEF-26": "storia insufficiente su quel timeframe",
     "PRIN-99": "dati mancanti: il bot si astiene invece di indovinare",
-    "PRIN-13": "domenica: si opera solo da TF_1W in su",
+    "PRIN-13": "domenica: si opera solo dal settimanale in su",
     "GIUD-02": "il trader discrezionale ha rifiutato",
     "RISK-02": "limite di rischio del gruppo di correlazione",
     "RISK-06": "tetto di posizioni sullo strumento",
@@ -101,20 +101,96 @@ def _conteggi(da: datetime) -> tuple[int, int, dict[str, int], int]:
     return len(righe), crt, blocchi, operazioni
 
 
+# I nomi dei timeframe come li direbbe una persona, non come li scrive il
+# codice. "TF_M1min" in un messaggio sul telefono non lo legge nessuno.
+NOMI_TF: dict[str, str] = {
+    "TF_M1min": "1 min", "TF_M5": "5 min", "TF_M15": "15 min",
+    "TF_H1": "1 ora", "TF_H4": "4 ore", "TF_1D": "giornaliero",
+    "TF_1W": "settimanale", "TF_1M": "mensile",
+}
+
+# Le serie da cui dipende una decisione intraday. Se una di queste resta
+# indietro il bot decide su prezzi vecchi, ed e' gia' successo per giorni
+# senza che nulla lo dicesse.
+TF_DA_SORVEGLIARE: tuple[str, ...] = ("TF_M5", "TF_M15", "TF_H1", "TF_1D")
+
+
+def _numero(valore: float, decimali: int = 2) -> str:
+    """Un numero come si scrive in italiano: 1.002,66 e non 1,002.66."""
+    testo = f"{valore:,.{decimali}f}"
+    return testo.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+def _quanto_fa(ore: float) -> str:
+    """Un'eta' leggibile: '12 min fa', '3 ore fa', '2 giorni fa'."""
+    if ore < 1:
+        return f"{int(round(ore * 60))} min fa"
+    if ore < 48:
+        return f"{_numero(ore, 1)} ore fa"
+    return f"{_numero(ore / 24, 1)} giorni fa"
+
+
 def _freschezza() -> list[str]:
-    """Le serie che contano e quanto sono vecchie, in righe gia' pronte."""
+    """Quanto sono vecchie le serie che contano, su TUTTI gli strumenti.
+
+    Prima qui c'era EURUSD e basta, come campione. Dal telefono sembrava che
+    il bot seguisse una coppia sola: l'autore lo ha fatto notare, e aveva
+    ragione a dubitarne.
+    """
+    from core.parametri import UNIVERSO
+
     adesso = datetime.now(timezone.utc)
-    fuori = []
+    ritardi: dict[str, float] = {}
     for riga in storage.copertura_candele():
-        if riga["strumento"] != "EURUSD" or riga["tf"] not in ("TF_H1", "TF_1D"):
+        strumento = str(riga["strumento"])
+        if strumento not in UNIVERSO or str(riga["tf"]) not in TF_DA_SORVEGLIARE:
             continue
         try:
             quando = datetime.fromisoformat(str(riga["alla"]).replace("Z", "+00:00"))
         except (ValueError, TypeError):
             continue
         ore = (adesso - quando).total_seconds() / 3600
-        fuori.append(f"{riga['tf']}: {ore:.1f}h fa")
+        chiave = f"{strumento} {NOMI_TF.get(str(riga['tf']), str(riga['tf']))}"
+        ritardi[chiave] = ore
+
+    if not ritardi:
+        return ["nessuna serie leggibile"]
+
+    peggiore = max(ritardi.items(), key=lambda x: x[1])
+    quante_indietro = sum(1 for ore in ritardi.values() if ore > 26)
+    fuori = [f"{len(ritardi)} serie su {len(UNIVERSO)} strumenti"]
+    if quante_indietro:
+        fuori.append(f"ATTENZIONE: {quante_indietro} indietro di oltre un giorno")
+    fuori.append(f"la piu' vecchia: {peggiore[0]}, {_quanto_fa(peggiore[1])}")
     return fuori
+
+
+def _crt_per_strumento(da: datetime) -> list[tuple[str, int]]:
+    """Quanti CRT per ciascuno dei sei, cosi' si vede che li guarda tutti."""
+    from core.simboli import cfd_di, future_da_ticker
+
+    with storage.connessione() as conn:
+        righe = conn.execute(
+            "SELECT a.simbolo AS simbolo, d.motivo AS motivo "
+            "FROM decisione d JOIN alert a ON a.id = d.alert_id "
+            "WHERE d.creata_utc >= ?",
+            (da.strftime("%Y-%m-%dT%H:%M:%S+00:00"),),
+        ).fetchall()
+
+    from core.parametri import UNIVERSO
+
+    # Si parte da zero per TUTTI e sei: uno strumento senza CRT in questa
+    # finestra deve comparire con uno zero, non sparire. Sparendo faceva
+    # credere che il bot ne seguisse solo alcuni.
+    conta: dict[str, int] = {nome: 0 for nome in UNIVERSO}
+    for riga in righe:
+        codici = set(_codici(str(riga["motivo"] or "")))
+        if {"SETUP-00", "DEF-26", "PRIN-99"} & codici:
+            continue
+        future = future_da_ticker(str(riga["simbolo"] or ""))
+        nome = (cfd_di(future) if future else None) or str(riga["simbolo"])
+        conta[nome] = conta.get(nome, 0) + 1
+    return sorted(conta.items(), key=lambda x: (-x[1], x[0]))
 
 
 def _bias_dxy() -> str:
@@ -137,58 +213,82 @@ def _bias_dxy() -> str:
 
 
 def componi(ore: float = ORE_FRA_RIEPILOGHI) -> str:
-    """Il testo del riepilogo delle ultime `ore`."""
-    da = datetime.now(timezone.utc) - timedelta(hours=ore)
+    """Il testo del riepilogo delle ultime `ore`.
+
+    Scritto per essere letto dal telefono: righe corte, niente codici nudi
+    senza il loro significato, numeri all'italiana. Un messaggio che si
+    salta perche' illeggibile vale quanto un messaggio non mandato.
+    """
+    adesso = datetime.now(timezone.utc)
+    da = adesso - timedelta(hours=ore)
     valutazioni, crt, blocchi, operazioni = _conteggi(da)
 
-    righe = [f"Riepilogo ultime {ore:.0f}h"]
-    righe.append(f"Valutazioni: {valutazioni}")
-    righe.append(f"CRT trovati: {crt}")
-    righe.append(f"Operazioni aperte: {operazioni}")
+    righe = [
+        f"RIEPILOGO {ore:.0f}h  -  {adesso:%d/%m %H:%M} UTC",
+        "",
+        "STRATEGIA",
+        f"Valutazioni: {valutazioni}",
+        f"CRT trovati: {crt}",
+    ]
 
-    if crt:
-        righe.append("")
-        righe.append("Cosa ha fermato i CRT trovati:")
-        interessanti = [
-            (c, n) for c, n in blocchi.items() if c not in ("SETUP-00", "PRIN-99")
-        ]
-        for codice, quante in sorted(interessanti, key=lambda x: -x[1])[:6]:
-            spiega = SPIEGAZIONI.get(codice, "")
-            righe.append(f"  {quante}x {codice}" + (f" - {spiega}" if spiega else ""))
-    elif valutazioni:
-        righe.append("")
-        righe.append(
-            "Nessun CRT valido in questa finestra: il prezzo non ha preso "
-            "nessun key level di timeframe superiore. E' il caso normale - "
-            "i CRT sono rari."
-        )
-
-    # I setup armati stanno in `core/ingresso_ltf`, non in storage: sono lo
-    # stato fra i due tempi di CRT-13 (il CRT c'e', l'ingresso si aspetta).
+    # I setup armati sono lo stato fra i due tempi di CRT-13: il CRT c'e' e
+    # si aspetta il ritorno nell'FVG. E' il momento in cui c'e' davvero
+    # un'occasione, quindi va per primo fra le cose che contano.
+    in_attesa = []
     try:
         from core.ingresso_ltf import armati
 
         in_attesa = armati()
-        righe.append(f"Setup armati in attesa: {len(in_attesa)}")
-        for setup in in_attesa[:3]:
-            righe.append(
-                f"  {setup.strumento} {setup.direzione.value} da {setup.tf_crt}, "
-                f"attende su {setup.tf_ingresso} (barra {setup.barre_attesa})"
-            )
     except Exception:                                  # pragma: no cover
         log.warning("setup armati non leggibili", exc_info=True)
+    righe.append(f"Setup armati: {len(in_attesa)}")
+    righe.append(f"Operazioni aperte: {operazioni}")
+    for setup in in_attesa[:3]:
+        righe.append(
+            f"  -> {setup.strumento} {setup.direzione.value} da "
+            f"{NOMI_TF.get(setup.tf_crt, setup.tf_crt)}, attende su "
+            f"{NOMI_TF.get(setup.tf_ingresso, setup.tf_ingresso)}"
+        )
 
-    righe.append("")
-    righe.append(f"Bias DXY: {_bias_dxy()}")
-    fresche = _freschezza()
-    if fresche:
-        righe.append("Archivio EURUSD - " + ", ".join(fresche))
+    per_strumento = _crt_per_strumento(da)
+    if per_strumento:
+        righe += ["", "CRT PER STRUMENTO"]
+        righe.append("  ".join(f"{nome} {quanti}" for nome, quanti in per_strumento))
 
+    if crt:
+        righe += ["", "COSA LI HA FERMATI"]
+        interessanti = [
+            (c, n) for c, n in blocchi.items() if c not in ("SETUP-00", "PRIN-99")
+        ]
+        for codice, quante in sorted(interessanti, key=lambda x: -x[1])[:6]:
+            righe.append(f"{quante}x {codice}")
+            spiega = SPIEGAZIONI.get(codice)
+            if spiega:
+                righe.append(f"   {spiega}")
+    elif valutazioni:
+        righe += ["", "COSA LI HA FERMATI"]
+        righe.append(
+            "Nessun CRT valido: il prezzo non ha preso nessun key level di "
+            "timeframe superiore. E' il caso normale, i CRT sono rari."
+        )
+
+    righe += ["", "CONTO"]
     try:
-        aperte = storage.posizioni_aperte()
-        righe.append(f"Posizioni aperte: {len(aperte)}")
+        from core import broker
+
+        ok, dati, _ = broker.info_conto()
+        if ok and dati:
+            righe.append(f"Saldo: {_numero(float(dati['equity']))} {dati['valuta']}")
+    except Exception:                                  # pragma: no cover
+        log.warning("conto non leggibile", exc_info=True)
+    try:
+        righe.append(f"Posizioni aperte: {len(storage.posizioni_aperte())}")
     except Exception:                                  # pragma: no cover
         pass
+    righe.append(f"Bias del dollaro: {_bias_dxy()}")
+
+    righe += ["", "DATI"]
+    righe += _freschezza()
 
     return "\n".join(righe)
 
