@@ -1775,15 +1775,40 @@ class ProvaMercato(BaseCollaudo):
         self.assertEqual(len(self.visti), 1, "la chiusura mensile innesca")
         self.assertEqual(self.visti[0].tf, "1M")
 
-    def test_i_timeframe_di_sola_bias_non_innescano(self) -> None:
-        """`TF_1W` e i trimestrali danno la bias di comando (SETUP-06) ma non
-        sono coppie di CRT-04: non aprono nulla."""
+    def test_la_settimanale_innesca_perche_e_una_coppia_di_crt_04(self) -> None:
+        """`W -> 4h` e' fra le coppie canoniche di CRT-04, e mancava.
+
+        Questo collaudo prima pretendeva il contrario, e la ragione che ne
+        dava era sbagliata: diceva che `TF_1W` "non e' una coppia di CRT-04",
+        mentre `COPPIE_CRT` contiene `TF_1W -> TF_H4` e la BIBBIA la elenca
+        fra le canoniche. Il settimanale non stava ne' fra i range ne' fra gli
+        ingressi -- quelli sono i VALORI di `COPPIE_CRT`, e il settimanale vi
+        compare solo come chiave -- quindi quella coppia era muta. `TF_M15` e'
+        nella stessa posizione ma resta coperto perche' e' l'ingresso di
+        `TF_H4`; il settimanale non aveva nessuna seconda strada.
+
+        **`W1 -> H4` non e' mai stata misurata**, e la BIBBIA lo dichiara: il
+        numero che il progetto riporta riguarda `W1 -> D1`, che non e' una
+        coppia di Romeo. Resta accesa per decisione esplicita dell'utente --
+        se un CRT rispetta la strategia si apre, e il timeframe non e' un
+        filtro della strategia -- non perche' qualcuno l'abbia validata.
+        """
         from core.mercato import Nuova
 
         self.mercato._valuta_le_ultime([Nuova("GC", TF.W1, {
             "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1,
             "massimo": 2, "minimo": 1, "chiusura": 2})])
-        self.assertEqual(self.visti, [], "la settimanale aggiorna la bias, non apre")
+        self.assertEqual(len(self.visti), 1, "la chiusura settimanale innesca")
+        self.assertEqual(self.visti[0].tf, "1W")
+
+    def test_i_trimestrali_danno_la_bias_e_non_innescano(self) -> None:
+        """Quelli si' che non sono coppie di CRT-04."""
+        from core.mercato import Nuova
+
+        self.mercato._valuta_le_ultime([Nuova("GC", TF.M3, {
+            "chiusura_utc": "2026-03-10T00:00:00Z", "apertura": 1,
+            "massimo": 2, "minimo": 1, "chiusura": 2})])
+        self.assertEqual(self.visti, [], "il trimestrale aggiorna la bias, non apre")
 
     # -- il ponte verso il resto dell'impianto ------------------------------
     def test_l_alert_costruito_e_comprensibile_al_motore(self) -> None:

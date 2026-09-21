@@ -79,7 +79,19 @@ DURATA: dict[TF, timedelta] = {
 # coppia canonica di CRT-04 e la sola configurazione che risulta positiva al
 # netto dello spread reale: su stop larghi il costo pesa 0,071 R invece dei
 # 0,15-0,35 R delle coppie orarie. Vedi OPERATIVO.md.
-TF_OPERATIVI: tuple[TF, ...] = (TF.M1, TF.H1, TF.H4, TF.D1)
+#
+# Sono i RANGE delle sei coppie di CRT-04, e vanno esserci tutti e sei. `TF_W1`
+# mancava: non stava qui e nemmeno fra gli ingressi -- che sono i VALORI di
+# COPPIE_CRT, e il settimanale compare solo come chiave -- quindi un CRT il
+# cui range e' la candela settimanale non veniva mai cercato. La coppia
+# `settimanale -> 4 ore` era muta, e non per una scelta: `TF_M15` e' fuori da
+# qui per lo stesso motivo ma resta coperto perche' e' l'ingresso di `TF_H4`,
+# e infatti i CRT su M15 il bot li trova. Il settimanale non aveva nessuna
+# seconda strada.
+#
+# Si ricava da COPPIE_CRT invece di riscriverlo: due elenchi della stessa cosa
+# divergono, ed e' gia' successo qui.
+TF_OPERATIVI: tuple[TF, ...] = tuple(COPPIE_CRT)
 
 # I timeframe su cui si cerca l'INGRESSO di un setup gia' armato (CRT-13).
 # Sono i valori di COPPIE_CRT: il secondo tempo della sequenza di Romeo
