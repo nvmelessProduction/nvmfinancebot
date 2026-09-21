@@ -143,11 +143,28 @@ def prova_calendario(adesso: datetime) -> bool:
     eventi, eta, motivo = calendario.carica(Path(PERCORSO_CALENDARIO_NEWS), adesso)
 
     if eventi:
-        if eta is not None and eta > ETA_MASSIMA_CALENDARIO_ORE:
-            riga(FORSE, f"{len(eventi)} eventi ma il file ha {eta:.0f} ore: "
-                        f"sono tutti passati, CTX-02 non blocchera' nulla")
+        # Quel che decide se CTX-02 puo' ancora bloccare qualcosa non e'
+        # l'eta' del FILE ma il contenuto: `dentro_finestra_news` confronta
+        # l'ora di adesso con l'orario di ogni evento, quindi serve almeno un
+        # evento ancora da venire. Un file vecchio di giorni ma compilato fino
+        # a fine mese protegge benissimo; un file salvato un minuto fa ma con
+        # soli eventi passati non protegge affatto.
+        #
+        # Prima qui si guardava solo l'eta' e si concludeva "sono tutti
+        # passati": con 33 eventi di cui 20 ancora futuri la prova dichiarava
+        # spento un filtro che era acceso.
+        futuri = [e for e in eventi if e.orario_utc > adesso]
+        eta_detta = f"{eta:.0f} ore" if eta is not None else "eta' ignota"
+        if futuri:
+            prossimo = min(futuri, key=lambda e: e.orario_utc)
+            riga(OK, f"{len(eventi)} eventi, {len(futuri)} ancora futuri "
+                     f"(file di {eta_detta}): CTX-02 funziona, prossimo "
+                     f"{prossimo.orario_utc:%d/%m %H:%M} {prossimo.valuta} "
+                     f"{prossimo.stelle} stelle")
         else:
-            riga(OK, f"{len(eventi)} eventi, {eta:.0f} ore: CTX-02 funziona")
+            riga(FORSE, f"{len(eventi)} eventi ma tutti gia' passati "
+                        f"(file di {eta_detta}): CTX-02 non ha piu' nulla "
+                        f"contro cui bloccare, va aggiornato dati/news.csv")
         return True
 
     if lettura == "astieniti":
