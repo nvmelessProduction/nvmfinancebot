@@ -83,3 +83,40 @@ class TestCandeleDelFuture:
         foto = _foto("USDJPY", prezzo_cfd=157.24, in_scala_cfd=False)
         stop = _sulla_scala_del_cfd(foto, 0.006690, ancora=0.006700)
         assert 150 < stop < 165
+
+
+class TestDirezioneDiEsecuzione:
+    """Il verso dell'ordine, che e' la cosa che si paga se e' sbagliata."""
+
+    def test_su_candele_del_cfd_il_verso_non_si_ribalta(self):
+        from core.definizioni import Bias, direzione_di_esecuzione
+        for s in ("EURUSD", "GBPUSD", "AUDUSD", "USDCHF", "USDJPY", "XAUUSD"):
+            assert direzione_di_esecuzione(Bias.LONG, s, True) is Bias.LONG
+            assert direzione_di_esecuzione(Bias.SHORT, s, True) is Bias.SHORT
+
+    def test_su_candele_del_future_usdchf_e_usdjpy_si_ribaltano(self):
+        from core.definizioni import Bias, direzione_di_esecuzione
+        assert direzione_di_esecuzione(Bias.LONG, "USDCHF", False) is Bias.SHORT
+        assert direzione_di_esecuzione(Bias.LONG, "USDJPY", False) is Bias.SHORT
+        assert direzione_di_esecuzione(Bias.LONG, "EURUSD", False) is Bias.LONG
+
+    def test_col_dollaro_forte_usdchf_e_usdjpy_vanno_comprate(self):
+        """La cosa che l'utente ha fatto notare, verificata capo a capo.
+
+        USDCHF e USDJPY quotano il dollaro contro l'altra valuta: se il
+        dollaro sale, salgono. SETUP-19 lo dice gia' nella sua tabella, ma il
+        verso del CRT arrivava al confronto ribaltato, e allora le due coppie
+        trascinate su dal dollaro forte sembravano sempre contrarie.
+        """
+        from core.definizioni import Bias, direzione_di_esecuzione
+        from core.setup import direzione_da_dxy
+
+        for strumento in ("USDCHF", "USDJPY"):
+            voluto = direzione_da_dxy(Bias.LONG, strumento)
+            assert voluto is Bias.LONG
+            passa = direzione_di_esecuzione(Bias.LONG, strumento, True)
+            assert passa is voluto, "un CRT rialzista qui deve poter passare"
+
+        voluto = direzione_da_dxy(Bias.LONG, "EURUSD")
+        assert voluto is Bias.SHORT
+        assert direzione_di_esecuzione(Bias.SHORT, "EURUSD", True) is voluto

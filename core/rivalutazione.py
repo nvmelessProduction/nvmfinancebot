@@ -36,7 +36,9 @@ from typing import Any, Mapping, Optional, Sequence
 
 from core import gestione as gest
 from core import setup as stp
-from core.definizioni import Bias, KeyLevel, TipoKeyLevel, direzione_cfd, livello_cfd
+from core.definizioni import (
+    Bias, KeyLevel, TipoKeyLevel, direzione_di_esecuzione, livello_di_esecuzione,
+)
 from core.config import impostazioni
 from core.log import diario
 from core.motore import Fotografia
@@ -182,7 +184,10 @@ def rivaluta(
                 tf_crt=tf_trigger, livello_stop=0.0, tp1=0.0, target_finale=0.0,
             )
             if gest.chiudere_al_target_di_comando(
-                magra, direzione_cfd(comando_vecchio, foto.strumento), True
+                magra,
+                direzione_di_esecuzione(
+                    comando_vecchio, foto.strumento, foto.analisi_in_scala_cfd),
+                True,
             ):
                 azioni.append(AzioneGestione(
                     id_posizione, ticket, "chiudi", None, "GEST-10",
@@ -197,7 +202,8 @@ def rivaluta(
         # sola, come quello di GEST-04: `tp1_raggiunto` e' il flag che segna
         # "lo stop e' gia' stato spostato" e GEST-05 vieta di rifarlo.
         if comando is not Bias.NESSUNA and not riga.get("tp1_raggiunto"):
-            comando_cfd = direzione_cfd(comando, foto.strumento)
+            comando_cfd = direzione_di_esecuzione(
+                comando, foto.strumento, foto.analisi_in_scala_cfd)
             prezzo_ingresso = riga.get("prezzo_ingresso")
             if comando_cfd is not verso and prezzo_ingresso:
                 # SETUP-17 in persona, con la sua nota sul conflitto con
@@ -254,9 +260,10 @@ def rivaluta(
             nuovo_g9 = None
             if successivo is not None:
                 try:
-                    nuovo_g9 = livello_cfd(
+                    nuovo_g9 = livello_di_esecuzione(
                         successivo.valore, candele[-1].chiusura,
                         foto.prezzo_cfd, foto.strumento,
+                        foto.analisi_in_scala_cfd,
                     )
                 except ValueError:
                     nuovo_g9 = None
@@ -289,7 +296,8 @@ def rivaluta(
         # "Conferma il pattern" = un CRT nella stessa direzione dell'operazione
         # (REV-26). La direzione dell'operazione e' quella sul CFD, quella del
         # CRT e' sul future: si confrontano dopo DEF-33.
-        conferma = direzione_cfd(crt.direzione, foto.strumento) is verso
+        conferma = direzione_di_esecuzione(
+            crt.direzione, foto.strumento, foto.analisi_in_scala_cfd) is verso
         esteso = gest.estendi_target(base, tf_trigger, livello, conferma)
         if esteso.target_finale == base.target_finale:
             continue
@@ -297,8 +305,9 @@ def rivaluta(
         # Il key level e' un livello del FUTURE, il target in archivio e' un
         # livello del CFD: la stessa conversione dell'ingresso (REV-52).
         try:
-            nuovo = livello_cfd(
-                esteso.target_finale, candele[-1].chiusura, foto.prezzo_cfd, foto.strumento
+            nuovo = livello_di_esecuzione(
+                esteso.target_finale, candele[-1].chiusura, foto.prezzo_cfd,
+                foto.strumento, foto.analisi_in_scala_cfd,
             )
         except ValueError as errore:
             log.warning("target non convertibile per %s: %s", id_posizione, errore)

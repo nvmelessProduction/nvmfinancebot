@@ -881,6 +881,41 @@ def direzione_cfd(direzione_future: Bias, strumento: str) -> Bias:
     return direzione_future
 
 
+def direzione_di_esecuzione(
+    direzione: Bias, strumento: str, analisi_in_scala_cfd: bool
+) -> Bias:
+    """Il verso in cui parte l'ordine, dato il verso del CRT.
+
+    `direzione_cfd` ribalta su `USDCHF` e `USDJPY` perche' i future `6S` e
+    `6J` quotano il reciproco. Vale finche' il CRT e' stato rilevato su quei
+    future. Quando invece le candele analizzate sono gia' quelle del CFD --
+    Dukascopy e MT5 leggono il book del broker -- un CRT LONG su `USDCHF`
+    dice che USDCHF sale, e ribaltarlo manda l'ordine dalla parte sbagliata.
+
+    Vedi `analisi_in_scala_cfd` su `Fotografia` per il perche' e per i numeri.
+    """
+    if analisi_in_scala_cfd:
+        return direzione
+    return direzione_cfd(direzione, strumento)
+
+
+def livello_di_esecuzione(
+    livello: float,
+    ancora: float,
+    prezzo_cfd: float,
+    strumento: str,
+    analisi_in_scala_cfd: bool,
+) -> float:
+    """Il livello su cui partira' l'ordine, dato il livello dell'analisi.
+
+    Come `direzione_di_esecuzione`, ma per i prezzi: con candele gia' in
+    scala CFD non c'e' niente da convertire, e convertire sposterebbe.
+    """
+    if analisi_in_scala_cfd:
+        return livello
+    return livello_cfd(livello, ancora, prezzo_cfd, strumento)
+
+
 def livello_cfd(
     livello_future: float,
     ancora_future: float,

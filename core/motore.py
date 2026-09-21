@@ -244,9 +244,34 @@ def _sulla_scala_del_cfd(foto: "Fotografia", livello: float, ancora: float) -> f
     con rapporto None, concentrati proprio li': due strumenti su sei non
     potevano aprire nulla, qualunque cosa facesse il mercato.
     """
-    if foto.analisi_in_scala_cfd:
-        return livello
-    return livello_cfd(livello, ancora, foto.prezzo_cfd, foto.strumento)
+    return dfn.livello_di_esecuzione(
+        livello, ancora, foto.prezzo_cfd, foto.strumento,
+        foto.analisi_in_scala_cfd)
+
+
+def _verso_sul_cfd(foto: "Fotografia", direzione) -> "Bias":
+    """La direzione del CRT, portata sul verso in cui parte l'ordine.
+
+    `6S` e `6J` quotano il reciproco del CFD -- franco e yen contro dollaro,
+    mentre `USDCHF` e `USDJPY` quotano il dollaro contro quelle valute --
+    quindi un CRT LONG sul future e' un ordine SHORT sul CFD. `direzione_cfd`
+    ribalta per questo (DEF-33).
+
+    Ma qui le candele analizzate sono gia' quelle del CFD: un CRT LONG su
+    `USDCHF` dice che USDCHF sale, e l'ordine e' un BUY su USDCHF. Ribaltarlo
+    manda l'ordine dalla parte sbagliata del mercato.
+
+    Prima di arrivare all'ordine lo stesso ribaltamento falsava SETUP-19:
+    `DIREZIONE_DA_BIAS_DXY` e' scritta in direzioni CFD e dice, giustamente,
+    che con dollaro forte `USDCHF` e `USDJPY` vanno comprate mentre
+    `EURUSD`, `GBPUSD` e `AUDUSD` vanno vendute. Confrontarla con una
+    direzione del CRT ribaltata fa sembrare contrarie proprio le due coppie
+    che dal dollaro forte sono trascinate su: misurato il 2026-09-21, su
+    quattro CRT SHORT di `USDCHF` il motore ne usava quattro LONG, e RISK-05
+    li bloccava tutti.
+    """
+    return dfn.direzione_di_esecuzione(
+        direzione, foto.strumento, foto.analisi_in_scala_cfd)
 
 
 def _coppia_per_la_size(
@@ -409,7 +434,7 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
             foto.strumento, ["RISK-03"], esito_size.motivo, applicate,
             direzione=ingresso.direzione, tf_crt=tf_trigger)
 
-    verso_cfd = direzione_cfd(ingresso.direzione, foto.strumento)
+    verso_cfd = _verso_sul_cfd(foto, ingresso.direzione)
     return Decisione(
         azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
         strumento=foto.strumento,
@@ -550,7 +575,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # Con bias DXY NESSUNA, SETUP-19 dice "nessuna operazione su alcuna
     # coppia": `direzione_da_dxy` torna None e `strumento_eleggibile` blocca.
     applicate.extend(["SETUP-19", "RISK-05"])
-    verso_del_setup = direzione_cfd(crt.direzione, foto.strumento)   # passo 2
+    verso_del_setup = _verso_sul_cfd(foto, crt.direzione)            # passo 2
     verso_dal_dxy = stp.direzione_da_dxy(foto.bias_dxy, foto.strumento)  # passo 1
     if not risk.strumento_eleggibile(                                # passo 3
         strumento=foto.strumento,
