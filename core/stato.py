@@ -426,6 +426,7 @@ def costruisci_fotografia(
     target_raggiunto_per_tf: Optional[Mapping[TF, bool]] = None,
     dati_coerenti: bool = True,
     storici_compagni: Optional[Mapping[str, Storico]] = None,
+    analisi_in_scala_cfd: bool = False,
 ):
     """Assembla la `Fotografia` che `motore.valuta()` si aspetta.
 
@@ -453,6 +454,7 @@ def costruisci_fotografia(
         istante=istante,
         strumento=strumento,
         candele_per_tf={tf: tuple(candele) for tf, candele in storico.items()},
+        analisi_in_scala_cfd=analisi_in_scala_cfd,
         bias_per_tf=per_tf,
         target_raggiunto_per_tf=dict(target_raggiunto_per_tf or {}),
         bias_dxy=bias_dxy,

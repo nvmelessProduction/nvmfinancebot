@@ -508,6 +508,11 @@ class FornitoreTradingView:
             },
             eventi_news=eventi or (),
             eta_calendario_ore=eta,
+            # La stessa condizione di `nome_in_archivio`, e non e' un caso:
+            # se le candele si leggono sotto il nome del CFD e' perche' le ha
+            # scritte il book di un broker, quindi sono prezzi del CFD e i
+            # livelli che ne nascono non vanno riconvertiti.
+            analisi_in_scala_cfd=self.nome_in_archivio(future) != future,
         )
         return foto, tf_trigger
 

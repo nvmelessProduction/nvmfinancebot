@@ -130,6 +130,19 @@ class Fotografia:
     # Conto e mercato
     equity: float = 0.0
     prezzo_cfd: float = 0.0
+    # Le candele di `candele_per_tf` sono gia' prezzi del CFD?
+    #
+    # DEF-32 dice di analizzare sul future ed eseguire sul CFD, e quando i dati
+    # arrivano da TradingView e' proprio cosi': l'archivio contiene `6J`, che
+    # quota 0,0067, mentre l'ordine va su `USDJPY`, che quota 157. I livelli
+    # vanno allora convertiti (`livello_cfd`, DEF-33/ESCL-12).
+    #
+    # Con Dukascopy o MT5 no: quei motori leggono il book del broker, cioe'
+    # `USDJPY+`, e archiviano sotto `USDJPY`. I livelli NASCONO gia' in scala
+    # CFD, e convertirli una seconda volta li sposta soltanto. Chi costruisce
+    # la Fotografia sa da dove vengono le candele; il motore no, e infatti
+    # convertiva sempre.
+    analisi_in_scala_cfd: bool = False
     valore_punto: float = 0.0
     passo_broker: float = 0.01
     spread: float = 0.0
@@ -203,6 +216,69 @@ class Decisione:
             f"stop {self.livello_stop} tp1 {self.tp1} target {self.target_finale} "
             f"[{', '.join(self.regole_applicate)}]"
         )
+
+
+def _sulla_scala_del_cfd(foto: "Fotografia", livello: float, ancora: float) -> float:
+    """Un livello di analisi, portato sulla scala su cui partira' l'ordine.
+
+    Quando le candele analizzate sono quelle del future, il livello va
+    convertito: `6J` quota 0,0067 e `USDJPY` 157, e mandare al broker uno stop
+    a 0,0067 fa chiudere la posizione al primo passaggio della sentinella.
+
+    Quando invece arrivano da Dukascopy o da MT5 sono gia' prezzi del CFD, e
+    la conversione non aggiunge niente: toglie. `livello_cfd` ancora il
+    livello alla chiusura di `N2` e lo riappoggia sul prezzo di **adesso**,
+    cosi' che ogni livello finisce spostato di quanto il mercato si e' mosso
+    da quando `N2` ha chiuso. Misurato su XAUUSD il 2026-09-21: un livello
+    strutturale a 4354,88 diventava 4356,14, cioe' +1,26, che e' esattamente
+    `prezzo di adesso - chiusura di N2` (4352,94 - 4351,68). Lo stop e il
+    bersaglio non stanno piu' dove la struttura li mette.
+
+    Su `USDCHF` e `USDJPY` va peggio. Portano `segno_invertito`, giusto per i
+    future `6S` e `6J` che quotano il reciproco del CFD; applicato a candele
+    che sono gia' del CFD, divide invece di moltiplicare e ribalta il verso
+    dello scarto. Un livello sopra la chiusura di `N2` finisce **sotto** il
+    prezzo, quindi stop e bersaglio cadono dalla stessa parte dell'ingresso:
+    `rapporto_rischio_rendimento` lo riconosce come dato incoerente e
+    restituisce None, e GEST-01 blocca. Erano 242 blocchi su 382 in archivio
+    con rapporto None, concentrati proprio li': due strumenti su sei non
+    potevano aprire nulla, qualunque cosa facesse il mercato.
+    """
+    if foto.analisi_in_scala_cfd:
+        return livello
+    return livello_cfd(livello, ancora, foto.prezzo_cfd, foto.strumento)
+
+
+def _coppia_per_la_size(
+    foto: "Fotografia",
+    ancora: float,
+    stop_analisi: float,
+    stop_cfd: float,
+) -> tuple[float, float]:
+    """L'ancora e lo stop con cui RISK-03 misura la distanza di rischio.
+
+    `calcola_size` lavora su una distanza adimensionale, `|ancora - stop| /
+    ancora`, e la riporta sul CFD moltiplicandola per `prezzo_cfd`. Con le
+    candele del future e' giusto cosi': la distanza relativa e' la stessa
+    grandezza sulle due scale.
+
+    Con candele gia' in scala CFD quella distanza viene invece misurata dalla
+    chiusura di `N2` invece che dall'ingresso. Ma RISK-03 vuole il rischio
+    dell'ordine, e l'ordine parte al prezzo di adesso (CTX-05: "sui prezzi
+    effettivi al momento dell'ordine"). Se nel frattempo il prezzo si e'
+    avvicinato allo stop il rischio vero e' minore e la size esce piccola; se
+    se ne e' allontanato, esce grande. In tutti e due i casi non e' l'1% che
+    RISK-01 promette.
+
+    Qui allora si misura dove parte l'ordine: `prezzo_cfd` contro lo stop gia'
+    in scala CFD. La formula di `calcola_size` non cambia, cambiano i due
+    numeri che riceve -- e siccome l'ancora diventa `prezzo_cfd`, la distanza
+    relativa moltiplicata per `prezzo_cfd` torna esattamente
+    `|prezzo_cfd - stop|`.
+    """
+    if foto.analisi_in_scala_cfd:
+        return foto.prezzo_cfd, stop_cfd
+    return ancora, stop_analisi
 
 
 def _non_operare(
@@ -307,23 +383,22 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
         )
 
     # I livelli nascono sul FUTURE e devono passare sulla scala del CFD
-    # (REV-52), come per l'ingresso ordinario.
+    # (REV-52), come per l'ingresso ordinario -- a meno che non ci siano gia'.
     ancora_prezzo = ingresso.prezzo
     try:
-        stop = livello_cfd(ingresso.stop, ancora_prezzo, foto.prezzo_cfd, foto.strumento)
-        bersaglio = livello_cfd(
-            ingresso.bersaglio_1, ancora_prezzo, foto.prezzo_cfd, foto.strumento)
-        finale = livello_cfd(
-            ingresso.bersaglio_2, ancora_prezzo, foto.prezzo_cfd, foto.strumento)
+        stop = _sulla_scala_del_cfd(foto, ingresso.stop, ancora_prezzo)
+        bersaglio = _sulla_scala_del_cfd(foto, ingresso.bersaglio_1, ancora_prezzo)
+        finale = _sulla_scala_del_cfd(foto, ingresso.bersaglio_2, ancora_prezzo)
     except ValueError as errore:
         return _non_operare(
             foto.strumento, ["PRIN-99", "ESCL-12"],
             f"livelli non convertibili: {errore}", applicate,
             direzione=ingresso.direzione, tf_crt=tf_trigger)
 
+    ancora_size, stop_size = _coppia_per_la_size(foto, ingresso.prezzo, ingresso.stop, stop)
     esito_size = risk.calcola_size(
         equity=foto.equity, strumento=foto.strumento,
-        chiusura_n2_future=ingresso.prezzo, stop_future=ingresso.stop,
+        chiusura_n2_future=ancora_size, stop_future=stop_size,
         prezzo_cfd=foto.prezzo_cfd, valore_punto=foto.valore_punto,
         passo_broker=foto.passo_broker,
         posizioni_aperte_per_strumento=foto.posizioni_aperte_per_strumento,
@@ -538,11 +613,11 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # vuoto con un arrotondamento in piu'.
     ancora = crt.n2.chiusura
     try:
-        stop = livello_cfd(stop_future, ancora, prezzo_ingresso, foto.strumento)
-        obiettivo_1 = livello_cfd(tp1_future, ancora, prezzo_ingresso, foto.strumento)
+        stop = _sulla_scala_del_cfd(foto, stop_future, ancora)
+        obiettivo_1 = _sulla_scala_del_cfd(foto, tp1_future, ancora)
         bersaglio = (
             None if bersaglio_future is None
-            else livello_cfd(bersaglio_future, ancora, prezzo_ingresso, foto.strumento)
+            else _sulla_scala_del_cfd(foto, bersaglio_future, ancora)
         )
     except ValueError as errore:
         # Prezzo CFD assente o livello incoerente: PRIN-99, ci si astiene. Non
@@ -608,11 +683,12 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
 
     # --- 6. Size (RISK-01, RISK-02, RISK-03, DEF-47) ----------------------
     n2_future = crt.n2.chiusura
+    ancora_size, stop_size = _coppia_per_la_size(foto, n2_future, stop_future, stop)
     esito_size = risk.calcola_size(
         equity=foto.equity,
         strumento=foto.strumento,
-        chiusura_n2_future=n2_future,
-        stop_future=stop_future,
+        chiusura_n2_future=ancora_size,
+        stop_future=stop_size,
         prezzo_cfd=foto.prezzo_cfd,
         valore_punto=foto.valore_punto,
         passo_broker=foto.passo_broker,
