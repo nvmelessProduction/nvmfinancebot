@@ -30,10 +30,24 @@ class TestCrt20:
         """
         assert blocca_da_sola("CRT-20") is True
 
-    def test_tutte_le_conferme_sono_veti(self):
-        """Romeo le applica tutte: e' la richiesta esplicita dell'utente."""
-        spente = [k for k, v in CONFERME_CHE_BLOCCANO_DA_SOLE.items() if not v]
-        assert spente == [], f"conferme non applicate: {spente}"
+    def test_le_conferme_sono_veti_tranne_CRT_11(self):
+        """Tutte tranne una, e l'eccezione ha un motivo preciso.
+
+        `CRT-11` non e' un veto all'armamento perche' il CISD avviene DOPO la
+        chiusura di `N2`: chiederlo li' vuol dire chiederlo prima che possa
+        essere successo. Resta obbligatorio dove conta -- all'ingresso, dove
+        `ingresso_ltf.controlla` senza CISD non entra mai.
+        """
+        spente = sorted(k for k, v in CONFERME_CHE_BLOCCANO_DA_SOLE.items() if not v)
+        assert spente == ["CRT-11"], f"conferme non applicate: {spente}"
+
+    def test_CRT_11_resta_obbligatoria_all_ingresso(self):
+        """Toglierla dai veti non la rende facoltativa: la sposta."""
+        import inspect
+        from core import ingresso_ltf
+        corpo = inspect.getsource(ingresso_ltf.controlla)
+        assert "cisd(" in corpo
+        assert "nessuna serie di consegna contraria da rompere" in corpo
 
     def test_resta_fra_le_conferme_valutate(self):
         """Spenta come veto, non cancellata: il responso la riporta lo stesso

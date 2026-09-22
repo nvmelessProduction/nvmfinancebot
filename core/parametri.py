@@ -652,7 +652,21 @@ CONFERME_CHE_BLOCCANO_DA_SOLE: Final[dict[str, bool]] = {
     "CRT-20": True,   # peso delle ombre di N2 — misurato come veto
     "CRT-06": True,   # tre modelli CRT allineati
     "CRT-10": True,   # Double Purge Sweep
-    "CRT-11": True,   # CISD — gia' INTRINSECO all'ingresso di CRT-13
+    # NON un veto all'armamento, e non per comodita': per il momento in cui
+    # viene chiesta. Il CISD avviene DOPO la chiusura di `N2`, sul timeframe
+    # basso, ed e' il primo passo della sequenza che `ingresso_ltf.controlla`
+    # aspetta prima di entrare (CRT-13). Chiederlo alla chiusura di `N2`
+    # significa chiedere "e' gia' successo?" a una cosa che per costruzione
+    # deve ancora succedere -- e poi verificarla una seconda volta dove
+    # succede davvero.
+    #
+    # Misurato il 2026-09-22 su vent'anni e sei coppie: primo bloccante
+    # ovunque, 4.961 CRT su 7.454 sulla coppia `M15 -> M1min`.
+    #
+    # Resta VALUTATA e nel responso: chi legge la decisione vede lo stesso
+    # cosa diceva. E resta obbligatoria dove conta, cioe' all'ingresso: senza
+    # CISD `controlla` non entra mai.
+    "CRT-11": False,  # CISD — gia' INTRINSECO all'ingresso di CRT-13
     "CRT-12": True,   # divergenza SMT
     "CRT-15": True,   # finestre orarie di New York
     "CRT-17": True,   # tenuta della meta' del range
