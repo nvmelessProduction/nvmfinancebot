@@ -154,3 +154,49 @@ class TestLaGuardiaValeSuEntrambeLeStrade:
         fuori = [r.strip() for r in sorgente.splitlines()
                  if "COSTO_SPREAD_MASSIMO_IN_R" in r and r not in corpo]
         assert fuori == ["COSTO_SPREAD_MASSIMO_IN_R, MAX_POSIZIONI_PER_STRUMENTO,"], fuori
+
+
+class TestIlPnlIlleggibileNonVale_Zero:
+    """RISK-07/08/09 si calcolano sul P&L chiuso letto dal broker.
+
+    `broker.pnl_chiuso` restituisce `(ok, valore, messaggio)` e in caso di
+    errore il valore e' 0.0. Uno zero qui significa "nessuna perdita", quindi
+    nessun limite: il conto resterebbe scoperto proprio mentre il broker non
+    risponde. L'esito va guardato.
+    """
+
+    def test_l_esito_della_lettura_non_viene_scartato(self):
+        """Prova sul sorgente, e lo dice: qui non c'e' un `_conto()` da
+        chiamare senza una connessione a MT5 viva, e aprirne una seconda
+        mentre il bot gira e' la cosa da non fare. Cio' che si puo'
+        verificare e' che l'esito sia legato e controllato."""
+        import inspect
+        from core import fornitore_tradingview as forn
+        sorgente = inspect.getsource(forn)
+        assert "_, giornaliero, _ = broker.pnl_chiuso" not in sorgente
+        assert "if not (ok_g and ok_s and ok_m):" in sorgente
+
+    def test_uno_zero_verrebbe_letto_come_nessuna_perdita(self):
+        """Perche' scartare l'esito e' pericoloso: e' RISK-07 che non scatta."""
+        from core.rischio import limiti_raggiunti
+        assert limiti_raggiunti(0.0, 1000.0, 0.0, 1000.0, 0.0, 1000.0) == ()
+        # Con la perdita vera, invece, scattano.
+        assert len(limiti_raggiunti(-200.0, 1000.0, -200.0, 1000.0,
+                                    -200.0, 1000.0)) == 3
+
+    def test_lo_scarto_del_server_e_misurato_ma_non_usato(self):
+        """Il campanello: `_scarto_server` esiste e nessuno lo applica.
+
+        Il server del broker e' a UTC+3 (misurato in esercizio). Le finestre
+        di RISK-07/08/09 vengono calcolate in UTC e passate a MT5, che le
+        legge in ora del server: sono spostate di tre ore. Questa prova non
+        corregge il difetto, lo tiene visibile finche' non si decide.
+        """
+        import inspect
+        from core import broker
+        sorgente = inspect.getsource(broker)
+        assert "_scarto_server" in sorgente, "l'offset e' misurato"
+        # Se un giorno qualcuno lo applicasse a pnl_chiuso, questa prova va
+        # aggiornata: e' il segnale che il difetto e' stato chiuso.
+        corpo = inspect.getsource(broker.pnl_chiuso)
+        assert "_scarto_server" not in corpo

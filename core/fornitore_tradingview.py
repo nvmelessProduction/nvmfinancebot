@@ -386,9 +386,18 @@ class FornitoreTradingView:
         inizio_giorno = adesso.replace(hour=0, minute=0, second=0, microsecond=0)
         inizio_settimana = inizio_giorno - timedelta(days=inizio_giorno.weekday())
         inizio_mese = inizio_giorno.replace(day=1)
-        _, giornaliero, _ = broker.pnl_chiuso(inizio_giorno)
-        _, settimanale, _ = broker.pnl_chiuso(inizio_settimana)
-        _, mensile, _ = broker.pnl_chiuso(inizio_mese)
+        # L'esito di `pnl_chiuso` NON si butta via. Se la lettura fallisce la
+        # funzione restituisce 0.0, e uno zero qui vuol dire "nessuna perdita":
+        # RISK-07, RISK-08 e RISK-09 non scattano e il conto resta scoperto
+        # proprio mentre il broker non risponde. Le altre letture di questo
+        # blocco -- specifiche, quotazione, conto -- si astengono gia' cosi'.
+        ok_g, giornaliero, msg_g = broker.pnl_chiuso(inizio_giorno)
+        ok_s, settimanale, msg_s = broker.pnl_chiuso(inizio_settimana)
+        ok_m, mensile, msg_m = broker.pnl_chiuso(inizio_mese)
+        if not (ok_g and ok_s and ok_m):
+            log.error("P&L di periodo non leggibile, non si opera al buio: "
+                      "giorno=%s settimana=%s mese=%s", msg_g, msg_s, msg_m)
+            return None
 
         equity = float(dati["equity"])
         return Conto(
