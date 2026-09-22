@@ -728,3 +728,46 @@ class TestLAnalisiArrivaSuTelegram:
     def test_senza_responso_il_messaggio_resta_come_prima(self):
         testo = self._messaggio({})
         assert "l'analisi" not in testo
+
+
+class TestNessunMessaggioParlaInSigle:
+    """Tutti i messaggi, non solo quelli degli ordini.
+
+    Il 2026-09-22 l'utente ha mandato uno screenshot: "15x RISK-08",
+    "CRT-13 decaduto su TF_H4 senza ingresso entro 16 barre su TF_M15",
+    "CISD avvenuto ma nessun FVG da ritestare". Gli ordini erano gia' stati
+    riscritti; il riepilogo e i setup no.
+    """
+
+    GERGO = ("CRT-1", "CRT-2", "RISK-0", "SETUP-0", "CTX-0", "GEST-0",
+             "PRIN-", "ESCL-", "GIUD-", "CISD", "FVG", "DXY",
+             "TF_H", "TF_M", "TF_1", "N1", "N2")
+
+    def test_le_spiegazioni_del_riepilogo(self):
+        from core.riepilogo import SPIEGAZIONI
+        for codice, frase in SPIEGAZIONI.items():
+            for sigla in self.GERGO:
+                assert sigla not in frase, f"{codice}: gergo '{sigla}' in {frase!r}"
+
+    def test_i_motivi_dei_setup_scaduti(self):
+        from core.ingresso_ltf import _MOTIVI_IN_PAROLE, _in_parole
+        for _, frase in _MOTIVI_IN_PAROLE:
+            for sigla in self.GERGO:
+                assert sigla not in frase, f"gergo '{sigla}' in {frase!r}"
+        # E un motivo sconosciuto non fa passare il testo tecnico cosi' com'e'.
+        assert _in_parole("CISD a 0.81862 non ancora rotto") == \
+            "la spinta non ha mai cambiato verso"
+        assert "CISD" not in _in_parole("qualcosa di mai visto con CISD dentro")
+
+    def test_il_riepilogo_non_stampa_piu_il_codice(self):
+        """"15x RISK-08" non dice niente: va la spiegazione al suo posto."""
+        import inspect
+        from core import riepilogo
+        corpo = inspect.getsource(riepilogo)
+        assert 'f"{quante}x {codice}"' not in corpo
+        assert 'f"{quante} volte: {spiega}"' in corpo
+
+    def test_i_timeframe_hanno_un_nome(self):
+        from core.riepilogo import NOMI_TF
+        assert NOMI_TF["TF_H4"] == "4 ore"
+        assert NOMI_TF["TF_M15"] == "15 min"

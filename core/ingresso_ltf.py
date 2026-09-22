@@ -107,6 +107,36 @@ def _nome_tf(tf: TF) -> str:
     return NOMI_TF.get(tf.value, tf.value)
 
 
+# I motivi interni, detti come li direbbe una persona. `controlla` li scrive
+# per il diario, dove il gergo e' giusto; su Telegram no.
+_MOTIVI_IN_PAROLE: tuple[tuple[str, str], ...] = (
+    ("nessuna serie di consegna contraria da rompere",
+     "la spinta contraria non si e' mai formata"),
+    ("non ancora rotto",
+     "la spinta non ha mai cambiato verso"),
+    ("nessun FVG da ritestare",
+     "il movimento non ha lasciato il vuoto di prezzo su cui si entra"),
+    ("FVG degenere",
+     "il vuoto di prezzo era troppo sottile per entrarci"),
+    ("il prezzo non e' ancora tornato",
+     "il prezzo non e' mai tornato nella zona d'ingresso"),
+    ("GEST-01",
+     "si sarebbe rischiato troppo per quello che c'era da guadagnare"),
+    ("nessun bersaglio davanti",
+     "non c'era piu' nessun obiettivo davanti al prezzo"),
+    ("SETUP-04",
+     "il contesto che la motivava non c'era piu'"),
+)
+
+
+def _in_parole(motivo: str) -> str:
+    """Il motivo tecnico tradotto, o una frase onesta se non lo riconosco."""
+    for pezzo, frase in _MOTIVI_IN_PAROLE:
+        if pezzo in (motivo or ""):
+            return frase
+    return "il segnale per entrare non e' arrivato"
+
+
 def prepara_tabella() -> None:
     with storage.connessione(scrittura=True) as conn:
         conn.execute("""
@@ -188,12 +218,17 @@ def arma(
     # ore o minuti (l'ingresso vero arriva su un timeframe diverso) passava
     # inosservata a chi non tiene aperto il pannello.
     verso = "rialzista" if direzione is Bias.LONG else "ribassista"
+    estremo = "minimo" if direzione is Bias.LONG else "massimo"
     notifier.invia_appena_possibile(
-        f"{strumento}: setup {verso} armato su {_nome_tf(tf_crt)}.\n"
-        f"Spazzato {_prezzo(strumento, estremo_sweep)}, "
-        f"primo bersaglio {_prezzo(strumento, eq_range)}.\n"
-        f"Ora aspetta il rientro nello squilibrio su {_nome_tf(tf_ingresso)}: "
-        f"finche' non arriva non parte nessun ordine."
+        f"👀 <b>{strumento}</b> — occasione in vista\n"
+        f"Sul grafico da {_nome_tf(tf_crt)} il prezzo ha superato il "
+        f"{estremo} a <code>{_prezzo(strumento, estremo_sweep)}</code> e "
+        f"sembra essersene pentito: e' un'occasione {verso}.\n"
+        f"Se si concretizza si punta a "
+        f"<code>{_prezzo(strumento, eq_range)}</code>.\n"
+        f"<i>Adesso serve che il prezzo torni indietro a prendere fiato sul "
+        f"grafico da {_nome_tf(tf_ingresso)}. Finche' non succede non parte "
+        f"nessun ordine.</i>"
     )
     return int(cur.lastrowid or 0)
 
@@ -417,9 +452,16 @@ def valuta_armati(
         if setup.barre_attesa + 1 >= ATTESA_MASSIMA_BARRE:
             chiudi(setup.id_setup, "decaduto", motivo)
             log.info("setup %s decaduto: %s", setup.id_setup, motivo)
+            # Detto a chi legge dal telefono, non a chi ha scritto il bot:
+            # "CRT-13 decaduto su TF_H4 entro 16 barre su TF_M15" non spiega
+            # niente a nessuno. Il codice della regola resta nel diario.
+            verso = "rialzista" if setup.direzione is Bias.LONG else "ribassista"
             notifier.invia_appena_possibile(
-                f"CRT-13 decaduto: {setup.strumento} {setup.direzione.value} "
-                f"su {setup.tf_crt} senza ingresso entro {ATTESA_MASSIMA_BARRE} "
-                f"barre su {setup.tf_ingresso}. {motivo}"
+                f"⌛ <b>{setup.strumento}</b> — occasione scaduta\n"
+                f"L'occasione {verso} da {_nome_tf(setup.tf_crt)} e' rimasta "
+                f"in attesa per {ATTESA_MASSIMA_BARRE} candele da "
+                f"{_nome_tf(setup.tf_ingresso)} senza che il prezzo desse il "
+                f"segnale per entrare.\n"
+                f"<i>{_in_parole(motivo)}</i>"
             )
     return fuori

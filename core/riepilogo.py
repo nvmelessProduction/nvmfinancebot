@@ -42,23 +42,33 @@ _CODICI = re.compile(r"\[([A-Z]{3,5}-\d{2}(?:,\s*[A-Z]{3,5}-\d{2})*)\]")
 
 # Cosa significano i blocchi piu' frequenti, in italiano. Un codice da solo
 # non spiega niente a chi non ha la bibbia aperta davanti.
+# Perche' un'operazione non e' partita, detto a chi legge dal telefono.
+#
+# Niente sigle e niente gergo: chi guarda il riepilogo vuole sapere cosa e'
+# successo, non quale riga di quale documento. I codici restano in archivio e
+# nel diario, che e' dove si va a cercarli quando servono davvero.
 SPIEGAZIONI: dict[str, str] = {
-    "SETUP-00": "nessun CRT: il prezzo non ha preso un key level superiore",
-    "RISK-05": "la bias del DXY era contraria alla direzione del CRT",
-    "CRT-20": "conferme di Romeo: ombre di N2 troppo strette",
-    "SETUP-05": "meno di due timeframe superiori allineati",
-    "SETUP-07": "direzione del CRT opposta alla bias di comando",
-    "SETUP-09": "il setup non ha superato i controlli di ingresso",
-    "GEST-01": "rapporto rischio/rendimento sotto 1,5 sul primo bersaglio",
-    "CTX-02": "finestra di una notizia ad alto impatto",
-    "CTX-04": "giorno di festivita'",
-    "DEF-26": "storia insufficiente su quel timeframe",
-    "PRIN-99": "dati mancanti: il bot si astiene invece di indovinare",
-    "PRIN-13": "domenica: si opera solo dal settimanale in su",
-    "GIUD-02": "il trader discrezionale ha rifiutato",
-    "RISK-02": "limite di rischio del gruppo di correlazione",
-    "RISK-06": "tetto di posizioni sullo strumento",
-    "ESCL-11": "posizione gia' aperta sullo stesso strumento",
+    "SETUP-00": "il prezzo non aveva ancora preso un livello importante",
+    "RISK-05": "il dollaro tirava dalla parte opposta",
+    "CRT-20": "la candela aveva code troppo corte: nessun vero rifiuto",
+    "SETUP-05": "i tempi piu' lunghi non erano d'accordo fra loro",
+    "SETUP-07": "sarebbe stato un ordine contro la direzione del mercato",
+    "SETUP-09": "l'ingresso non ha superato i controlli",
+    "GEST-01": "si rischiava troppo per quello che c'era da guadagnare",
+    "CTX-02": "c'era una notizia importante in arrivo",
+    "CTX-04": "giorno di festa",
+    "DEF-26": "storia troppo corta su quel tempo grafico",
+    "PRIN-99": "mancavano dei dati: meglio fermarsi che tirare a indovinare",
+    "PRIN-13": "domenica: si opera solo sui tempi lunghi",
+    "GIUD-02": "il giudizio finale ha detto di no",
+    "RISK-02": "troppo rischio gia' aperto su strumenti che si somigliano",
+    "RISK-06": "gia' troppe posizioni su questo strumento",
+    "RISK-07": "raggiunto il limite di perdita della giornata",
+    "RISK-08": "raggiunto il limite di perdita della settimana",
+    "RISK-09": "raggiunto il limite di perdita del mese",
+    "CRT-04": "il segnale veniva da un tempo grafico che non puo' generarlo",
+    "RISK-03": "lo stop era troppo vicino al prezzo per valerne la pena",
+    "ESCL-11": "c'e' gia' una posizione aperta su questo strumento",
 }
 
 
@@ -302,10 +312,11 @@ def componi(ore: float = ORE_FRA_RIEPILOGHI) -> str:
             (c, n) for c, n in blocchi.items() if c not in ("SETUP-00", "PRIN-99")
         ]
         for codice, quante in sorted(interessanti, key=lambda x: -x[1])[:6]:
-            righe.append(f"{quante}x {codice}")
+            # La spiegazione AL POSTO del codice: "15x RISK-08" non dice
+            # niente a nessuno, e metterli tutti e due raddoppia le righe.
             spiega = SPIEGAZIONI.get(codice)
-            if spiega:
-                righe.append(f"   {spiega}")
+            righe.append(f"{quante} volte: {spiega}" if spiega
+                         else f"{quante} volte: {codice}")
     elif valutazioni:
         righe += ["", "COSA LI HA FERMATI"]
         righe.append(
