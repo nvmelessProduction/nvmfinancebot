@@ -375,6 +375,17 @@ class FornitoreTradingView:
             log.warning("nessuna quotazione per %s: %s", simbolo, messaggio)
             return None
 
+        # Uno spread a zero non vuol dire "gratis": vuol dire che bid e ask
+        # coincidono, cioe' che la quotazione non dice quanto costa operare.
+        # Senza quel numero `RISK-03` non puo' misurare se lo stop stia dentro
+        # il costo, e il 2026-09-22 ne e' uscito un SELL su USDCHF con lo stop
+        # a 0,9 spread dall'ingresso che la guardia non ha potuto fermare.
+        # Succedeva spesso: 8 posizioni su 66 avevano `spread_ingresso` a zero.
+        if tick["ask"] - tick["bid"] <= 0:
+            log.warning("spread non leggibile su %s (bid %s, ask %s): non si "
+                        "opera al buio", simbolo, tick["bid"], tick["ask"])
+            return None
+
         ok_conto, dati, messaggio = broker.info_conto()
         if not ok_conto or dati is None:
             log.error("conto non leggibile: %s", messaggio)

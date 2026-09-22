@@ -500,6 +500,11 @@ def _spread_troppo_caro(spread: float, prezzo: float,
     spread**, tutte passate dalla strada che il controllo non aveva.
     """
     if spread <= 0:
+        # Qui non si giudica: senza spread non c'e' un costo da misurare.
+        # Che uno spread assente NON debba diventare un ordine lo decide
+        # `fornitore_tradingview`, dove il dato nasce -- insieme alle altre
+        # letture mancanti, che li' fanno gia' astenere. Tenerlo li' lascia
+        # questa una regola pura sul costo, provabile senza un broker.
         return None
     rischio = abs(prezzo - stop)
     if rischio <= 0:
@@ -1084,6 +1089,38 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             foto.strumento, ["PRIN-99"],
             f"SETUP-14: nessun key level su {crt.tf.value} o superiore a cui "
             "portare il 75% residuo",
+            applicate,
+            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
+            rapporto_su_tp1=rapporto,
+        )
+
+    # --- 7bis-ter. E deve stare DAVANTI al prezzo (PRIN-99) ---------------
+    #
+    # Il bersaglio nasce da un key level: un livello della struttura, che col
+    # prezzo di ingresso non lo confronta nessuno -- lo stesso difetto che
+    # TP1 aveva. Quando il prezzo l'ha gia' superato, il target sta dalla
+    # parte dello stop e descrive un'operazione che non puo' vincere.
+    #
+    # Non e' teoria. Il 2026-09-22 alle 13:09 e' partito verso il broker un
+    # SELL su USDCHF a 0,81891 con target a 0,82029, cioe' SOPRA l'ingresso.
+    # L'ha fermato MT5, con `retcode 10016 (Invalid stops)`: finche' gli
+    # ordini partivano nudi quello stesso ordine veniva ESEGUITO, e l'audit
+    # ne contava 48 su 201. Il broker e' l'ultima rete, non la prima.
+    # Il confronto va fatto col verso del CFD, non con quello del future:
+    # `6S` e `6J` quotano il reciproco, e un CRT LONG li' e' un ordine SHORT
+    # qui. Usare `crt.direzione` farebbe risultare "dalla parte sbagliata"
+    # esattamente i bersagli giusti su USDCHF e USDJPY -- lo stesso scambio
+    # che gia' una volta ha mandato gli ordini dalla parte opposta.
+    verso_ordine = _verso_sul_cfd(foto, crt.direzione)
+    dietro = (bersaglio <= prezzo_ingresso if verso_ordine is Bias.LONG
+              else bersaglio >= prezzo_ingresso)
+    if dietro:
+        return _non_operare(
+            foto.strumento, ["PRIN-99"],
+            f"bersaglio {bersaglio:.5f} dalla parte sbagliata rispetto "
+            f"all'ingresso {prezzo_ingresso:.5f} per un ordine "
+            f"{'BUY' if verso_ordine is Bias.LONG else 'SELL'}: "
+            "l'operazione non potrebbe vincere",
             applicate,
             direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
             rapporto_su_tp1=rapporto,

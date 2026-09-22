@@ -308,3 +308,100 @@ class TestLoStopNuovoArrivaAlBroker:
         from core import sentinella
         assert "modifica_livelli(" in inspect.getsource(sentinella)
         assert inspect.getsource(main).count("modifica_livelli(") >= 2
+
+
+class TestIlBersaglioDeveStareDavanti:
+    """Il broker ha fermato cio' che il motore lasciava passare.
+
+    Il 2026-09-22 alle 13:09 e' partito un SELL su USDCHF a 0,81891 con
+    target a 0,82029 -- sopra l'ingresso. MT5 ha risposto `retcode 10016
+    (Invalid stops)`. Finche' gli ordini partivano nudi quello stesso ordine
+    veniva ESEGUITO: l'audit ne contava 48 su 201.
+
+    Il bersaglio nasce da un key level, cioe' da un livello della struttura,
+    e col prezzo di ingresso non lo confrontava nessuno: lo stesso difetto
+    che aveva TP1.
+    """
+
+    @pytest.fixture
+    def diagnostico(self, monkeypatch):
+        """Col modo diagnostico acceso, che e' quando questo controllo conta.
+
+        A filtri accesi ci arriva prima `GEST-01`: il rapporto su un target
+        alle spalle non esiste, quindi blocca lui. Ma `GEST-01` e'
+        soppesabile e il modo diagnostico lo spegne -- ed e' esattamente la
+        configurazione in cui, il 2026-09-22, l'ordine incoerente e' arrivato
+        al broker.
+        """
+        from core.config import impostazioni
+        monkeypatch.setattr(impostazioni(), "APRI_OGNI_CRT", True, raising=False)
+        yield
+
+    def _decisione(self, chiusura_n2: float):
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m, TF, N1, cand
+        # Il bersaglio di uno short qui e' il key level a 100. Se `N2`
+        # richiude SOTTO quel livello, il prezzo l'ha gia' passato e il
+        # target resta alle spalle.
+        n2 = cand(massimo=111, minimo=94, chiusura=chiusura_n2, apertura=110)
+        return m.valuta(
+            foto(candele_per_tf={TF.H4: [N1, n2]}, prezzo_cfd=chiusura_n2), TF.H4)
+
+    def test_un_bersaglio_alle_spalle_ferma_l_ordine(self, diagnostico):
+        d = self._decisione(99.0)
+        assert d.azione == "NONE"
+        assert "PRIN-99" in d.regole_che_bloccano
+        assert "dalla parte sbagliata" in d.motivo
+        assert "non potrebbe vincere" in d.motivo
+
+    def test_non_e_un_muro_generico(self, diagnostico):
+        """Col target davanti al prezzo l'ordine passa."""
+        d = self._decisione(101.0)
+        assert d.azione == "SELL", d.motivo
+        assert d.target_finale is not None and d.target_finale < 101.0
+
+    def test_il_modo_diagnostico_non_lo_puo_spegnere(self):
+        """PRIN-99 non e' soppesabile: non e' sfortuna, e' dato incoerente."""
+        from core.motore import OBIEZIONI_SOPPESABILI
+        assert "PRIN-99" not in OBIEZIONI_SOPPESABILI
+
+    def test_il_verso_e_quello_del_CFD_non_del_future(self):
+        """Su USDCHF e USDJPY il future quota il reciproco.
+
+        Confrontare col verso del future farebbe risultare "dalla parte
+        sbagliata" esattamente i bersagli giusti -- ed e' lo scambio che una
+        volta ha gia' mandato gli ordini dalla parte opposta del mercato.
+        """
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        assert "verso_ordine = _verso_sul_cfd(" in corpo
+        # Il confronto usa il verso dell'ordine, non `crt.direzione`.
+        pezzo = corpo.split("verso_ordine = _verso_sul_cfd(")[1][:400]
+        assert "verso_ordine is Bias.LONG" in pezzo
+
+
+class TestSenzaSpreadNonSiApre:
+    """Uno spread a zero non e' "gratis": e' un costo che non si conosce.
+
+    `RISK-03` non puo' misurare se lo stop stia dentro il costo, e infatti il
+    2026-09-22 e' passato un SELL con lo stop a 0,9 spread. Succedeva spesso:
+    8 posizioni su 66 avevano `spread_ingresso` a zero.
+
+    L'astensione sta dove il dato nasce -- nel fornitore, insieme alle altre
+    letture mancanti -- non dentro la regola, che resta una funzione pura sul
+    costo e si puo' provare senza un broker.
+    """
+
+    def test_la_regola_resta_pura_e_non_giudica_senza_spread(self):
+        from core.motore import _spread_troppo_caro
+        assert _spread_troppo_caro(spread=0.0, prezzo=1.1, stop=1.0999) is None
+
+    def test_il_fornitore_si_astiene(self):
+        import inspect
+        from core import fornitore_tradingview as forn
+        corpo = inspect.getsource(forn)
+        assert 'if tick["ask"] - tick["bid"] <= 0:' in corpo
+        assert "non si opera al buio" in corpo
