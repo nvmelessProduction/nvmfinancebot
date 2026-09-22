@@ -271,30 +271,75 @@ def _analisi(decisione: Decision) -> list[str]:
     if not responso:
         return []
 
-    righe = ["", "<b>Perché l'ha aperta</b>"]
+    def frasi(valore, indice):
+        return [_IN_PAROLE.get(c, (c, c))[indice]
+                for c, v in sorted(responso.items()) if v is valore]
 
-    # Prima il motivo di fondo, cioe' il disegno che ha fatto scattare tutto,
-    # detto come lo direbbe una persona.
+    a_favore = frasi(True, 0)
+    contro = frasi(False, 1)
+    muti = sum(1 for v in responso.values() if v is None)
+
+    righe = ["", "<b>L'analisi</b>"]
+
+    # 1. Il disegno che ha fatto scattare tutto, raccontato.
     if decisione.direzione == "LONG":
-        righe.append("Il prezzo è sceso sotto il minimo di prima e poi è "
-                     "risalito: chi vendeva si è arreso.")
+        righe.append("Il prezzo è sceso sotto il minimo precedente e poi "
+                     "è risalito: chi vendeva ha finito la forza proprio "
+                     "dove sembrava averne di più.")
     elif decisione.direzione == "SHORT":
-        righe.append("Il prezzo è salito sopra il massimo di prima e poi è "
-                     "ricaduto: chi comprava si è arreso.")
+        righe.append("Il prezzo è salito sopra il massimo precedente e poi "
+                     "è ricaduto: chi comprava ha finito la forza proprio "
+                     "dove sembrava averne di più.")
 
-    a_favore = [k for k, v in responso.items() if v is True]
-    contro = [k for k, v in responso.items() if v is False]
-    muto = [k for k, v in responso.items() if v is None]
+    # 2. Cosa lo sostiene e cosa no, in frasi legate invece che in elenco.
+    if a_favore:
+        righe.append("A favore: " + _elenco(a_favore) + ".")
+    if contro:
+        righe.append("Contro: " + _elenco(contro) + ".")
+    if muti:
+        righe.append(_su_altri(muti))
 
-    for codice in sorted(a_favore):
-        righe.append(f"✅ {_IN_PAROLE.get(codice, (codice, codice))[0]}")
-    for codice in sorted(contro):
-        righe.append(f"❌ {_IN_PAROLE.get(codice, (codice, codice))[1]}")
-    if muto:
-        righe.append(f"❔ su {len(muto)} cose non c'erano dati per pronunciarsi")
-
-    righe.append(f"<i>{len(a_favore)} segnali a favore su {len(responso)}</i>")
+    righe.append(_quanto_pesa(len(a_favore), len(contro), len(responso)))
     return righe
+
+
+def _su_altri(quanti: int) -> str:
+    """Gli aspetti su cui non c'erano dati, al singolare o al plurale."""
+    if quanti == 1:
+        return "Su un altro aspetto non c'erano abbastanza dati per dire qualcosa."
+    return (f"Su altri {quanti} aspetti non c'erano abbastanza dati "
+            "per dire qualcosa.")
+
+
+def _elenco(voci: list) -> str:
+    """Le voci unite come le scriverebbe una persona: virgole e una `e`."""
+    if len(voci) == 1:
+        return voci[0]
+    return ", ".join(voci[:-1]) + " e " + voci[-1]
+
+
+def _segnali(quanti: int) -> str:
+    """Singolare o plurale: "1 segnali" non lo scrive nessuno."""
+    return "segnale" if quanti == 1 else "segnali"
+
+
+def _quanto_pesa(favore: int, contro: int, totale: int) -> str:
+    """Quanto regge il quadro, detto a colpo d'occhio.
+
+    Non e' una previsione: e' il rapporto fra cio' che sosteneva
+    l'operazione e cio' che la contraddiceva. Serve a capire subito se
+    il setup era solido o tirato per i capelli, ed e' il numero da
+    incrociare con l'esito per sapere quali segnali contino davvero.
+    """
+    if contro == 0 and favore:
+        return f"<i>Quadro pulito: {favore} {_segnali(favore)} a favore, nessuno contro.</i>"
+    if favore > contro:
+        return (f"<i>Quadro favorevole ma non pieno: {favore} a favore, "
+                f"{contro} contro.</i>")
+    if favore == contro:
+        return f"<i>Quadro incerto: {favore} a favore e {contro} contro.</i>"
+    return (f"<i>Quadro debole: solo {favore} {_segnali(favore)} a favore "
+            f"su {totale}, {contro} contrari.</i>")
 
 
 def messaggio_esito(simbolo: str, direzione: str, colpito: str,

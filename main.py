@@ -186,10 +186,19 @@ def salvaguardia_violata(alert: AlertIn, decisione: Decision) -> Optional[str]:
         ritardo = alert.ritardo_secondi()
         # None = orario non interpretabile: non blocchiamo per un formato
         # strano, sarebbe il modo peggiore di perdere segnali buoni.
-        if ritardo is not None and ritardo > cfg.MAX_RITARDO_ALERT_SEC:
+        # Il tetto si misura sulla CANDELA, non in assoluto: 180 secondi sono
+        # tre candele da un minuto e lo 0,2% di una giornaliera. Vedi
+        # `ritardo_massimo` in core/parametri.
+        from core.parametri import ritardo_massimo
+        from core.simboli import timeframe_da_intervallo
+
+        tf_alert = timeframe_da_intervallo(alert.tf)
+        tetto = (cfg.MAX_RITARDO_ALERT_SEC if tf_alert is None
+                 else ritardo_massimo(tf_alert, cfg.MAX_RITARDO_ALERT_SEC))
+        if ritardo is not None and ritardo > tetto:
             return (
-                f"alert vecchio di {ritardo:.0f}s "
-                f"(massimo {cfg.MAX_RITARDO_ALERT_SEC}s): prezzo non piu' attuale"
+                f"alert vecchio di {ritardo:.0f}s (su {alert.tf} il massimo e' "
+                f"{tetto:.0f}s): il prezzo non e' piu' quello del segnale"
             )
 
     # 3. Tetto anti-errore sul volume. Non calcola la size: rifiuta e basta.

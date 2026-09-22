@@ -688,10 +688,10 @@ class TestLAnalisiArrivaSuTelegram:
 
     def test_il_messaggio_separa_avute_mancate_e_mute(self):
         testo = self._messaggio({"CRT-11": True, "CRT-15": False, "CRT-12": None})
-        assert "la spinta ha cambiato verso" in testo            # avuta
-        assert "fuori dagli orari buoni" in testo                # mancata
-        assert "non c'erano dati" in testo                       # muta
-        assert "1 segnali a favore su 3" in testo
+        assert "A favore: la spinta ha cambiato verso" in testo
+        assert "Contro: siamo fuori dagli orari buoni" in testo
+        assert "Su un altro aspetto non c'erano abbastanza dati" in testo
+        assert "Quadro incerto: 1 a favore e 1 contro" in testo
 
     def test_niente_sigle_e_niente_gergo(self):
         """Deve capirlo chiunque, non chi ha scritto il bot."""
@@ -707,9 +707,23 @@ class TestLAnalisiArrivaSuTelegram:
         Chi legge deve capire il disegno che ha fatto scattare tutto, non
         solo la lista delle spunte.
         """
-        assert "chi vendeva si è arreso" in self._messaggio({"CRT-11": True})
-        assert "chi comprava si è arreso" in self._messaggio(
+        assert "chi vendeva ha finito la forza" in self._messaggio({"CRT-11": True})
+        assert "chi comprava ha finito la forza" in self._messaggio(
             {"CRT-11": True}, direzione="SHORT")
+
+    def test_e_un_discorso_non_un_elenco_di_spunte(self):
+        """Deve leggersi come un'analisi, non come una checklist."""
+        testo = self._messaggio({"CRT-11": True, "CRT-15": False, "CRT-20": True})
+        for spunta in ("✅", "❌", "❔"):
+            assert spunta not in testo, f"spunta nel messaggio: {spunta}"
+        assert "A favore:" in testo and "Contro:" in testo
+        # Le voci multiple si legano con una `e`, non con l'ultima virgola.
+        assert "verso e la candela" in testo
+
+    def test_singolare_e_plurale(self):
+        from core.notifier import _quanto_pesa
+        assert "1 segnale a favore" in _quanto_pesa(1, 3, 4)
+        assert "4 segnali a favore" in _quanto_pesa(4, 0, 4)
 
     def test_senza_responso_il_messaggio_resta_come_prima(self):
         testo = self._messaggio({})

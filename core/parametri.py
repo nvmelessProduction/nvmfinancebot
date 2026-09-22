@@ -87,6 +87,41 @@ TF_BIAS: Final[tuple[TF, ...]] = (TF.M12, TF.M6, TF.M3, TF.M1, TF.W1, TF.D1)
 # e rifiuto su orizzonti dove una candela e' un fatto, non rumore) e non hanno
 # un target di DEF-46. Sono il posto dove si entra, non dove si decide.
 TF_INTRADAY: Final[tuple[TF, ...]] = (TF.MIN15, TF.MIN5, TF.MIN1)
+
+# Quanto dura una candela, in secondi. Serve a misurare un ritardo in
+# rapporto alla candela che lo subisce, non in assoluto.
+DURATA_TF: Final[dict[TF, int]] = {
+    TF.MIN1: 60, TF.MIN5: 300, TF.MIN15: 900,
+    TF.H1: 3_600, TF.H4: 14_400, TF.H6: 21_600, TF.H12: 43_200,
+    TF.D1: 86_400, TF.W1: 604_800, TF.M1: 2_592_000,
+    TF.M3: 7_776_000, TF.M6: 15_552_000, TF.M12: 31_536_000,
+}
+
+# Quanta parte della candela successiva puo' essere gia' passata prima che
+# l'alert descriva un prezzo che non c'e' piu'.
+#
+# `MAX_RITARDO_ALERT_SEC` e' un numero solo per tutti i timeframe, e non puo'
+# funzionare: 180 secondi sono il 300% di una candela da un minuto e lo 0,2%
+# di una giornaliera. Su `M1` lasciavano passare ordini con tre candele di
+# ritardo -- misurato il 2026-09-22 su GBPUSD, 90 secondi fra la chiusura di
+# `N2` e l'ordine, entrato 4,1 pip piu' in alto, sul massimo dello spike.
+#
+# Un quarto della candela e' il punto in cui il prezzo ha gia' avuto tempo di
+# andarsene: su `M1` sono 15 secondi, su `M5` 75, e da `M15` in su vince
+# comunque il tetto assoluto.
+FRAZIONE_CANDELA_PER_IL_RITARDO: Final[float] = 0.25
+
+
+def ritardo_massimo(tf: TF, tetto_assoluto: float) -> float:
+    """Il ritardo tollerabile su questo timeframe, in secondi.
+
+    Il piu' stretto fra il tetto assoluto e una frazione della candela: un
+    alert su `M1` invecchia in quindici secondi, uno giornaliero no.
+    """
+    durata = DURATA_TF.get(tf)
+    if durata is None:
+        return tetto_assoluto
+    return min(tetto_assoluto, durata * FRAZIONE_CANDELA_PER_IL_RITARDO)
 TF_SOLO_GAP: Final[tuple[TF, ...]] = (TF.H12, TF.H6)
 TF_ESECUZIONE: Final[tuple[TF, ...]] = (TF.D1, TF.H4, TF.H1)
 
