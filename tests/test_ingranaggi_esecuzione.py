@@ -771,3 +771,38 @@ class TestNessunMessaggioParlaInSigle:
         from core.riepilogo import NOMI_TF
         assert NOMI_TF["TF_H4"] == "4 ore"
         assert NOMI_TF["TF_M15"] == "15 min"
+
+
+class TestIlNomeDelTimeframeAccettaTutteEDue:
+    """`tf_crt` arriva come enum dal motore e come stringa dall'archivio.
+
+    Chiamare `.value` su una stringa faceva cadere l'INTERA valutazione dello
+    strumento: successo il 2026-09-22 alle 18:30 su EURUSD, col messaggio di
+    scadenza perso e il giro interrotto a meta'. Introdotto la sera stessa
+    riscrivendo i messaggi.
+    """
+
+    def test_con_l_enum(self):
+        from core.ingresso_ltf import _nome_tf
+        from core.parametri import TF
+        assert _nome_tf(TF.MIN15) == "15 min"
+
+    def test_con_la_stringa_che_arriva_dall_archivio(self):
+        from core.ingresso_ltf import _nome_tf
+        assert _nome_tf("TF_M15") == "15 min"
+        assert _nome_tf("TF_H4") == "4 ore"
+
+    def test_un_codice_sconosciuto_non_solleva(self):
+        from core.ingresso_ltf import _nome_tf
+        assert _nome_tf("TF_MAI_VISTO") == "TF_MAI_VISTO"
+
+    def test_il_messaggio_di_scadenza_si_compone(self):
+        """La prova che sarebbe servita: costruirlo davvero, dai dati veri."""
+        from core.ingresso_ltf import _nome_tf, _in_parole
+        from core.definizioni import Bias
+        # Come li legge `valuta_armati` dall'archivio: stringhe.
+        testo = (f"L'occasione rialzista da {_nome_tf('TF_H4')} è rimasta in "
+                 f"attesa per 16 candele da {_nome_tf('TF_M15')}. "
+                 f"{_in_parole('nessun FVG da ritestare')}")
+        assert "4 ore" in testo and "15 min" in testo
+        assert "TF_" not in testo

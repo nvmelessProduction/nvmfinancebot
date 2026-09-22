@@ -95,16 +95,24 @@ def _prezzo(strumento: str, valore: float) -> str:
     return f"{valore:,.{cifre}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _nome_tf(tf: TF) -> str:
+def _nome_tf(tf) -> str:
     """`TF_M15` non dice niente a chi legge dal telefono.
 
     L'elenco e' quello del riepilogo: due elenchi finiscono per divergere, e
     lo stesso timeframe chiamato in due modi nei due messaggi che arrivano
     sullo stesso telefono e' peggio di una sigla.
+
+    Accetta sia il `TF` sia la stringa, perche' arrivano tutte e due: `arma`
+    riceve l'enum dal motore, `valuta_armati` rilegge `SetupArmato` da
+    archivio e li' `tf_crt` e' `str`. Chiamare `.value` su una stringa fa
+    cadere l'intera valutazione dello strumento -- successo il 2026-09-22
+    alle 18:30 su EURUSD, con il messaggio di scadenza perso e il giro
+    interrotto a meta'.
     """
     from core.riepilogo import NOMI_TF
 
-    return NOMI_TF.get(tf.value, tf.value)
+    codice = tf.value if hasattr(tf, "value") else str(tf)
+    return NOMI_TF.get(codice, codice)
 
 
 # I motivi interni, detti come li direbbe una persona. `controlla` li scrive
