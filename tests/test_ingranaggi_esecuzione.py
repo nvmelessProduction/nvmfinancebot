@@ -867,3 +867,61 @@ class TestIlMotivoDellArmatoNonSiPerde:
         from core import motore
         corpo = inspect.getsource(motore.valuta_ingresso_armato)
         assert "if not ingressi:" in corpo and "return None" in corpo
+
+
+class TestIlControlloSulParzialeUsaIlVersoDelCFD:
+    """`obiettivo_1` e `prezzo_ingresso` sono prezzi del CFD.
+
+    `crt.direzione` e' il verso sul FUTURE. Quando le candele sono quelle del
+    future i livelli vengono convertiti sulla scala del CFD, e su `6S` e `6J`
+    -- che quotano il reciproco -- confrontarli col verso del future e' un
+    confronto invertito. Quando le candele sono gia' in scala CFD, come con
+    MT5, i due versi coincidono e non cambia niente.
+
+    Per questo la riga vista nel diario il 2026-09-22 NON era un difetto:
+
+        USDCHF: TP1 0.82018 gia' superato dal prezzo 0.82059
+
+    Era un CRT LONG, e su un rialzo il parziale deve stare SOPRA il prezzo.
+    Stava sotto, quindi e' stato tolto: e' esattamente il lavoro di questa
+    guardia. Ci avevo visto un bug per aver confuso quel CRT con il setup
+    armato sullo stesso strumento, che era SHORT su un'altra coppia.
+    """
+
+    def test_il_confronto_usa_verso_sul_cfd(self):
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        pezzo = corpo.split("rapporto is None and obiettivo_1 is not None")[1][:2000]
+        assert "_verso_sul_cfd(" in pezzo
+        assert "crt.direzione is Bias.LONG" not in pezzo
+
+    def test_su_candele_del_future_il_verso_si_ribalta(self):
+        """E' li' che il controllo col verso sbagliato sarebbe invertito."""
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m
+        from core.definizioni import Bias
+        f = foto(strumento="USDCHF")          # analisi_in_scala_cfd = False
+        assert f.analisi_in_scala_cfd is False
+        assert m._verso_sul_cfd(f, Bias.SHORT) is Bias.LONG
+
+    def test_su_candele_gia_del_cfd_non_cambia_niente(self):
+        """Con MT5 e' questo il caso, e i due versi coincidono."""
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m
+        from core.definizioni import Bias
+        from dataclasses import replace
+        f = replace(foto(strumento="USDCHF"), analisi_in_scala_cfd=True)
+        assert m._verso_sul_cfd(f, Bias.SHORT) is Bias.SHORT
+
+    def test_su_eurusd_non_si_ribalta_mai(self):
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m
+        from core.definizioni import Bias
+        assert m._verso_sul_cfd(foto(strumento="EURUSD"), Bias.LONG) is Bias.LONG

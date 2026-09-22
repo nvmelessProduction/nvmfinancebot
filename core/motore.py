@@ -894,7 +894,23 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # `ingresso_ltf.controlla` il bersaglio superato scala al lato opposto
     # (CRT-16). Qui mancava perche' qui il primo bersaglio e' uno solo.
     if rapporto is None and obiettivo_1 is not None:
-        dietro = (obiettivo_1 <= prezzo_ingresso if crt.direzione is Bias.LONG
+        # Col verso del CFD, non con quello del future.
+        #
+        # `obiettivo_1` e `prezzo_ingresso` sono prezzi del CFD; `crt.direzione`
+        # e' il verso sul FUTURE, e su `6S` e `6J`, che quotano il reciproco,
+        # i due sono opposti. Con `crt.direzione` il confronto risultava
+        # invertito proprio su USDCHF e USDJPY: sopprimeva i TP1 buoni e
+        # teneva quelli alle spalle, cioe' esattamente il caso che questa
+        # guardia esiste per togliere.
+        #
+        # Visto in esercizio il 2026-09-22: "USDCHF: TP1 0.82018 gia' superato
+        # dal prezzo 0.82059" su uno SHORT -- dove 0,82018 STA sotto il
+        # prezzo, quindi il parziale era dalla parte giusta.
+        #
+        # E' lo stesso scambio corretto poche ore prima sul bersaglio finale,
+        # lasciato qui.
+        verso_tp1 = _verso_sul_cfd(foto, crt.direzione)
+        dietro = (obiettivo_1 <= prezzo_ingresso if verso_tp1 is Bias.LONG
                   else obiettivo_1 >= prezzo_ingresso)
         if dietro:
             log.info("%s: TP1 %.5f gia' superato dal prezzo %.5f, nessun "
