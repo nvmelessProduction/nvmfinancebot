@@ -600,3 +600,56 @@ class TestIlLottoMinimoSottoSoglia:
         e = self._size(100.0, 1.1450, 1.1470, 87074.0)
         atteso = 0.01 * (1.1470 - 1.1450) / 1.1450 * 1.1450 * 87074.0 / 100.0
         assert e.rischio_percentuale == pytest.approx(atteso, rel=1e-6)
+
+
+class TestIlRangeStaSuUnTimeframeDiRange:
+    """CRT-04: il CRT e' una COPPIA -- range sull'alto, ingresso sul basso.
+
+    `valuta` prendeva le ultime due candele di `tf_trigger` qualunque esso
+    fosse. Con un alert su `M1` il range era un minuto e l'ingresso lo stesso
+    minuto: tre candele dello stesso timeframe, cioe' l'errore che REV-50 ha
+    corretto in SETUP-01 -- "che e' un'altra strategia".
+
+    Misurato il 2026-09-22 su 458 ordini: 317 da `M1min`, 141 da `M5`, ZERO
+    da un timeframe di range valido. Il motivo e' meccanico: sui timeframe di
+    range `INGRESSO_ROMEO` fa armare il setup e l'ordine parte dopo; su `M1`
+    e `M5` non si puo' armare, quindi si cadeva dritti sull'ordine a mercato.
+    """
+
+    def test_i_timeframe_di_solo_ingresso_non_fanno_range(self):
+        from core.parametri import COPPIE_CRT, TF
+        solo_ingresso = set(COPPIE_CRT.values()) - set(COPPIE_CRT)
+        assert solo_ingresso == {TF.MIN1, TF.MIN5}
+
+    def test_su_M1_non_si_cerca_un_CRT_nuovo(self):
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m, TF
+        d = m.valuta(foto(), TF.MIN1)
+        assert d.azione == "NONE"
+        assert "CRT-04" in d.regole_che_bloccano
+        assert "solo INGRESSO" in d.motivo
+
+    def test_su_M5_nemmeno(self):
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m, TF
+        assert "CRT-04" in m.valuta(foto(), TF.MIN5).regole_che_bloccano
+
+    def test_sui_timeframe_di_range_si_opera_come_prima(self):
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, m, TF
+        from core.parametri import COPPIE_CRT
+        assert TF.H4 in COPPIE_CRT
+        assert "CRT-04" not in m.valuta(foto(), TF.H4).regole_che_bloccano
+
+    def test_quegli_alert_servono_all_altra_strada(self):
+        """Non si buttano: sono il secondo tempo di CRT-13."""
+        import inspect
+        from core import strategy
+        corpo = inspect.getsource(strategy)
+        assert "valuta_ingresso_armato(fotografia, tf_trigger)" in corpo

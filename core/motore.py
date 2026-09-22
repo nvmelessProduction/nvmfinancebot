@@ -703,6 +703,40 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
 
     # --- 4. Il CRT (SETUP-00, SETUP-02) -----------------------------------
+    #
+    # Il range deve stare su un timeframe che CRT-04 ammette come range.
+    #
+    # `CRT-04` dice che il CRT e' una COPPIA di timeframe -- range sull'alto,
+    # sweep e ingresso sul basso -- e le sue coppie piu' piccole sono
+    # `15m -> 1m` e `5m -> 15s`. Un range da un minuto non esiste in nessuna
+    # di esse.
+    #
+    # Qui sotto pero' si prendono le ultime due candele di `tf_trigger` e si
+    # cerca il CRT li' dentro, qualunque timeframe sia. Con un alert su `M1`
+    # il range e' un minuto e l'ingresso e' lo stesso minuto: sono tre
+    # candele dello stesso timeframe, cioe' esattamente l'errore che `REV-50`
+    # ha corretto in `SETUP-01` -- *"che e' un'altra strategia"*.
+    #
+    # Non e' teoria, e' tutto cio' che il bot ha fatto. Misurato il
+    # 2026-09-22 su 458 ordini: **317 da `M1min` e 141 da `M5`, zero da un
+    # timeframe di range valido**. Il motivo e' meccanico: su un timeframe di
+    # range `INGRESSO_ROMEO` fa ARMARE il setup e l'ordine parte dopo, dal
+    # ritorno nell'FVG; su `M1` e `M5` non esiste una coppia in cui fare da
+    # range, quindi non si puo' armare e si cadeva dritti sull'ordine a
+    # mercato. La strada diretta sparava solo dove non doveva.
+    #
+    # Quegli alert servono comunque, e li usa `valuta_ingresso_armato`: sono
+    # il secondo tempo di CRT-13, dove un setup gia' armato trova il suo
+    # ingresso. Qui non c'e' un CRT nuovo da cercare.
+    if tf_trigger not in COPPIE_CRT:
+        return _non_operare(
+            foto.strumento, ["CRT-04"] + indipendenti,
+            f"{tf_trigger.value} e' un timeframe di solo INGRESSO: CRT-04 non "
+            "gli da' un range di cui essere la coppia, e un CRT letto su tre "
+            "candele dello stesso timeframe e' un'altra strategia",
+            applicate,
+        )
+
     candele = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
     if len(candele) < 2:
         return _non_operare(
