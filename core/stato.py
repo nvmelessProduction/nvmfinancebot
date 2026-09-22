@@ -400,6 +400,9 @@ class Conto:
     valore_punto: float
     passo_broker: float = 0.01
     spread: float = 0.0
+    # La commissione per lotto in distanza di prezzo. Su un conto RAW e'
+    # quasi tutto il costo dell'operazione, e li' `spread` vale zero.
+    costo_commissione: float = 0.0
     posizioni_aperte_per_strumento: Mapping[str, int] = None  # type: ignore[assignment]
     pnl_giornaliero: float = 0.0
     equity_inizio_giornata: float = 0.0
@@ -472,6 +475,7 @@ def costruisci_fotografia(
         valore_punto=conto.valore_punto,
         passo_broker=conto.passo_broker,
         spread=conto.spread,
+        costo_commissione=conto.costo_commissione,
         posizioni_aperte_per_strumento=dict(conto.posizioni_aperte_per_strumento),
         pnl_giornaliero=conto.pnl_giornaliero,
         equity_inizio_giornata=conto.equity_inizio_giornata,

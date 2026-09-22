@@ -23,6 +23,7 @@ from core.parametri import (
     LIMITE_MENSILE,
     LIMITE_SETTIMANALE,
     LIMITI_PERDITA_SOPRA_EQUITY,
+    RISCHIO_MASSIMO_LOTTO_MINIMO,
     MAX_POSIZIONI_PER_STRUMENTO,
     UNIVERSO,
     distanza_relativa_stop,
@@ -188,6 +189,41 @@ def calcola_size(
     lotti = _arrotonda_per_difetto(lotti_esatti, passo_broker)
 
     if lotti <= 0:
+        # Il lotto minimo del broker, quando la size esatta sta sotto.
+        #
+        # `RISK-03` arrotonda per difetto, e su un conto piccolo quel
+        # difetto e' quasi sempre zero: 0,005742 lotti diventano niente, e
+        # l'operazione non parte. Non e' prudenza, e' il pezzo piu' piccolo
+        # in vendita che e' piu' grosso della fetta che si voleva comprare.
+        #
+        # Sotto `LIMITI_PERDITA_SOPRA_EQUITY` si compra il minimo lo stesso:
+        # e' li' che i limiti di perdita non ci sono e si sta guardando cosa
+        # fa il bot, non proteggendo un capitale. Misurato su 100 EUR, col
+        # lotto minimo e stop tipici il rischio va da 1,4% a 2,6% invece
+        # dell'1% -- una volta e mezza o due, non un ordine di grandezza.
+        #
+        # Con un tetto pero': uno stop molto largo sul lotto minimo puo'
+        # rischiare una fetta enorme, e senza limiti di perdita a fermarlo
+        # basterebbero poche operazioni. Vedi `RISCHIO_MASSIMO_LOTTO_MINIMO`.
+        sotto_soglia = (LIMITI_PERDITA_SOPRA_EQUITY > 0
+                        and equity < LIMITI_PERDITA_SOPRA_EQUITY)
+        if sotto_soglia and passo_broker > 0:
+            rischio_vero = (passo_broker * distanza_cfd * valore_punto) / equity
+            if rischio_vero <= RISCHIO_MASSIMO_LOTTO_MINIMO:
+                return EsitoSize(
+                    passo_broker, rischio_vero, relativa,
+                    f"lotto minimo {passo_broker}: la size esatta era "
+                    f"{lotti_esatti:.6f}, il rischio sale a "
+                    f"{rischio_vero * 100:.2f}% (sotto i "
+                    f"{LIMITI_PERDITA_SOPRA_EQUITY:.0f} EUR non ci sono "
+                    f"limiti di perdita)",
+                )
+            return EsitoSize(
+                None, rischio, relativa,
+                f"RISK-03: col lotto minimo {passo_broker} si rischierebbe "
+                f"il {rischio_vero * 100:.1f}%, oltre il tetto del "
+                f"{RISCHIO_MASSIMO_LOTTO_MINIMO * 100:.0f}%",
+            )
         return EsitoSize(
             None,
             rischio,

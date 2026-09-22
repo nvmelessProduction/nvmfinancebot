@@ -47,7 +47,8 @@ from core.config import impostazioni
 from core.log import diario
 from core.parametri import (
     CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
-    COSTO_SPREAD_MASSIMO_IN_R, MAX_POSIZIONI_PER_STRUMENTO,
+    COSTO_SPREAD_MASSIMO_IN_R,
+    MAX_POSIZIONI_PER_STRUMENTO,
     RISK_05_BLOCCA_DA_SOLA, TF, UNIVERSO,
 )
 
@@ -151,6 +152,11 @@ class Fotografia:
     valore_punto: float = 0.0
     passo_broker: float = 0.01
     spread: float = 0.0
+    # Quanto costa un giro completo su un lotto, gia' convertito in distanza
+    # di prezzo. Su un conto RAW e' quasi tutto il costo e lo spread e' zero;
+    # su un conto standard e' zero e il costo sta nello spread. Lo riempie
+    # chi costruisce la Fotografia, che sa su che conto sta girando.
+    costo_commissione: float = 0.0
     posizioni_aperte_per_strumento: Mapping[str, int] = field(default_factory=dict)
 
     # Limiti
@@ -485,13 +491,34 @@ def _rapporto_giud01(
     return stp.rapporto_giud01(abs(bersaglio_future - bordo), misura)
 
 
-def _spread_troppo_caro(spread: float, prezzo: float,
-                        stop: float) -> Optional[str]:
+def _costo_del_giro(spread: float, costo_commissione: float) -> float:
+    """Quanto costa aprire e chiudere, espresso in DISTANZA DI PREZZO.
+
+    Due voci, e su conti diversi pesano in modo opposto:
+
+    - lo **spread**, che si paga passando da bid ad ask;
+    - la **commissione**, che su un conto RAW e' quasi tutto il costo e non
+      compare nello spread. Li' `bid == ask` e' normale, e leggere uno spread
+      a zero come "gratis" e' l'errore che questa funzione esiste per evitare.
+
+    `costo_commissione` arriva gia' in distanza di prezzo: e' la commissione
+    per lotto divisa per `valore_punto`, cioe' di quanto deve muoversi il
+    prezzo perche' un lotto la ripaghi. E' indipendente dalla size, che e' il
+    motivo per cui si puo' confrontare con una distanza di stop.
+    """
+    return max(spread, 0.0) + max(costo_commissione, 0.0)
+
+
+def _spread_troppo_caro(spread: float, prezzo: float, stop: float,
+                        costo_commissione: float = 0.0) -> Optional[str]:
     """RISK-03 — lo stop sta dentro il costo? Se si', perche'.
 
-    Uno stop piu' vicino di dieci spread non e' uno stop stretto: e' uno stop
-    dentro il rumore che lo spread stesso produce, e l'oscillazione fra bid e
-    ask basta a chiuderlo. Vedi `COSTO_SPREAD_MASSIMO_IN_R` per i numeri.
+    Uno stop piu' vicino di dieci volte il costo del giro non e' uno stop
+    stretto: e' uno stop dentro cio' che l'operazione paga per esistere, e
+    basta l'oscillazione normale a chiuderlo. Vedi `COSTO_SPREAD_MASSIMO_IN_R`.
+
+    Il costo e' spread **piu' commissione**: guardare il solo spread su un
+    conto RAW significa leggere zero e lasciar passare tutto.
 
     Sta in una funzione sola perche' i due ingressi -- quello armato di
     CRT-13 e quello diretto -- devono applicarla uguale. Quando stava scritta
@@ -499,21 +526,17 @@ def _spread_troppo_caro(spread: float, prezzo: float,
     53 posizioni dopo il riavvio, **36 avevano ancora lo stop dentro i dieci
     spread**, tutte passate dalla strada che il controllo non aveva.
     """
-    if spread <= 0:
-        # Qui non si giudica: senza spread non c'e' un costo da misurare.
-        # Che uno spread assente NON debba diventare un ordine lo decide
-        # `fornitore_tradingview`, dove il dato nasce -- insieme alle altre
-        # letture mancanti, che li' fanno gia' astenere. Tenerlo li' lascia
-        # questa una regola pura sul costo, provabile senza un broker.
-        return None
+    costo_giro = _costo_del_giro(spread, costo_commissione)
+    if costo_giro <= 0:
+        return None                      # niente da misurare
     rischio = abs(prezzo - stop)
     if rischio <= 0:
         return None                      # RISK-03 lo ferma altrove, come PRIN-99
-    costo = spread / rischio
+    costo = costo_giro / rischio
     if costo <= COSTO_SPREAD_MASSIMO_IN_R:
         return None
-    return (f"lo spread costerebbe {costo:.2f} R: lo stop dista "
-            f"{rischio / spread:.1f} spread dall'ingresso, il minimo e' "
+    return (f"il giro costerebbe {costo:.2f} R: lo stop dista "
+            f"{rischio / costo_giro:.1f} volte il costo, il minimo e' "
             f"{1 / COSTO_SPREAD_MASSIMO_IN_R:.0f}")
 
 
@@ -548,7 +571,8 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
     # Sta qui e non all'armamento perche' qui il prezzo d'ingresso esiste:
     # e' lo stesso motivo per cui ci sta GEST-01. La regola sta in
     # `_spread_troppo_caro`, condivisa con la strada diretta.
-    troppo_caro = _spread_troppo_caro(foto.spread, ingresso.prezzo, ingresso.stop)
+    troppo_caro = _spread_troppo_caro(foto.spread, ingresso.prezzo, ingresso.stop,
+                                       foto.costo_commissione)
     if troppo_caro:
         return _non_operare(
             foto.strumento, ["RISK-03"], troppo_caro,
@@ -842,7 +866,8 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # La stessa regola dell'ingresso armato, sulla strada diretta. Quando
     # stava scritta solo la', questa apriva lo stesso: e' da qui che passano
     # gli ordini senza CRT-13, cioe' la maggioranza.
-    troppo_caro = _spread_troppo_caro(foto.spread, prezzo_ingresso, stop)
+    troppo_caro = _spread_troppo_caro(foto.spread, prezzo_ingresso, stop,
+                                       foto.costo_commissione)
     if troppo_caro:
         return _non_operare(
             foto.strumento, ["RISK-03"], troppo_caro, applicate,

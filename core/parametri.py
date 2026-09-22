@@ -364,6 +364,31 @@ LIMITE_MENSILE: Final[float] = 0.10
 # A 0 i limiti valgono sempre, che e' il comportamento prudente di partenza.
 LIMITI_PERDITA_SOPRA_EQUITY: Final[float] = 500.0
 
+# Sotto quella soglia si compra il LOTTO MINIMO del broker anche quando la
+# size calcolata all'1% starebbe sotto -- ma non oltre questo rischio.
+#
+# Perche' serve un tetto. Il lotto minimo e' indivisibile: su un conto da
+# cento euro 0,01 lotti con stop tipici rischiano fra l'1,4% e il 2,6%, il
+# che va bene. Ma con uno stop molto largo la stessa size rischia una fetta
+# enorme, e sotto i 500 EUR non c'e' nessun limite di perdita a fermare la
+# serie. Questo e' l'unico freno che resta li' sotto, e vale per operazione.
+RISCHIO_MASSIMO_LOTTO_MINIMO: Final[float] = 0.05
+
+# Quanto costa un giro completo su un lotto, in valuta del conto.
+#
+# Su un conto RAW il broker non mette il costo nello spread: lo prende come
+# commissione. Li' `bid == ask` e' normale -- misurato il 2026-09-22, 64
+# volte su EURUSD e USDCHF -- e uno spread a zero NON vuol dire "gratis".
+# Vuol dire che il costo sta tutto nell'altra voce.
+#
+# Il numero e' MISURATO, non stimato: 17 posizioni, 8,06 lotti, il saldo e'
+# sceso di 47,81 EUR mentre il movimento di prezzo ne spiegava 15,11. La
+# differenza, 32,70 su 8,06 lotti, fa 4,06 per lotto.
+#
+# Va rimisurato se si cambia broker o tipo di conto: `audit_strutturale.py`
+# confronta il saldo col P&L lordo e la differenza e' questa.
+COMMISSIONE_PER_LOTTO: Final[float] = 4.06
+
 # RISK-03: la size si arrotonda sempre per difetto al passo del broker.
 # Se l'arrotondamento produce zero, non si opera.
 ARROTONDAMENTO_SIZE_PER_DIFETTO: Final[bool] = True

@@ -69,10 +69,14 @@ class TestIlTettoSullaLeva:
         assert grande.lotti > piccolo.lotti
 
     def test_se_il_tetto_non_basta_per_un_passo_non_si_apre(self):
-        """Meglio nessuna posizione che una fuori scala."""
+        """Meglio nessuna posizione che una fuori scala.
+
+        Con un euro di equity anche il lotto minimo rischia migliaia di volte
+        il conto, quindi lo ferma il tetto sul rischio del lotto minimo.
+        """
         e = self._size(equity=1.0, prezzo=0.71194, stop=0.71210)
         assert e.lotti is None
-        assert "passo del broker" in e.motivo or "zero" in e.motivo
+        assert "oltre il tetto" in e.motivo
 
 
 class TestPerCheUnTp1SbagliatoUccideSubito:
@@ -128,7 +132,7 @@ class TestLaGuardiaValeSuEntrambeLeStrade:
         # Stop a due spread: costa 0,50 R.
         motivo = _spread_troppo_caro(spread=0.12, prezzo=4343.64, stop=4343.88)
         assert motivo is not None
-        assert "0.50 R" in motivo and "2.0 spread" in motivo
+        assert "0.50 R" in motivo and "2.0 volte il costo" in motivo
 
     def test_uno_stop_largo_passa(self):
         from core.motore import _spread_troppo_caro
@@ -153,7 +157,7 @@ class TestLaGuardiaValeSuEntrambeLeStrade:
         corpo = inspect.getsource(motore._spread_troppo_caro)
         fuori = [r.strip() for r in sorgente.splitlines()
                  if "COSTO_SPREAD_MASSIMO_IN_R" in r and r not in corpo]
-        assert fuori == ["COSTO_SPREAD_MASSIMO_IN_R, MAX_POSIZIONI_PER_STRUMENTO,"], fuori
+        assert fuori == ["COSTO_SPREAD_MASSIMO_IN_R,"], fuori
 
 
 class TestIlPnlIlleggibileNonVale_Zero:
@@ -399,12 +403,27 @@ class TestSenzaSpreadNonSiApre:
         from core.motore import _spread_troppo_caro
         assert _spread_troppo_caro(spread=0.0, prezzo=1.1, stop=1.0999) is None
 
-    def test_il_fornitore_si_astiene(self):
+    def test_uno_spread_a_zero_NON_fa_astenere(self):
+        """Su un conto RAW `bid == ask` e' la norma, non un guasto.
+
+        Qui c'era un'astensione, ed era sbagliata: misurato il 2026-09-22,
+        scattava 64 volte in mezz'ora su EURUSD e USDCHF e spegneva due
+        strumenti su sei. Il costo su quei conti sta nella commissione.
+        """
         import inspect
         from core import fornitore_tradingview as forn
         corpo = inspect.getsource(forn)
-        assert 'if tick["ask"] - tick["bid"] <= 0:' in corpo
-        assert "non si opera al buio" in corpo
+        assert 'if tick["ask"] - tick["bid"] <= 0:' not in corpo
+        assert "costo_commissione=" in corpo
+
+    def test_la_commissione_entra_nel_costo_del_giro(self):
+        from core.motore import _costo_del_giro
+        # Conto RAW: spread zero, ma il giro costa lo stesso.
+        assert _costo_del_giro(0.0, 0.00005) == pytest.approx(0.00005)
+        # Conto standard: spread pieno, nessuna commissione.
+        assert _costo_del_giro(0.00008, 0.0) == pytest.approx(0.00008)
+        # E si sommano, perche' si pagano tutti e due.
+        assert _costo_del_giro(0.00005, 0.00005) == pytest.approx(0.00010)
 
 
 class TestIlPareggioNonPuoStareOltreIlPrezzo:
@@ -536,3 +555,48 @@ class TestISottoSogliaNonHaLimitiDiPerdita:
         import inspect
         from core import motore
         assert inspect.getsource(motore).count("equity_corrente=foto.equity") == 2
+
+
+class TestIlLottoMinimoSottoSoglia:
+    """Su un conto piccolo la size esatta arrotonda a zero e non si opera.
+
+    `RISK-03` arrotonda per difetto, e a cento euro 0,005742 lotti diventano
+    niente. Non e' prudenza: e' il pezzo piu' piccolo in vendita che e' piu'
+    grosso della fetta che si voleva comprare. Sotto la soglia dei limiti di
+    perdita si compra il minimo lo stesso, entro un tetto sul rischio.
+    """
+
+    def _size(self, equity, prezzo, stop, vp):
+        from core.rischio import calcola_size
+        return calcola_size(equity=equity, strumento="EURUSD",
+                            chiusura_n2_future=prezzo, stop_future=stop,
+                            prezzo_cfd=prezzo, valore_punto=vp,
+                            passo_broker=0.01, posizioni_aperte_per_strumento={})
+
+    def test_sotto_soglia_si_compra_il_minimo(self):
+        e = self._size(100.0, 1.1450, 1.1470, 87074.0)
+        assert e.lotti == 0.01
+        assert "lotto minimo" in e.motivo
+        # E il rischio VERO viene detto, non nascosto.
+        assert e.rischio_percentuale > 0.01, "e' salito sopra l'1%"
+        assert "1.74%" in e.motivo
+
+    def test_uno_stop_troppo_largo_resta_rifiutato(self):
+        """Il tetto e' l'unico freno che resta sotto i 500 euro."""
+        from core.parametri import RISCHIO_MASSIMO_LOTTO_MINIMO
+        e = self._size(100.0, 4330.0, 4360.0, 87.0)     # oro, stop 30 punti
+        assert e.lotti is None
+        assert "oltre il tetto" in e.motivo
+        assert RISCHIO_MASSIMO_LOTTO_MINIMO == pytest.approx(0.05)
+
+    def test_sopra_soglia_niente_e_cambiato(self):
+        """A conto grande la size si calcola come sempre, per difetto."""
+        e = self._size(1000.0, 1.1450, 1.1470, 87074.0)
+        assert e.lotti == 0.05
+        assert e.motivo == "size calcolata"
+
+    def test_il_rischio_dichiarato_e_quello_vero(self):
+        """Non si dichiara l'1% mentre se ne rischia il doppio."""
+        e = self._size(100.0, 1.1450, 1.1470, 87074.0)
+        atteso = 0.01 * (1.1470 - 1.1450) / 1.1450 * 1.1450 * 87074.0 / 100.0
+        assert e.rischio_percentuale == pytest.approx(atteso, rel=1e-6)

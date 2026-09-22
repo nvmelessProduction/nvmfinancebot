@@ -56,7 +56,9 @@ from core.log import diario
 from core.models import AlertIn
 from core.motore import Fotografia
 from core.config import impostazioni
-from core.parametri import COMPAGNE_SMT, LOOKBACK_ANNI, TF, UNIVERSO
+from core.parametri import (
+    COMMISSIONE_PER_LOTTO, COMPAGNE_SMT, LOOKBACK_ANNI, TF, UNIVERSO,
+)
 from core.simboli import (
     DXY_FUTURE,
     cfd_di,
@@ -375,16 +377,15 @@ class FornitoreTradingView:
             log.warning("nessuna quotazione per %s: %s", simbolo, messaggio)
             return None
 
-        # Uno spread a zero non vuol dire "gratis": vuol dire che bid e ask
-        # coincidono, cioe' che la quotazione non dice quanto costa operare.
-        # Senza quel numero `RISK-03` non puo' misurare se lo stop stia dentro
-        # il costo, e il 2026-09-22 ne e' uscito un SELL su USDCHF con lo stop
-        # a 0,9 spread dall'ingresso che la guardia non ha potuto fermare.
-        # Succedeva spesso: 8 posizioni su 66 avevano `spread_ingresso` a zero.
-        if tick["ask"] - tick["bid"] <= 0:
-            log.warning("spread non leggibile su %s (bid %s, ask %s): non si "
-                        "opera al buio", simbolo, tick["bid"], tick["ask"])
-            return None
+        # Uno spread a zero NON e' un dato mancante: su un conto RAW e' la
+        # norma. Il broker non mette il costo nello spread, lo prende come
+        # commissione, e `bid == ask` capita di continuo -- misurato il
+        # 2026-09-22, 64 volte su EURUSD e USDCHF in mezz'ora.
+        #
+        # Qui c'era un'astensione, ed era sbagliata: bloccava l'operativita'
+        # su due strumenti su sei scambiando la normalita' per un guasto. Il
+        # costo esiste lo stesso e va misurato dov'e' davvero, cioe' nella
+        # commissione: vedi `COMMISSIONE_PER_LOTTO` e `_spread_troppo_caro`.
 
         ok_conto, dati, messaggio = broker.info_conto()
         if not ok_conto or dati is None:
@@ -418,6 +419,14 @@ class FornitoreTradingView:
             # spread, e CTX-03 accetta esplicitamente di non filtrare su questo.
             prezzo_cfd=(tick["bid"] + tick["ask"]) / 2,
             valore_punto=specifiche["valore_punto"],
+            # La commissione per lotto, portata in distanza di prezzo. Su un
+            # conto RAW e' quasi tutto il costo dell'operazione e lo spread
+            # sopra vale zero: senza questa riga `RISK-03` leggerebbe "gratis"
+            # e lascerebbe passare stop che stanno dentro il costo.
+            costo_commissione=(
+                COMMISSIONE_PER_LOTTO / specifiche["valore_punto"]
+                if specifiche["valore_punto"] > 0 else 0.0
+            ),
             passo_broker=specifiche["volume_step"],
             spread=tick["ask"] - tick["bid"],
             posizioni_aperte_per_strumento=posizioni,
