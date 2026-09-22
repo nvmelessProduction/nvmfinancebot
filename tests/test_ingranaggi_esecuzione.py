@@ -653,3 +653,64 @@ class TestIlRangeStaSuUnTimeframeDiRange:
         from core import strategy
         corpo = inspect.getsource(strategy)
         assert "valuta_ingresso_armato(fotografia, tf_trigger)" in corpo
+
+
+class TestLAnalisiArrivaSuTelegram:
+    """Il responso delle conferme si fermava prima del messaggio.
+
+    Il motore lo calcolava, lo metteva nella `Decisione`, e li' moriva: la
+    traduzione verso `Decision` non lo copiava. Era lo stato esatto in cui si
+    trovava `DEF-33` -- un dato calcolato che non arriva a nessuno.
+
+    E' il quadro da cui si decide quali conferme valga la pena riaccendere:
+    un ordine con sette conferme su otto e uno con tre sono due fatti molto
+    diversi, e finche' il messaggio diceva solo "aperto" erano identici.
+    """
+
+    def _messaggio(self, responso, direzione="LONG"):
+        from core.notifier import messaggio_decisione
+        from core.models import AlertIn, Decision
+        a = AlertIn(simbolo="GC1!", tf="M15", chiusura_candela_utc="2026-09-22T15:45:00Z",
+                    apertura=4322.0, massimo=4323.0, minimo=4320.44,
+                    chiusura=4323.0, segreto="x")
+        d = Decision(action="BUY", symbol="XAUUSD", volume=0.01, sl=4320.44,
+                     tp=4347.38, direzione=direzione, responso_romeo=responso)
+        return messaggio_decisione(a, d, "auto")
+
+    def test_il_campo_esiste_nel_modello(self):
+        from core.models import Decision
+        assert "responso_romeo" in Decision.model_fields
+
+    def test_la_traduzione_lo_copia(self):
+        import inspect
+        from core import strategy
+        assert "responso_romeo=dict(decisione.responso_romeo" in inspect.getsource(strategy)
+
+    def test_il_messaggio_separa_avute_mancate_e_mute(self):
+        testo = self._messaggio({"CRT-11": True, "CRT-15": False, "CRT-12": None})
+        assert "la spinta ha cambiato verso" in testo            # avuta
+        assert "fuori dagli orari buoni" in testo                # mancata
+        assert "non c'erano dati" in testo                       # muta
+        assert "1 segnali a favore su 3" in testo
+
+    def test_niente_sigle_e_niente_gergo(self):
+        """Deve capirlo chiunque, non chi ha scritto il bot."""
+        testo = self._messaggio({c: True for c in
+                                 ("CRT-06", "CRT-10", "CRT-11", "CRT-12",
+                                  "CRT-15", "CRT-17", "CRT-18", "CRT-20")})
+        for sigla in ("CRT-", "CISD", "SMT", "purge", "range", "N2", "sweep"):
+            assert sigla not in testo, f"gergo nel messaggio: {sigla}"
+
+    def test_dice_anche_il_disegno_di_fondo(self):
+        """Non solo l'elenco: prima il perche', in una frase.
+
+        Chi legge deve capire il disegno che ha fatto scattare tutto, non
+        solo la lista delle spunte.
+        """
+        assert "chi vendeva si è arreso" in self._messaggio({"CRT-11": True})
+        assert "chi comprava si è arreso" in self._messaggio(
+            {"CRT-11": True}, direzione="SHORT")
+
+    def test_senza_responso_il_messaggio_resta_come_prima(self):
+        testo = self._messaggio({})
+        assert "l'analisi" not in testo

@@ -143,6 +143,16 @@ class Decision(BaseModel):
     rischio: Optional[float] = None
     # 07_casi.md §3.1: si registra e non decide (GIUD-01, PA-44).
     rapporto_giud01: Optional[float] = None
+    # L'ANALISI che ha prodotto l'ordine, per chi legge il messaggio.
+    #
+    # `responso_romeo` dice cosa pensava ciascuna conferma -- True l'aveva,
+    # False le mancava, None non valutabile -- **anche quando non blocca**.
+    # E' il quadro su cui si capisce quali conferme valgano la pena: senza,
+    # si vede un ordine e non si sa da cosa sia nato. Il motore lo calcolava
+    # gia' e si fermava qui, che e' lo stato in cui si trovava `DEF-33`.
+    responso_romeo: dict[str, Optional[bool]] = Field(default_factory=dict)
+    # Il verso del CRT sul FUTURE, che su 6J e 6S e' l'opposto dell'ordine.
+    direzione: Optional[str] = None
 
 
 class OrderResult(BaseModel):

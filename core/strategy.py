@@ -84,6 +84,11 @@ def traduci(decisione: Decisione) -> Decision:
         spread=decisione.spread,
         rischio=decisione.rischio,
         rapporto_giud01=decisione.rapporto_giud01,
+        # L'analisi va fino in fondo: e' cio' che si legge su Telegram per
+        # capire da cosa e' nato l'ordine, e quali conferme valga la pena
+        # riaccendere. Il motore la calcolava gia' e si fermava qui.
+        responso_romeo=dict(decisione.responso_romeo or {}),
+        direzione=decisione.direzione.value if decisione.direzione else None,
     )
 
 

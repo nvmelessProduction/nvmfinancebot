@@ -224,9 +224,77 @@ def messaggio_decisione(
         if rischio > 0:
             righe.append(f"rapporto <b>{abs(decisione.tp - rif) / rischio:.1f}</b> a 1")
 
+    righe.extend(_analisi(decisione))
+
     if dettaglio:
         righe.append(f"<i>{dettaglio}</i>")
     return "\n".join(righe)
+
+
+# Cosa dice ciascuna conferma, quando c'e' e quando manca, in italiano
+# corrente. Niente sigle e niente gergo: chi legge sul telefono deve capire
+# senza sapere cosa siano un CISD o una divergenza SMT. Il codice della
+# regola resta in archivio e nel diario, che e' dove si va a cercarlo.
+_IN_PAROLE: dict[str, tuple[str, str]] = {
+    "CRT-06": ("gli altri tempi puntano dalla stessa parte",
+               "gli altri tempi puntano altrove"),
+    "CRT-10": ("il prezzo ha ripulito tutti e due i lati",
+               "ripulendo i due lati, la spinta va dall'altra parte"),
+    "CRT-11": ("la spinta ha cambiato verso",
+               "la spinta non ha ancora cambiato verso"),
+    "CRT-12": ("le coppie simili non l'hanno seguito: è un segno di inversione",
+               "le coppie simili si muovono uguali: nessun segno di inversione"),
+    "CRT-15": ("siamo in uno degli orari buoni della giornata",
+               "siamo fuori dagli orari buoni della giornata"),
+    "CRT-17": ("il prezzo si tiene dalla parte giusta del movimento",
+               "il prezzo non si tiene dalla parte giusta del movimento"),
+    "CRT-18": ("ha chiuso dalla parte giusta della coda",
+               "ha chiuso dalla parte sbagliata della coda"),
+    "CRT-20": ("la candela ha code lunghe: il prezzo è stato respinto",
+               "la candela ha code corte: il prezzo non è stato respinto"),
+}
+
+
+def _analisi(decisione: Decision) -> list[str]:
+    """Cosa ha visto il motore, conferma per conferma.
+
+    Il responso c'e' **anche per le conferme che non bloccano**: quello e' il
+    punto. Un ordine partito con cinque conferme su otto mancanti e uno
+    partito con sette su otto sono due fatti molto diversi, e finche' il
+    messaggio diceva solo "aperto" erano indistinguibili.
+
+    E' il quadro da cui si decide quali conferme valga la pena riaccendere:
+    se una manca su ogni operazione che poi perde, si e' trovata; se manca
+    indifferentemente su vincenti e perdenti, non serve.
+    """
+    responso = decisione.responso_romeo or {}
+    if not responso:
+        return []
+
+    righe = ["", "<b>Perché l'ha aperta</b>"]
+
+    # Prima il motivo di fondo, cioe' il disegno che ha fatto scattare tutto,
+    # detto come lo direbbe una persona.
+    if decisione.direzione == "LONG":
+        righe.append("Il prezzo è sceso sotto il minimo di prima e poi è "
+                     "risalito: chi vendeva si è arreso.")
+    elif decisione.direzione == "SHORT":
+        righe.append("Il prezzo è salito sopra il massimo di prima e poi è "
+                     "ricaduto: chi comprava si è arreso.")
+
+    a_favore = [k for k, v in responso.items() if v is True]
+    contro = [k for k, v in responso.items() if v is False]
+    muto = [k for k, v in responso.items() if v is None]
+
+    for codice in sorted(a_favore):
+        righe.append(f"✅ {_IN_PAROLE.get(codice, (codice, codice))[0]}")
+    for codice in sorted(contro):
+        righe.append(f"❌ {_IN_PAROLE.get(codice, (codice, codice))[1]}")
+    if muto:
+        righe.append(f"❔ su {len(muto)} cose non c'erano dati per pronunciarsi")
+
+    righe.append(f"<i>{len(a_favore)} segnali a favore su {len(responso)}</i>")
+    return righe
 
 
 def messaggio_esito(simbolo: str, direzione: str, colpito: str,
