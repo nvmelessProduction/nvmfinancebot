@@ -75,7 +75,14 @@ class Caso:
         return self.direzione.upper() == "SELL"
 
     def nozionale_usd(self) -> Optional[float]:
-        """Il controvalore dell'ordine, in dollari."""
+        """Il controvalore dell'ordine, in DOLLARI.
+
+        Attenzione all'unita': il conto e' in euro, e confrontare un nozionale
+        in dollari con un'equity in euro sovrastima la leva del cambio --
+        circa il 15%. E' un errore che questo file ha fatto davvero: segnalava
+        "23x l'equity" su posizioni che `core/rischio.py` aveva tagliato
+        esattamente a 20x. Chi confronta deve passare da `nozionale_in_conto`.
+        """
         base = self.simbolo.rstrip("+").upper()
         if base.startswith("XAU"):
             return self.volume * 100.0 * self.ingresso
@@ -84,6 +91,19 @@ class Caso:
         if base.endswith("USD"):            # EURUSD, GBPUSD, AUDUSD
             return self.volume * 100_000.0 * self.ingresso
         return None
+
+    def nozionale_in_conto(self, eurusd: float) -> Optional[float]:
+        """Lo stesso controvalore nella valuta del conto, per il confronto.
+
+        `core/rischio.py` calcola `lotti x valore_punto x prezzo`, e
+        `valore_punto` arriva da MT5 gia' nella valuta del conto: il suo
+        nozionale e' in euro. Qui si arriva allo stesso numero dividendo per
+        il cambio, senza dover aprire una seconda connessione al broker.
+        """
+        in_dollari = self.nozionale_usd()
+        if in_dollari is None or eurusd <= 0:
+            return None
+        return in_dollari / eurusd
 
 
 @dataclass
@@ -155,13 +175,13 @@ def _stop_fuori_dallo_spread(c: Caso) -> Optional[str]:
     return None
 
 
-def _leva_sotto_il_tetto(c: Caso, equity: float) -> Optional[str]:
-    nozionale = c.nozionale_usd()
+def _leva_sotto_il_tetto(c: Caso, equity: float, eurusd: float) -> Optional[str]:
+    nozionale = c.nozionale_in_conto(eurusd)
     if nozionale is None:
         return None
     volte = nozionale / equity
     if volte > LEVA_MASSIMA * 1.02:      # 2% di tolleranza sull'equity stimata
-        return f"nozionale {volte:.0f}x l'equity, il tetto e' {LEVA_MASSIMA:.0f}x"
+        return f"nozionale {volte:.1f}x l'equity, il tetto e' {LEVA_MASSIMA:.0f}x"
     return None
 
 
@@ -227,7 +247,21 @@ def carica(db: str, da: Optional[str]) -> list[Caso]:
 # Esecuzione e resoconto
 # ===========================================================================
 
-def invarianti(equity: float) -> list[Invariante]:
+def cambio_eurusd(db: str, difetto: float = 1.15) -> float:
+    """Il cambio piu' recente che l'archivio conosce, per la conversione.
+
+    Si legge dalle posizioni su `EURUSD`, che sono prezzi davvero scambiati
+    su questo conto. Se non ce ne sono si usa un valore di ripiego, e allora
+    la leva va letta come un ordine di grandezza.
+    """
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    r = conn.execute(
+        "SELECT prezzo_ingresso FROM posizione "
+        "WHERE simbolo LIKE 'EURUSD%' ORDER BY id DESC LIMIT 1").fetchone()
+    return float(r[0]) if r else difetto
+
+
+def invarianti(equity: float, eurusd: float) -> list[Invariante]:
     return [
         Invariante(
             "EXE-01", "lo stop sta dal lato giusto dell'ingresso",
@@ -251,7 +285,7 @@ def invarianti(equity: float) -> list[Invariante]:
             "EXE-05", f"il nozionale resta entro {LEVA_MASSIMA:.0f}x l'equity",
             "RISK-03 dimensiona sul rischio: uno stop minuscolo produce una "
             "size enorme",
-            lambda c: _leva_sotto_il_tetto(c, equity)),
+            lambda c: _leva_sotto_il_tetto(c, equity, eurusd)),
         Invariante(
             "EXE-06", "il verso dell'ordine e' quello deciso",
             "la conversione future -> CFD ha gia' girato ordini su USDCHF e USDJPY",
@@ -259,8 +293,8 @@ def invarianti(equity: float) -> list[Invariante]:
     ]
 
 
-def esegui(casi: list[Caso], equity: float) -> list[Invariante]:
-    prove = invarianti(equity)
+def esegui(casi: list[Caso], equity: float, eurusd: float) -> list[Invariante]:
+    prove = invarianti(equity, eurusd)
     for caso in casi:
         for inv in prove:
             esito = inv.prova(caso)
@@ -336,7 +370,9 @@ def main() -> int:
     if not casi:
         print("nessuna posizione nell'intervallo richiesto")
         return 0
-    return resoconto(casi, esegui(casi, a.equity))
+    eurusd = cambio_eurusd(a.db)
+    print(f"cambio EURUSD usato per la leva: {eurusd:.5f}")
+    return resoconto(casi, esegui(casi, a.equity, eurusd))
 
 
 if __name__ == "__main__":

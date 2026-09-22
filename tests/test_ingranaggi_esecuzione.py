@@ -113,3 +113,44 @@ class TestPerCheUnTp1SbagliatoUccideSubito:
         be = livello_break_even(4343.64, Bias.SHORT, spread=0.12)
         assert be == pytest.approx(4343.40)
         assert abs(4343.64 - be) / 0.12 == pytest.approx(2.0)
+
+
+class TestLaGuardiaValeSuEntrambeLeStrade:
+    """Il controllo stava solo sull'ingresso armato, e l'altro apriva uguale.
+
+    Misurato il 2026-09-22 sulle 53 posizioni dopo il riavvio: 36 avevano
+    ancora lo stop dentro i dieci spread. Tutte passate da `valuta`, che il
+    controllo non ce l'aveva.
+    """
+
+    def test_uno_stop_dentro_il_costo_viene_riconosciuto(self):
+        from core.motore import _spread_troppo_caro
+        # Stop a due spread: costa 0,50 R.
+        motivo = _spread_troppo_caro(spread=0.12, prezzo=4343.64, stop=4343.88)
+        assert motivo is not None
+        assert "0.50 R" in motivo and "2.0 spread" in motivo
+
+    def test_uno_stop_largo_passa(self):
+        from core.motore import _spread_troppo_caro
+        assert _spread_troppo_caro(spread=0.12, prezzo=4343.64, stop=4345.64) is None
+
+    def test_senza_spread_non_si_giudica(self):
+        from core.motore import _spread_troppo_caro
+        assert _spread_troppo_caro(spread=0.0, prezzo=1.1, stop=1.09) is None
+
+    def test_rischio_nullo_lo_ferma_RISK_03_altrove(self):
+        from core.motore import _spread_troppo_caro
+        assert _spread_troppo_caro(spread=0.0001, prezzo=1.1, stop=1.1) is None
+
+    def test_le_due_strade_chiamano_la_stessa_funzione(self):
+        """Due copie della stessa regola finiscono per divergere."""
+        import inspect
+        from core import motore
+        sorgente = inspect.getsource(motore)
+        assert sorgente.count("_spread_troppo_caro(") >= 3   # def + due usi
+        # E la soglia non e' ricopiata altrove: ogni riga che la nomina sta
+        # dentro la funzione, o e' la riga che la importa.
+        corpo = inspect.getsource(motore._spread_troppo_caro)
+        fuori = [r.strip() for r in sorgente.splitlines()
+                 if "COSTO_SPREAD_MASSIMO_IN_R" in r and r not in corpo]
+        assert fuori == ["COSTO_SPREAD_MASSIMO_IN_R, MAX_POSIZIONI_PER_STRUMENTO,"], fuori

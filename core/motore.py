@@ -485,6 +485,33 @@ def _rapporto_giud01(
     return stp.rapporto_giud01(abs(bersaglio_future - bordo), misura)
 
 
+def _spread_troppo_caro(spread: float, prezzo: float,
+                        stop: float) -> Optional[str]:
+    """RISK-03 — lo stop sta dentro il costo? Se si', perche'.
+
+    Uno stop piu' vicino di dieci spread non e' uno stop stretto: e' uno stop
+    dentro il rumore che lo spread stesso produce, e l'oscillazione fra bid e
+    ask basta a chiuderlo. Vedi `COSTO_SPREAD_MASSIMO_IN_R` per i numeri.
+
+    Sta in una funzione sola perche' i due ingressi -- quello armato di
+    CRT-13 e quello diretto -- devono applicarla uguale. Quando stava scritta
+    solo nel primo, il secondo apriva lo stesso: misurato il 2026-09-22 sulle
+    53 posizioni dopo il riavvio, **36 avevano ancora lo stop dentro i dieci
+    spread**, tutte passate dalla strada che il controllo non aveva.
+    """
+    if spread <= 0:
+        return None
+    rischio = abs(prezzo - stop)
+    if rischio <= 0:
+        return None                      # RISK-03 lo ferma altrove, come PRIN-99
+    costo = spread / rischio
+    if costo <= COSTO_SPREAD_MASSIMO_IN_R:
+        return None
+    return (f"lo spread costerebbe {costo:.2f} R: lo stop dista "
+            f"{rischio / spread:.1f} spread dall'ingresso, il minimo e' "
+            f"{1 / COSTO_SPREAD_MASSIMO_IN_R:.0f}")
+
+
 def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisione]:
     """CRT-13, secondo tempo: il ritorno nell'FVG fa partire l'ordine.
 
@@ -513,24 +540,16 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
 
     # --- Lo stop deve stare FUORI dal costo (RISK-03) ---------------------
     #
-    # Uno stop piu' vicino di dieci spread non e' uno stop stretto: e' uno
-    # stop dentro il rumore che lo spread stesso produce. Vedi
-    # `COSTO_SPREAD_MASSIMO_IN_R` per i numeri misurati.
-    #
     # Sta qui e non all'armamento perche' qui il prezzo d'ingresso esiste:
-    # e' lo stesso motivo per cui ci sta GEST-01.
-    rischio_ingresso = abs(ingresso.prezzo - ingresso.stop)
-    if foto.spread > 0 and rischio_ingresso > 0:
-        costo = foto.spread / rischio_ingresso
-        if costo > COSTO_SPREAD_MASSIMO_IN_R:
-            return _non_operare(
-                foto.strumento, ["RISK-03"],
-                f"lo spread costerebbe {costo:.2f} R: lo stop dista "
-                f"{rischio_ingresso / foto.spread:.1f} spread dall'ingresso, "
-                f"il minimo e' {1 / COSTO_SPREAD_MASSIMO_IN_R:.0f}",
-                applicate, direzione=ingresso.direzione, tf_crt=tf_trigger,
-                livello_stop=ingresso.stop, tp1=ingresso.bersaglio_1,
-            )
+    # e' lo stesso motivo per cui ci sta GEST-01. La regola sta in
+    # `_spread_troppo_caro`, condivisa con la strada diretta.
+    troppo_caro = _spread_troppo_caro(foto.spread, ingresso.prezzo, ingresso.stop)
+    if troppo_caro:
+        return _non_operare(
+            foto.strumento, ["RISK-03"], troppo_caro,
+            applicate, direzione=ingresso.direzione, tf_crt=tf_trigger,
+            livello_stop=ingresso.stop, tp1=ingresso.bersaglio_1,
+        )
 
     # --- I controlli di rischio, rifatti adesso ---------------------------
     limiti = risk.limiti_raggiunti(
@@ -810,6 +829,19 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
                      "parziale (GEST-04 non si applica)",
                      foto.strumento, obiettivo_1, prezzo_ingresso)
             obiettivo_1 = None
+
+    # --- 4quater. Lo stop deve stare FUORI dal costo (RISK-03) -----------
+    #
+    # La stessa regola dell'ingresso armato, sulla strada diretta. Quando
+    # stava scritta solo la', questa apriva lo stesso: e' da qui che passano
+    # gli ordini senza CRT-13, cioe' la maggioranza.
+    troppo_caro = _spread_troppo_caro(foto.spread, prezzo_ingresso, stop)
+    if troppo_caro:
+        return _non_operare(
+            foto.strumento, ["RISK-03"], troppo_caro, applicate,
+            direzione=crt.direzione, tf_crt=crt.tf,
+            livello_stop=stop, tp1=obiettivo_1, rapporto_su_tp1=rapporto,
+        )
 
     # --- 4ter. Il filtro DXY, DOPO i livelli (SETUP-19, RISK-05) ---------
     #
