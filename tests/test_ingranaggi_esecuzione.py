@@ -442,3 +442,56 @@ class TestIlPareggioNonPuoStareOltreIlPrezzo:
         # E il confronto usa il prezzo di USCITA, non il bid o l'ask a caso:
         # una posizione lunga si chiude in bid, una corta in ask.
         assert "prezzo_di_uscita(direzione, tick" in corpo
+
+
+class TestIlPareggioRecuperaLeCommissioni:
+    """GEST-04 vuole un pareggio REALE, cioe' al netto dei costi.
+
+    PA-46 aveva risolto la commissione moltiplicando lo spread per due, e il
+    documento di decisione lo ammette: *"il fattore 2 e' mio"*. Nel codice la
+    commissione non entrava in nessun calcolo.
+
+    Misurato il 2026-09-22 su 17 posizioni e 8,06 lotti: il saldo e' sceso di
+    47,81 EUR mentre il movimento di prezzo ne spiegava 15,11. Gli altri
+    32,70 erano costi -- 4,06 EUR per lotto, piu' del doppio della perdita
+    sul prezzo.
+    """
+
+    def test_senza_costi_si_comporta_come_prima(self):
+        from core.gestione import livello_break_even
+        from core.definizioni import Bias
+        assert livello_break_even(1.1000, Bias.LONG, spread=0.0001) == pytest.approx(1.1002)
+
+    def test_il_costo_alza_il_buffer_quando_lo_spread_non_basta(self):
+        """USDJPY: spread piccolo in proporzione alla commissione."""
+        from core.gestione import livello_break_even
+        from core.definizioni import Bias
+        # Due spread valgono 0,004; il costo da recuperare e' 0,010.
+        be = livello_break_even(157.400, Bias.LONG, spread=0.002, costo_in_prezzo=0.010)
+        assert be == pytest.approx(157.410), "vince il costo, non lo spread"
+
+    def test_lo_spread_vince_quando_e_lui_il_piu_grande(self):
+        """Oro: due spread coprono la commissione e avanzano."""
+        from core.gestione import livello_break_even
+        from core.definizioni import Bias
+        be = livello_break_even(4330.0, Bias.SHORT, spread=0.12, costo_in_prezzo=0.05)
+        assert be == pytest.approx(4329.76), "due spread, che qui bastano"
+
+    def test_il_costo_si_legge_dal_broker_non_si_stima(self):
+        import inspect
+        from core import broker, sentinella
+        assert hasattr(broker, "costi_posizione")
+        corpo = inspect.getsource(broker.costi_posizione)
+        assert "history_deals_get(position=" in corpo
+        assert "commission" in corpo and "swap" in corpo
+        # E la sentinella lo converte in distanza di prezzo per QUELLA size.
+        s = inspect.getsource(sentinella)
+        assert "costi / (valore_punto * volume_attuale)" in s
+
+    def test_se_il_broker_tace_non_si_peggiora(self):
+        """Senza il dato si resta al solo multiplo dello spread."""
+        import inspect
+        from core import sentinella
+        s = inspect.getsource(sentinella)
+        assert "costo_in_prezzo = 0.0" in s
+        assert "il pareggio copre il solo" in s

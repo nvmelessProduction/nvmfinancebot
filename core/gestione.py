@@ -102,14 +102,30 @@ def raggiunge_tp1(posizione: Posizione, prezzo_future: float) -> bool:
     return prezzo_future >= posizione.tp1
 
 
-def livello_break_even(prezzo_ingresso: float, direzione: Bias, spread: float) -> float:
+def livello_break_even(prezzo_ingresso: float, direzione: Bias, spread: float,
+                       costo_in_prezzo: float = 0.0) -> float:
     """GEST-04 — Break even con il buffer che copre spread e commissioni.
 
     Lo stop a pareggio deve chiudere in pareggio **reale**, non in perdita per
     i costi. Il buffer e' un multiplo dello spread corrente e non un numero
     per strumento: uno spread cambia, un numero in tabella no (PA-46).
+
+    `costo_in_prezzo` e' la commissione gia' pagata al broker, convertita in
+    distanza di prezzo per QUESTA posizione: `costi / (valore_punto x lotti)`.
+    Il buffer e' il piu' grande dei due, perche' deve soddisfare entrambe le
+    condizioni -- stare fuori dal rumore dello spread **e** recuperare il
+    costo.
+
+    Perche' non basta il multiplo dello spread: PA-46 aveva scelto due spread
+    *come approssimazione della commissione*, e il documento di decisione
+    ammette che "il fattore 2 e' mio". Misurato il 2026-09-22, la commissione
+    vera e' 4,06 EUR per lotto. Su oro ed EURUSD due spread la coprono e
+    avanzano; su `USDJPY`, dove lo spread e' piccolo in proporzione, no -- e
+    li' il pareggio chiudeva in perdita, che e' esattamente cio' che questa
+    regola esiste per evitare.
     """
-    buffer = BUFFER_BE_MOLTIPLICATORE_SPREAD * max(spread, 0.0)
+    buffer = max(BUFFER_BE_MOLTIPLICATORE_SPREAD * max(spread, 0.0),
+                 max(costo_in_prezzo, 0.0))
     if direzione is Bias.LONG:
         return prezzo_ingresso + buffer
     if direzione is Bias.SHORT:
@@ -117,11 +133,15 @@ def livello_break_even(prezzo_ingresso: float, direzione: Bias, spread: float) -
     raise ValueError("direzione NESSUNA non ha break even")
 
 
-def applica_tp1(posizione: Posizione, spread: float) -> tuple[Posizione, float]:
+def applica_tp1(posizione: Posizione, spread: float,
+                costo_in_prezzo: float = 0.0) -> tuple[Posizione, float]:
     """GEST-04 e GEST-07 — Chiude il 25% e porta il resto a break even.
 
     Restituisce (posizione aggiornata, frazione chiusa). Il residuo non ha
     ulteriori parziali: viene chiuso interamente al target finale.
+
+    `costo_in_prezzo` e' la commissione gia' pagata, in distanza di prezzo:
+    senza, il pareggio non e' un pareggio. Vedi `livello_break_even`.
     """
     if posizione.tp1_raggiunto:
         return posizione, 0.0
@@ -129,7 +149,8 @@ def applica_tp1(posizione: Posizione, spread: float) -> tuple[Posizione, float]:
         posizione,
         tp1_raggiunto=True,
         frazione_residua=posizione.frazione_residua * FRAZIONE_RESIDUA,
-        livello_stop=livello_break_even(posizione.prezzo_ingresso, posizione.direzione, spread),
+        livello_stop=livello_break_even(
+            posizione.prezzo_ingresso, posizione.direzione, spread, costo_in_prezzo),
     )
     return nuova, posizione.frazione_residua * FRAZIONE_CHIUSA_A_TP1
 

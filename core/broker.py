@@ -916,6 +916,47 @@ def posizioni_per_strumento() -> tuple[bool, dict[str, int], str]:
     return True, conteggi, messaggio
 
 
+def costi_posizione(ticket: int) -> tuple[bool, float, str]:
+    """Quanto ha gia' incassato il broker su questa posizione, in valuta conto.
+
+    Commissioni piu' swap, come li riporta MT5 sui deal di quel `position`.
+    Il segno e' quello del broker: un costo e' NEGATIVO. Qui si restituisce
+    il valore assoluto, perche' chi chiama vuole "quanto devo recuperare".
+
+    ## Perche' serve
+
+    `GEST-04` dice che il break even deve coprire **spread e commissioni**,
+    ma PA-46 aveva risolto la commissione moltiplicando lo spread per due --
+    e il documento di decisione lo ammette: *"il fattore 2 e' mio"*. Nel
+    codice la commissione non entrava in nessun calcolo.
+
+    Misurato il 2026-09-22 su 17 posizioni e 8,06 lotti: il saldo e' sceso di
+    47,81 EUR mentre il movimento di prezzo ne spiegava 15,11. Gli altri
+    32,70 erano costi, cioe' **4,06 EUR per lotto**. Su strumenti con spread
+    largo rispetto alla commissione due spread bastano; su `USDJPY`, dove lo
+    spread e' piccolo in proporzione, no -- e il pareggio chiudeva in perdita.
+
+    Qui non si stima nulla: si chiede al broker quanto ha preso.
+    """
+    ok, messaggio = _assicura_connessione()
+    if not ok or mt5 is None:
+        return False, 0.0, messaggio
+
+    with _lucchetto:
+        deal = mt5.history_deals_get(position=ticket)
+
+    if deal is None:
+        codice, descrizione = _errore_mt5()
+        return False, 0.0, f"history_deals_get(position={ticket}) fallita: [{codice}] {descrizione}"
+
+    totale = sum(
+        float(getattr(d, "commission", 0.0) or 0.0)
+        + float(getattr(d, "swap", 0.0) or 0.0)
+        for d in deal
+    )
+    return True, abs(totale), f"{len(deal)} deal, costi {totale:.2f}"
+
+
 def pnl_chiuso(da: datetime, a: Optional[datetime] = None) -> tuple[bool, float, str]:
     """P&L **chiuso** nel periodo, come lo vogliono RISK-07, RISK-08 e RISK-09.
 

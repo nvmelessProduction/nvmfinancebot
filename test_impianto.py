@@ -168,7 +168,16 @@ class FintoMT5(types.ModuleType):
             return None
         return barre[-quante:] if quante else barre
 
-    def history_deals_get(self, da, a):
+    def history_deals_get(self, da=None, a=None, position=None):
+        """MT5 vero: o una finestra temporale, o i deal di UNA posizione.
+
+        La seconda forma serve a `broker.costi_posizione`, che chiede al
+        broker quanto ha gia' preso su quella posizione per farlo recuperare
+        dal break even (GEST-04).
+        """
+        if position is not None:
+            return tuple(d for d in self.deal
+                         if getattr(d, "position_id", None) == position)
         return tuple(self.deal)
 
     # -- posizioni e ordini --

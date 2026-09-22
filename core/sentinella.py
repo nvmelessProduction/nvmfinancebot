@@ -389,7 +389,25 @@ class Sentinella:
             tp1=float(tp1),
             target_finale=float(posizione.get("tp") or 0.0),
         )
-        dopo, frazione = gestione.applica_tp1(prima, float(spread))
+        # Quanto ha gia' preso il broker su questa posizione, convertito in
+        # distanza di prezzo: `costi / (valore_punto x lotti)`. E' il numero
+        # che il pareggio deve recuperare perche' sia un pareggio vero
+        # (GEST-04). Misurato il 2026-09-22: 4,06 EUR per lotto, contro un
+        # buffer che li approssimava moltiplicando lo spread per due.
+        #
+        # Se il broker non risponde si resta col solo multiplo dello spread:
+        # e' il comportamento di prima, quindi non si peggiora nulla.
+        costo_in_prezzo = 0.0
+        valore_punto = float(specifiche.get("valore_punto") or 0.0)
+        ok_costi, costi, messaggio_costi = broker.costi_posizione(ticket)
+        if ok_costi and valore_punto > 0 and volume_attuale > 0:
+            costo_in_prezzo = costi / (valore_punto * volume_attuale)
+        elif not ok_costi:
+            log.warning("costi non leggibili su %s, il pareggio copre il solo "
+                        "spread: %s", ticket, messaggio_costi)
+
+        dopo, frazione = gestione.applica_tp1(
+            prima, float(spread), costo_in_prezzo)
 
         quota = volume_del_parziale(
             volume_iniziale, volume_attuale, float(specifiche["volume_step"]), frazione
