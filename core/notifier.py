@@ -100,6 +100,9 @@ def _invia_a(destinatario: str, testo: str) -> tuple[bool, str]:
                 json={
                     "chat_id": destinatario,
                     "text": testo,
+                    # I messaggi usano <b>, <i> e <code>: senza questo
+                    # Telegram li mostrerebbe come tag letterali.
+                    "parse_mode": "HTML",
                     "disable_web_page_preview": True,
                 },
                 timeout=cfg.TIMEOUT_HTTP,
@@ -184,19 +187,67 @@ def messaggio_decisione(
     modalita: str,
     dettaglio: Optional[str] = None,
 ) -> str:
-    """Testo leggibile che riassume alert e decisione, per Telegram/console."""
-    righe = [
-        f"[{modalita.upper()}] {alert.simbolo} {alert.tf}",
-        f"candela chiusa: {alert.chiusura_candela_utc} UTC",
-        f"O {alert.apertura} H {alert.massimo} L {alert.minimo} C {alert.chiusura}",
-        f"azione: {decisione.azione}",
-    ]
-    if decisione.motivo:
-        righe.append(f"motivo: {decisione.motivo}")
-    if alert.rsi is not None:
-        righe.append(f"rsi: {alert.rsi}")
-    if alert.nota:
-        righe.append(f"nota: {alert.nota}")
+    """Il messaggio di un'operazione, scritto per essere letto sul telefono.
+
+    Prima era un dump: il ticker del FUTURE (`6E1!`, che non dice niente a
+    nessuno), l'OHLC della candela, e la sfilza dei codici regola. Su un
+    telefono, fra decine di notifiche, non si capiva ne' cosa fosse stato
+    aperto ne' a che prezzo.
+
+    Qui si scrive cio' che serve a chi guarda: lo strumento col nome vero,
+    da che parte, quanto, e i tre livelli con il rapporto fra rischio e
+    rendimento. I codici regola restano nel diario e in archivio, che e' il
+    posto dove si va a cercarli quando servono davvero.
+    """
+    nome = decisione.simbolo or alert.simbolo
+    verso = "LONG" if decisione.azione == "BUY" else "SHORT"
+    segno = "🟢" if decisione.azione == "BUY" else "🔴"
+
+    righe = [f"{segno} <b>{nome} {verso}</b>  ·  {alert.tf}"]
+
+    if decisione.volume:
+        righe.append(f"{decisione.volume} lotti")
+
+    livelli = []
+    if decisione.sl is not None:
+        livelli.append(f"stop <code>{decisione.sl:g}</code>")
+    if decisione.tp is not None:
+        livelli.append(f"target <code>{decisione.tp:g}</code>")
+    if livelli:
+        righe.append("  ·  ".join(livelli))
+
+    # Il rapporto e' il numero che dice se l'operazione vale la pena, e si
+    # calcola sui livelli che partono davvero al broker.
+    if decisione.sl is not None and decisione.tp is not None:
+        rif = alert.chiusura
+        rischio = abs(rif - decisione.sl)
+        if rischio > 0:
+            righe.append(f"rapporto <b>{abs(decisione.tp - rif) / rischio:.1f}</b> a 1")
+
     if dettaglio:
-        righe.append(dettaglio)
+        righe.append(f"<i>{dettaglio}</i>")
+    return "\n".join(righe)
+
+
+def messaggio_esito(simbolo: str, direzione: str, colpito: str,
+                    livello: float, prezzo: float,
+                    prezzo_ingresso: Optional[float] = None) -> str:
+    """Come si e' chiusa un'operazione, in due righe.
+
+    `colpito` e' "sl" o "tp". Il guadagno o la perdita si dice in parole,
+    non solo col livello: e' la prima cosa che si vuole sapere.
+    """
+    vinta = colpito.lower() == "tp"
+    segno = "✅" if vinta else "🛑"
+    esito = "target" if vinta else "stop"
+    # Il suffisso del broker (`EURUSD+`) e' un fatto del conto, non dello
+    # strumento, e il verso si scrive come nel messaggio di apertura: LONG e
+    # SHORT, non BUY e SELL, altrimenti la stessa operazione ha due nomi.
+    nome = simbolo.rstrip("+")
+    verso = "LONG" if direzione.upper() == "BUY" else "SHORT"
+    righe = [f"{segno} <b>{nome} {verso}</b>  ·  {esito}",
+             f"chiusa a <code>{prezzo:g}</code>"]
+    if prezzo_ingresso:
+        punti = (prezzo - prezzo_ingresso) * (1 if direzione.upper() == "BUY" else -1)
+        righe[-1] += f"  ·  {punti:+g}"
     return "\n".join(righe)

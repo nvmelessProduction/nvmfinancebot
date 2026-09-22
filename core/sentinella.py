@@ -271,8 +271,7 @@ class Sentinella:
             )
             storage.chiudi_posizione(id_posizione, None, "chiusa fuori dal bot")
             notifier.invia(
-                f"Posizione {simbolo} (ticket {ticket}) non risulta piu' aperta sul "
-                "broker. Archivio allineato."
+                f"ℹ️ <b>{simbolo}</b> chiusa sul broker, archivio allineato"
             )
             return False
 
@@ -326,10 +325,9 @@ class Sentinella:
 
         storage.chiudi_posizione(id_posizione, esito.prezzo, f"{colpito} toccato")
         self.chiusure += 1
-        notifier.invia(
-            f"{colpito.upper()} su {simbolo} {direzione} (ticket {ticket})\n"
-            f"livello {livello}, chiusa a {esito.prezzo}"
-        )
+        notifier.invia(notifier.messaggio_esito(
+            simbolo, direzione, colpito, float(livello), float(esito.prezzo),
+            prezzo_ingresso=posizione.get("prezzo_ingresso")))
         return True
 
     def _parziale_a_tp1(

@@ -278,7 +278,7 @@ def _esegui_decisione(
 
     if blocco is not None:
         log.warning("operazione bloccata: %s", blocco)
-        notifier.invia(f"{testo}\n\nBLOCCATO: {blocco}")
+        notifier.invia(f"{testo}\n\n⛔ <i>{blocco}</i>")
         return "bloccato", blocco, None, None
 
     if cfg.MODE == "semi":
@@ -329,7 +329,7 @@ def _esegui_decisione(
     )
     if blocco_risk02 is not None:
         log.warning("apertura annullata: %s", blocco_risk02)
-        notifier.invia(f"{testo}\n\nBLOCCATO: {blocco_risk02}")
+        notifier.invia(f"{testo}\n\n⛔ <i>{blocco_risk02}</i>")
         return "bloccato", blocco_risk02, None, None
 
     # Stop e target partono ATTACCATI all'ordine, non solo in archivio: se il
@@ -347,7 +347,7 @@ def _esegui_decisione(
         stop=decisione.sl,
         target=decisione.tp,
     )
-    notifier.invia(f"{testo}\n\nesecuzione: {esito_ordine.messaggio}")
+    notifier.invia(f"{testo}\n\n⏱ <i>{esito_ordine.messaggio}</i>")
 
     if not esito_ordine.ok:
         return "errore", f"auto: {esito_ordine.messaggio}", None, None
