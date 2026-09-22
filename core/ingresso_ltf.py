@@ -435,6 +435,18 @@ def avanza_attesa(id_setup: int) -> None:
             " WHERE id_setup=? AND stato='armato'", (id_setup,))
 
 
+def conferma_esecuzione(id_setup: int, motivo: str) -> None:
+    """Il setup ha prodotto un ordine VERO: adesso si puo' chiudere.
+
+    Separata da `valuta_armati` perche' li' si sa soltanto che il prezzo e'
+    tornato nel vuoto. Fra quel momento e l'ordine ci sono ancora le regole
+    di rischio del motore e le salvaguardie dell'impianto, e ognuna puo'
+    fermarlo. Chiudere il setup prima significa bruciare l'occasione senza
+    aver mandato niente -- e il setup aveva ancora barre a disposizione.
+    """
+    chiudi(id_setup, "eseguito", motivo)
+
+
 def valuta_armati(
     strumento: str, tf_ingresso: TF, basse: Sequence[Candela]
 ) -> list[Ingresso]:
@@ -453,7 +465,21 @@ def valuta_armati(
             continue
         ingresso, motivo = controlla(setup, basse)
         if ingresso is not None:
-            chiudi(setup.id_setup, "eseguito", motivo)
+            # Il setup NON si chiude qui.
+            #
+            # Qui si sa solo che il prezzo e' tornato nel vuoto: l'ordine
+            # deve ancora passare dalle regole di rischio del motore, e se
+            # una lo ferma -- lo stop dentro il costo, un limite di perdita,
+            # il volume che arrotonda a zero -- l'occasione e' stata bruciata
+            # senza che partisse niente.
+            #
+            # Misurato il 2026-09-22: il setup 110 su XAUUSD e' risultato
+            # "eseguito" alle 16:34:53 con un ingresso a 4326,81 e rapporto
+            # 2,36, e a quell'istante non e' partito nessun ordine. Il
+            # setup restava valido ancora per delle barre, e le ha perse.
+            #
+            # Lo chiude `conferma_esecuzione`, che chiama chi l'ordine lo ha
+            # visto partire davvero.
             fuori.append(ingresso)
             continue
         avanza_attesa(setup.id_setup)

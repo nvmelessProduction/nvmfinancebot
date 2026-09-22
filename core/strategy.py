@@ -133,7 +133,21 @@ def valuta(alert: AlertIn) -> Decision:
     from core.motore import valuta_ingresso_armato
 
     ingresso = valuta_ingresso_armato(fotografia, tf_trigger)
-    if ingresso is not None and ingresso.azione in ("BUY", "SELL"):
+    if ingresso is not None:
+        # QUALUNQUE risposta dell'ingresso armato, anche un'astensione.
+        #
+        # Prima si ripiegava su `valuta` quando l'armato non diceva BUY o
+        # SELL, e cosi' il motivo vero andava perso. `valuta_ingresso_armato`
+        # restituisce None soltanto quando non c'e' nessun setup armato: se
+        # restituisce una decisione, quella decisione RIGUARDA un setup vero,
+        # e il suo motivo -- "lo stop sta dentro il costo", "limite di
+        # perdita" -- e' l'unica risposta utile.
+        #
+        # Misurato il 2026-09-22: su un alert `M1min` il ripiego produceva
+        # "TF_M1min e' un timeframe di solo INGRESSO", che e' vero ma non
+        # c'entra niente, e in archivio finivano 190 astensioni con quel
+        # motivo al posto di quello giusto. Il conteggio dell'imbuto era
+        # falsato proprio nel punto che serve a capire cosa migliorare.
         return traduci(_passa_dal_giudizio(ingresso, fotografia, tf_trigger))
 
     decisione = valuta_motore(fotografia, tf_trigger)

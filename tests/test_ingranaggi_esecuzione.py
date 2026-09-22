@@ -806,3 +806,64 @@ class TestIlNomeDelTimeframeAccettaTutteEDue:
                  f"{_in_parole('nessun FVG da ritestare')}")
         assert "4 ore" in testo and "15 min" in testo
         assert "TF_" not in testo
+
+
+class TestUnSetupSiChiudeSoloSeLOrdineParte:
+    """Il setup veniva consumato appena il prezzo tornava nel vuoto.
+
+    Fra quel momento e l'ordine ci sono ancora le regole di rischio: lo stop
+    dentro il costo, un limite di perdita, il volume che arrotonda a zero.
+    Se una fermava l'ordine, l'occasione era gia' bruciata -- e al setup
+    restavano barre a disposizione.
+
+    Misurato il 2026-09-22: il setup 110 su XAUUSD risulta "eseguito" alle
+    16:34:53 con ingresso a 4326,81 e rapporto 2,36, e a quell'istante non e'
+    partito nessun ordine.
+    """
+
+    def test_valuta_armati_non_chiude_piu(self):
+        import inspect
+        from core import ingresso_ltf
+        corpo = inspect.getsource(ingresso_ltf.valuta_armati)
+        assert 'chiudi(setup.id_setup, "eseguito"' not in corpo
+        # Ma continua a chiudere i decaduti: quelli sono finiti davvero.
+        assert 'chiudi(setup.id_setup, "decaduto"' in corpo
+
+    def test_esiste_chi_lo_chiude_dopo(self):
+        from core import ingresso_ltf
+        assert hasattr(ingresso_ltf, "conferma_esecuzione")
+
+    def test_e_lo_chiama_il_motore_quando_l_ordine_parte(self):
+        """La chiamata sta DOPO i controlli di rischio, non prima."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta_ingresso_armato)
+        assert "conferma_esecuzione(" in corpo
+        # Dopo il controllo sulla size, che e' l'ultimo che puo' fermare tutto.
+        assert corpo.index("esito_size.lotti is None") < corpo.index("conferma_esecuzione(")
+
+
+class TestIlMotivoDellArmatoNonSiPerde:
+    """Quando l'ingresso armato si asteneva, si ripiegava su `valuta`.
+
+    Cosi' il motivo vero -- "lo stop sta dentro il costo", "limite di
+    perdita" -- veniva sostituito da quello di un'altra strada. Su un alert
+    `M1min` diventava "e' un timeframe di solo INGRESSO", che e' vero ma non
+    c'entra niente: in archivio finivano 190 astensioni con l'etichetta
+    sbagliata, e l'imbuto era falsato proprio dove serve per capire cosa
+    migliorare.
+    """
+
+    def test_qualunque_risposta_dell_armato_vince(self):
+        import inspect
+        from core import strategy
+        corpo = inspect.getsource(strategy.valuta)
+        assert "if ingresso is not None:" in corpo
+        assert 'ingresso.azione in ("BUY", "SELL")' not in corpo
+
+    def test_si_ripiega_solo_se_non_c_e_nessun_setup(self):
+        """`valuta_ingresso_armato` torna None solo senza setup armati."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta_ingresso_armato)
+        assert "if not ingressi:" in corpo and "return None" in corpo

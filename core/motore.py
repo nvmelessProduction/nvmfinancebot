@@ -630,6 +630,13 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
             foto.strumento, ["RISK-03"], esito_size.motivo, applicate,
             direzione=ingresso.direzione, tf_crt=tf_trigger)
 
+    # Solo ADESSO il setup si puo' chiudere: l'ordine ha superato tutte le
+    # regole di rischio e sta per partire. `valuta_armati` lo lasciava aperto
+    # apposta -- chiuderlo prima bruciava l'occasione anche quando una regola
+    # fermava l'ordine, e al setup restavano barre a disposizione.
+    ingresso_ltf.conferma_esecuzione(
+        ingresso.id_setup, "CRT-13: ingresso sul ritorno nell'FVG dopo il CISD")
+
     verso_cfd = _verso_sul_cfd(foto, ingresso.direzione)
     return Decisione(
         azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
