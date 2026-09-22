@@ -495,3 +495,44 @@ class TestIlPareggioRecuperaLeCommissioni:
         s = inspect.getsource(sentinella)
         assert "costo_in_prezzo = 0.0" in s
         assert "il pareggio copre il solo" in s
+
+
+class TestISottoSogliaNonHaLimitiDiPerdita:
+    """Sotto una certa equity i tre limiti non si applicano. Nessuno dei tre.
+
+    I limiti sono percentuali e `RISK-01` rischia l'1% per operazione: il
+    giornaliero al 3% scatta sempre dopo TRE operazioni perse, a cento euro
+    come a cinquemila. Su un conto di prova piccolo quel freno si tira nella
+    prima ora -- misurato il 2026-09-22: 287 decisioni fermate da RISK-07 --
+    e non protegge niente che valga la pena proteggere.
+    """
+
+    PERDITA = dict(pnl_giornaliero=-50.0, equity_inizio_giornata=100.0,
+                   pnl_settimanale=-50.0, equity_inizio_settimana=100.0,
+                   pnl_mensile=-50.0, equity_inizio_mese=100.0)
+
+    def test_sotto_soglia_nessun_limite(self):
+        from core.rischio import limiti_raggiunti
+        assert limiti_raggiunti(**self.PERDITA, equity_corrente=100.0) == ()
+
+    def test_sopra_soglia_scattano_tutti_e_tre(self):
+        from core.rischio import limiti_raggiunti
+        regole = {l.regola for l in limiti_raggiunti(**self.PERDITA, equity_corrente=500.0)}
+        assert regole == {"RISK-07", "RISK-08", "RISK-09"}
+
+    def test_esattamente_alla_soglia_sono_attivi(self):
+        """La soglia e' il punto in cui si accendono, non quello dopo."""
+        from core.rischio import limiti_raggiunti
+        from core.parametri import LIMITI_PERDITA_SOPRA_EQUITY
+        assert limiti_raggiunti(**self.PERDITA,
+                                equity_corrente=LIMITI_PERDITA_SOPRA_EQUITY)
+
+    def test_senza_equity_si_comportano_come_prima(self):
+        """Chi non passa l'equity ottiene il comportamento prudente."""
+        from core.rischio import limiti_raggiunti
+        assert len(limiti_raggiunti(**self.PERDITA)) == 3
+
+    def test_il_motore_passa_l_equity_a_entrambe_le_strade(self):
+        import inspect
+        from core import motore
+        assert inspect.getsource(motore).count("equity_corrente=foto.equity") == 2

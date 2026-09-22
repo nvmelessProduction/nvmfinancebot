@@ -192,6 +192,25 @@ COSTO_SPREAD_MASSIMO_IN_R: Final[float] = 0.10
 #
 # Non sostituisce `VOLUME_MASSIMO`, che e' un tetto assoluto contro gli
 # errori di scala: questo e' un tetto RELATIVO al conto, e cresce con lui.
+#
+# ## Provato a 50, rimesso a 20 (2026-09-22)
+#
+# L'ho alzato credendo che fosse questo tetto a tenere l'oro fuori da un
+# conto da 100 EUR: il nozionale di 0,01 lotti -- il pezzo piu' piccolo che
+# il broker vende -- vale 37,7 volte quell'equity.
+#
+# Non era questo. Alzato il tetto, l'oro resta fuori lo stesso, perche' la
+# finestra fra i due vincoli e' vuota:
+#
+#     stop minimo  = 10 spread            = 1,200 punti   (RISK-03)
+#     stop massimo = 1 EUR su 0,01 lotti  = 1,149 punti   (RISK-01)
+#
+# Un conto da cento euro non puo' comprare l'oro all'1% di rischio senza
+# mettere lo stop dentro il costo dello spread. E' aritmetica fra due regole,
+# non un tetto da allentare.
+#
+# Quindi il tetto torna a 20: alzarlo non comprava niente e costava soltanto
+# protezione contro i gap, dove si paga il nozionale e non la distanza.
 LEVA_MASSIMA: Final[float] = 20.0
 
 # SETUP-05, "regola dei due timeframe superiori".
@@ -326,6 +345,24 @@ MAX_POSIZIONI_PER_STRUMENTO: Final[int] = 4
 LIMITE_GIORNALIERO: Final[float] = 0.03
 LIMITE_SETTIMANALE: Final[float] = 0.06
 LIMITE_MENSILE: Final[float] = 0.10
+
+# Sotto questa equity i tre limiti NON si applicano: ne' il giornaliero, ne'
+# il settimanale, ne' il mensile.
+#
+# Perche' esiste. I limiti sono percentuali e `RISK-01` rischia l'1% per
+# operazione, quindi il giornaliero al 3% scatta sempre dopo TRE operazioni
+# perse -- a cento euro come a cinquemila. Su un conto di prova, dove si
+# vuole vedere cosa fa il bot in una giornata intera, e' un freno che si tira
+# nella prima ora: misurato il 2026-09-22, 287 decisioni fermate da RISK-07.
+#
+# Quei limiti servono a impedire che una brutta giornata diventi un disastro.
+# Su un conto di prova piccolo quel disastro non esiste e la protezione non
+# vale niente; su un conto che e' cresciuto, vale tutto. La soglia e' il
+# punto in cui si passa da "sto guardando cosa fa" a "ho qualcosa da
+# proteggere".
+#
+# A 0 i limiti valgono sempre, che e' il comportamento prudente di partenza.
+LIMITI_PERDITA_SOPRA_EQUITY: Final[float] = 500.0
 
 # RISK-03: la size si arrotonda sempre per difetto al passo del broker.
 # Se l'arrotondamento produce zero, non si opera.

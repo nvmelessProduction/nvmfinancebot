@@ -561,6 +561,7 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
         foto.pnl_giornaliero, foto.equity_inizio_giornata,
         foto.pnl_settimanale, foto.equity_inizio_settimana,
         foto.pnl_mensile, foto.equity_inizio_mese,
+        equity_corrente=foto.equity,
     )
     posizioni_qui = foto.posizioni_aperte_per_strumento.get(foto.strumento, 0)
     evento_news = ctx.dentro_finestra_news(foto.istante, foto.strumento, foto.eventi_news)
@@ -650,6 +651,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         foto.pnl_giornaliero, foto.equity_inizio_giornata,
         foto.pnl_settimanale, foto.equity_inizio_settimana,
         foto.pnl_mensile, foto.equity_inizio_mese,
+        equity_corrente=foto.equity,
     )
     posizioni_qui = foto.posizioni_aperte_per_strumento.get(foto.strumento, 0)
     evento_news = ctx.dentro_finestra_news(foto.istante, foto.strumento, foto.eventi_news)

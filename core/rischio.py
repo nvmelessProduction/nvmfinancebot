@@ -22,6 +22,7 @@ from core.parametri import (
     LIMITE_GIORNALIERO,
     LIMITE_MENSILE,
     LIMITE_SETTIMANALE,
+    LIMITI_PERDITA_SOPRA_EQUITY,
     MAX_POSIZIONI_PER_STRUMENTO,
     UNIVERSO,
     distanza_relativa_stop,
@@ -288,6 +289,7 @@ def limiti_raggiunti(
     equity_inizio_settimana: float,
     pnl_mensile: float,
     equity_inizio_mese: float,
+    equity_corrente: Optional[float] = None,
 ) -> tuple[LimiteRaggiunto, ...]:
     """RISK-07, RISK-08, RISK-09 — I tre limiti, calcolati sul P&L chiuso.
 
@@ -298,7 +300,17 @@ def limiti_raggiunti(
     Conseguenza dichiarata da RISK-10 e non risolta (PA-34): il limite
     giornaliero puo' essere superato dalle posizioni gia' aperte senza che il
     sistema intervenga.
+
+    **Sotto `LIMITI_PERDITA_SOPRA_EQUITY` non si applica nessuno dei tre.**
+    Sono percentuali, e `RISK-01` rischia l'1% per operazione: il giornaliero
+    al 3% scatta sempre dopo tre operazioni perse, a qualunque cifra. Su un
+    conto di prova piccolo quel freno impedisce di vedere una giornata intera
+    senza proteggere niente che valga la pena proteggere. Vedi il parametro.
     """
+    if equity_corrente is not None and LIMITI_PERDITA_SOPRA_EQUITY > 0:
+        if equity_corrente < LIMITI_PERDITA_SOPRA_EQUITY:
+            return ()
+
     raggiunti: list[LimiteRaggiunto] = []
     controlli = (
         ("RISK-07", LIMITE_GIORNALIERO, pnl_giornaliero, equity_inizio_giornata),
