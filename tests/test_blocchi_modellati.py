@@ -20,12 +20,20 @@ from core.parametri import (
 
 
 class TestCrt20:
-    def test_non_ferma_piu_da_sola(self):
-        assert blocca_da_sola("CRT-20") is False
+    def test_ferma_di_nuovo_da_sola(self):
+        """Riaccesa il 2026-09-22 insieme alle altre sette.
 
-    def test_nessuna_conferma_e_piu_un_veto(self):
-        """Erano otto, sette gia' spente: l'ultima e' caduta il 2026-09-21."""
-        assert not any(CONFERME_CHE_BLOCCANO_DA_SOLE.values())
+        Il numero che l'aveva spenta -- 49% dei CRT fermati, e zero ingressi
+        su ogni coppia -- era stato misurato col motore rotto: `TF_KEY_LEVEL`
+        non comprendeva gli intraday e sotto le quattro ore non si trovava un
+        CRT. Corretto quello, `H1 -> M5` da 1.891 CRT dove prima erano zero.
+        """
+        assert blocca_da_sola("CRT-20") is True
+
+    def test_tutte_le_conferme_sono_veti(self):
+        """Romeo le applica tutte: e' la richiesta esplicita dell'utente."""
+        spente = [k for k, v in CONFERME_CHE_BLOCCANO_DA_SOLE.items() if not v]
+        assert spente == [], f"conferme non applicate: {spente}"
 
     def test_resta_fra_le_conferme_valutate(self):
         """Spenta come veto, non cancellata: il responso la riporta lo stesso

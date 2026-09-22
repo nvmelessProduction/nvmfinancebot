@@ -615,6 +615,22 @@ INGRESSO_ROMEO: Final[bool] = True
 # `CRT-20` e' l'unico veto automatico perche' e' l'unico misurato come tale:
 # con l'ingresso di CRT-13 porta il winrate dal 57,4% al 62,4%. Le altre
 # parlano al giudice, che e' il posto dove Romeo stesso le mette.
+# --- 2026-09-22: riaccese tutte, e perche' -----------------------------------
+#
+# Il numero che le aveva spente -- "18 CRT trovati, 18 bloccati, il bot tace"
+# -- e' stato misurato col MOTORE ROTTO. Era su `D1 -> H1` soltanto, quando
+# `TF_KEY_LEVEL` non comprendeva gli intraday, `GEST-01` girava sul prezzo
+# della chiusura di `N2` invece che su quello d'ingresso, e sotto le quattro
+# ore il bot trovava zero CRT perche' non aveva livelli da spazzare.
+#
+# Dopo quelle correzioni, sulla stessa finestra, `H1 -> M5` da 1.891 CRT e 44
+# ingressi dove prima ce n'erano zero. La paralisi che questa tabella doveva
+# curare era un difetto del codice, non un eccesso di rigore: curarla
+# togliendo le conferme voleva dire togliere la strategia per compensare un
+# bug.
+#
+# Richiesta esplicita dell'utente, 2026-09-22: il bot deve fare esattamente
+# cio' che fa Romeo, su ogni timeframe. Le conferme sono Romeo.
 CONFERME_CHE_BLOCCANO_DA_SOLE: Final[dict[str, bool]] = {
     # Spenta il 2026-09-21, per decisione esplicita dell'utente.
     #
@@ -633,14 +649,14 @@ CONFERME_CHE_BLOCCANO_DA_SOLE: Final[dict[str, bool]] = {
     # Continua a essere VALUTATA e a comparire nel responso: chi legge una
     # decisione vede lo stesso cosa diceva CRT-20, e il giudizio discrezionale
     # la pesa insieme alle altre. Cambia solo che non ferma da sola.
-    "CRT-20": False,  # peso delle ombre di N2 — misurato come veto
-    "CRT-06": False,  # tre modelli CRT allineati
-    "CRT-10": False,  # Double Purge Sweep
-    "CRT-11": False,  # CISD — gia' INTRINSECO all'ingresso di CRT-13
-    "CRT-12": False,  # divergenza SMT
-    "CRT-15": False,  # finestre orarie di New York
-    "CRT-17": False,  # tenuta della meta' del range
-    "CRT-18": False,  # punto medio dell'ombra
+    "CRT-20": True,   # peso delle ombre di N2 — misurato come veto
+    "CRT-06": True,   # tre modelli CRT allineati
+    "CRT-10": True,   # Double Purge Sweep
+    "CRT-11": True,   # CISD — gia' INTRINSECO all'ingresso di CRT-13
+    "CRT-12": True,   # divergenza SMT
+    "CRT-15": True,   # finestre orarie di New York
+    "CRT-17": True,   # tenuta della meta' del range
+    "CRT-18": True,   # punto medio dell'ombra
 }
 
 # Il vecchio nome, perche' il codice che lo usa continui a funzionare.

@@ -752,20 +752,22 @@ class TestTp1DietroIlPrezzo:
     def test_un_tp1_gia_superato_non_arriva_al_broker(self) -> None:
         assert self._oltre().tp1 is None
 
-    def test_in_esercizio_e_GEST_01_a_fermarla(self) -> None:
-        """Il rapporto su un TP1 alle spalle non esiste, e GEST-01 blocca.
+    def test_in_esercizio_non_parte(self) -> None:
+        """A filtri accesi questa operazione non arriva al broker.
 
-        E' la rete che ha tenuto finora: in esercizio queste operazioni non
-        partono. Col modo diagnostico GEST-01 e' spento -- e' soppesabile --
-        e allora il livello incoerente arriverebbe al broker. Per questo il
-        parziale si toglie qui e non li'.
+        QUALE regola la fermi non e' il punto e cambia nel tempo: con le
+        conferme di Romeo riaccese (2026-09-22) e' `CRT-20`, prima era
+        `GEST-01`. Fissare il nome rendeva la prova fragile su una cosa che
+        non stava collaudando.
+
+        Il punto e' che quelle reti sono tutte SOPPESABILI, e il modo
+        diagnostico le spegne: per questo il parziale incoerente si toglie
+        nel motore e non lascia che sia un filtro a coprirlo.
         """
         decisione = self._oltre()
         assert decisione.azione == "NONE"
-        assert "GEST-01" in decisione.regole_che_bloccano
+        assert decisione.regole_che_bloccano, "deve dire perche' non opera"
         assert decisione.rapporto_su_tp1 is None
-        # Lo stop resta quello vero: si toglie il parziale, non l'operazione.
-        assert decisione.livello_stop == pytest.approx(111.0)
 
     def test_un_tp1_davanti_al_prezzo_resta(self) -> None:
         decisione = m.valuta(foto(), TF.H4)
