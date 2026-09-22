@@ -405,3 +405,40 @@ class TestSenzaSpreadNonSiApre:
         corpo = inspect.getsource(forn)
         assert 'if tick["ask"] - tick["bid"] <= 0:' in corpo
         assert "non si opera al buio" in corpo
+
+
+class TestIlPareggioNonPuoStareOltreIlPrezzo:
+    """`livello_break_even` e' `ingresso -/+ due spread`, e non guarda il prezzo.
+
+    Se a TP1 il prezzo si e' mosso MENO di due spread, il pareggio cade dalla
+    parte gia' superata: e' uno stop gia' toccato. Misurato il 2026-09-22 sul
+    ticket 327995073, AUDUSD SELL -- prezzo 0,71113, pareggio 0,71107, cioe'
+    sotto. MT5 rifiutava con `10016`, l'archivio se lo scriveva lo stesso, e
+    al giro dopo il residuo veniva chiuso. Nove volte in un'ora e mezza.
+    """
+
+    def test_il_caso_misurato(self):
+        from core.gestione import livello_break_even
+        from core.definizioni import Bias
+        # Ingresso 0,71127, spread 1 pip: il pareggio finisce a 0,71107.
+        be = livello_break_even(0.71127, Bias.SHORT, spread=0.0001)
+        assert be == pytest.approx(0.71107)
+        prezzo_a_tp1 = 0.71113
+        assert be < prezzo_a_tp1, "per una SELL lo stop finisce SOTTO il prezzo"
+
+    def test_con_abbastanza_movimento_il_pareggio_e_valido(self):
+        from core.gestione import livello_break_even
+        from core.definizioni import Bias
+        be = livello_break_even(0.71127, Bias.SHORT, spread=0.0001)
+        prezzo_a_tp1 = 0.71000          # sceso ben oltre i due spread
+        assert be > prezzo_a_tp1, "qui lo stop sta sopra il prezzo, come deve"
+
+    def test_la_sentinella_confronta_col_prezzo(self):
+        import inspect
+        from core import sentinella
+        corpo = inspect.getsource(sentinella)
+        assert "ancora_davanti" in corpo
+        assert "lo stop resta a" in corpo
+        # E il confronto usa il prezzo di USCITA, non il bid o l'ask a caso:
+        # una posizione lunga si chiude in bid, una corta in ask.
+        assert "prezzo_di_uscita(direzione, tick" in corpo

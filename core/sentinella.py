@@ -442,6 +442,32 @@ class Sentinella:
             )
             nuovo_stop = float(posizione["sl"])
 
+        # E il pareggio non puo' finire OLTRE il prezzo corrente.
+        #
+        # `livello_break_even` e' `ingresso -/+ due spread`, un livello
+        # calcolato sull'ingresso e mai confrontato col prezzo di adesso. Se
+        # a TP1 il prezzo si e' mosso meno di due spread, quel livello cade
+        # dalla parte gia' superata: e' uno stop gia' toccato.
+        #
+        # Misurato il 2026-09-22 sul ticket 327995073, AUDUSD SELL: prezzo
+        # 0,71113, pareggio calcolato 0,71107, cioe' SOTTO. MT5 ha rifiutato
+        # la modifica con `10016`, ma l'archivio se lo scriveva lo stesso, e
+        # al giro dopo la sentinella lo trovava toccato e chiudeva il
+        # residuo. Nove volte in un'ora e mezza.
+        #
+        # Lo stop vecchio e' piu' lontano e quindi sempre valido: si tiene
+        # quello, e GEST-05 resta soddisfatta perche' lo spostamento a
+        # pareggio semplicemente non avviene.
+        uscita = prezzo_di_uscita(direzione, tick["bid"], tick["ask"])
+        ancora_davanti = (nuovo_stop > uscita if _bias(direzione) is Bias.SHORT
+                          else nuovo_stop < uscita)
+        if not ancora_davanti:
+            log.warning(
+                "%s (ticket %s): il pareggio a %s sarebbe gia' oltre il "
+                "prezzo %s, lo stop resta a %s",
+                simbolo, ticket, nuovo_stop, uscita, posizione["sl"])
+            nuovo_stop = float(posizione["sl"])
+
         residuo = round(volume_attuale - quota, 8)
         storage.applica_parziale_tp1(id_posizione, residuo, nuovo_stop)
 
