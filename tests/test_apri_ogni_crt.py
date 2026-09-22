@@ -69,11 +69,24 @@ def test_il_veto_del_giudizio_si_salta(acceso, monkeypatch):
 def test_le_salvaguardie_dell_impianto_restano(acceso):
     """Volume massimo, tetto posizioni, freno a mano e conto demo non
     dipendono dal motore: stanno in `main.salvaguardia_violata` e in
-    `broker`, e questo interruttore non li tocca."""
-    cfg = impostazioni()
-    assert cfg.VOLUME_MASSIMO > 0
-    assert cfg.MAX_POSIZIONI_APERTE > 0
-    assert cfg.CONSENTI_CONTO_REALE is False
+    `broker`, e questo interruttore non li tocca.
+
+    Si guardano i valori di PARTENZA, non quelli configurati su questa
+    macchina -- per lo stesso motivo di `test_di_partenza_e_spento` qui
+    sopra. `MAX_POSIZIONI_APERTE` e' un tetto che si puo' voler togliere
+    (a 0 e' disattivato, vedi `main.py`), e leggere l'istanza viva faceva
+    fallire questa prova appena qualcuno lo toglieva davvero: il 2026-09-22
+    e' successo. Cio' che la prova deve dire e' che il modo diagnostico non
+    tocca queste manopole, non quanto valgono oggi.
+    """
+    from core.config import Impostazioni
+    campi = Impostazioni.model_fields
+    assert campi["VOLUME_MASSIMO"].default > 0
+    assert campi["MAX_POSIZIONI_APERTE"].default > 0
+    assert campi["CONSENTI_CONTO_REALE"].default is False
+    # E il conto reale resta vietato anche su questa macchina: quello non e'
+    # una manopola di comodo, e' il divieto che protegge i soldi veri.
+    assert impostazioni().CONSENTI_CONTO_REALE is False
 
 
 class TestLeEsclusioni:

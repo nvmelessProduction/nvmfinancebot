@@ -444,6 +444,16 @@ class Sentinella:
 
         residuo = round(volume_attuale - quota, 8)
         storage.applica_parziale_tp1(id_posizione, residuo, nuovo_stop)
+
+        # Lo stop nuovo va anche al BROKER, non solo in archivio. Sono due
+        # reti, e quella del broker e' l'unica che sopravvive alla morte del
+        # bot: lasciarla allo stop vecchio dopo un parziale vuol dire che, se
+        # il processo cade, il residuo e' protetto al livello sbagliato.
+        esito_livelli = broker.modifica_livelli(ticket, stop=nuovo_stop)
+        if not esito_livelli.ok:
+            log.warning("parziale su %s scritto in archivio ma il broker non "
+                        "ha accettato lo stop nuovo: %s",
+                        ticket, esito_livelli.messaggio)
         log.info(
             "TP1 su %s (ticket %s): chiusi %s a %s, restano %s con stop a %s",
             simbolo, ticket, quota, esito.prezzo, residuo, nuovo_stop,

@@ -316,18 +316,54 @@ def _volume_accettabile(simbolo: str, volume: float) -> tuple[bool, float, str]:
     return True, pulito, "volume accettabile"
 
 
+def _cifre_simbolo(simbolo: str, difetto: int = 5) -> int:
+    """Quanti decimali accetta il broker su questo simbolo.
+
+    Chi chiama e' gia' dentro `_lucchetto` e gia' connesso: qui si legge e
+    basta. Il ripiego a cinque cifre non e' una scelta di comodo -- e' il
+    valore piu' fine fra i sei strumenti, quindi arrotondare li' non rende
+    mai un livello piu' grossolano di quanto il broker accetti.
+    """
+    if mt5 is None:
+        return difetto
+    info = mt5.symbol_info(simbolo)
+    if info is None:
+        return difetto
+    return int(getattr(info, "digits", difetto) or difetto)
+
+
 def invia_ordine(
     simbolo: str,
     direzione: str,
     volume: float,
     commento: str = "",
     deviazione: Optional[int] = None,
+    stop: Optional[float] = None,
+    target: Optional[float] = None,
 ) -> OrderResult:
-    """Invia un ordine a mercato.
+    """Invia un ordine a mercato, con stop e target attaccati.
 
     `direzione` deve essere "BUY" o "SELL"; `volume` arriva da chi chiama,
-    qui non viene calcolato nulla. Stop e target non vengono passati al
-    broker di proposito (li sorveglia la sentinella).
+    qui non viene calcolato nulla.
+
+    ## Perche' `stop` e `target` vanno al broker
+
+    Fino al 2026-09-22 l'ordine partiva nudo e i livelli vivevano solo in
+    archivio, sorvegliati dalla sentinella. Funziona finche' il bot e' vivo,
+    e infatti funzionava: 281 stop e 102 target eseguiti. Ma se il processo
+    muore -- finestra chiusa, connessione caduta, corrente -- la posizione
+    resta aperta **senza nessuno stop**, e su MT5 le colonne S/L e T/P erano
+    vuote, quindi non si vedeva nemmeno.
+
+    Adesso sono due reti e non una. Quella del broker scatta sul tick; la
+    sentinella resta perche' GEST-04 -- parziale al 25% e resto a break even
+    -- e' una sequenza condizionata che uno stop statico non sa esprimere.
+    Chi arriva primo chiude, e la sentinella riconcilia gia' le posizioni
+    sparite senza che sia stata lei a chiuderle.
+
+    I livelli vengono arrotondati alla cifra del simbolo: MT5 rifiuta con
+    `10016` uno stop non allineato al tick, e un ordine rifiutato per un
+    decimale di troppo sarebbe un'operazione persa per niente.
     """
     # Una prova non manda ordini veri al broker.
     #
@@ -388,7 +424,19 @@ def invia_ordine(
             "type_filling": _modalita_riempimento(simbolo),
         }
 
-        log.info("invio ordine %s %s %s", direzione, volume_pulito, simbolo)
+        # Lo stop e il target, arrotondati al tick del simbolo. Un livello a
+        # zero per MT5 vuol dire "nessun livello", che e' esattamente cio' che
+        # serve quando chi chiama non ne ha uno -- per esempio un TP1 tolto
+        # perche' stava alle spalle del prezzo.
+        cifre = _cifre_simbolo(simbolo)
+        if stop is not None:
+            richiesta["sl"] = round(float(stop), cifre)
+        if target is not None:
+            richiesta["tp"] = round(float(target), cifre)
+
+        log.info("invio ordine %s %s %s (sl %s tp %s)", direzione,
+                 volume_pulito, simbolo,
+                 richiesta.get("sl", "-"), richiesta.get("tp", "-"))
         try:
             risultato = mt5.order_send(richiesta)
         except Exception as errore:
@@ -429,6 +477,95 @@ def invia_ordine(
 # e' il caso peggiore possibile: la perdita continua a correre e nessuno la
 # ferma. Questo valore e' abbastanza grande da non rifiutare mai in pratica.
 DEVIAZIONE_CHIUSURA: int = 1_000_000
+
+
+def modifica_livelli(
+    ticket: int,
+    stop: Optional[float] = None,
+    target: Optional[float] = None,
+) -> OrderResult:
+    """Sposta stop e target di una posizione GIA' APERTA, sul broker.
+
+    ## Perche' serve
+
+    Da quando l'ordine parte con `sl` e `tp` attaccati ci sono due reti: il
+    broker e la sentinella. Il guaio e' che i livelli cambiano dopo
+    l'apertura -- `GEST-04` porta lo stop a pareggio dopo il parziale,
+    `SETUP-17` lo porta a pareggio quando la bias si inverte, `GEST-08`
+    allunga il target -- e fino al 2026-09-22 quei movimenti finivano solo
+    in archivio.
+
+    Due reti che dicono cose diverse sono peggio di una sola: quella del
+    broker e' proprio quella che sopravvive alla morte del bot, ed e' quella
+    che sarebbe rimasta allo stop vecchio. Misurato sul log: 58 parziali e 91
+    spostamenti di `SETUP-17` in cui il broker non e' mai stato aggiornato.
+
+    Un livello a `None` resta com'e'; per toglierlo si passa `0.0`, che e'
+    come MT5 scrive "nessun livello".
+    """
+    from core.ambiente import broker_finto, in_prova
+
+    if in_prova() and not broker_finto():
+        log.warning("livelli NON modificati: siamo in una prova (%s)", ticket)
+        return OrderResult(
+            ok=False, messaggio="siamo in una prova: nessuna modifica e' partita")
+
+    ok, messaggio = _assicura_connessione()
+    if not ok or mt5 is None:
+        return OrderResult(ok=False, messaggio=messaggio)
+
+    if stop is None and target is None:
+        return OrderResult(ok=True, messaggio="niente da modificare")
+
+    with _lucchetto:
+        posizioni = mt5.positions_get(ticket=ticket)
+        if not posizioni:
+            codice, descrizione = _errore_mt5()
+            return OrderResult(
+                ok=False,
+                messaggio=f"posizione {ticket} non trovata sul broker: "
+                          f"[{codice}] {descrizione}",
+                codice_errore=codice,
+            )
+        posizione = posizioni[0]
+        cifre = _cifre_simbolo(posizione.symbol)
+
+        richiesta: dict[str, Any] = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": posizione.symbol,
+            "position": posizione.ticket,
+            # Cio' che non si passa resta quello che c'e' gia': MT5 riscrive
+            # entrambi i campi ad ogni SLTP, quindi ometterne uno lo azzera.
+            "sl": round(float(stop), cifre) if stop is not None else posizione.sl,
+            "tp": round(float(target), cifre) if target is not None else posizione.tp,
+        }
+
+        log.info("modifica livelli su %s: sl %s tp %s",
+                 ticket, richiesta["sl"], richiesta["tp"])
+        try:
+            risultato = mt5.order_send(richiesta)
+        except Exception as errore:
+            log.exception("order_send() ha sollevato modificando i livelli")
+            return OrderResult(
+                ok=False, messaggio=f"order_send() ha sollevato: {errore!r}")
+
+    if risultato is None:
+        codice, descrizione = _errore_mt5()
+        return OrderResult(
+            ok=False,
+            messaggio=f"order_send() senza risposta: [{codice}] {descrizione}",
+            codice_errore=codice,
+        )
+    if risultato.retcode != mt5.TRADE_RETCODE_DONE:
+        log.error("modifica dei livelli rifiutata su %s: retcode %s (%s)",
+                  ticket, risultato.retcode, risultato.comment)
+        return OrderResult(
+            ok=False,
+            messaggio=f"modifica rifiutata: retcode {risultato.retcode} "
+                      f"({risultato.comment})",
+            codice_errore=risultato.retcode,
+        )
+    return OrderResult(ok=True, messaggio="livelli aggiornati sul broker")
 
 
 def chiudi_posizione(

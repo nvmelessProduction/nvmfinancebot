@@ -332,11 +332,20 @@ def _esegui_decisione(
         notifier.invia(f"{testo}\n\nBLOCCATO: {blocco_risk02}")
         return "bloccato", blocco_risk02, None, None
 
+    # Stop e target partono ATTACCATI all'ordine, non solo in archivio: se il
+    # bot muore la posizione resta comunque protetta dal broker, e su MT5 le
+    # colonne S/L e T/P smettono di essere vuote. La sentinella resta la rete
+    # che gestisce GEST-04, che uno stop statico non sa esprimere.
+    #
+    # Al broker va il TARGET FINALE, non TP1: TP1 e' un parziale del 25% e il
+    # broker chiuderebbe tutto. Il parziale resta mestiere della sentinella.
     esito_ordine = broker.invia_ordine(
         simbolo=simbolo_ordine,
         direzione=decisione.azione,
         volume=decisione.volume,
         commento=f"alert {id_alert}",
+        stop=decisione.sl,
+        target=decisione.tp,
     )
     notifier.invia(f"{testo}\n\nesecuzione: {esito_ordine.messaggio}")
 
@@ -586,16 +595,31 @@ def _gestisci_posizioni_aperte(alert: AlertIn) -> int:
                     azione.id_posizione, esito.prezzo, f"{azione.regola}: {azione.motivo}"
                 )
             elif azione.tipo == "break_even":
-                # Lo stop vive in archivio, non sul broker: sposta la
-                # sentinella, non MT5. E si marca come gia' spostato, perche'
-                # GEST-05 vieta di rifarlo.
+                # Lo stop si sposta in archivio E sul broker: da quando
+                # l'ordine parte con `sl` attaccato sono due reti, e due reti
+                # che dicono cose diverse sono peggio di una sola. Si marca
+                # anche come gia' spostato, perche' GEST-05 vieta di rifarlo.
+                nuovo = float(azione.valore or 0.0)
                 storage.applica_parziale_tp1(
                     azione.id_posizione,
                     _volume_attuale(azione.id_posizione),
-                    float(azione.valore or 0.0),
+                    nuovo,
                 )
+                if azione.ticket is not None:
+                    esito = broker.modifica_livelli(int(azione.ticket), stop=nuovo)
+                    if not esito.ok:
+                        log.warning("%s: stop spostato in archivio ma non sul "
+                                    "broker per %s: %s",
+                                    azione.regola, azione.ticket, esito.messaggio)
             elif azione.tipo == "estendi_target":
-                storage.aggiorna_target(azione.id_posizione, float(azione.valore or 0.0))
+                nuovo = float(azione.valore or 0.0)
+                storage.aggiorna_target(azione.id_posizione, nuovo)
+                if azione.ticket is not None:
+                    esito = broker.modifica_livelli(int(azione.ticket), target=nuovo)
+                    if not esito.ok:
+                        log.warning("%s: target esteso in archivio ma non sul "
+                                    "broker per %s: %s",
+                                    azione.regola, azione.ticket, esito.messaggio)
             else:
                 log.warning("azione di gestione sconosciuta: %r", azione.tipo)
                 continue

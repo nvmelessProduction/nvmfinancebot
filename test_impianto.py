@@ -67,6 +67,7 @@ class FintoMT5(types.ModuleType):
 
     # Costanti, con gli stessi valori del modulo vero.
     TRADE_ACTION_DEAL = 1
+    TRADE_ACTION_SLTP = 2
     ORDER_TYPE_BUY = 0
     ORDER_TYPE_SELL = 1
     POSITION_TYPE_BUY = 0
@@ -183,6 +184,19 @@ class FintoMT5(types.ModuleType):
         if self.ordine_fallisce:
             return Oggetto(retcode=10004, comment="Requote", order=0, price=0.0)
 
+        if richiesta.get("action") == self.TRADE_ACTION_SLTP:
+            # MT5 vero: sposta stop e target di una posizione aperta, senza
+            # toccarne il volume. Il finto deve imitarlo, altrimenti la
+            # seconda rete -- i livelli sul broker -- non e' collaudabile.
+            for p in self.posizioni:
+                if p.ticket == richiesta["position"]:
+                    p.sl = richiesta.get("sl", getattr(p, "sl", 0.0))
+                    p.tp = richiesta.get("tp", getattr(p, "tp", 0.0))
+            return Oggetto(
+                retcode=self.TRADE_RETCODE_DONE, order=richiesta["position"],
+                price=0.0, comment="livelli aggiornati",
+            )
+
         if "position" in richiesta:  # chiusura, totale o parziale
             # MT5 vero: una chiusura con volume inferiore a quello aperto e'
             # un PARZIALE. Il ticket resta, il volume residuo si aggiorna. Il
@@ -210,6 +224,9 @@ class FintoMT5(types.ModuleType):
                 type=richiesta["type"], volume=richiesta["volume"],
                 price_open=richiesta["price"], price_current=richiesta["price"],
                 profit=0.0, magic=richiesta["magic"],
+                # I livelli che l'ordine porta con se': da qui in poi partono
+                # attaccati, e su MT5 si vedono nelle colonne S/L e T/P.
+                sl=richiesta.get("sl", 0.0), tp=richiesta.get("tp", 0.0),
             )
         )
         return Oggetto(

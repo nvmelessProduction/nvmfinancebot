@@ -200,3 +200,111 @@ class TestIlPnlIlleggibileNonVale_Zero:
         # aggiornata: e' il segnale che il difetto e' stato chiuso.
         corpo = inspect.getsource(broker.pnl_chiuso)
         assert "_scarto_server" not in corpo
+
+
+class TestStopETargetArrivanoAlBroker:
+    """Fino al 2026-09-22 l'ordine partiva nudo: su MT5 S/L e T/P vuote.
+
+    Funzionava finche' il bot era vivo -- 281 stop e 102 target eseguiti
+    dalla sentinella -- ma un processo morto lasciava la posizione aperta
+    senza nessuna protezione. Adesso sono due reti.
+    """
+
+    def test_la_firma_accetta_stop_e_target(self):
+        import inspect
+        from core import broker
+        p = inspect.signature(broker.invia_ordine).parameters
+        assert "stop" in p and "target" in p
+        assert p["stop"].default is None and p["target"].default is None
+
+    def test_i_livelli_finiscono_nella_richiesta(self):
+        import inspect
+        from core import broker
+        corpo = inspect.getsource(broker.invia_ordine)
+        assert 'richiesta["sl"] = round(' in corpo
+        assert 'richiesta["tp"] = round(' in corpo
+
+    def test_al_broker_va_il_target_finale_non_tp1(self):
+        """TP1 e' un parziale del 25%: il broker chiuderebbe tutto.
+
+        Nel modello `Decision` il target finale si chiama `tp` e il parziale
+        `tp1`: due campi distinti, e al broker va il primo.
+        """
+        import inspect
+        import main
+        corpo = inspect.getsource(main)
+        assert "target=decisione.tp," in corpo
+        assert "target=decisione.tp1" not in corpo
+        from core.models import Decision
+        assert {"tp", "tp1"} <= set(Decision.model_fields)
+
+    def test_il_livello_viene_arrotondato_alla_cifra_del_simbolo(self):
+        """MT5 rifiuta con 10016 uno stop non allineato al tick."""
+        from core import broker
+        assert broker._cifre_simbolo("QUALUNQUE", difetto=3) in (3, 5)
+        # Senza connessione si usa il ripiego, non si solleva.
+        assert isinstance(broker._cifre_simbolo("EURUSD+"), int)
+
+
+class TestIlBrokerNonChiudeTuttoASuTP1:
+    """Il dubbio giusto: se TP1 finisse sul broker, chiuderebbe TUTTO.
+
+    TP1 e' un parziale del 25% (GEST-04): il broker non sa parzializzare, un
+    `tp` raggiunto chiude l'intera posizione. Al broker va quindi il TARGET
+    FINALE, e TP1 resta mestiere della sentinella.
+    """
+
+    def test_il_tp_del_broker_e_il_target_finale(self):
+        import inspect
+        import main
+        corpo = inspect.getsource(main)
+        assert "target=decisione.tp," in corpo
+        assert "target=decisione.tp1" not in corpo
+
+    def test_la_traduzione_tiene_separati_i_due_campi(self):
+        """`strategy` scrive `tp` dal target finale e `tp1` dal parziale.
+
+        E' il punto dove i due si potrebbero confondere: se `tp` prendesse
+        `decisione.tp1`, il broker chiuderebbe tutta la posizione al primo
+        obiettivo invece di lasciarne in vita il 75%.
+        """
+        import inspect
+        from core import strategy
+        corpo = inspect.getsource(strategy)
+        assert "tp=decisione.target_finale," in corpo
+        assert "tp1=decisione.tp1," in corpo
+
+
+class TestLoStopNuovoArrivaAlBroker:
+    """Dopo il parziale lo stop va a pareggio: anche sul broker.
+
+    Prima finiva solo in archivio. Sul log: 58 parziali e 91 spostamenti di
+    SETUP-17 in cui il broker e' rimasto allo stop di partenza -- cioe' la
+    rete che sopravvive alla morte del bot era quella sbagliata.
+    """
+
+    def test_la_funzione_esiste_e_usa_SLTP(self):
+        import inspect
+        from core import broker
+        assert hasattr(broker, "modifica_livelli")
+        assert "TRADE_ACTION_SLTP" in inspect.getsource(broker.modifica_livelli)
+
+    def test_non_tocca_il_conto_durante_le_prove(self):
+        from core import broker
+        esito = broker.modifica_livelli(12345, stop=1.1)
+        assert esito.ok is False
+        assert "prova" in esito.messaggio
+
+    def test_senza_livelli_non_manda_niente(self, monkeypatch):
+        from core import ambiente, broker
+        monkeypatch.setattr(ambiente, "in_prova", lambda: False)
+        monkeypatch.setattr(broker, "_assicura_connessione", lambda: (True, "ok"))
+        esito = broker.modifica_livelli(12345)
+        assert esito.ok is True and "niente da modificare" in esito.messaggio
+
+    def test_la_sentinella_e_il_server_la_chiamano(self):
+        import inspect
+        import main
+        from core import sentinella
+        assert "modifica_livelli(" in inspect.getsource(sentinella)
+        assert inspect.getsource(main).count("modifica_livelli(") >= 2
