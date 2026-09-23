@@ -921,3 +921,64 @@ class TestIlControlloSulParzialeUsaIlVersoDelCFD:
         from test_motore import foto, m
         from core.definizioni import Bias
         assert m._verso_sul_cfd(foto(strumento="EURUSD"), Bias.LONG) is Bias.LONG
+
+
+class TestLaValutazioneDeveEssereUnLampo:
+    """Segnale -> ordine: il tempo fra i due e' una regola, non un dettaglio.
+
+    Misurato il 2026-09-23 con `cProfile`: una fotografia costava 2,7 secondi,
+    un giro sui sei strumenti quarantanove. L'alert arrivava al motore gia'
+    vecchio di 22-55 secondi e il tetto sulla freschezza lo bloccava -- tre
+    operazioni decise e nessuna partita.
+
+    Il 70% se ne andava in `candele_visibili`, che riordinava l'intero
+    archivio (285.000 candele) ad ogni chiamata, 190 volte per valutazione.
+    """
+
+    def test_candele_visibili_non_riordina_una_serie_gia_ordinata(self):
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.candele_visibili)
+        assert "bisect_right" in corpo
+        assert "_ordinata(" in corpo
+
+    def test_ma_una_serie_disordinata_viene_comunque_ordinata(self):
+        """La barriera contro il lookahead non dipende da una promessa."""
+        from core.motore import candele_visibili
+        from core.definizioni import Candela
+        from datetime import datetime, timedelta, timezone
+        ora = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        serie = [Candela(ora + timedelta(hours=i), 1, 2, 0, 1) for i in range(6)]
+        mischiate = (serie[4], serie[0], serie[5], serie[2])
+        visibili = candele_visibili(mischiate, ora + timedelta(hours=3))
+        assert [c.orario for c in visibili] == [serie[0].orario, serie[2].orario]
+
+    def test_il_taglio_e_esatto(self):
+        """`orario` e' la CHIUSURA: chi chiude adesso e' visibile, chi dopo no."""
+        from core.motore import candele_visibili
+        from core.definizioni import Candela
+        from datetime import datetime, timedelta, timezone
+        ora = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        serie = tuple(Candela(ora + timedelta(hours=i), 1, 2, 0, 1) for i in range(10))
+        assert len(candele_visibili(serie, ora + timedelta(hours=4))) == 5
+        assert candele_visibili(serie, ora - timedelta(hours=1)) == ()
+
+    def test_l_impronta_si_ricontrolla_sul_database(self):
+        """Una memoria che si fida di un contatore in RAM serve dati vecchi.
+
+        Il contatore da solo non bastava: basta un percorso di scrittura non
+        intercettato -- ed e' successo -- e l'impronta ricordata sopravvive a
+        una candela nuova. `MAX(rowid)` costa O(1) e cambia ad ogni
+        inserimento, da qualunque parte arrivi.
+        """
+        import inspect
+        from core import storage
+        corpo = inspect.getsource(storage.impronta_candele)
+        assert "SELECT MAX(rowid) FROM candela" in corpo
+        assert "_VERSIONE_ARCHIVIO" in corpo
+
+    def test_la_memoria_distingue_gli_archivi(self):
+        """Le prove aprono un archivio temporaneo ciascuna."""
+        import inspect
+        from core import storage
+        assert "impostazioni().DB_PATH, strumento" in inspect.getsource(storage.impronta_candele)

@@ -30,6 +30,8 @@ e' l'unico controllo che non si fida degli altri.
 
 from __future__ import annotations
 
+from bisect import bisect_right
+from collections.abc import Sequence as _SequenzaAstratta
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Mapping, Optional, Sequence
@@ -85,8 +87,91 @@ def candele_visibili(candele: Sequence[Candela], istante: datetime) -> tuple[Can
     candela settimanale in corso non e' chiusa, quindi non esiste. Chi la
     usasse per l'allineamento leggerebbe il futuro, e il backtest sembrerebbe
     ottimo.
+
+    ## Perche' e' scritta cosi' e non in una riga
+
+    Questa funzione e' il punto piu' caldo di tutto il bot. Misurato il
+    2026-09-23 con `cProfile` su una valutazione sola: **190 chiamate, 2,7
+    secondi**, dei quali 5,5 dentro `sorted` su 9,4 milioni di confronti.
+    Riordinava l'intero archivio -- 285.000 candele per `EURUSD` -- ad ogni
+    chiamata, e le candele arrivano gia' ordinate dall'archivio.
+
+    Con quel costo un giro completo sui sei strumenti durava novanta secondi,
+    e l'alert arrivava al motore gia' vecchio: le tre operazioni decise il
+    2026-09-23 sono state tutte bloccate da "alert vecchio di 22-55s".
+
+    Due mosse, e nessuna delle due rinuncia alla barriera:
+
+    - **ricerca binaria** invece del filtro lineare, che vale perche' la
+      serie e' ordinata. Se non lo fosse si ricade sul percorso vecchio.
+    - **una memoria cortissima** sull'ultimo istante: dentro una valutazione
+      l'istante non cambia e le stesse serie vengono richieste decine di
+      volte. La memoria tiene un riferimento alla serie, quindi `id()` resta
+      valido finche' la voce e' in cache.
     """
-    return tuple(sorted((c for c in candele if c.orario <= istante), key=lambda c: c.orario))
+    if not candele:
+        return ()
+
+    chiave = (id(candele), istante)
+    memoria = _MEMORIA_VISIBILI
+    if memoria.get("istante") is not istante:
+        memoria.clear()
+        memoria["istante"] = istante
+    trovato = memoria.get(chiave)
+    if trovato is not None:
+        return trovato[1]
+
+    if candele[0].orario <= candele[-1].orario and _ordinata(candele):
+        taglio = bisect_right(_OrariDi(candele), istante)
+        fuori = tuple(candele[:taglio])
+    else:
+        fuori = tuple(sorted((c for c in candele if c.orario <= istante),
+                             key=lambda c: c.orario))
+    # Il riferimento alla serie va tenuto: senza, l'oggetto potrebbe essere
+    # liberato e un altro riusare lo stesso `id()`.
+    memoria[chiave] = (candele, fuori)
+    return fuori
+
+
+# L'ultimo istante valutato e i suoi tagli. Si svuota da sola al cambio di
+# istante, quindi non cresce e non tiene in vita serie vecchie.
+_MEMORIA_VISIBILI: dict = {}
+
+
+class _OrariDi(_SequenzaAstratta):
+    """Gli orari di una serie, senza costruirne la lista.
+
+    `bisect` vuole una sequenza indicizzabile: costruire la lista degli orari
+    costerebbe la scansione che si sta cercando di evitare.
+    """
+
+    __slots__ = ("_candele",)
+
+    def __init__(self, candele: Sequence[Candela]) -> None:
+        self._candele = candele
+
+    def __len__(self) -> int:
+        return len(self._candele)
+
+    def __getitem__(self, i):
+        return self._candele[i].orario
+
+
+def _ordinata(candele: Sequence[Candela]) -> bool:
+    """La serie e' gia' in ordine di chiusura?
+
+    Il controllo costa una scansione, ma senza confronti di chiave e senza
+    allocare: su 285.000 candele sono millisecondi contro i secondi di
+    `sorted`. Serve perche' la barriera non puo' dipendere da una promessa:
+    se un giorno arrivasse una serie disordinata, il percorso vecchio la
+    gestisce comunque.
+    """
+    precedente = None
+    for c in candele:
+        if precedente is not None and c.orario < precedente:
+            return False
+        precedente = c.orario
+    return True
 
 
 @dataclass(frozen=True)

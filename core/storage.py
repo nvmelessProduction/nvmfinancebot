@@ -494,7 +494,10 @@ def salva_candela(
             (strumento, tf, chiusura_utc, apertura, massimo, minimo,
              chiusura, origine, adesso_utc()),
         )
-        return cur.rowcount > 0
+        nuova = cur.rowcount > 0
+    if nuova:
+        _archivio_cambiato()
+    return nuova
 
 
 def salva_candele(righe: list[dict[str, Any]], origine: str = "importazione") -> tuple[int, int]:
@@ -518,6 +521,8 @@ def salva_candele(righe: list[dict[str, Any]], origine: str = "importazione") ->
         )
         dopo = conn.execute("SELECT COUNT(*) FROM candela").fetchone()[0]
     nuove = dopo - prima
+    if nuove:
+        _archivio_cambiato()
     return nuove, len(righe) - nuove
 
 
@@ -545,7 +550,10 @@ def dimentica_candele(strumento: str, tranne_origine: str) -> int:
             "DELETE FROM candela WHERE strumento = ? AND origine != ?",
             (strumento, tranne_origine),
         )
-        return cur.rowcount
+        cancellate = cur.rowcount
+    if cancellate:
+        _archivio_cambiato()
+    return cancellate
 
 
 def candele_archiviate(
@@ -575,6 +583,18 @@ def candele_archiviate(
     return [dict(riga) for riga in righe]
 
 
+# Quante volte sono state scritte candele da quando il processo e' partito.
+# Serve a `impronta_candele` per sapere se puo' fidarsi di cio' che ricorda.
+_VERSIONE_ARCHIVIO: int = 0
+_IMPRONTE: dict[tuple[str, str], tuple[tuple, tuple]] = {}
+
+
+def _archivio_cambiato() -> None:
+    """Una scrittura di candele: le impronte ricordate non valgono piu'."""
+    global _VERSIONE_ARCHIVIO
+    _VERSIONE_ARCHIVIO += 1
+
+
 def impronta_candele(strumento: str) -> tuple:
     """Come sono messe adesso le candele di uno strumento, in poche decine di ms.
 
@@ -589,13 +609,43 @@ def impronta_candele(strumento: str) -> tuple:
     `quante`, una cancellata pure. Se non cambia nulla di tutto questo, le
     candele sono le stesse di prima -- non "probabilmente", proprio le stesse.
     """
+    # L'impronta si ricalcola solo quando qualcuno ha scritto.
+    #
+    # La query e' gia' su indice coprente, ma deve comunque contare tutte le
+    # righe dello strumento: 47 ms su 285.000 candele. Chiamata quindici
+    # volte per valutazione faceva 700 ms -- il costo piu' grosso rimasto
+    # dopo aver sistemato `candele_visibili` (misurato il 2026-09-23).
+    #
+    # `_VERSIONE_ARCHIVIO` cambia ad ogni scrittura di candele, quindi la
+    # memoria e' ESATTA e non a scadenza: una candela appena archiviata
+    # invalida l'impronta nello stesso istante in cui entra. Una cache a
+    # tempo invece avrebbe potuto servire un'impronta vecchia proprio
+    # nell'alert che porta la candela nuova.
+    # La chiave comprende il FILE dell'archivio: le prove ne aprono uno
+    # temporaneo per ciascuna, e una memoria legata al solo nome dello
+    # strumento servirebbe l'impronta di un database a un altro.
+    chiave = (impostazioni().DB_PATH, strumento)
     with connessione() as conn:
+        # Il testimone: `MAX(rowid)` sull'intera tabella costa O(1) in SQLite
+        # e cambia ad OGNI inserimento, da qualunque parte arrivi. Il
+        # contatore in memoria da solo non bastava -- basta un percorso di
+        # scrittura non intercettato e la memoria serve dati vecchi, che e'
+        # esattamente il guasto che si sta cercando di evitare.
+        testimone = conn.execute("SELECT MAX(rowid) FROM candela").fetchone()[0]
+        valido = (testimone, _VERSIONE_ARCHIVIO)
+
+        memoria = _IMPRONTE.get(chiave)
+        if memoria is not None and memoria[0] == valido:
+            return memoria[1]
+
         righe = conn.execute(
             "SELECT tf, COUNT(*), MAX(chiusura_utc) FROM candela "
             "WHERE strumento = ? GROUP BY tf ORDER BY tf",
             (strumento,),
         ).fetchall()
-    return tuple(tuple(r) for r in righe)
+    fuori = tuple(tuple(r) for r in righe)
+    _IMPRONTE[chiave] = (valido, fuori)
+    return fuori
 
 
 def copertura_candele() -> list[dict[str, Any]]:
