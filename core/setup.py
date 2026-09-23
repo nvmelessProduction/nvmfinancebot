@@ -136,63 +136,147 @@ def timeframe_crt_ammesso(
 # ===========================================================================
 
 
-def crt_short(n1: Candela, n2: Candela, tf_crt: TF, key_level: KeyLevel) -> Optional[Crt]:
-    """SETUP-02A — CRT short, formato alla chiusura di N2.
+def _manipolazione_e_rientro(
+    c_rif: Candela,
+    barre: Sequence[Candela],
+    verso: Bias,
+) -> Optional[tuple[float, Candela]]:
+    """SETUP-02 — Cerca manipolazione e rientro DENTRO la candela successiva.
 
-    Quattro condizioni simultanee: `N2` prende il key level, supera il massimo
-    di `N1`, richiude dentro il range di `N1`, e chiude sotto la chiusura di
-    `N1`.
+    Il documento e' esplicito su dove guardare:
+
+        La candela di riferimento E' il range: CRT_high = high[C_rif].
+        Il Power of Three si svolge DENTRO la candela di riferimento
+        successiva. Li' si cercano, SUL TIMEFRAME DI ESECUZIONE, la
+        manipolazione e il rientro.
+
+        SE  una barra fa  high > CRT_high
+        AND una barra successiva o la stessa chiude < CRT_high
+        ALLORA il CRT short e' FORMATO a quella chiusura
+
+    `barre` sono le candele del timeframe di ESECUZIONE che cadono dentro la
+    candela di riferimento successiva, in ordine.
+
+    Restituisce `(sweep, barra_del_rientro)`: lo sweep e' l'estremo piu'
+    lontano raggiunto oltre il livello -- il documento lo chiama `sweep_high`
+    -- ed e' li' che GEST-02 mette lo stop.
+
+    `None` se la sequenza non si e' completata.
+    """
+    livello = c_rif.massimo if verso is Bias.SHORT else c_rif.minimo
+    sweep: Optional[float] = None
+
+    for barra in barre:
+        superato = (barra.massimo > livello if verso is Bias.SHORT
+                    else barra.minimo < livello)
+        if superato:
+            estremo = barra.massimo if verso is Bias.SHORT else barra.minimo
+            if sweep is None:
+                sweep = estremo
+            else:
+                sweep = max(sweep, estremo) if verso is Bias.SHORT else min(sweep, estremo)
+
+        # "una barra successiva O LA STESSA": il rientro puo' avvenire sulla
+        # barra che ha manipolato, e per questo il controllo sta qui sotto e
+        # non in un secondo giro.
+        if sweep is None:
+            continue
+        rientrato = (barra.chiusura < livello if verso is Bias.SHORT
+                     else barra.chiusura > livello)
+        if rientrato:
+            return sweep, barra
+    return None
+
+
+def _n2_sintetica(sweep: float, rientro: Candela, verso: Bias) -> Candela:
+    """La fase di manipolazione, come se fosse una candela sola.
+
+    A valle il motore chiede a `N2` due cose: l'estremo spazzato, per lo stop
+    di GEST-02, e la chiusura, che e' il prezzo a cui il CRT si e' formato.
+    Confezionarle in una `Candela` evita di cambiare la firma di tutto cio'
+    che sta piu' in basso -- `stop_aggressivo`, `peso_ombre`, il dossier --
+    per un dato che quelle funzioni sanno gia' leggere.
+    """
+    if verso is Bias.SHORT:
+        return Candela(rientro.orario, rientro.apertura, sweep,
+                       min(rientro.minimo, rientro.chiusura), rientro.chiusura)
+    return Candela(rientro.orario, rientro.apertura,
+                   max(rientro.massimo, rientro.chiusura), sweep, rientro.chiusura)
+
+
+def crt_short(
+    c_rif: Candela,
+    barre: Sequence[Candela],
+    tf_crt: TF,
+    key_level: KeyLevel,
+) -> Optional[Crt]:
+    """SETUP-02A — CRT short, formato alla chiusura del rientro.
+
+    Due condizioni, quelle del documento e nessuna in piu':
+
+        una barra fa high > CRT_high          (manipolazione)
+        una barra successiva o la stessa chiude < CRT_high   (rientro)
 
     Il key level dev'essere un `KL_max` di timeframe strettamente superiore
-    (SETUP-00, SETUP-02).
+    (SETUP-00, SETUP-02), e lo sweep deve averlo preso davvero (DEF-38).
 
-    **Nota sulla terza condizione.** `close[N2] <= high[N1]` e' logicamente
-    implicata dalla quarta: poiche' `close[N1] <= high[N1]` per costruzione di
-    una candela, da `close[N2] < close[N1]` segue sempre
-    `close[N2] < high[N1]`. La terza non puo' mai essere l'unica a fallire, e
-    nessun test puo' distinguerla. E' scritta qui lo stesso perche' il
-    documento la elenca, e questo file traduce il documento: toglierla
-    renderebbe il codice piu' corto e meno confrontabile con SETUP-02A.
-    (REV-45)
+    ## Cosa e' cambiato, e perche' contava
+
+    Fino al 2026-09-23 questa funzione confrontava DUE CANDELE DEL TIMEFRAME
+    DI RANGE e chiedeva quattro condizioni, una delle quali -- `close[N2] <
+    close[N1]` -- non compare in nessun documento. Erano tre scostamenti che
+    si moltiplicavano:
+
+    1. **il timeframe sbagliato.** Il documento legge manipolazione e rientro
+       sulle barre di ESECUZIONE dentro la candela successiva. Su `4h -> 15m`
+       sono sedici occasioni dentro quattro ore; il codice ne concedeva una,
+       e pretendeva che fosse l'intera candela da quattro ore a spazzare e
+       richiudere.
+    2. **il momento sbagliato.** Il CRT nasceva solo alla chiusura della
+       candela di range, cioe' quando il movimento era gia' finito. Il
+       documento lo forma alla chiusura della barra bassa che rientra --
+       anche mezz'ora dentro le quattro ore. E' anche il motivo per cui
+       "a volte si entra sulla seconda candela e non sulla terza".
+    3. **una condizione in piu'**, che restringeva ancora.
+
+    Misurato sul bot dal vivo: 51 CRT in 19 ore, zero ingressi.
     """
     if key_level.tipo is not TipoKeyLevel.MAX:
         return None
     if not timeframe_crt_ammesso(tf_crt, key_level.tf):
         return None
-    if not (
-        n2.massimo > key_level.valore          # presa del key level (DEF-38)
-        and n2.massimo > n1.massimo
-        and n2.chiusura <= n1.massimo
-        and n2.chiusura < n1.chiusura
-    ):
+    esito = _manipolazione_e_rientro(c_rif, barre, Bias.SHORT)
+    if esito is None:
         return None
-    return Crt(Bias.SHORT, tf_crt, n1, n2, key_level)
+    sweep, rientro = esito
+    if sweep <= key_level.valore:          # presa del key level (DEF-38)
+        return None
+    return Crt(Bias.SHORT, tf_crt, c_rif, _n2_sintetica(sweep, rientro, Bias.SHORT), key_level)
 
 
-def crt_long(n1: Candela, n2: Candela, tf_crt: TF, key_level: KeyLevel) -> Optional[Crt]:
-    """SETUP-02B — CRT long, formato alla chiusura di N2.
-
-    Vale a specchio la nota di `crt_short` sulla terza condizione: da
-    `close[N2] > close[N1]` e `close[N1] >= low[N1]` segue sempre
-    `close[N2] >= low[N1]` (REV-45).
-    """
+def crt_long(
+    c_rif: Candela,
+    barre: Sequence[Candela],
+    tf_crt: TF,
+    key_level: KeyLevel,
+) -> Optional[Crt]:
+    """SETUP-02B — CRT long. Vale a specchio la nota di `crt_short`."""
     if key_level.tipo is not TipoKeyLevel.MIN:
         return None
     if not timeframe_crt_ammesso(tf_crt, key_level.tf):
         return None
-    if not (
-        n2.minimo < key_level.valore
-        and n2.minimo < n1.minimo
-        and n2.chiusura >= n1.minimo
-        and n2.chiusura > n1.chiusura
-    ):
+    esito = _manipolazione_e_rientro(c_rif, barre, Bias.LONG)
+    if esito is None:
         return None
-    return Crt(Bias.LONG, tf_crt, n1, n2, key_level)
+    sweep, rientro = esito
+    if sweep >= key_level.valore:
+        return None
+    return Crt(Bias.LONG, tf_crt, c_rif, _n2_sintetica(sweep, rientro, Bias.LONG), key_level)
 
 
 def cerca_crt(
-    n1: Candela,
-    n2: Candela,
+    c_rif: Candela,
+    barre: Sequence[Candela],
     tf_crt: TF,
     key_level_presi: Sequence[KeyLevel],
 ) -> Optional[Crt]:
@@ -203,12 +287,19 @@ def cerca_crt(
     e' valido, qualunque sia la forma delle candele."* Con l'elenco vuoto qui
     non si cerca nemmeno.
 
+    `c_rif` e' la candela di riferimento -- il RANGE, sul timeframe alto --
+    e `barre` sono le candele del timeframe di ESECUZIONE che cadono dentro
+    la candela di riferimento successiva.
+
     Se piu' key level producono un CRT si tiene quello del **timeframe piu'
     alto**: PREC-02, il timeframe piu' alto comanda.
     """
+    if not barre:
+        return None
     trovati: list[Crt] = []
     for livello in key_level_presi:
-        for tentativo in (crt_short(n1, n2, tf_crt, livello), crt_long(n1, n2, tf_crt, livello)):
+        for tentativo in (crt_short(c_rif, barre, tf_crt, livello),
+                          crt_long(c_rif, barre, tf_crt, livello)):
             if tentativo is not None:
                 trovati.append(tentativo)
     if not trovati:

@@ -256,7 +256,17 @@ def misura(strumento: str, storico, tf_range: TF, tf_ing: TF,
             inizio = max(0, inizio - 3)     # tre di margine per il contesto
         if quante_max:
             inizio = max(inizio, len(serie_range) - quante_max)
-        for candela in serie_range[inizio:]:
+        # Si itera sulle candele di ESECUZIONE, non su quelle di range.
+        #
+        # Dal 2026-09-23 il CRT si forma alla chiusura della barra bassa che
+        # rientra (SETUP-02), quindi il momento della decisione e' li'. Con
+        # le candele di range si misurerebbe la coppia di un gradino piu' su:
+        # chiamando `valuta(foto, TF_H1)` il motore prende il range da `TF_1D`
+        # e la misura porterebbe l'etichetta sbagliata.
+        da_valutare = [c for c in serie_ing if c.orario >= serie_range[inizio].orario]
+        if quante_max:
+            da_valutare = da_valutare[-quante_max:]
+        for candela in da_valutare:
             istante = candela.orario
             ridotto = {t: _finestra(storico[t], istante, FINESTRA.get(t, 100))
                        for t in storico}
@@ -272,7 +282,7 @@ def misura(strumento: str, storico, tf_range: TF, tf_ing: TF,
             )
             imbuto["valutazioni"] += 1
             try:
-                d = motore.valuta(foto, tf_range)
+                d = motore.valuta(foto, tf_ing)
             except Exception as e:
                 imbuto[f"eccezione: {type(e).__name__}"] += 1
                 continue

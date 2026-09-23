@@ -40,22 +40,32 @@ def cand(massimo: float, minimo: float, chiusura: float, apertura: float, ore: i
 #
 # La spike di N2 deve restare stretta rispetto al range di N1, altrimenti
 # GEST-01 esclude il setup: e' proprio il filtro che quella regola descrive.
+# `N1` e' la CANDELA DI RIFERIMENTO, sul timeframe di RANGE: e' lei a definire
+# `CRT_high` e `CRT_low`. `N2` e' una barra del timeframe di ESECUZIONE che
+# cade DENTRO la candela di riferimento successiva, e che manipola e rientra.
+#
+# Prima erano due candele dello stesso timeframe: SETUP-02 dice un'altra cosa
+# — *"il Power of Three si svolge dentro la candela di riferimento successiva;
+# li' si cercano, sul timeframe di esecuzione, la manipolazione e il rientro"*.
 N1 = cand(massimo=110, minimo=100, chiusura=110, apertura=100, ore=4)
 N2 = cand(massimo=111, minimo=108, chiusura=109, apertura=110, ore=0)
-KL_SETTIMANALE = KeyLevel(TF.W1, TipoKeyLevel.MAX, 110.5)
+# Il key level dev'essere di un timeframe STRETTAMENTE superiore a quello del
+# CRT (SETUP-00): col range su `TF_1W` serve un livello mensile.
+KL_SETTIMANALE = KeyLevel(TF.M1, TipoKeyLevel.MAX, 110.5)
 
-# I key level di TF_H4, cioe' quelli calcolati su N1 (DEF-36: la C1 del
-# timeframe). SETUP-14 porta li' il 75% residuo: su uno short, al minimo di
-# N1. E' oltre TP1, che sta a meta' del range — ed e' il punto di REV-49.
-KL_H4_MIN = KeyLevel(TF.H4, TipoKeyLevel.MIN, 100.0)
-KL_H4_MAX = KeyLevel(TF.H4, TipoKeyLevel.MAX, 110.0)
+# I key level calcolati su N1 (DEF-36: la C1 del timeframe), e quindi sul
+# timeframe di N1 — che adesso e' quello di RANGE. SETUP-14 porta li' il 75%
+# residuo: su uno short, al minimo di N1. E' oltre TP1, che sta a meta' del
+# range — ed e' il punto di REV-49.
+KL_H4_MIN = KeyLevel(TF.W1, TipoKeyLevel.MIN, 100.0)
+KL_H4_MAX = KeyLevel(TF.W1, TipoKeyLevel.MAX, 110.0)
 
 
 def foto(**modifiche: object) -> Fotografia:
     argomenti: dict = {
         "istante": ADESSO,
         "strumento": "EURUSD",
-        "candele_per_tf": {TF.H4: [N1, N2]},
+        "candele_per_tf": {TF.W1: [N1], TF.H4: [N2]},
         "bias_per_tf": {TF.M3: Bias.SHORT},
         "target_raggiunto_per_tf": {},
         # SETUP-19: il CRT di queste prove e' short sul future, cioe' SELL su
@@ -67,7 +77,9 @@ def foto(**modifiche: object) -> Fotografia:
         "key_level_correnti": [KL_SETTIMANALE, KL_H4_MAX, KL_H4_MIN],
         # Il CRT di queste prove e' short: nasce da massimi spazzati verso
         # l'alto, quindi i due superiori risultano LONG (SETUP-05, REV-46).
-        "sbilanciamenti": {TF.D1: Bias.LONG, TF.W1: Bias.LONG},
+        # "Superiori" rispetto al timeframe del CRT, che ora e' quello di
+        # RANGE: col range su `TF_1W` servono il mensile e il trimestrale.
+        "sbilanciamenti": {TF.M1: Bias.LONG, TF.M3: Bias.LONG},
         "equity": 10000.0,
         "prezzo_cfd": 109.0,
         "valore_punto": 1.0,
@@ -119,9 +131,11 @@ class TestNienteLookahead:
     def test_il_motore_rifiltra_anche_se_gli_arriva_gia_pulito(self) -> None:
         """Fidarsi di chi costruisce la fotografia costerebbe un lookahead muto."""
         futura = Candela(ADESSO + timedelta(hours=4), 109, 130, 108, 129)
-        decisione = m.valuta(foto(candele_per_tf={TF.H4: [N1, N2, futura]}), TF.H4)
-        # Con la futura come N2 il CRT sarebbe diverso: verifico che non venga usata.
-        assert decisione.tf_crt is TF.H4
+        decisione = m.valuta(foto(candele_per_tf={TF.W1: [N1], TF.H4: [N2, futura]}), TF.H4)
+        # Con la futura come barra di rientro il CRT sarebbe diverso: qui si
+        # verifica che non venga usata. Il timeframe del CRT e' quello del
+        # RANGE (`TF_1W`), non quello delle barre di esecuzione.
+        assert decisione.tf_crt is TF.W1
         assert decisione.livello_stop == pytest.approx(N2.massimo), "N2 e' l'ultima candela CHIUSA"
 
 
@@ -169,7 +183,7 @@ class TestAstensioni:
             {"pnl_giornaliero": -500.0},
             {"equity": 1.0, "passo_broker": 1.0},
             {"strumento": "BTCUSD"},
-            {"candele_per_tf": {TF.H4: []}},
+            {"candele_per_tf": {TF.W1: [N1]}},
         ]
         for caso in casi:
             decisione = m.valuta(foto(**caso), TF.H4)
@@ -197,10 +211,10 @@ class TestAstensioni:
 
     def test_ctx04_festivita(self) -> None:
         natale = datetime(2026, 12, 25, 14, 0, tzinfo=timezone.utc)
-        candele = {TF.H4: [
-            Candela(natale - timedelta(hours=4), 100, 110, 100, 110),
-            Candela(natale, 110, 111, 108, 109),
-        ]}
+        candele = {
+            TF.W1: [Candela(natale - timedelta(hours=4), 100, 110, 100, 110)],
+            TF.H4: [Candela(natale, 110, 111, 108, 109)],
+        }
         assert "CTX-04" in self.blocchi(istante=natale, candele_per_tf=candele)
 
     def test_escl05_strumento_fuori_universo(self) -> None:
@@ -246,7 +260,7 @@ class TestAstensioni:
         `prezzo_cfd`, perche' quello sposta l'ancora e i livelli insieme.
         """
         largo = cand(massimo=117, minimo=108, chiusura=109, apertura=110, ore=0)
-        assert "GEST-01" in self.blocchi(candele_per_tf={TF.H4: [N1, largo]})
+        assert "GEST-01" in self.blocchi(candele_per_tf={TF.W1: [N1], TF.H4: [largo]})
 
     def test_piu_blocchi_tutti_riportati(self) -> None:
         blocchi = self.blocchi(
@@ -269,10 +283,10 @@ class TestPrecedenze:
 
     def test_prec04_il_contesto_batte_il_setup(self) -> None:
         natale = datetime(2026, 12, 25, 14, 0, tzinfo=timezone.utc)
-        candele = {TF.H4: [
-            Candela(natale - timedelta(hours=4), 100, 110, 100, 110),
-            Candela(natale, 110, 111, 108, 109),
-        ]}
+        candele = {
+            TF.W1: [Candela(natale - timedelta(hours=4), 100, 110, 100, 110)],
+            TF.H4: [Candela(natale, 110, 111, 108, 109)],
+        }
         bloccato = m.valuta(foto(istante=natale, candele_per_tf=candele), TF.H4)
         assert bloccato.azione == "NONE" and "CTX-04" in bloccato.regole_che_bloccano
 
@@ -436,8 +450,10 @@ class TestRapportoGiud01:
                  chiusura=105 + i * 0.1, apertura=104 + i * 0.1, ore=4 * (20 - i))
             for i in range(19)
         ] + [N1, N2]
+        # L'ATR si misura sulle candele del timeframe del CRT, che ora e'
+        # quello di RANGE: le diciannove di riempimento vanno li'.
         return foto(
-            candele_per_tf={TF.H4: candele},
+            candele_per_tf={TF.W1: candele[:-1], TF.H4: [N2]},
             gap_attivo=Gap(Polarita.RIBASSISTA, 95.0, 97.0, 97.5, TF.D1, N1.orario),
         )
 
@@ -573,8 +589,12 @@ class TestTargetFinale:
         from core.definizioni import Bias as B
         from core.setup import Crt, target_iniziale
 
+        # Key level sul timeframe del CRT dichiarato qui, che e' `TF_H4`:
+        # quelli del banco stanno su `TF_1W`, dove ora vive il range.
+        kl_max = KeyLevel(TF.H4, TipoKeyLevel.MAX, 110.0)
+        kl_min = KeyLevel(TF.H4, TipoKeyLevel.MIN, 100.0)
         crt = Crt(B.LONG, TF.H4, N1, N2, KL_SETTIMANALE)
-        assert target_iniziale(crt, [KL_H4_MAX, KL_H4_MIN]) == KL_H4_MAX.valore
+        assert target_iniziale(crt, [kl_max, kl_min]) == kl_max.valore
 
     def test_def46_per_tf_h1_si_sale_di_un_gradino(self) -> None:
         """`TF_H1` non ha key level propri (DEF-36, REV-48): il bersaglio e'
@@ -582,8 +602,10 @@ class TestTargetFinale:
         from core.definizioni import Bias as B
         from core.setup import Crt, target_iniziale
 
+        kl_max = KeyLevel(TF.H4, TipoKeyLevel.MAX, 110.0)
+        kl_min = KeyLevel(TF.H4, TipoKeyLevel.MIN, 100.0)
         crt = Crt(B.SHORT, TF.H1, N1, N2, KL_SETTIMANALE)
-        assert target_iniziale(crt, [KL_H4_MAX, KL_H4_MIN]) == KL_H4_MIN.valore
+        assert target_iniziale(crt, [kl_max, kl_min]) == kl_min.valore
 
 
 # ===========================================================================
@@ -745,7 +767,7 @@ class TestTp1DietroIlPrezzo:
 
     def _oltre(self) -> object:
         return m.valuta(
-            foto(candele_per_tf={TF.H4: [N1, self.N2_OLTRE]}, prezzo_cfd=101.0),
+            foto(candele_per_tf={TF.W1: [N1], TF.H4: [self.N2_OLTRE]}, prezzo_cfd=101.0),
             TF.H4,
         )
 

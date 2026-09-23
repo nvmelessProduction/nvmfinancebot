@@ -41,74 +41,88 @@ N2_LONG = c(102, 109, 95, 107, giorni=1)
 # ===========================================================================
 class TestCrt:
     def test_setup02a_crt_short(self) -> None:
-        crt = s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112))
+        crt = s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112))
         assert crt is not None
         assert crt.direzione is Bias.SHORT
         assert crt.tf is TF.D1
         assert crt.key_level.valore == 112
 
     def test_setup02b_crt_long(self) -> None:
-        crt = s.crt_long(N1_LONG, N2_LONG, TF.D1, kl_min(98))
+        crt = s.crt_long(N1_LONG, [N2_LONG], TF.D1, kl_min(98))
         assert crt is not None and crt.direzione is Bias.LONG
 
-    def test_setup02a_servono_tutte_e_quattro_le_condizioni(self) -> None:
-        livello = kl_max(112)
-        # non prende il key level: massimo 111 sotto 112
-        assert s.crt_short(N1_SHORT, c(108, 111, 101, 103, 1), TF.D1, livello) is None
-        # non supera il massimo di N1: impossibile senza prendere il KL, quindi
-        # abbasso il key level per isolare la seconda condizione
-        assert s.crt_short(N1_SHORT, c(105, 109, 101, 103, 1), TF.D1, kl_max(108)) is None
-        # non richiude dentro N1: chiusura 112 sopra il massimo di N1
-        assert s.crt_short(N1_SHORT, c(108, 115, 101, 112, 1), TF.D1, livello) is None
-        # chiude sopra la chiusura di N1: 106 > 105
-        assert s.crt_short(N1_SHORT, c(108, 115, 101, 106, 1), TF.D1, livello) is None
+    def test_setup02a_le_due_condizioni_del_documento(self) -> None:
+        """SETUP-02A ne chiede DUE, non quattro.
 
-    def test_setup02_terza_condizione_implicata_dalla_quarta(self) -> None:
-        """REV-45: nessun test puo' distinguere `<=` da `<` nella terza.
+            SE  una barra fa  high > CRT_high                    (manipolazione)
+            AND una barra successiva o la stessa chiude < CRT_high   (rientro)
 
-        `close[N1] <= high[N1]` vale per costruzione, quindi da
-        `close[N2] < close[N1]` segue `close[N2] < high[N1]`. La terza
-        condizione di SETUP-02A non puo' mai essere l'unica a fallire.
-        Questo test lo dimostra invece di lasciarlo credere, e spiega perche'
-        una mutazione su quel confronto sopravvive ai test.
+        Piu' la presa del key level (DEF-38). Fino al 2026-09-23 il codice ne
+        chiedeva quattro, e la quarta -- `close[N2] < close[N1]` -- non
+        compare in nessun documento: restringeva il pattern senza che nessuna
+        regola lo prescrivesse.
         """
-        passo = 0.5
-        valori = [x * passo for x in range(21)]
-        for h1 in valori:
-            for c1 in valori:
-                if c1 > h1:
-                    continue                       # candela impossibile
-                for c2 in valori:
-                    if c2 < c1:                    # quarta condizione vera
-                        assert c2 <= h1, "la terza deve essere vera di conseguenza"
+        livello = kl_max(112)
+        # Manca la manipolazione: il massimo non supera CRT_high.
+        assert s.crt_short(N1_SHORT, [c(105, 109, 101, 103, 1)], TF.D1, kl_max(108)) is None
+        # Manca il rientro: manipola e chiude ancora sopra CRT_high.
+        assert s.crt_short(N1_SHORT, [c(108, 115, 101, 112, 1)], TF.D1, livello) is None
+        # Il key level non viene preso: lo sweep si ferma sotto.
+        assert s.crt_short(N1_SHORT, [c(108, 111, 101, 103, 1)], TF.D1, livello) is None
 
-        # A specchio su SETUP-02B.
-        for l1 in valori:
-            for c1 in valori:
-                if c1 < l1:
-                    continue
-                for c2 in valori:
-                    if c2 > c1:
-                        assert c2 >= l1
+    def test_setup02a_chiudere_sopra_la_chiusura_di_n1_non_impedisce_nulla(self) -> None:
+        """La condizione tolta: il documento non la nomina.
+
+        Questa barra manipola (115 > CRT_high), rientra (106 < CRT_high) e
+        prende il key level. Chiude sopra la chiusura di `N1`, e prima veniva
+        scartata per quello.
+        """
+        crt = s.crt_short(N1_SHORT, [c(108, 115, 101, 106, 1)], TF.D1, kl_max(112))
+        assert crt is not None
+        assert crt.direzione is Bias.SHORT
+
+    def test_setup02_il_rientro_puo_avvenire_sulla_stessa_barra(self) -> None:
+        """*"una barra successiva O LA STESSA chiude < CRT_high"*."""
+        una_sola = c(108, 115, 101, 106, 1)
+        assert s.crt_short(N1_SHORT, [una_sola], TF.D1, kl_max(112)) is not None
+
+    def test_setup02_il_rientro_puo_avvenire_su_una_barra_dopo(self) -> None:
+        """Manipolazione su una barra, rientro su quella successiva."""
+        manipola = c(108, 115, 107, 114, 2)      # chiude ancora sopra
+        rientra = c(114, 114, 104, 106, 1)       # chiude sotto CRT_high
+        crt = s.crt_short(N1_SHORT, [manipola, rientra], TF.D1, kl_max(112))
+        assert crt is not None
+        assert crt.n2.massimo == 115, "lo stop va sullo sweep piu' lontano"
+
+    def test_setup02_lo_stop_va_sullo_sweep_piu_lontano(self) -> None:
+        """*"sweep_high = il massimo piu' alto raggiunto sopra CRT_high"*.
+
+        Con due barre che manipolano, conta la piu' estrema -- non l'ultima.
+        """
+        prima = c(108, 118, 107, 116, 3)
+        seconda = c(115, 115, 107, 114, 2)
+        rientra = c(114, 114, 104, 106, 1)
+        crt = s.crt_short(N1_SHORT, [prima, seconda, rientra], TF.D1, kl_max(112))
+        assert crt is not None and crt.n2.massimo == 118
 
     def test_setup00_senza_key_level_nessun_crt(self) -> None:
         """Il vincolo fondamentale: nessuna forma di candele basta da sola."""
-        assert s.cerca_crt(N1_SHORT, N2_SHORT, TF.D1, []) is None
+        assert s.cerca_crt(N1_SHORT, [N2_SHORT], TF.D1, []) is None
 
     def test_setup02_il_tipo_di_key_level_conta(self) -> None:
         """Un CRT short reagisce a un massimo preso, non a un minimo."""
-        assert s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_min(112)) is None
-        assert s.crt_long(N1_LONG, N2_LONG, TF.D1, kl_max(98)) is None
+        assert s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_min(112)) is None
+        assert s.crt_long(N1_LONG, [N2_LONG], TF.D1, kl_max(98)) is None
 
     def test_setup02_key_level_deve_stare_piu_in_alto(self) -> None:
         """Un key level giornaliero non abilita un CRT giornaliero."""
-        assert s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.D1)) is None
-        assert s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.H4)) is None
-        assert s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.M1)) is not None
+        assert s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.D1)) is None
+        assert s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.H4)) is None
+        assert s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.M1)) is not None
 
     def test_cerca_crt_preferisce_il_timeframe_piu_alto(self) -> None:
         """PREC-02: fra due key level presi comanda quello piu' alto."""
-        crt = s.cerca_crt(N1_SHORT, N2_SHORT, TF.D1, [kl_max(112, TF.W1), kl_max(111, TF.M3)])
+        crt = s.cerca_crt(N1_SHORT, [N2_SHORT], TF.D1, [kl_max(112, TF.W1), kl_max(111, TF.M3)])
         assert crt is not None and crt.key_level.tf is TF.M3
 
 
@@ -132,7 +146,7 @@ class TestTimeframeCrt:
         assert s.timeframe_crt_ammesso(TF.H6, TF.W1, tf_gap=TF.W1) is False
 
     def test_crt_su_h12_non_si_forma_nemmeno(self) -> None:
-        assert s.crt_short(N1_SHORT, N2_SHORT, TF.H12, kl_max(112)) is None
+        assert s.crt_short(N1_SHORT, [N2_SHORT], TF.H12, kl_max(112)) is None
 
 
 # ===========================================================================
@@ -241,7 +255,7 @@ class TestAllineamento:
         livello = KeyLevel(TF.D1, TipoKeyLevel.MAX, 100.0)
         n1 = c(95.0, 99.0, 94.0, 98.0, 10)
         n2 = c(98.0, 101.0, 95.0, 96.0, 11)          # spazza 100, richiude sotto
-        crt = s.crt_short(n1, n2, TF.H1, livello)
+        crt = s.crt_short(n1, [n2], TF.H1, livello)
         assert crt is not None, "il CRT deve formarsi, altrimenti la prova non dice nulla"
 
         presa = presa_key_level(n2, livello)
@@ -336,7 +350,7 @@ class TestGap:
         assert set(blocchi) == {"SETUP-09", "DEF-42"}
 
     def test_setup10_doppio_ingresso(self) -> None:
-        crt = s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.M1))
+        crt = s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.M1))
         assert crt is not None
         gap_pari = Gap(Polarita.RIBASSISTA, 100, 110, 120, TF.D1, INIZIO)
         gap_sopra = Gap(Polarita.RIBASSISTA, 100, 110, 120, TF.W1, INIZIO)
@@ -346,7 +360,7 @@ class TestGap:
         assert s.doppio_ingresso(crt, gap_sotto) is False, "il CRT sta sopra il gap"
 
     def test_setup10_senza_gap_ingresso_unico(self) -> None:
-        crt = s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.M1))
+        crt = s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.M1))
         assert crt is not None
         assert s.doppio_ingresso(crt, None) is False
 
@@ -356,7 +370,7 @@ class TestGap:
 # ===========================================================================
 class TestEsclusioni:
     def base(self, **modifiche: object) -> dict:
-        crt = s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.M1))
+        crt = s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.M1))
         argomenti: dict = {
             "crt": crt,
             "comando": Bias.SHORT,
@@ -476,7 +490,7 @@ class TestPurezza:
         assert not (moduli & vietati), moduli & vietati
 
     def test_il_crt_e_immutabile(self) -> None:
-        crt = s.crt_short(N1_SHORT, N2_SHORT, TF.D1, kl_max(112, TF.M1))
+        crt = s.crt_short(N1_SHORT, [N2_SHORT], TF.D1, kl_max(112, TF.M1))
         assert crt is not None
         with pytest.raises(Exception):
             crt.direzione = Bias.LONG      # type: ignore[misc]

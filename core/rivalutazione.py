@@ -153,11 +153,21 @@ def rivaluta(
 
     # Il CRT su questo timeframe, che serve a GEST-08. Puo' non esserci: la
     # maggior parte delle chiusure di candela non forma un CRT.
+    # Come nel motore: il range e' la candela di riferimento del timeframe
+    # alto della coppia, le barre sono quelle basse che cadono dentro la
+    # candela di riferimento successiva (SETUP-02).
+    from core.motore import _range_della_coppia
+
+    tf_range = _range_della_coppia(tf_trigger)
+    crt = None
+    # L'ancora della conversione e' l'ultima candela CHIUSA del timeframe che
+    # ha innescato: serve anche quando nessun CRT si forma.
     candele = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
-    crt = (
-        stp.cerca_crt(candele[-2], candele[-1], tf_trigger, foto.key_level_presi)
-        if len(candele) >= 2 else None
-    )
+    if tf_range is not None:
+        alte = candele_visibili(foto.candele_per_tf.get(tf_range, ()), foto.istante)
+        if alte:
+            barre = [c for c in candele if c.orario > alte[-1].orario]
+            crt = stp.cerca_crt(alte[-1], barre, tf_range, foto.key_level_presi)
 
     for riga in mie:
         id_posizione = int(riga["id"])

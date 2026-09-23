@@ -535,9 +535,17 @@ def _crt_sulle_altre_coppie(storico: "Storico", istante: datetime) -> dict:
 
     presi = key_level_presi(storico, istante)
     fuori: dict = {}
-    for tf in COPPIE_CRT:
-        candele = candele_visibili(storico.get(tf, ()), istante)
-        if len(candele) < 2:
+    # Come nel motore (SETUP-02): il range e' la candela di riferimento del
+    # timeframe alto, le barre in cui cercare manipolazione e rientro sono
+    # quelle del timeframe di esecuzione che cadono dopo la sua chiusura.
+    for tf_range, tf_ing in COPPIE_CRT.items():
+        alte = candele_visibili(storico.get(tf_range, ()), istante)
+        basse = candele_visibili(storico.get(tf_ing, ()), istante)
+        if not alte or not basse:
             continue
-        fuori[tf] = cerca_crt(candele[-2], candele[-1], tf, presi)
+        c_rif = alte[-1]
+        barre = [c for c in basse if c.orario > c_rif.orario]
+        if not barre:
+            continue
+        fuori[tf_range] = cerca_crt(c_rif, barre, tf_range, presi)
     return fuori

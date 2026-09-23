@@ -22,11 +22,18 @@ def cand(massimo: float, minimo: float, chiusura: float, apertura: float, ore: i
     return Candela(ADESSO - timedelta(hours=ore), apertura, massimo, minimo, chiusura)
 
 
-# Lo stesso CRT short di test_motore: N2 prende il key level a 110.5 e
-# richiude dentro il range di N1.
+# Lo stesso CRT short di test_motore. `N1` e' la CANDELA DI RIFERIMENTO sul
+# timeframe di RANGE; `N2` e' la barra di ESECUZIONE che manipola e rientra
+# dentro la candela di riferimento successiva (SETUP-02).
 N1 = cand(massimo=110, minimo=100, chiusura=110, apertura=100, ore=4)
 N2 = cand(massimo=111, minimo=108, chiusura=109, apertura=110, ore=0)
-KL_SETTIMANALE = KeyLevel(TF.W1, TipoKeyLevel.MAX, 110.5)
+# Il key level sta su un timeframe strettamente superiore a quello del CRT.
+KL_SETTIMANALE = KeyLevel(TF.M1, TipoKeyLevel.MAX, 110.5)
+# Sul timeframe di RANGE, per il bersaglio iniziale di SETUP-14.
+KL_W1_MIN = KeyLevel(TF.W1, TipoKeyLevel.MIN, 100.0)
+KL_W1_MAX = KeyLevel(TF.W1, TipoKeyLevel.MAX, 110.0)
+# Su `TF_H4`, che e' il timeframe la cui chiusura innesca GEST-08: la regola
+# estende al key level DI QUEL timeframe, non di quello del CRT.
 KL_H4_MIN = KeyLevel(TF.H4, TipoKeyLevel.MIN, 100.0)
 KL_H4_MAX = KeyLevel(TF.H4, TipoKeyLevel.MAX, 110.0)
 
@@ -35,12 +42,13 @@ def foto(**modifiche: object) -> Fotografia:
     argomenti: dict = {
         "istante": ADESSO,
         "strumento": "EURUSD",
-        "candele_per_tf": {TF.H4: [N1, N2]},
+        "candele_per_tf": {TF.W1: [N1], TF.H4: [N2]},
         "bias_per_tf": {TF.M3: Bias.SHORT},
         "target_raggiunto_per_tf": {},
         "key_level_presi": [KL_SETTIMANALE],
-        "key_level_correnti": [KL_SETTIMANALE, KL_H4_MAX, KL_H4_MIN],
-        "sbilanciamenti": {TF.D1: Bias.LONG, TF.W1: Bias.LONG},
+        "key_level_correnti": [KL_SETTIMANALE, KL_W1_MAX, KL_W1_MIN,
+                               KL_H4_MAX, KL_H4_MIN],
+        "sbilanciamenti": {TF.M1: Bias.LONG, TF.M3: Bias.LONG},
         "prezzo_cfd": 109.0,
         "spread": 0.0002,
         "eventi_news": [],

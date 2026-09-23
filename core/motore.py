@@ -366,6 +366,19 @@ def _giudizio_lascia_cadere(
     return verdetto.accetta
 
 
+def _range_della_coppia(tf_esecuzione: TF) -> Optional[TF]:
+    """Di quale coppia di CRT-04 questo timeframe e' il lato di ESECUZIONE.
+
+    `COPPIE_CRT` mappa range -> esecuzione; qui serve il verso opposto,
+    perche' il CRT si forma quando chiude una candela BASSA e il range va
+    cercato in alto.
+    """
+    for alto, basso in COPPIE_CRT.items():
+        if basso is tf_esecuzione:
+            return alto
+    return None
+
+
 def _ingresso_differito(foto: "Fotografia", crt, tf_trigger: TF) -> bool:
     """Questo CRT si armera' invece di ordinare subito?
 
@@ -377,7 +390,19 @@ def _ingresso_differito(foto: "Fotografia", crt, tf_trigger: TF) -> bool:
     """
     if not INGRESSO_ROMEO:
         return False
-    tf_ing = COPPIE_CRT.get(crt.tf)
+    # Il raffinamento si cerca UN GRADINO PIU' SOTTO del timeframe su cui il
+    # CRT si e' appena formato, non su quello stesso.
+    #
+    # Prima era `COPPIE_CRT.get(crt.tf)`, cioe' il lato di esecuzione della
+    # coppia del range -- ed e' esattamente il timeframe su cui il CRT e'
+    # appena nato. Si armava per aspettare un ritorno sulle stesse barre che
+    # avevano appena prodotto il rientro: un doppione.
+    #
+    # Adesso che SETUP-02 forma il CRT alla chiusura della barra bassa che
+    # rientra, quel momento E' l'ingresso -- "a volte si entra sulla seconda
+    # candela e non sulla terza". Il ritorno nell'FVG resta un raffinamento
+    # possibile, ma su un timeframe ancora piu' fine.
+    tf_ing = COPPIE_CRT.get(tf_trigger)
     return tf_ing is not None and bool(foto.candele_per_tf.get(tf_ing))
 
 
@@ -735,25 +760,40 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # Quegli alert servono comunque, e li usa `valuta_ingresso_armato`: sono
     # il secondo tempo di CRT-13, dove un setup gia' armato trova il suo
     # ingresso. Qui non c'e' un CRT nuovo da cercare.
-    if tf_trigger not in COPPIE_CRT:
+    # Il CRT si forma sul timeframe di ESECUZIONE, col range preso dall'alto.
+    #
+    # `tf_trigger` qui e' il timeframe di ESECUZIONE: la candela appena chiusa
+    # su cui si cerca il rientro. Il RANGE e' la candela di riferimento del
+    # timeframe alto della coppia, e le barre in cui cercare manipolazione e
+    # rientro sono quelle di `tf_trigger` che cadono DOPO la sua chiusura --
+    # cioe' dentro la candela di riferimento successiva.
+    tf_range = _range_della_coppia(tf_trigger)
+    if tf_range is None:
         return _non_operare(
             foto.strumento, ["CRT-04"] + indipendenti,
-            f"{tf_trigger.value} e' un timeframe di solo INGRESSO: CRT-04 non "
-            "gli da' un range di cui essere la coppia, e un CRT letto su tre "
-            "candele dello stesso timeframe e' un'altra strategia",
+            f"{tf_trigger.value} non e' il timeframe di esecuzione di nessuna "
+            "coppia di CRT-04: non c'e' un range di cui essere la coppia",
             applicate,
         )
 
-    candele = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
-    if len(candele) < 2:
+    alte = candele_visibili(foto.candele_per_tf.get(tf_range, ()), foto.istante)
+    if not alte:
         return _non_operare(
             foto.strumento, ["DEF-26"] + indipendenti,
-            f"storia insufficiente su {tf_trigger.value}: servono almeno N1 e N2",
+            f"storia insufficiente su {tf_range.value}: manca la candela di "
+            "riferimento che definisce il range",
             applicate,
         )
-    n1, n2 = candele[-2], candele[-1]
+    c_rif = alte[-1]
 
-    crt = stp.cerca_crt(n1, n2, tf_trigger, foto.key_level_presi)
+    # Le barre basse DENTRO la candela di riferimento successiva, cioe' quelle
+    # chiuse dopo `c_rif`. Prima si confrontavano due candele del timeframe di
+    # range, e su `4h -> 15m` significava concedere UNA occasione invece di
+    # sedici.
+    basse = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
+    barre = [c for c in basse if c.orario > c_rif.orario]
+
+    crt = stp.cerca_crt(c_rif, barre, tf_range, foto.key_level_presi)
     applicate.append("SETUP-00")
     if crt is None:
         return _non_operare(
@@ -769,7 +809,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # un CRT mensile e' il giornaliero, per uno giornaliero l'orario. E' li'
     # che il cambio di consegna si vede — sul timeframe del range non c'e'
     # ancora nulla da vedere.
-    tf_ingresso = COPPIE_CRT.get(crt.tf)
+    tf_ingresso = COPPIE_CRT.get(tf_trigger)
     # Il responso deve esistere SEMPRE: e' cio' che il trader discrezionale
     # legge, e un dossier senza le conferme di Romeo e' un dossier su cui non
     # si puo' giudicare. Vuoto solo se il timeframe del CRT non ha una coppia
@@ -788,7 +828,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             istante=foto.istante,
             tf_crt=crt.tf,
             candele_compagne=foto.candele_compagne,
-            candele_strumento=candele,
+            candele_strumento=basse,
             strumento=foto.strumento,
             crt_per_tf=foto.crt_per_tf,
         )

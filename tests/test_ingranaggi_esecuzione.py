@@ -351,7 +351,8 @@ class TestIlBersaglioDeveStareDavanti:
         # target resta alle spalle.
         n2 = cand(massimo=111, minimo=94, chiusura=chiusura_n2, apertura=110)
         return m.valuta(
-            foto(candele_per_tf={TF.H4: [N1, n2]}, prezzo_cfd=chiusura_n2), TF.H4)
+            foto(candele_per_tf={TF.W1: [N1], TF.H4: [n2]},
+                 prezzo_cfd=chiusura_n2), TF.H4)
 
     def test_un_bersaglio_alle_spalle_ferma_l_ordine(self, diagnostico):
         d = self._decisione(99.0)
@@ -603,56 +604,51 @@ class TestIlLottoMinimoSottoSoglia:
 
 
 class TestIlRangeStaSuUnTimeframeDiRange:
-    """CRT-04: il CRT e' una COPPIA -- range sull'alto, ingresso sul basso.
+    """CRT-04: il CRT e' una COPPIA — range sull'alto, ingresso sul basso.
 
-    `valuta` prendeva le ultime due candele di `tf_trigger` qualunque esso
-    fosse. Con un alert su `M1` il range era un minuto e l'ingresso lo stesso
-    minuto: tre candele dello stesso timeframe, cioe' l'errore che REV-50 ha
-    corretto in SETUP-01 -- "che e' un'altra strategia".
+    `valuta` riceve il timeframe di ESECUZIONE e va a prendere il range da
+    quello alto della coppia. Un timeframe che non e' il lato di esecuzione di
+    nessuna coppia non puo' formare un CRT: non ha un range di cui essere la
+    coppia.
 
-    Misurato il 2026-09-22 su 458 ordini: 317 da `M1min`, 141 da `M5`, ZERO
-    da un timeframe di range valido. Il motivo e' meccanico: sui timeframe di
-    range `INGRESSO_ROMEO` fa armare il setup e l'ordine parte dopo; su `M1`
-    e `M5` non si puo' armare, quindi si cadeva dritti sull'ordine a mercato.
+    Prima erano le ultime due candele dello STESSO timeframe, cioe' l'errore
+    che REV-50 ha corretto in SETUP-01 — *"che e' un'altra strategia"*.
     """
 
-    def test_i_timeframe_di_solo_ingresso_non_fanno_range(self):
-        from core.parametri import COPPIE_CRT, TF
-        solo_ingresso = set(COPPIE_CRT.values()) - set(COPPIE_CRT)
-        assert solo_ingresso == {TF.MIN1, TF.MIN5}
+    def test_ogni_timeframe_di_esecuzione_ha_il_suo_range(self):
+        from core.parametri import COPPIE_CRT
+        from core.motore import _range_della_coppia
+        for alto, basso in COPPIE_CRT.items():
+            assert _range_della_coppia(basso) is alto
 
-    def test_su_M1_non_si_cerca_un_CRT_nuovo(self):
+    def test_il_mensile_non_e_esecuzione_di_nessuno(self):
+        """E' il piu' alto: sopra non c'e' un range da cui dipendere."""
+        from core.parametri import TF
+        from core.motore import _range_della_coppia
+        assert _range_della_coppia(TF.M1) is None
+
+    def test_su_M1_e_M5_il_CRT_si_forma_eccome(self):
+        """Sono i timeframe di ESECUZIONE di `15m -> 1m` e `1h -> 5m`."""
+        from core.parametri import COPPIE_CRT, TF
+        assert COPPIE_CRT[TF.MIN15] is TF.MIN1
+        assert COPPIE_CRT[TF.H1] is TF.MIN5
+
+    def test_senza_range_non_si_cerca_un_CRT(self):
         import sys
         if "tests" not in sys.path:
             sys.path.insert(0, "tests")
         from test_motore import foto, m, TF
-        d = m.valuta(foto(), TF.MIN1)
+        d = m.valuta(foto(), TF.M1)
         assert d.azione == "NONE"
         assert "CRT-04" in d.regole_che_bloccano
-        assert "solo INGRESSO" in d.motivo
 
-    def test_su_M5_nemmeno(self):
+    def test_il_range_arriva_dal_timeframe_alto(self):
+        """Il CRT porta il timeframe del RANGE, non quello delle barre."""
         import sys
         if "tests" not in sys.path:
             sys.path.insert(0, "tests")
         from test_motore import foto, m, TF
-        assert "CRT-04" in m.valuta(foto(), TF.MIN5).regole_che_bloccano
-
-    def test_sui_timeframe_di_range_si_opera_come_prima(self):
-        import sys
-        if "tests" not in sys.path:
-            sys.path.insert(0, "tests")
-        from test_motore import foto, m, TF
-        from core.parametri import COPPIE_CRT
-        assert TF.H4 in COPPIE_CRT
-        assert "CRT-04" not in m.valuta(foto(), TF.H4).regole_che_bloccano
-
-    def test_quegli_alert_servono_all_altra_strada(self):
-        """Non si buttano: sono il secondo tempo di CRT-13."""
-        import inspect
-        from core import strategy
-        corpo = inspect.getsource(strategy)
-        assert "valuta_ingresso_armato(fotografia, tf_trigger)" in corpo
+        assert m.valuta(foto(), TF.H4).tf_crt is TF.W1
 
 
 class TestLAnalisiArrivaSuTelegram:
