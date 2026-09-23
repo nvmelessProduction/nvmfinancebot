@@ -580,6 +580,93 @@ def _non_operare(
 # ===========================================================================
 
 
+@dataclass(frozen=True)
+class Livelli:
+    """I tre livelli di un CRT, gia' sulla scala su cui partira' l'ordine."""
+
+    da_gap: bool
+    prezzo_ingresso: float
+    stop: float
+    obiettivo_1: float
+    bersaglio: Optional[float]
+    # Sulla scala del FUTURE: `calcola_size` lavora li', dove la distanza e'
+    # gia' adimensionale, e `_rapporto_giud01` ci misura l'ATR.
+    stop_future: float
+    bersaglio_future: Optional[float]
+    rapporto: Optional[float]
+
+
+def calcola_livelli(
+    foto: "Fotografia", crt
+) -> tuple[Optional[Livelli], Optional[str]]:
+    """GEST-02, GEST-07, SETUP-14, DEF-33, ESCL-12 — stop, TP1 e bersaglio.
+
+    Restituisce `(livelli, None)` oppure `(None, motivo)` quando i livelli non
+    si sanno leggere: in quel caso ci si astiene, perche' PRIN-99 vieta di
+    mandare un ordine con numeri di cui non si risponde.
+
+    I tre livelli nascono come prezzi del FUTURE -- estremi di N2, 50% di N1,
+    key level -- e da qui in poi servono a tre cose che vivono tutte sul CFD:
+    il rapporto di GEST-01 contro il prezzo di ingresso, i livelli che partono
+    al broker, e il confronto della sentinella col prezzo corrente. Lasciarli
+    sulla scala del future e' il confronto che ESCL-12 vieta, e su `6J` e `6S`
+    produce numeri di due ordini di grandezza diversi.
+
+    `bersaglio_future` esce non convertito perche' `_rapporto_giud01` lo vuole
+    sulla scala su cui l'ATR e' misurato. La size, allo stesso modo, resta
+    calcolata sui livelli future: li' la distanza e' gia' adimensionale e
+    convertirla sarebbe un giro a vuoto con un arrotondamento in piu'.
+    """
+    # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):
+    #
+    #   1. la zona e' una zona di REAZIONE, non il gap target. DEF-15bis
+    #      assegna al gap piu' alto il ruolo di bersaglio e vieta di usarlo
+    #      con un ruolo diverso;
+    #   2. il prezzo vi sta INTERAGENDO. E' la prima riga di SETUP-09 ("si
+    #      applica quando il prezzo interagisce con una zona_gap") ed e'
+    #      quello che dice `gap_fase > 0`: la fase 0 significa che il prezzo
+    #      quella zona non l'ha mai toccata.
+    #
+    # `doppio_ingresso` da solo confronta timeframe, e un CRT su TF_H1 non e'
+    # mai piu' alto di un gap su TF_1D: senza le due condizioni sopra ogni CRT
+    # risultava "a supporto di un gap" e SETUP-09 lo bloccava per sempre.
+    da_gap = (
+        foto.gap_reazione is not None
+        and foto.gap_fase > 0
+        and stp.doppio_ingresso(crt, foto.gap_reazione)
+    )
+    stop_future = gest.stop_aggressivo(crt.n2, crt.direzione)
+    tp1_future = gest.tp1(crt.n1)
+    bersaglio_future = stp.target_iniziale(crt, foto.key_level_correnti)
+
+    # Il prezzo di ingresso e' l'apertura di N3, che non esiste ancora: si usa
+    # il prezzo corrente, che e' cio' che CTX-05 chiede di fare ("sui prezzi
+    # effettivi al momento dell'ordine, non su quelli teorici").
+    prezzo_ingresso = foto.prezzo_cfd
+
+    ancora = crt.n2.chiusura
+    try:
+        stop = _sulla_scala_del_cfd(foto, stop_future, ancora)
+        obiettivo_1 = _sulla_scala_del_cfd(foto, tp1_future, ancora)
+        bersaglio = (
+            None if bersaglio_future is None
+            else _sulla_scala_del_cfd(foto, bersaglio_future, ancora)
+        )
+    except ValueError as errore:
+        return None, f"livelli non convertibili sulla scala del CFD: {errore}"
+
+    return Livelli(
+        da_gap=da_gap,
+        prezzo_ingresso=prezzo_ingresso,
+        stop=stop,
+        obiettivo_1=obiettivo_1,
+        bersaglio=bersaglio,
+        stop_future=stop_future,
+        bersaglio_future=bersaglio_future,
+        rapporto=ctx.rapporto_rischio_rendimento(prezzo_ingresso, stop, obiettivo_1),
+    ), None
+
+
 def guardie_sui_livelli(
     bersaglio: Optional[float],
     stop: float,
@@ -1064,67 +1151,27 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             return replace(fermata, responso_romeo=responso_romeo)
         applicate.append("GIUD-02")
 
-    # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, GEST-08) --------
-    # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):
+    # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, SETUP-14) -------
     #
-    #   1. la zona e' una zona di REAZIONE, non il gap target. DEF-15bis
-    #      assegna al gap piu' alto il ruolo di bersaglio e vieta di usarlo
-    #      con un ruolo diverso;
-    #   2. il prezzo vi sta INTERAGENDO. E' la prima riga di SETUP-09
-    #      ("si applica quando il prezzo interagisce con una zona_gap") ed e'
-    #      quello che dice `gap_fase > 0`: la fase 0 significa che il prezzo
-    #      quella zona non l'ha mai toccata.
-    #
-    # `doppio_ingresso` da solo confronta timeframe, e un CRT su TF_H1 non e'
-    # mai piu' alto di un gap su TF_1D: senza le due condizioni sopra ogni CRT
-    # risultava "a supporto di un gap" e SETUP-09 lo bloccava per sempre.
-    da_gap = (
-        foto.gap_reazione is not None
-        and foto.gap_fase > 0
-        and stp.doppio_ingresso(crt, foto.gap_reazione)
-    )
-    stop_future = gest.stop_aggressivo(crt.n2, crt.direzione)
-    tp1_future = gest.tp1(crt.n1)
-    bersaglio_future = stp.target_iniziale(crt, foto.key_level_correnti)
-    applicate.extend(["GEST-02", "GEST-07", "SETUP-14"])
-
-    # Il prezzo di ingresso e' l'apertura di N3, che non esiste ancora: si usa
-    # il prezzo corrente, che e' cio' che CTX-05 chiede di fare ("sui prezzi
-    # effettivi al momento dell'ordine, non su quelli teorici").
-    prezzo_ingresso = foto.prezzo_cfd
-
-    # --- 4bis. I tre livelli passano sulla scala del CFD (DEF-33, ESCL-12) --
-    #
-    # Nascono come prezzi del FUTURE — estremi di N2, 50% di N1, key level —
-    # e da qui in poi servono a tre cose che vivono tutte sul CFD: il
-    # rapporto di GEST-01 contro `prezzo_ingresso`, i livelli che partono al
-    # broker, e il confronto della sentinella con `prezzo_corrente`. Lasciarli
-    # sulla scala del future e' il confronto che ESCL-12 vieta, e su `6J` e
-    # `6S` produce numeri di due ordini di grandezza diversi.
-    #
-    # La size resta calcolata sui livelli FUTURE (`calcola_size`, piu' sotto):
-    # li' la distanza e' gia' adimensionale e la conversione sarebbe un giro a
-    # vuoto con un arrotondamento in piu'.
-    ancora = crt.n2.chiusura
-    try:
-        stop = _sulla_scala_del_cfd(foto, stop_future, ancora)
-        obiettivo_1 = _sulla_scala_del_cfd(foto, tp1_future, ancora)
-        bersaglio = (
-            None if bersaglio_future is None
-            else _sulla_scala_del_cfd(foto, bersaglio_future, ancora)
-        )
-    except ValueError as errore:
+    # La regola vive in `calcola_livelli`, che e' un agente suo e si prova da
+    # solo. Qui restano la consegna e l'astensione.
+    livelli, errore_livelli = calcola_livelli(foto, crt)
+    if livelli is None:
         # Prezzo CFD assente o livello incoerente: PRIN-99, ci si astiene. Non
         # si manda un ordine con livelli che non si sanno leggere.
         return _non_operare(
-            foto.strumento, ["PRIN-99", "ESCL-12"],
-            f"livelli non convertibili sulla scala del CFD: {errore}",
-            applicate,
-            direzione=crt.direzione,
-            tf_crt=crt.tf,
+            foto.strumento, ["PRIN-99", "ESCL-12"], errore_livelli or "",
+            applicate, direzione=crt.direzione, tf_crt=crt.tf,
         )
-
-    rapporto = ctx.rapporto_rischio_rendimento(prezzo_ingresso, stop, obiettivo_1)
+    applicate.extend(["GEST-02", "GEST-07", "SETUP-14"])
+    da_gap = livelli.da_gap
+    prezzo_ingresso = livelli.prezzo_ingresso
+    stop = livelli.stop
+    obiettivo_1 = livelli.obiettivo_1
+    bersaglio = livelli.bersaglio
+    stop_future = livelli.stop_future
+    bersaglio_future = livelli.bersaglio_future
+    rapporto = livelli.rapporto
 
     # --- 4bis-ter. Un parziale dietro le spalle non e' un parziale -------
     #

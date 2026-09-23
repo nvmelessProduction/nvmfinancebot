@@ -150,3 +150,34 @@ class TestIlVersoEQuelloDelCfd:
         from core import motore
         parametri = inspect.signature(motore.guardie_sui_livelli).parameters
         assert "crt" not in parametri and "foto" not in parametri
+
+
+class TestCalcolaLivelli:
+    """Il secondo agente uscito da `valuta()`: i tre livelli di un CRT.
+
+    Sessanta righe che stavano in mezzo a tutto il resto. Qui si provano le
+    due cose che quel blocco deve garantire: che i livelli escano sulla scala
+    del CFD, e che quando non si sanno leggere ci si astenga invece di
+    mandare un ordine con numeri di cui non si risponde (PRIN-99, ESCL-12).
+    """
+
+    def test_restituisce_un_errore_invece_di_sollevare(self):
+        """Chi chiama deve poter dichiarare l'astensione con la sua regola,
+        non ricevere un'eccezione da tradurre."""
+        import inspect
+        from core.motore import calcola_livelli
+        firma = inspect.signature(calcola_livelli)
+        assert "tuple" in str(firma.return_annotation)
+        corpo = inspect.getsource(calcola_livelli)
+        assert "except ValueError" in corpo
+        assert "raise" not in corpo
+
+    def test_i_livelli_del_future_restano_disponibili(self):
+        """`calcola_size` lavora sulla scala del FUTURE, dove la distanza e'
+        gia' adimensionale: convertirla sarebbe un giro a vuoto con un
+        arrotondamento in piu'. Se `stop_future` sparisse, la size verrebbe
+        calcolata su una scala diversa da quella su cui e' tarata."""
+        from core.motore import Livelli
+        campi = set(Livelli.__dataclass_fields__)
+        assert "stop_future" in campi and "bersaglio_future" in campi
+        assert "stop" in campi and "bersaglio" in campi
