@@ -209,3 +209,46 @@ class TestFiltroDxy:
         assert "_verso_sul_cfd(foto, crt.direzione)" in corpo
         # E il verso passato a `strumento_eleggibile` e' quello convertito.
         assert "direzione_del_setup=verso_del_setup.value" in corpo
+
+
+class TestIDivietiDiContestoSonoUnoSolo:
+    """Le due strade avevano due elenchi, e non coincidevano.
+
+    L'ordine diretto e l'ingresso armato di CRT-13 controllavano entrambi
+    limiti di perdita, news, posizioni aperte e coerenza dei dati. Ma alla
+    strada ARMATA mancavano `PRIN-13` (domenica) e `CTX-04` (festivita'):
+    un setup armato poteva scattare di domenica o in un giorno di festivita'
+    mentre lo stesso setup per via diretta non poteva.
+
+    E il commento di quella strada dice l'opposto -- che PREC-01 mette il
+    rischio sopra il setup e "un setup armato non e' un lasciapassare".
+
+    Non erano gate morti: sull'archivio `CTX-04` ha bloccato 1.038 volte e
+    `PRIN-13` 976.
+    """
+
+    def test_esiste_un_solo_elenco(self):
+        import inspect
+        from core import motore
+        sorgente = inspect.getsource(motore)
+        # I nomi delle regole compaiono una volta sola, dentro l'agente.
+        agente = inspect.getsource(motore.blocchi_indipendenti)
+        for regola in ('"PRIN-13"', '"CTX-04"', '"RISK-06"'):
+            assert sorgente.count(regola) == 1, f"{regola} e' scritta in due posti"
+            assert regola in agente
+
+    def test_tutte_e_sei_le_regole_ci_sono(self):
+        import inspect
+        from core import motore
+        agente = inspect.getsource(motore.blocchi_indipendenti)
+        for regola in ("PRIN-13", "CTX-02", "CTX-04", "RISK-06", "PRIN-99"):
+            assert f'"{regola}"' in agente, f"manca {regola}"
+        assert "limiti_raggiunti" in agente, "mancano i limiti di perdita (PREC-01)"
+
+    def test_l_agente_restituisce_anche_i_fatti_che_calcola(self):
+        """`limiti`, `evento_news` e `posizioni_qui` servono al dossier del
+        giudizio. Ricalcolarli fuori vorrebbe dire due verita' sullo stesso
+        fatto, e una chiamata in piu' a `dentro_finestra_news` per giro."""
+        from core.motore import ContestoIndipendente
+        campi = set(ContestoIndipendente.__dataclass_fields__)
+        assert campi == {"blocchi", "limiti", "evento_news", "posizioni_qui"}

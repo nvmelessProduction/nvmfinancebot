@@ -824,9 +824,24 @@ class TestISottoSogliaNonHaLimitiDiPerdita:
         assert len(limiti_raggiunti(**self.PERDITA)) == 3
 
     def test_il_motore_passa_l_equity_a_entrambe_le_strade(self):
+        """Ora e' garantito dalla condivisione, non dalla ripetizione.
+
+        Prima erano due elenchi di controlli scritti a mano in due punti, e il
+        test contava che entrambi passassero l'equity. Da quando le due strade
+        chiamano lo STESSO agente il conteggio e' 1, ed e' una garanzia piu'
+        forte: non possono piu' divergere. E divergevano gia' -- alla strada
+        armata mancavano PRIN-13 e CTX-04.
+        """
         import inspect
         from core import motore
-        assert inspect.getsource(motore).count("equity_corrente=foto.equity") == 2
+        sorgente = inspect.getsource(motore)
+        assert sorgente.count("equity_corrente=foto.equity") == 1
+        agente = inspect.getsource(motore.blocchi_indipendenti)
+        assert "equity_corrente=foto.equity" in agente
+        # E tutte e due le strade ci passano.
+        assert inspect.getsource(motore.valuta).count("blocchi_indipendenti(") == 1
+        assert inspect.getsource(
+            motore.valuta_ingresso_armato).count("blocchi_indipendenti(") == 1
 
 
 class TestIlLottoMinimoSottoSoglia:

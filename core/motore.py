@@ -596,6 +596,59 @@ class Livelli:
     rapporto: Optional[float]
 
 
+@dataclass(frozen=True)
+class ContestoIndipendente:
+    """Cosa dice il contesto, a prescindere dal CRT."""
+
+    blocchi: list[str]
+    limiti: tuple
+    evento_news: Any
+    posizioni_qui: int
+
+
+def blocchi_indipendenti(foto: "Fotografia", tf_trigger: TF) -> ContestoIndipendente:
+    """I divieti che non dipendono dal CRT: contesto e rischio.
+
+    Vanno valutati anche quando il CRT non c'e', altrimenti la statistica
+    "quante volte ciascun filtro ha impedito un'operazione" vedrebbe sempre e
+    solo il primo blocco, e non direbbe se un filtro non scatta mai.
+
+    Sono sei, e li usano ENTRAMBE le strade -- l'ordine diretto e l'ingresso
+    armato di CRT-13. Prima erano due elenchi scritti a mano in due punti, e
+    NON coincidevano: alla strada armata mancavano `PRIN-13` (domenica) e
+    `CTX-04` (festivita'). Un setup armato poteva quindi scattare di domenica
+    o in un giorno di festivita', mentre lo stesso setto per via diretta no --
+    e il commento di quella strada dice l'opposto, che "un setup armato non e'
+    un lasciapassare" perche' PREC-01 mette il rischio sopra il setup.
+
+    Due copie della stessa regola divergono sempre, e divergono nel punto che
+    muove i soldi. Qui ce n'e' una sola.
+    """
+    evento_news = ctx.dentro_finestra_news(
+        foto.istante, foto.strumento, foto.eventi_news)
+    posizioni_qui = foto.posizioni_aperte_per_strumento.get(foto.strumento, 0)
+    limiti = risk.limiti_raggiunti(
+        foto.pnl_giornaliero, foto.equity_inizio_giornata,
+        foto.pnl_settimanale, foto.equity_inizio_settimana,
+        foto.pnl_mensile, foto.equity_inizio_mese,
+        equity_corrente=foto.equity,
+    )
+
+    blocchi: list[str] = []
+    if not ctx.operativita_domenicale_ammessa(foto.istante, tf_trigger):
+        blocchi.append("PRIN-13")             # domenica solo da TF_1W in su
+    if evento_news is not None:
+        blocchi.append("CTX-02")
+    if ctx.giorno_di_festivita(foto.istante.date()) is not None:
+        blocchi.append("CTX-04")
+    if posizioni_qui >= MAX_POSIZIONI_PER_STRUMENTO:
+        blocchi.append("RISK-06")
+    if not foto.dati_coerenti:
+        blocchi.append("PRIN-99")
+    blocchi.extend(l.regola for l in limiti)                  # PREC-01
+    return ContestoIndipendente(blocchi, tuple(limiti), evento_news, posizioni_qui)
+
+
 def filtro_dxy(foto: "Fotografia", crt) -> Optional[str]:
     """SETUP-19 + RISK-05 — la bias del dollaro abilita questa operazione?
 
@@ -927,21 +980,15 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
         )
 
     # --- I controlli di rischio, rifatti adesso ---------------------------
-    limiti = risk.limiti_raggiunti(
-        foto.pnl_giornaliero, foto.equity_inizio_giornata,
-        foto.pnl_settimanale, foto.equity_inizio_settimana,
-        foto.pnl_mensile, foto.equity_inizio_mese,
-        equity_corrente=foto.equity,
-    )
-    posizioni_qui = foto.posizioni_aperte_per_strumento.get(foto.strumento, 0)
-    evento_news = ctx.dentro_finestra_news(foto.istante, foto.strumento, foto.eventi_news)
-    blocchi: list[str] = [l.regola for l in limiti]
-    if evento_news is not None:
-        blocchi.append("CTX-02")
-    if posizioni_qui >= MAX_POSIZIONI_PER_STRUMENTO:
-        blocchi.append("RISK-06")
-    if not foto.dati_coerenti:
-        blocchi.append("PRIN-99")
+    #
+    # PREC-01: il rischio batte il setup, e un setup armato non e' un
+    # lasciapassare. Fra l'armamento e adesso possono essere passate ore --
+    # un limite di perdita puo' essere scattato, una finestra news puo'
+    # essersi aperta, il tetto di posizioni puo' essersi riempito.
+    #
+    # Stessa funzione della strada diretta: quando erano due elenchi separati,
+    # a questo mancavano PRIN-13 e CTX-04.
+    blocchi = blocchi_indipendenti(foto, tf_trigger).blocchi
     if blocchi:
         return _non_operare(
             foto.strumento, blocchi,
@@ -1030,31 +1077,13 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
 
     # --- 2. Filtri che non dipendono dal CRT ------------------------------
-    # Vanno valutati anche quando il CRT non c'e', altrimenti la statistica
-    # "quante volte ciascun filtro ha impedito un'operazione" vedrebbe sempre
-    # e solo il primo blocco, e non direbbe se un filtro non scatta mai.
-    limiti = risk.limiti_raggiunti(
-        foto.pnl_giornaliero, foto.equity_inizio_giornata,
-        foto.pnl_settimanale, foto.equity_inizio_settimana,
-        foto.pnl_mensile, foto.equity_inizio_mese,
-        equity_corrente=foto.equity,
-    )
-    posizioni_qui = foto.posizioni_aperte_per_strumento.get(foto.strumento, 0)
-    evento_news = ctx.dentro_finestra_news(foto.istante, foto.strumento, foto.eventi_news)
-    festivita = ctx.giorno_di_festivita(foto.istante.date())
-
-    indipendenti: list[str] = []
-    if not ctx.operativita_domenicale_ammessa(foto.istante, tf_trigger):
-        indipendenti.append("PRIN-13")        # domenica solo da TF_1W in su
-    if evento_news is not None:
-        indipendenti.append("CTX-02")
-    if festivita is not None:
-        indipendenti.append("CTX-04")
-    if posizioni_qui >= MAX_POSIZIONI_PER_STRUMENTO:
-        indipendenti.append("RISK-06")
-    if not foto.dati_coerenti:
-        indipendenti.append("PRIN-99")
-    indipendenti.extend(l.regola for l in limiti)        # PREC-01
+    # La regola vive in `blocchi_indipendenti`, condivisa con l'ingresso
+    # armato: due elenchi scritti a mano in due punti erano gia' divergenti.
+    contesto = blocchi_indipendenti(foto, tf_trigger)
+    indipendenti = contesto.blocchi
+    limiti = contesto.limiti
+    evento_news = contesto.evento_news
+    posizioni_qui = contesto.posizioni_qui
 
     # --- 3. Bias di comando (SETUP-06) ------------------------------------
     comando, tf_comando = stp.bias_comando(foto.bias_per_tf, foto.target_raggiunto_per_tf)
