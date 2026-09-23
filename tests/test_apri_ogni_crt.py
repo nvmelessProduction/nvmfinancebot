@@ -101,16 +101,29 @@ class TestLeEsclusioni:
     """
 
     def test_toglie_solo_i_due_che_duplicano_i_filtri(self):
+        """La regola vive in `divieti_permanenti`, che prende il modo
+        diagnostico come argomento invece di leggerlo: cosi' si prova con
+        acceso e spento senza toccare la configurazione."""
         import inspect
         from core import motore
-        sorgente = inspect.getsource(motore.valuta)
-        assert '"ESCL-01", "ESCL-03"' in sorgente
+        agente = inspect.getsource(motore.divieti_permanenti)
+        assert '{"ESCL-01", "ESCL-03"}' in agente
 
     def test_non_tocca_il_tetto_di_posizioni(self):
         import inspect
         from core import motore
-        sorgente = inspect.getsource(motore.valuta)
-        i = sorgente.index("DIVIETI_DI_STRATEGIA = ")
-        riga = sorgente[i:sorgente.index("}", i)]
+        agente = inspect.getsource(motore.divieti_permanenti)
+        i = agente.index("di_strategia = ")
+        riga = agente[i:agente.index("}", i)]
         for muro in ("ESCL-11", "ESCL-02", "ESCL-04"):
             assert muro not in riga, f"{muro} non deve cadere"
+
+    def test_l_agente_riceve_il_modo_invece_di_leggerlo(self):
+        """Una regola che legge la configurazione da sola non si prova nei
+        due modi senza cambiarla sotto ai piedi del resto del processo."""
+        import inspect
+        from core import motore
+        assert "diagnostico" in inspect.signature(
+            motore.divieti_permanenti).parameters
+        assert "_apri_ogni_crt" not in inspect.getsource(
+            motore.divieti_permanenti)

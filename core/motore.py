@@ -596,6 +596,93 @@ class Livelli:
     rapporto: Optional[float]
 
 
+def divieti_permanenti(
+    foto: "Fotografia", crt, comando, tf_comando, stop: float,
+    prezzo_ingresso: float, posizioni_qui: int, diagnostico: bool,
+) -> tuple:
+    """PREC-05 — l'ultima riga di difesa, prima che l'ordine parta.
+
+    Restituisce i divieti violati, vuoto se non ce n'e'. Non decide: chi
+    chiama dichiara l'astensione.
+
+    `indicatori_usati=()` non e' cosmetica. ESCL-15 controlla che ogni
+    indicatore dichiarato sia fra quelli ammessi; qui si dichiarava `("RSI",)`
+    per un indicatore che nessuno calcola -- `definizioni.rsi` e
+    `divergenza_rsi` hanno zero chiamanti in produzione, e PA-39 ha deciso che
+    l'RSI resta statistica. Una dichiarazione falsa renderebbe silenzioso un
+    uso vero e non ammesso, perche' ESCL-15 validerebbe un elenco scritto a
+    mano invece di quello reale. Il motore non usa alcun indicatore: lo dice.
+
+    Nel modo diagnostico cadono i DIVIETI DI STRATEGIA, non quelli che
+    proteggono il conto. `ESCL-01` e' `SETUP-07` riscritto come muro -- ordine
+    contro `bias_comando` -- ed `ESCL-03` e' `SETUP-08`: sono le stesse due
+    regole che quel modo ha gia' spento fra i filtri, e lasciarle qui
+    significherebbe spegnerle a meta'. Tutto il resto resta: ESCL-02 (nessun
+    key level preso) ed ESCL-04 (timeframe non ammesso) sono strutturali --
+    senza di essi non c'e' un CRT di cui parlare -- ed ESCL-11 e' il tetto di
+    posizioni.
+    """
+    proposta = esc.OrdineProposto(
+        strumento=foto.strumento,
+        direzione=crt.direzione,
+        bias_comando=comando,
+        tf_crt=crt.tf,
+        key_level_preso=True,
+        livello_stop=stop,
+        prezzo_ingresso=prezzo_ingresso,
+        posizioni_aperte_strumento=posizioni_qui,
+        target_comando_raggiunto=foto.target_raggiunto_per_tf.get(
+            tf_comando or TF.M12, False),
+        indicatori_usati=(),
+    )
+    divieti = esc.verifica_divieti(proposta)
+    if diagnostico:
+        di_strategia = {"ESCL-01", "ESCL-03"}
+        divieti = tuple(d for d in divieti if d.regola not in di_strategia)
+    return divieti
+
+
+def tp1_alle_spalle(
+    obiettivo_1: Optional[float],
+    prezzo_ingresso: float,
+    verso_ordine: Bias,
+) -> bool:
+    """GEST-04, GEST-07 — il parziale sta gia' dietro il prezzo?
+
+    `obiettivo_1` nasce come 50% di `N1` (GEST-07): un livello del RANGE, che
+    col prezzo di ingresso non lo confronta nessuno. Quando il prezzo l'ha
+    gia' superato, TP1 sta dalla parte dello stop e `gestione.raggiunge_tp1`
+    lo trova centrato al primo giro di sentinella: chiude il parziale e porta
+    il resto a break even, cioe' a due spread dall'ingresso, dove il tick dopo
+    lo prende.
+
+    Misurato il 2026-09-21 sulle 17 posizioni aperte in prova: **12 avevano
+    TP1 dal lato sbagliato, vissute in media sei secondi** -- aperte e chiuse
+    prima che si potessero vedere.
+
+    Non e' un filtro soppesabile. In esercizio GEST-01 le ferma prima, perche'
+    il rapporto vale None e CTX blocca; col modo diagnostico GEST-01 e' spento
+    e il livello incoerente arriva al broker. Ma un parziale alle spalle del
+    prezzo non e' un'operazione sfortunata: e' un parziale che non esiste. Si
+    toglie, e la posizione vive sul suo stop e sul bersaglio finale -- che e'
+    esattamente cio' che GEST-04 prevede quando TP1 non c'e'.
+
+    `verso_ordine` e' il verso sul CFD e mai `crt.direzione`. `obiettivo_1` e
+    `prezzo_ingresso` sono prezzi del CFD, mentre il CRT e' letto sul future:
+    su `6S` e `6J`, che quotano il reciproco, i due sono opposti. Col verso
+    sbagliato questa guardia sopprimeva i TP1 BUONI e teneva quelli alle
+    spalle -- cioe' faceva l'opposto del suo scopo. Visto in esercizio il
+    2026-09-22: "USDCHF: TP1 0.82018 gia' superato dal prezzo 0.82059" su uno
+    SHORT, dove 0,82018 sta sotto il prezzo e il parziale era dalla parte
+    giusta.
+    """
+    if obiettivo_1 is None:
+        return False
+    if verso_ordine is Bias.LONG:
+        return obiettivo_1 <= prezzo_ingresso
+    return obiettivo_1 >= prezzo_ingresso
+
+
 @dataclass(frozen=True)
 class ContestoIndipendente:
     """Cosa dice il contesto, a prescindere dal CRT."""
@@ -1238,52 +1325,17 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
 
     # --- 4bis-ter. Un parziale dietro le spalle non e' un parziale -------
     #
-    # `obiettivo_1` nasce come 50% di `N1` (GEST-07): un livello del RANGE,
-    # che con il prezzo di ingresso non lo confronta nessuno. Quando il
-    # prezzo l'ha gia' superato, TP1 sta dalla parte dello stop, e
-    # `gestione.raggiunge_tp1` lo trova centrato al primo giro di sentinella:
-    # chiude il parziale e porta il resto a break even, cioe' a due spread
-    # dall'ingresso, dove il tick dopo lo prende.
-    #
-    # Misurato il 2026-09-21 sulle 17 posizioni aperte in prova: 12 avevano
-    # TP1 dal lato sbagliato, e sono vissute in media sei secondi -- aperte e
-    # chiuse prima che si potessero vedere.
-    #
-    # In esercizio GEST-01 le ferma prima, perche' `rapporto` qui vale None
-    # e CTX le blocca. Col modo diagnostico GEST-01 e' spento, e allora il
-    # livello incoerente arriva al broker. Ma GEST-01 e' un filtro che si
-    # puo' soppesare, e questo non lo e': un parziale alle spalle del prezzo
-    # non e' un'operazione sfortunata, e' un parziale che non esiste. Si
-    # toglie, e la posizione vive sul suo stop e sul suo bersaglio finale --
-    # che e' esattamente cio' che GEST-04 prevede quando TP1 non c'e'.
-    #
-    # L'altra meta' di CRT-13 questo controllo ce l'ha gia': in
-    # `ingresso_ltf.controlla` il bersaglio superato scala al lato opposto
-    # (CRT-16). Qui mancava perche' qui il primo bersaglio e' uno solo.
-    if rapporto is None and obiettivo_1 is not None:
-        # Col verso del CFD, non con quello del future.
-        #
-        # `obiettivo_1` e `prezzo_ingresso` sono prezzi del CFD; `crt.direzione`
-        # e' il verso sul FUTURE, e su `6S` e `6J`, che quotano il reciproco,
-        # i due sono opposti. Con `crt.direzione` il confronto risultava
-        # invertito proprio su USDCHF e USDJPY: sopprimeva i TP1 buoni e
-        # teneva quelli alle spalle, cioe' esattamente il caso che questa
-        # guardia esiste per togliere.
-        #
-        # Visto in esercizio il 2026-09-22: "USDCHF: TP1 0.82018 gia' superato
-        # dal prezzo 0.82059" su uno SHORT -- dove 0,82018 STA sotto il
-        # prezzo, quindi il parziale era dalla parte giusta.
-        #
-        # E' lo stesso scambio corretto poche ore prima sul bersaglio finale,
-        # lasciato qui.
-        verso_tp1 = _verso_sul_cfd(foto, crt.direzione)
-        dietro = (obiettivo_1 <= prezzo_ingresso if verso_tp1 is Bias.LONG
-                  else obiettivo_1 >= prezzo_ingresso)
-        if dietro:
-            log.info("%s: TP1 %.5f gia' superato dal prezzo %.5f, nessun "
-                     "parziale (GEST-04 non si applica)",
-                     foto.strumento, obiettivo_1, prezzo_ingresso)
-            obiettivo_1 = None
+    # La regola vive in `tp1_alle_spalle`. Il `rapporto is None` resta qui
+    # perche' e' la condizione in cui GEST-01 non ha gia' fermato tutto:
+    # l'altra meta' di CRT-13 questo controllo ce l'ha gia', in
+    # `ingresso_ltf.controlla`, dove il bersaglio superato scala al lato
+    # opposto (CRT-16).
+    if rapporto is None and tp1_alle_spalle(
+            obiettivo_1, prezzo_ingresso, _verso_sul_cfd(foto, crt.direzione)):
+        log.info("%s: TP1 %.5f gia' superato dal prezzo %.5f, nessun "
+                 "parziale (GEST-04 non si applica)",
+                 foto.strumento, obiettivo_1, prezzo_ingresso)
+        obiettivo_1 = None
 
     # --- 4quater. Lo stop deve stare FUORI dal costo (RISK-03) -----------
     #
@@ -1434,41 +1486,10 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
 
     # --- 7. Ultima riga di difesa: i divieti permanenti (PREC-05) ---------
-    proposta = esc.OrdineProposto(
-        strumento=foto.strumento,
-        direzione=crt.direzione,
-        bias_comando=comando,
-        tf_crt=crt.tf,
-        key_level_preso=True,
-        livello_stop=stop,
-        prezzo_ingresso=prezzo_ingresso,
-        posizioni_aperte_strumento=posizioni_qui,
-        target_comando_raggiunto=foto.target_raggiunto_per_tf.get(tf_comando or TF.M12, False),
-        # ESCL-15 controlla che ogni indicatore dichiarato sia fra quelli
-        # ammessi. Qui si dichiarava `("RSI",)` per un indicatore che nessuno
-        # calcola: `definizioni.rsi` e `definizioni.divergenza_rsi` hanno zero
-        # chiamanti in produzione, e PA-39 ha deciso che l'RSI resta
-        # statistica e non entra in nessuna decisione.
-        #
-        # Una dichiarazione falsa qui non e' cosmetica: e' la riga che
-        # renderebbe silenzioso un uso vero e non ammesso, perche' ESCL-15
-        # validerebbe un elenco scritto a mano invece di quello reale. Il
-        # motore non usa alcun indicatore: lo dice.
-        indicatori_usati=(),
+    divieti = divieti_permanenti(
+        foto, crt, comando, tf_comando, stop, prezzo_ingresso,
+        posizioni_qui, _apri_ogni_crt(),
     )
-    divieti = esc.verifica_divieti(proposta)
-    if _apri_ogni_crt():
-        # Nel modo diagnostico cadono i DIVIETI DI STRATEGIA, non quelli che
-        # proteggono il conto. `ESCL-01` e' `SETUP-07` riscritto come muro --
-        # "ordine contro bias_comando" -- e `ESCL-03` e' `SETUP-08`: sono le
-        # stesse due regole che il modo ha gia' spento fra i filtri, e
-        # lasciarle qui significa spegnerle a meta'.
-        #
-        # Tutto il resto resta: ESCL-02 (nessun key level preso) e ESCL-04
-        # (timeframe non ammesso) sono strutturali -- senza di essi non c'e'
-        # un CRT di cui parlare -- ed ESCL-11 e' il tetto di posizioni.
-        DIVIETI_DI_STRATEGIA = {"ESCL-01", "ESCL-03"}
-        divieti = tuple(d for d in divieti if d.regola not in DIVIETI_DI_STRATEGIA)
     if divieti:
         return _non_operare(
             foto.strumento, [d.regola for d in divieti],

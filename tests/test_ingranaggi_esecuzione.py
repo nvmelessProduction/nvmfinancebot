@@ -1171,12 +1171,28 @@ class TestIlControlloSulParzialeUsaIlVersoDelCFD:
     """
 
     def test_il_confronto_usa_verso_sul_cfd(self):
+        """Da quando la regola e' un agente, si prova chiamandola.
+
+        `obiettivo_1` e `prezzo_ingresso` sono prezzi del CFD mentre il CRT e'
+        letto sul future: col verso sbagliato questa guardia sopprimeva i TP1
+        BUONI e teneva quelli alle spalle, cioe' faceva l'opposto del suo
+        scopo. Visto in esercizio il 2026-09-22 su USDCHF.
+        """
+        from core.definizioni import Bias
+        from core.motore import tp1_alle_spalle
+        # Il caso USDCHF: SHORT sul CFD, TP1 0,82018 SOTTO il prezzo 0,82059,
+        # cioe' dalla parte GIUSTA -- non va soppresso.
+        assert tp1_alle_spalle(0.82018, 0.82059, Bias.SHORT) is False
+        # E lo stesso TP1 con verso invertito sarebbe alle spalle.
+        assert tp1_alle_spalle(0.82018, 0.82059, Bias.LONG) is True
+        # Senza TP1 non c'e' niente da sopprimere.
+        assert tp1_alle_spalle(None, 0.82059, Bias.SHORT) is False
+        # E il motore le passa il verso del CFD, non quello del CRT.
         import inspect
         from core import motore
         corpo = inspect.getsource(motore.valuta)
-        pezzo = corpo.split("rapporto is None and obiettivo_1 is not None")[1][:2000]
-        assert "_verso_sul_cfd(" in pezzo
-        assert "crt.direzione is Bias.LONG" not in pezzo
+        pezzo = corpo.split("tp1_alle_spalle(")[1][:200]
+        assert "_verso_sul_cfd(foto, crt.direzione)" in pezzo
 
     def test_su_candele_del_future_il_verso_si_ribalta(self):
         """E' li' che il controllo col verso sbagliato sarebbe invertito."""
