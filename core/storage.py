@@ -560,12 +560,27 @@ def candele_archiviate(
     strumento: str,
     tf: str,
     limite: Optional[int] = None,
+    dopo: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Le candele di uno strumento su un timeframe, dalla piu' vecchia.
 
     Con `limite` restituisce le piu' recenti, comunque in ordine cronologico:
     e' quello che serve al motore, che guarda sempre la coda della serie.
+
+    Con `dopo` restituisce solo quelle chiuse DOPO quell'istante. Serve a chi
+    tiene gia' in memoria la serie e vuole solo la coda nuova: l'archivio
+    cresce in fondo e le candele non si modificano mai sul posto, quindi
+    rileggerle tutte per aggiungerne una era il grosso del ritardo.
     """
+    if dopo is not None:
+        with connessione() as conn:
+            righe = conn.execute(
+                "SELECT * FROM candela WHERE strumento = ? AND tf = ? "
+                "AND chiusura_utc > ? ORDER BY chiusura_utc",
+                (strumento, tf, dopo),
+            ).fetchall()
+        return [dict(riga) for riga in righe]
+
     with connessione() as conn:
         if limite is None:
             righe = conn.execute(

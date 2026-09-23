@@ -264,7 +264,23 @@ class FornitoreTradingView:
     def storico(self, future: str) -> dict[TF, tuple[Candela, ...]]:
         """Lo storico dello strumento, dall'archivio, col nome giusto.
 
-        Riletto solo se l'archivio e' cambiato davvero. Rileggerlo sempre
+        Riletto **solo nella parte cambiata**. La memoria sull'impronta, da
+        sola, non serviva mai in funzione: l'impronta e' il conteggio e
+        l'ultima chiusura di ogni timeframe, e ogni giro di mercato porta una
+        candela al minuto, quindi l'impronta cambiava sempre e i 285.000
+        oggetti Candela di EURUSD venivano ricostruiti da zero ogni volta.
+        Misurato il 2026-09-23: **2,9 secondi** per archivio -- H1 129.392
+        candele in 1,5s, M1min 94.277 in 0,8s -- moltiplicati per i quattro
+        archivi di ogni valutazione. Nel log si vedeva come un buco di venti
+        secondi fra uno strumento e il successivo dentro lo stesso giro, e
+        chi finiva in coda al giro si prendeva "alert vecchio di 28s".
+
+        Ora si chiede solo la coda nuova, perche' l'archivio cresce in fondo e
+        le candele non si modificano mai sul posto. Quando il conto non torna
+        con l'archivio -- storia vecchia riempita, righe cancellate -- si
+        ricade sulla rilettura intera: meglio lenti che con una serie bucata.
+
+        Rileggerlo sempre
         costava all'impianto la sua puntualita': ogni valutazione ricostruiva
         1.460.000 oggetti Candela, quattro storici interi (lo strumento, il
         DXY e le due compagne SMT di CRT-12), e ci metteva dieci secondi. Con
@@ -299,8 +315,49 @@ class FornitoreTradingView:
             # in memoria. Dieci voci copiate costano niente.
             return dict(in_memoria[1])
 
+        # Quante candele e fin dove, timeframe per timeframe: adesso e com'era
+        # l'ultima volta. L'impronta e' (tf, conteggio, ultima_chiusura).
+        adesso_per_tf = {r[0]: (r[1], r[2]) for r in impronta}
+        prima_per_tf: dict = {}
+        precedente: dict = {}
+        if in_memoria is not None:
+            prima_per_tf = {r[0]: (r[1], r[2]) for r in in_memoria[0]}
+            precedente = in_memoria[1]
+
         storico: dict[TF, tuple[Candela, ...]] = {}
         for tf in TF_DA_ALERT:
+            quante, ultima = adesso_per_tf.get(tf.value, (0, None))
+            com_era = prima_per_tf.get(tf.value)
+            in_mano = precedente.get(tf)
+
+            # Timeframe fermo: la serie in memoria e' gia' quella giusta.
+            if in_mano is not None and com_era == (quante, ultima):
+                storico[tf] = in_mano
+                continue
+
+            # Timeframe cresciuto in coda -- il caso di ogni giro di mercato.
+            # Si chiede solo la coda e la si attacca. La condizione
+            # `len(in_mano) == com_era[0]` dice che la serie in memoria era
+            # completa, quindi il conteggio finale e' confrontabile.
+            cresciuto = (
+                in_mano is not None and com_era is not None
+                and ultima is not None and com_era[1] is not None
+                and quante > com_era[0] and ultima > com_era[1]
+                and len(in_mano) == com_era[0]
+            )
+            if cresciuto:
+                coda = storage.candele_archiviate(nome, tf.value, dopo=com_era[1])
+                nuove = tuple(
+                    c for c in (_da_riga(r) for r in coda) if c is not None)
+                unite = in_mano + nuove
+                # Il conto deve tornare con l'archivio. Se non torna qualcosa
+                # e' stato inserito o tolto nel mezzo -- un riempimento di
+                # storia vecchia, una cancellazione -- e allora si rilegge
+                # tutto: meglio lenti che con una serie bucata.
+                if len(unite) == quante:
+                    storico[tf] = unite
+                    continue
+
             righe = storage.candele_archiviate(nome, tf.value)
             candele = tuple(c for c in (_da_riga(r) for r in righe) if c is not None)
             storico[tf] = candele

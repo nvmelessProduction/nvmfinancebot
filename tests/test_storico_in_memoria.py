@@ -21,13 +21,17 @@ from core.parametri import TF
 def archivio(monkeypatch):
     """Un archivio finto che conta quante volte viene letto davvero."""
 
-    stato = {"righe": [], "letture": 0}
+    stato = {"righe": [], "letture": 0, "righe_lette": 0}
 
-    def _candele_archiviate(strumento, tf, limite=None):
+    def _candele_archiviate(strumento, tf, limite=None, dopo=None):
         stato["letture"] += 1
         if tf != TF.H1.value:
             return []
-        return list(stato["righe"])
+        righe = stato["righe"]
+        if dopo is not None:
+            righe = [r for r in righe if r["chiusura_utc"] > dopo]
+        stato["righe_lette"] += len(righe)
+        return list(righe)
 
     def _impronta(strumento):
         righe = stato["righe"]
@@ -85,6 +89,36 @@ def test_una_candela_nuova_fa_rileggere(fornitore, archivio):
 
     assert archivio["letture"] > dopo_la_prima, "non si e' accorto della candela nuova"
     assert len(dopo[TF.H1]) == len(prima[TF.H1]) + 1
+
+
+def test_una_candela_nuova_fa_leggere_solo_quella(fornitore, archivio):
+    """Il punto di tutto: accorgersene senza rileggere l'archivio intero.
+
+    La memoria sull'impronta da sola non serviva mai in funzione. Ogni giro di
+    mercato porta una candela al minuto, quindi l'impronta cambiava sempre e i
+    285.000 oggetti Candela di EURUSD venivano ricostruiti da zero: 2,9
+    secondi per archivio, quattro archivi per valutazione. Nel log del
+    2026-09-23 si vedeva come venti secondi di buco fra uno strumento e il
+    successivo, e gli alert in coda al giro morivano di "alert vecchio di 28s".
+    """
+    fornitore.storico("6E")
+    archivio["righe_lette"] = 0
+
+    archivio["aggiungi"](1)
+    fornitore.storico("6E")
+
+    assert archivio["righe_lette"] == 1, (
+        f"ha riletto {archivio['righe_lette']} righe per una candela nuova")
+
+
+def test_la_coda_attaccata_da_la_stessa_serie_della_rilettura(fornitore, archivio):
+    """Veloce non basta: deve dare esattamente quello che darebbe rileggendo."""
+    fornitore.storico("6E")
+    archivio["aggiungi"](3)
+    incrementale = fornitore.storico("6E")
+
+    pulito = FornitoreTradingView().storico("6E")
+    assert incrementale[TF.H1] == pulito[TF.H1]
 
 
 def test_un_buco_tappato_a_meta_serie_fa_rileggere(fornitore, archivio):
