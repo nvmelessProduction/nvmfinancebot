@@ -1012,49 +1012,57 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
     applicate.append("SETUP-02A" if crt.direzione is Bias.SHORT else "SETUP-02B")
 
-    # --- 4ter. Le due conferme di Romeo che reggono (CRT-11, CRT-20) -------
+    # --- 4ter. Le otto conferme di Romeo (CRT-06/10/11/12/15/17/18/20) ----
     #
-    # Il CISD si cerca sul timeframe di INGRESSO della coppia di CRT-04: per
-    # un CRT mensile e' il giornaliero, per uno giornaliero l'orario. E' li'
-    # che il cambio di consegna si vede — sul timeframe del range non c'e'
-    # ancora nulla da vedere.
+    # Si valutano sul timeframe di ESECUZIONE, che dopo la riscrittura secondo
+    # SETUP-02 e' `tf_trigger` stesso: il Power of Three si svolge dentro la
+    # candela di riferimento successiva, e li' si legge -- sul timeframe del
+    # range non c'e' ancora nulla da vedere.
+    #
+    # Erano legate a `tf_ingresso`, che e' un gradino PIU' SOTTO. Per `M5` e
+    # `M1min` -- che non sono chiavi di `COPPIE_CRT`, perche' le chiavi sono i
+    # range -- quella lettura dava `None`, e il blocco veniva saltato: **le
+    # otto conferme non venivano valutate proprio sulle coppie su cui il bot
+    # opera**, in silenzio, senza un errore. Si e' visto il 2026-09-23 solo
+    # dopo aver iniziato a salvare il responso in archivio: zero decisioni con
+    # le conferme registrate.
+    #
+    # `tf_ingresso` resta quello che era e serve ad altro: l'ARMAMENTO di
+    # CRT-13, che aspetta il ritorno nell'FVG sul timeframe sotto.
     tf_ingresso = COPPIE_CRT.get(tf_trigger)
-    # Il responso deve esistere SEMPRE: e' cio' che il trader discrezionale
-    # legge, e un dossier senza le conferme di Romeo e' un dossier su cui non
-    # si puo' giudicare. Vuoto solo se il timeframe del CRT non ha una coppia
-    # in CRT-04, nel qual caso non c'e' un timeframe di ingresso da guardare.
-    responso_romeo: dict[str, Optional[bool]] = {}
-    if tf_ingresso is not None:
-        serie_ingresso = candele_visibili(
-            foto.candele_per_tf.get(tf_ingresso, ()), foto.istante
-        )
-        applicate.extend(sorted(CONFERME_ROMEO))
-        ok_romeo, blocchi_romeo, responso_romeo = stp.conferme_di_romeo(
-            n1=crt.n1,
-            n2=crt.n2,
-            candele_ingresso=serie_ingresso[-12:],
-            direzione=crt.direzione,
-            istante=foto.istante,
-            tf_crt=crt.tf,
-            candele_compagne=foto.candele_compagne,
-            candele_strumento=basse,
-            strumento=foto.strumento,
-            crt_per_tf=foto.crt_per_tf,
-        )
-        if not ok_romeo and _apri_ogni_crt():
-            ok_romeo, blocchi_romeo = True, ()
-        if not ok_romeo:
-            motivo_romeo = ("conferme di Romeo non soddisfatte: "
-                            + ", ".join(SPIEGAZIONE_CRT.get(x, x) for x in blocchi_romeo))
-            blocchi_qui = list(blocchi_romeo) + indipendenti
-            if not _giudizio_lascia_cadere(
-                    foto, crt, tf_trigger, blocchi_qui, motivo_romeo):
-                fermata = _non_operare(
-                    foto.strumento, blocchi_qui, motivo_romeo,
-                    applicate, direzione=crt.direzione, tf_crt=crt.tf,
-                )
-                return replace(fermata, responso_romeo=responso_romeo)
-            applicate.append("GIUD-02")
+
+    # Il responso esiste SEMPRE: e' cio' che il trader discrezionale legge, ed
+    # e' il dato su cui si potra' pesare ciascuna conferma (CRT-14).
+    applicate.extend(sorted(CONFERME_ROMEO))
+    ok_romeo, blocchi_romeo, responso_romeo = stp.conferme_di_romeo(
+        n1=crt.n1,
+        n2=crt.n2,
+        # Le barre dell'esecuzione, che sono gia' in mano: e' su queste
+        # che il CISD si vede (SETUP-02, il Power of Three sta dentro la
+        # candela di riferimento successiva, letto sull'esecuzione).
+        candele_ingresso=basse[-12:],
+        direzione=crt.direzione,
+        istante=foto.istante,
+        tf_crt=crt.tf,
+        candele_compagne=foto.candele_compagne,
+        candele_strumento=basse,
+        strumento=foto.strumento,
+        crt_per_tf=foto.crt_per_tf,
+    )
+    if not ok_romeo and _apri_ogni_crt():
+        ok_romeo, blocchi_romeo = True, ()
+    if not ok_romeo:
+        motivo_romeo = ("conferme di Romeo non soddisfatte: "
+                        + ", ".join(SPIEGAZIONE_CRT.get(x, x) for x in blocchi_romeo))
+        blocchi_qui = list(blocchi_romeo) + indipendenti
+        if not _giudizio_lascia_cadere(
+                foto, crt, tf_trigger, blocchi_qui, motivo_romeo):
+            fermata = _non_operare(
+                foto.strumento, blocchi_qui, motivo_romeo,
+                applicate, direzione=crt.direzione, tf_crt=crt.tf,
+            )
+            return replace(fermata, responso_romeo=responso_romeo)
+        applicate.append("GIUD-02")
 
     # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, GEST-08) --------
     # Un ingresso e' "da gap" solo se due cose sono vere insieme (REV-47):

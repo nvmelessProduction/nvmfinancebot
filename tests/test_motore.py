@@ -48,7 +48,21 @@ def cand(massimo: float, minimo: float, chiusura: float, apertura: float, ore: i
 # — *"il Power of Three si svolge dentro la candela di riferimento successiva;
 # li' si cercano, sul timeframe di esecuzione, la manipolazione e il rientro"*.
 N1 = cand(massimo=110, minimo=100, chiusura=110, apertura=100, ore=4)
-N2 = cand(massimo=111, minimo=108, chiusura=109, apertura=110, ore=0)
+N2 = cand(massimo=111, minimo=108, chiusura=109, apertura=110, ore=1)
+# Una seconda barra di esecuzione, DOPO il rientro.
+#
+# Non cambia il CRT: `_manipolazione_e_rientro` si ferma alla PRIMA barra che
+# rientra, cioe' `N2`. Serve a `CRT-17`, che chiede se la meta' del range
+# TIENE: con la sola `N2`, che richiude a 109 nella meta' alta di un range
+# 100-110, la risposta e' "la meta' alta tiene" -- cioe' LONG, contro un CRT
+# short, quindi `False` e il setup si ferma li'.
+#
+# Non e' un difetto di CRT-17: e' che quel rientro e' davvero poco profondo.
+# Ma questi test collaudano ALTRE regole, e una conferma legittima che blocca
+# prima impedisce di arrivarci. Con due chiusure ai lati opposti della meta'
+# la regola dice "la bias si ribalta" -> `NESSUNA` -> `None`, che non blocca
+# mai, e ogni test torna a provare cio' che voleva provare.
+N2_DOPO = cand(massimo=109.5, minimo=100.5, chiusura=101, apertura=109, ore=0)
 # Il key level dev'essere di un timeframe STRETTAMENTE superiore a quello del
 # CRT (SETUP-00): col range su `TF_1W` serve un livello mensile.
 KL_SETTIMANALE = KeyLevel(TF.M1, TipoKeyLevel.MAX, 110.5)
@@ -65,7 +79,7 @@ def foto(**modifiche: object) -> Fotografia:
     argomenti: dict = {
         "istante": ADESSO,
         "strumento": "EURUSD",
-        "candele_per_tf": {TF.W1: [N1], TF.H4: [N2]},
+        "candele_per_tf": {TF.W1: [N1], TF.H4: [N2, N2_DOPO]},
         "bias_per_tf": {TF.M3: Bias.SHORT},
         "target_raggiunto_per_tf": {},
         # SETUP-19: il CRT di queste prove e' short sul future, cioe' SELL su
@@ -98,6 +112,34 @@ def foto(**modifiche: object) -> Fotografia:
 # ===========================================================================
 # Nessun lookahead
 # ===========================================================================
+
+@pytest.fixture
+def diagnostico(monkeypatch):
+    """Le otto conferme di Romeo non vetano.
+
+    Serve ai test che collaudano tutto cio' che viene DOPO di esse: livelli,
+    gap, filtro DXY, target, size, coerenza dell'ordine. Le candele sintetiche
+    di questo file sono minime per costruzione -- spesso una sola candela di
+    esecuzione -- quindi un CISD non puo' formarsi e la meta' del range non
+    puo' tenere: le conferme rispondono no, correttamente, e l'ordine non
+    nascerebbe mai.
+
+    Non e' un modo di far passare i test: e' la stessa configurazione in cui
+    il bot opera adesso (`APRI_OGNI_CRT`), e le conferme hanno la loro
+    copertura in `test_conferme_separate.py`.
+
+    Fino al 2026-09-23 non serviva, ma per un motivo sbagliato: la riscrittura
+    del CRT aveva lasciato `tf_ingresso = COPPIE_CRT.get(tf_trigger)`, giusto
+    finche' `tf_trigger` era il timeframe del RANGE. Diventato quello di
+    ESECUZIONE, quella riga dava `None` su M5 e M1min -- che non sono chiavi
+    di COPPIE_CRT -- e le otto conferme non venivano valutate affatto. Questi
+    test passavano grazie a quel guasto.
+    """
+    from core.config import impostazioni
+    monkeypatch.setattr(impostazioni(), "APRI_OGNI_CRT", True, raising=False)
+    yield
+
+
 class TestNienteLookahead:
     def test_candele_visibili_taglia_il_futuro(self) -> None:
         passata = cand(10, 5, 8, 6, ore=1)
@@ -128,7 +170,7 @@ class TestNienteLookahead:
         assert visibili == (chiusa,)
         assert in_corso not in visibili
 
-    def test_il_motore_rifiltra_anche_se_gli_arriva_gia_pulito(self) -> None:
+    def test_il_motore_rifiltra_anche_se_gli_arriva_gia_pulito(self, diagnostico) -> None:
         """Fidarsi di chi costruisce la fotografia costerebbe un lookahead muto."""
         futura = Candela(ADESSO + timedelta(hours=4), 109, 130, 108, 129)
         decisione = m.valuta(foto(candele_per_tf={TF.W1: [N1], TF.H4: [N2, futura]}), TF.H4)
@@ -143,7 +185,7 @@ class TestNienteLookahead:
 # Il percorso completo
 # ===========================================================================
 class TestPercorsoCompleto:
-    def test_setup_conforme_produce_un_ordine(self) -> None:
+    def test_setup_conforme_produce_un_ordine(self, diagnostico) -> None:
         decisione = m.valuta(foto(), TF.H4)
         assert decisione.azione == "SELL"
         assert decisione.direzione is Bias.SHORT
@@ -153,13 +195,13 @@ class TestPercorsoCompleto:
         assert decisione.rapporto_su_tp1 == pytest.approx(2.0)  # l'esempio di GEST-01
         assert decisione.regole_che_bloccano == ()
 
-    def test_la_decisione_elenca_le_regole_che_l_hanno_prodotta(self) -> None:
+    def test_la_decisione_elenca_le_regole_che_l_hanno_prodotta(self, diagnostico) -> None:
         decisione = m.valuta(foto(), TF.H4)
         for regola in ("SETUP-06", "SETUP-00", "SETUP-02A", "GEST-02", "GEST-07",
                        "RISK-03", "DEF-47", "PREC-05", "SETUP-03"):
             assert regola in decisione.regole_applicate, regola
 
-    def test_la_spiegazione_e_leggibile(self) -> None:
+    def test_la_spiegazione_e_leggibile(self, diagnostico) -> None:
         assert "SELL" in m.valuta(foto(), TF.H4).spiegazione()
         senza = m.valuta(foto(bias_per_tf={}), TF.H4)
         assert "nessuna operazione" in senza.spiegazione()
@@ -260,7 +302,7 @@ class TestAstensioni:
         `prezzo_cfd`, perche' quello sposta l'ancora e i livelli insieme.
         """
         largo = cand(massimo=117, minimo=108, chiusura=109, apertura=110, ore=0)
-        assert "GEST-01" in self.blocchi(candele_per_tf={TF.W1: [N1], TF.H4: [largo]})
+        assert "GEST-01" in self.blocchi(candele_per_tf={TF.W1: [N1], TF.H4: [largo, N2_DOPO]})
 
     def test_piu_blocchi_tutti_riportati(self) -> None:
         blocchi = self.blocchi(
@@ -273,7 +315,7 @@ class TestAstensioni:
 # Precedenze
 # ===========================================================================
 class TestPrecedenze:
-    def test_prec01_il_rischio_batte_il_setup(self) -> None:
+    def test_prec01_il_rischio_batte_il_setup(self, diagnostico) -> None:
         """Setup perfetto, limite giornaliero raggiunto: non si opera."""
         buono = m.valuta(foto(), TF.H4)
         assert buono.azione == "SELL"
@@ -290,7 +332,7 @@ class TestPrecedenze:
         bloccato = m.valuta(foto(istante=natale, candele_per_tf=candele), TF.H4)
         assert bloccato.azione == "NONE" and "CTX-04" in bloccato.regole_che_bloccano
 
-    def test_prec02_il_timeframe_piu_alto_comanda(self) -> None:
+    def test_prec02_il_timeframe_piu_alto_comanda(self, diagnostico) -> None:
         """Con 3M short e 1D long, comanda il 3M e il CRT short passa."""
         decisione = m.valuta(foto(bias_per_tf={TF.M3: Bias.SHORT, TF.D1: Bias.LONG}), TF.H4)
         assert decisione.azione == "SELL"
@@ -378,22 +420,22 @@ class TestSegnoInvertito:
     sola e non chiamata da nessuno (REV-51).
     """
 
-    def test_strumento_diretto_non_si_inverte(self) -> None:
+    def test_strumento_diretto_non_si_inverte(self, diagnostico) -> None:
         decisione = m.valuta(foto(strumento="EURUSD"), TF.H4)
         assert decisione.direzione is Bias.SHORT
         assert decisione.azione == "SELL"
 
-    def test_usdjpy_si_inverte(self) -> None:
+    def test_usdjpy_si_inverte(self, diagnostico) -> None:
         decisione = m.valuta(foto(strumento="USDJPY"), TF.H4)
         assert decisione.direzione is Bias.SHORT, "il CRT sul future resta short"
         assert decisione.azione == "BUY", "ma sul CFD si compra"
 
-    def test_usdchf_si_inverte(self) -> None:
+    def test_usdchf_si_inverte(self, diagnostico) -> None:
         decisione = m.valuta(foto(strumento="USDCHF"), TF.H4)
         assert decisione.direzione is Bias.SHORT
         assert decisione.azione == "BUY"
 
-    def test_i_livelli_passano_sulla_scala_del_cfd(self) -> None:
+    def test_i_livelli_passano_sulla_scala_del_cfd(self, diagnostico) -> None:
         """REV-52 — i livelli che escono dal motore sono prezzi CFD.
 
         Su uno strumento diretto lo stop di uno short sta **sopra**
@@ -413,7 +455,7 @@ class TestSegnoInvertito:
         assert diretto.livello_stop > 109.0 > diretto.tp1
         assert invertito.livello_stop < 109.0 < invertito.tp1
 
-    def test_la_distanza_relativa_e_la_stessa(self) -> None:
+    def test_la_distanza_relativa_e_la_stessa(self, diagnostico) -> None:
         """La conversione conserva la distanza adimensionale: e' il numero su
         cui RISK-03 calcola la size, e deve restare lo stesso su tutti e sei
         gli strumenti."""
@@ -453,11 +495,11 @@ class TestRapportoGiud01:
         # L'ATR si misura sulle candele del timeframe del CRT, che ora e'
         # quello di RANGE: le diciannove di riempimento vanno li'.
         return foto(
-            candele_per_tf={TF.W1: candele[:-1], TF.H4: [N2]},
+            candele_per_tf={TF.W1: candele[:-1], TF.H4: [N2, N2_DOPO]},
             gap_attivo=Gap(Polarita.RIBASSISTA, 95.0, 97.0, 97.5, TF.D1, N1.orario),
         )
 
-    def test_il_rapporto_viene_prodotto(self) -> None:
+    def test_il_rapporto_viene_prodotto(self, diagnostico) -> None:
         decisione = m.valuta(self.con_gap(), TF.H4)
         assert decisione.azione == "SELL"
         assert decisione.rapporto_giud01 is not None
@@ -498,7 +540,7 @@ class TestFiltroDxy:
     chiamata.
     """
 
-    def test_bias_dxy_concorde_lascia_passare(self) -> None:
+    def test_bias_dxy_concorde_lascia_passare(self, diagnostico) -> None:
         """DXY LONG vuole SELL su EURUSD, e il CRT e' short."""
         assert m.valuta(foto(bias_dxy=Bias.LONG), TF.H4).azione == "SELL"
 
@@ -565,20 +607,20 @@ class TestTargetFinale:
     una sola estensione del target su cinquanta operazioni.
     """
 
-    def test_setup14_il_target_e_il_key_level_non_tp1(self) -> None:
+    def test_setup14_il_target_e_il_key_level_non_tp1(self, diagnostico) -> None:
         decisione = m.valuta(foto(), TF.H4)
         assert decisione.azione == "SELL"
         assert decisione.target_finale == KL_H4_MIN.valore
         assert decisione.target_finale != decisione.tp1
 
-    def test_il_target_sta_oltre_tp1(self) -> None:
+    def test_il_target_sta_oltre_tp1(self, diagnostico) -> None:
         """Su uno short il bersaglio e' sotto il parziale: altrimenti il
         residuo non avrebbe strada davanti."""
         decisione = m.valuta(foto(), TF.H4)
         assert decisione.tp1 is not None and decisione.target_finale is not None
         assert decisione.target_finale < decisione.tp1 < decisione.livello_stop
 
-    def test_senza_key_level_non_si_apre(self) -> None:
+    def test_senza_key_level_non_si_apre(self, diagnostico) -> None:
         """PRIN-99: una posizione senza bersaglio non ha ragione di esistere."""
         decisione = m.valuta(foto(key_level_correnti=[KL_SETTIMANALE]), TF.H4)
         assert decisione.azione == "NONE"
@@ -623,29 +665,29 @@ class TestGap:
     GAP = Gap(Polarita.RIBASSISTA, 112.0, 118.0, 125.0, TF.W1, ADESSO - timedelta(days=7))
 
 
-    def test_ingresso_da_gap_solo_in_fase_tre(self) -> None:
+    def test_ingresso_da_gap_solo_in_fase_tre(self, diagnostico) -> None:
         for fase in (1, 2):
             decisione = m.valuta(foto(gap_reazione=self.GAP, gap_fase=fase), TF.H4)
             assert decisione.azione == "NONE"
             assert "SETUP-09" in decisione.regole_che_bloccano
 
-    def test_fase_tre_passa(self) -> None:
+    def test_fase_tre_passa(self, diagnostico) -> None:
         decisione = m.valuta(foto(gap_reazione=self.GAP, gap_fase=3), TF.H4)
         assert decisione.azione == "SELL" and decisione.doppio_ingresso is True
 
-    def test_def42_non_determinata_blocca_l_ingresso_da_gap(self) -> None:
+    def test_def42_non_determinata_blocca_l_ingresso_da_gap(self, diagnostico) -> None:
         decisione = m.valuta(
             foto(gap_reazione=self.GAP, gap_fase=3, mitigazione=Mitigazione.NON_DETERMINATA), TF.H4
         )
         assert decisione.azione == "NONE" and "DEF-42" in decisione.regole_che_bloccano
 
-    def test_risk04_il_doppio_ingresso_dimezza_la_size(self) -> None:
+    def test_risk04_il_doppio_ingresso_dimezza_la_size(self, diagnostico) -> None:
         singolo = m.valuta(foto(), TF.H4)
         doppio = m.valuta(foto(gap_reazione=self.GAP, gap_fase=3), TF.H4)
         assert singolo.volume is not None and doppio.volume is not None
         assert doppio.volume < singolo.volume
 
-    def test_rev47_fase_zero_significa_che_il_prezzo_non_ha_toccato_la_zona(self) -> None:
+    def test_rev47_fase_zero_significa_che_il_prezzo_non_ha_toccato_la_zona(self, diagnostico) -> None:
         """SETUP-09 si applica *quando il prezzo interagisce* con la zona.
 
         In fase 0 non ci ha mai interagito: il CRT e' un CRT normale, non un
@@ -658,7 +700,7 @@ class TestGap:
         assert decisione.azione == "SELL"
         assert decisione.doppio_ingresso is False, "senza interazione niente doppio ingresso"
 
-    def test_rev47_il_gap_target_non_e_una_zona_di_ingresso(self) -> None:
+    def test_rev47_il_gap_target_non_e_una_zona_di_ingresso(self, diagnostico) -> None:
         """DEF-15bis — il gap piu' alto e' un bersaglio, non un posto in cui entrare.
 
         Prima di REV-47 il motore passava a SETUP-09 e SETUP-10 il gap
@@ -680,14 +722,14 @@ class TestGap:
 # Coerenza generale
 # ===========================================================================
 class TestCoerenza:
-    def test_un_ordine_ha_sempre_uno_stop(self) -> None:
+    def test_un_ordine_ha_sempre_uno_stop(self, diagnostico) -> None:
         """ESCL-10 e RISK-11: nessuna posizione senza stop."""
         decisione = m.valuta(foto(), TF.H4)
         assert decisione.azione != "NONE"
         assert decisione.livello_stop is not None
         assert decisione.livello_stop != decisione.tp1
 
-    def test_lo_stop_sta_dalla_parte_giusta(self) -> None:
+    def test_lo_stop_sta_dalla_parte_giusta(self, diagnostico) -> None:
         corta = m.valuta(foto(), TF.H4)
         assert corta.livello_stop is not None and corta.tp1 is not None
         assert corta.livello_stop > corta.tp1, "su uno short lo stop sta sopra il target"
@@ -791,7 +833,7 @@ class TestTp1DietroIlPrezzo:
         assert decisione.regole_che_bloccano, "deve dire perche' non opera"
         assert decisione.rapporto_su_tp1 is None
 
-    def test_un_tp1_davanti_al_prezzo_resta(self) -> None:
+    def test_un_tp1_davanti_al_prezzo_resta(self, diagnostico) -> None:
         decisione = m.valuta(foto(), TF.H4)
         assert decisione.tp1 == pytest.approx(105.0)
         assert decisione.tp1 < 109.0, "su uno short il parziale sta sotto"

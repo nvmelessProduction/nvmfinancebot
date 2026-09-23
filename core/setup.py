@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Final, Mapping, Optional, Sequence
 
 from core.definizioni import (
     Bias, Candela, Gap, KeyLevel, Mitigazione, TipoKeyLevel, cisd,
@@ -745,13 +745,25 @@ def crt20_peso_ombre(n2: Candela, peso_minimo: float = PESO_OMBRE_MINIMO) -> Opt
     return None if peso is None else peso >= peso_minimo
 
 
+# Un CISD e' il livello di una consegna che viene superato: serve almeno una
+# candela che consegna e una che rompe. Con meno, la risposta onesta e' "non
+# valutabile" -- e la differenza NON e' accademica: `False` su CRT-11 fa
+# armare il setup (CRT-13 aspetta il CISD), `None` lo lascia proseguire.
+CISD_CANDELE_MINIME: Final[int] = 2
+
+
 def crt11_cisd(candele_ingresso: Sequence[Candela], direzione: Bias) -> Optional[bool]:
     """CRT-11 — C'e' un cambio di carattere sul timeframe di ingresso?
 
     Con l'ingresso di CRT-13 questa e' INTRINSECA: il CISD e' il primo passo
     della sequenza. Resta perche' il responso serve a chi pesa.
+
+    Con meno di `CISD_CANDELE_MINIME` barre si risponde `None`, non `False`:
+    un CISD che non si puo' cercare non e' un CISD che manca. Trasformare
+    "non lo so" in "no" e' proprio cio' che questo file vieta -- e qui
+    costerebbe caro, perche' su `False` il setup si arma e aspetta.
     """
-    if not candele_ingresso:
+    if len(candele_ingresso) < CISD_CANDELE_MINIME:
         return None
     return cisd(candele_ingresso, direzione) is not None
 

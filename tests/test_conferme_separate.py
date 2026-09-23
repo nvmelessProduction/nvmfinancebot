@@ -133,3 +133,58 @@ class TestIlDispacciatoreNonAggiungeNulla:
             datetime(2026, 1, 1, 14, tzinfo=timezone.utc), TF.H4)
         muti = {k for k, v in responso.items() if v is None}
         assert not (muti & set(blocchi))
+
+
+class TestLeConfermeSiValutanoSuOgniCoppia:
+    """Il guasto piu' silenzioso trovato finora, e non dava errori.
+
+    La riscrittura del CRT secondo SETUP-02 ha reso `tf_trigger` il timeframe
+    di ESECUZIONE. Le conferme pero' restavano legate a
+    `COPPIE_CRT.get(tf_trigger)`, cioe' un gradino PIU' SOTTO -- e per `M5` e
+    `M1min`, che non sono chiavi di `COPPIE_CRT` perche' le chiavi sono i
+    range, quella lettura dava `None` e il blocco veniva saltato in silenzio.
+
+    Risultato: le otto conferme non venivano valutate proprio sulle coppie su
+    cui il bot opera. Nessun errore, nessun avviso: il responso restava vuoto
+    e basta. Si e' visto solo dopo aver iniziato a salvarlo in archivio --
+    zero decisioni con le conferme registrate su un'intera giornata.
+    """
+
+    def test_ogni_timeframe_di_esecuzione_produce_un_responso(self):
+        """Per ognuna delle sei coppie di CRT-04, non solo per quelle alte."""
+        from core.parametri import COPPIE_CRT
+        for tf_range, tf_esecuzione in COPPIE_CRT.items():
+            _, _, responso = stp.conferme_di_romeo(
+                N1, N2, [N2], Bias.SHORT,
+                datetime(2026, 1, 1, 14, tzinfo=timezone.utc), tf_range)
+            assert set(responso) == set(LE_OTTO), (
+                f"responso incompleto sulla coppia {tf_range.value} -> "
+                f"{tf_esecuzione.value}")
+
+    def test_il_motore_non_lega_le_conferme_al_timeframe_sotto(self):
+        """`tf_ingresso` serve all'ARMAMENTO di CRT-13, non alle conferme.
+
+        Sono due timeframe diversi: le conferme si leggono sull'esecuzione,
+        il ritorno nell'FVG si aspetta un gradino sotto. Confonderli e' il
+        guasto descritto qui sopra -- e rifarlo al contrario sposterebbe
+        l'armamento, che e' l'errore commesso mentre lo si correggeva.
+        """
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        chiamata = corpo[corpo.index("stp.conferme_di_romeo("):]
+        chiamata = chiamata[:chiamata.index("crt_per_tf=")]
+        assert "tf_ingresso" not in chiamata, (
+            "le conferme sono tornate a dipendere dal timeframe dell'armamento")
+        assert "basse" in chiamata, "vanno lette sulle barre di esecuzione"
+        # E l'armamento continua a usare il timeframe sotto.
+        assert "tf_ingresso = COPPIE_CRT.get(tf_trigger)" in corpo
+
+    def test_un_cisd_che_non_si_puo_cercare_non_e_un_cisd_che_manca(self):
+        """`False` su CRT-11 fa ARMARE il setup; `None` lo lascia proseguire.
+
+        Con una candela sola il CISD non e' cercabile, e rispondere `False`
+        cambiava il comportamento del bot su un dato che non c'era.
+        """
+        assert stp.crt11_cisd([N2], Bias.SHORT) is None
+        assert stp.crt11_cisd([], Bias.SHORT) is None
