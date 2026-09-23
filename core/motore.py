@@ -34,7 +34,7 @@ from bisect import bisect_right
 from collections.abc import Sequence as _SequenzaAstratta
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from core import contesto as ctx
 from core import definizioni as dfn
@@ -302,6 +302,12 @@ class Decisione:
     # insieme invece di subirle come veti in AND. E' la regola che dice
     # "non si prende ogni istanza, il contesto decide quali istanze valgono".
     responso_romeo: Mapping[str, Optional[bool]] = field(default_factory=dict)
+    # COSA HA VISTO, in numeri: il range letto, l'estremo superato, il
+    # rientro, il livello preso e su quale coppia di timeframe. Senza questi
+    # il messaggio diceva "aperto, stop qui, target la'" e chi legge non
+    # poteva risalire a quale disegno fosse stato riconosciuto -- ne'
+    # verificarlo sul grafico, che e' l'unico modo per capire dove sbaglia.
+    lettura_crt: Optional[Mapping[str, Any]] = None
 
     def spiegazione(self) -> str:
         """Una riga leggibile, per il log e per Telegram."""
@@ -573,6 +579,36 @@ def _non_operare(
 # ===========================================================================
 
 
+def _lettura_del_crt(crt, tf_esecuzione: Optional[TF]) -> dict[str, Any]:
+    """I numeri del disegno riconosciuto, per chi legge il messaggio.
+
+    Non serve a decidere: serve a poter RIFARE la lettura sul grafico. Finche'
+    il messaggio diceva solo "aperto, stop qui, target la'", l'unica cosa che
+    chi guarda poteva fare era crederci — e per capire dove il bot sbaglia
+    bisogna invece poterlo smentire.
+
+    `n1` e' la candela di riferimento, cioe' il range (SETUP-02A). `n2` e' la
+    fase di manipolazione impacchettata: il suo estremo e' il punto piu'
+    lontano raggiunto oltre il range, la sua chiusura e' il rientro.
+    """
+    corta = crt.direzione is Bias.SHORT
+    return {
+        "tf_range": getattr(crt.tf, "value", crt.tf),
+        "tf_esecuzione": getattr(tf_esecuzione, "value", tf_esecuzione),
+        "verso": "SHORT" if corta else "LONG",
+        # Il bordo del range che e' stato violato.
+        "livello_range": crt.n1.massimo if corta else crt.n1.minimo,
+        # Fin dove si e' spinto oltre quel bordo, e dove e' rientrato.
+        "estremo_superato": crt.n2.massimo if corta else crt.n2.minimo,
+        "rientro": crt.n2.chiusura,
+        "key_level": getattr(crt.key_level, "valore", None),
+        "tipo_key_level": getattr(
+            getattr(crt.key_level, "tipo", None), "value", None),
+        "tf_key_level": getattr(
+            getattr(crt.key_level, "tf", None), "value", None),
+    }
+
+
 def _rapporto_giud01(
     foto: Fotografia, crt, bersaglio_future: Optional[float]
 ) -> Optional[float]:
@@ -761,6 +797,15 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
         rischio=esito_size.rischio_percentuale,
         regole_applicate=tuple(dict.fromkeys(applicate)),
         motivo="CRT-13: ingresso sul ritorno nell'FVG dopo il CISD",
+        # Qui il CRT non e' piu' in mano: `Ingresso` porta i livelli calcolati,
+        # non le candele da cui nascono. Si dice quello che si sa davvero --
+        # la coppia di timeframe e il verso -- e non si inventa il resto.
+        lettura_crt={
+            "tf_range": ingresso.tf_crt,
+            "tf_esecuzione": getattr(tf_trigger, "value", tf_trigger),
+            "verso": "SHORT" if ingresso.direzione is Bias.SHORT else "LONG",
+            "via": "ritorno nell'FVG dopo il cambio di carattere",
+        },
     )
 
 
@@ -1386,4 +1431,5 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         # Le conferme di Romeo viaggiano fino al giudice anche qui: senza,
         # meta' dei setup gli arriverebbe senza il quadro su cui decidere.
         responso_romeo=responso_romeo,
+        lettura_crt=_lettura_del_crt(crt, tf_trigger),
     )

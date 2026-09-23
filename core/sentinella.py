@@ -411,24 +411,68 @@ class Sentinella:
             volume_iniziale, volume_attuale, float(specifiche["volume_step"]), frazione
         )
         if quota is None:
-            # Size minima: un quarto non e' eseguibile. Non si chiude nulla e
-            # NON si sposta lo stop — un break even senza parziale incassato e'
-            # un'operazione che le regole non descrivono. Si dice una volta e
-            # si smette, marcando TP1 come gestito.
+            # Size minima: un quarto di 0,01 lotti non esiste, quindi il
+            # parziale non si puo' incassare. Il pareggio pero' SI'.
+            #
+            # Prima qui non si spostava nulla, con la motivazione che "un
+            # break even senza parziale incassato e' un'operazione che le
+            # regole non descrivono". Era un argomento dall'assenza di una
+            # regola, e sceglieva da solo il lato piu' rischioso: la
+            # posizione proseguiva intera con lo stop iniziale, cioe' poteva
+            # ancora perdere tutto dopo aver toccato il bersaglio.
+            #
+            # GEST-04 esiste perche' dopo TP1 non si perda piu'. Quell'intento
+            # lo serve il pareggio, non il parziale: il parziale incassa, il
+            # pareggio protegge. E le esclusioni ESCL-07/08/09 chiedono che lo
+            # stop si muova una volta sola, a pareggio, e solo dopo TP1 — e
+            # TP1 e' stato raggiunto, quindi la precondizione c'e'.
+            #
+            # Le due guardie sono le stesse del ramo col parziale, e per le
+            # stesse ragioni: le esclusioni sullo spostamento, e il divieto di
+            # mettere il pareggio oltre il prezzo corrente (retcode 10016).
+            nuovo_stop = dopo.livello_stop
+            ammesso, perche = gestione.spostamento_stop_ammesso(dopo, nuovo_stop)
+            uscita = prezzo_di_uscita(direzione, tick["bid"], tick["ask"])
+            ancora_davanti = (nuovo_stop > uscita if _bias(direzione) is Bias.SHORT
+                              else nuovo_stop < uscita)
+            if not ammesso or not ancora_davanti:
+                motivo = perche if not ammesso else (
+                    f"il pareggio a {nuovo_stop} sarebbe gia' oltre il prezzo "
+                    f"{uscita}")
+                log.warning(
+                    "TP1 su %s (ticket %s): parziale non eseguibile e nemmeno "
+                    "il pareggio si puo' mettere (%s), lo stop resta a %s",
+                    simbolo, ticket, motivo, posizione["sl"])
+                storage.applica_parziale_tp1(
+                    id_posizione, volume_attuale, float(posizione["sl"])
+                )
+                notifier.invia(
+                    f"TP1 raggiunto su {simbolo} (ticket {ticket}). Il parziale "
+                    f"del 25% non e' eseguibile alla size minima e il pareggio "
+                    f"non si puo' spostare: {motivo}. La posizione resta intera "
+                    f"con lo stop iniziale."
+                )
+                return False
+
+            storage.applica_parziale_tp1(id_posizione, volume_attuale, nuovo_stop)
+            esito_livelli = broker.modifica_livelli(ticket, stop=nuovo_stop)
+            if not esito_livelli.ok:
+                log.warning("pareggio su %s scritto in archivio ma il broker "
+                            "non ha accettato lo stop nuovo: %s",
+                            ticket, esito_livelli.messaggio)
             log.info(
                 "TP1 su %s (ticket %s): il 25%% di %s non e' eseguibile al passo "
-                "%s, la posizione prosegue intera con lo stop iniziale",
+                "%s, la posizione prosegue intera ma lo stop va a pareggio %s",
                 simbolo, ticket, volume_iniziale, specifiche["volume_step"],
-            )
-            storage.applica_parziale_tp1(
-                id_posizione, volume_attuale, float(posizione["sl"])
+                nuovo_stop,
             )
             notifier.invia(
-                f"TP1 raggiunto su {simbolo} (ticket {ticket}) ma il parziale del "
-                f"25% non e' eseguibile alla size minima. La posizione resta "
-                f"intera con lo stop iniziale."
+                f"TP1 su {simbolo} {direzione} (ticket {ticket})\n"
+                f"il 25% non e' incassabile alla size minima, la posizione "
+                f"resta intera\n"
+                f"stop portato a pareggio {nuovo_stop}: da qui non si perde piu'"
             )
-            return False
+            return True
 
         esito = broker.chiudi_posizione(ticket, volume=quota)
         if not esito.ok:

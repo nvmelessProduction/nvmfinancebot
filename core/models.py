@@ -7,7 +7,7 @@ entrambe le forme sono accettate in ingresso.
 
 import hashlib
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -153,6 +153,10 @@ class Decision(BaseModel):
     responso_romeo: dict[str, Optional[bool]] = Field(default_factory=dict)
     # Il verso del CRT sul FUTURE, che su 6J e 6S e' l'opposto dell'ordine.
     direzione: Optional[str] = None
+    # I numeri del disegno riconosciuto: range letto, estremo superato,
+    # rientro, key level, e su quale coppia di timeframe. Servono a chi
+    # legge per RIFARE la lettura sul grafico invece di doverci credere.
+    lettura_crt: Optional[dict[str, Any]] = None
 
 
 class OrderResult(BaseModel):

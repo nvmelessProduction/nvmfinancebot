@@ -203,7 +203,7 @@ def messaggio_decisione(
     verso = "LONG" if decisione.azione == "BUY" else "SHORT"
     segno = "🟢" if decisione.azione == "BUY" else "🔴"
 
-    righe = [f"{segno} <b>{nome} {verso}</b>  ·  {alert.tf}"]
+    righe = [f"{segno} <b>{nome} {verso}</b>  ·  {_tempo(alert.tf)}"]
 
     if decisione.volume:
         righe.append(f"{decisione.volume} lotti")
@@ -268,7 +268,8 @@ def _analisi(decisione: Decision) -> list[str]:
     indifferentemente su vincenti e perdenti, non serve.
     """
     responso = decisione.responso_romeo or {}
-    if not responso:
+    lettura = getattr(decisione, "lettura_crt", None) or {}
+    if not responso and not lettura:
         return []
 
     def frasi(valore, indice):
@@ -291,7 +292,14 @@ def _analisi(decisione: Decision) -> list[str]:
                      "è ricaduto: chi comprava ha finito la forza proprio "
                      "dove sembrava averne di più.")
 
+    # 1bis. Gli stessi fatti IN NUMERI, per poterli ritrovare sul grafico.
+    righe.extend(_numeri_del_disegno(lettura))
+
     # 2. Cosa lo sostiene e cosa no, in frasi legate invece che in elenco.
+    if not responso:
+        righe.append("<i>Le otto conferme non sono state valutate: il bot è "
+                     "in prova e apre su ogni figura che riconosce.</i>")
+        return righe
     if a_favore:
         righe.append("A favore: " + _elenco(a_favore) + ".")
     if contro:
@@ -300,6 +308,64 @@ def _analisi(decisione: Decision) -> list[str]:
         righe.append(_su_altri(muti))
 
     righe.append(_quanto_pesa(len(a_favore), len(contro), len(responso)))
+    return righe
+
+
+_TEMPI_IN_PAROLE: dict[str, str] = {
+    "TF_M1min": "1 minuto", "TF_M5": "5 minuti", "TF_M15": "15 minuti",
+    "TF_H1": "1 ora", "TF_H4": "4 ore", "TF_H6": "6 ore", "TF_H12": "12 ore",
+    "TF_D1": "giornaliero", "TF_W1": "settimanale", "TF_M1": "mensile",
+    "TF_3M": "trimestrale", "TF_6M": "semestrale", "TF_12M": "annuale",
+}
+
+
+def _tempo(codice) -> str:
+    """`TF_H1` non dice niente a nessuno; "1 ora" si'."""
+    if codice is None:
+        return ""
+    return _TEMPI_IN_PAROLE.get(str(codice), str(codice))
+
+
+def _numeri_del_disegno(lettura: dict) -> list[str]:
+    """Su quale grafico, a quale prezzo: i fatti verificabili.
+
+    Senza questi il messaggio chiedeva fiducia. Chi legge deve poter aprire
+    il grafico, andare su quel timeframe e a quel prezzo, e vedere se il bot
+    ha letto bene -- perche' e' l'unico modo per scoprire dove sbaglia.
+    """
+    if not lettura:
+        return []
+    righe: list[str] = []
+
+    grande = _tempo(lettura.get("tf_range"))
+    piccolo = _tempo(lettura.get("tf_esecuzione"))
+    if grande and piccolo:
+        righe.append(f"La figura è sul grafico da <b>{grande}</b>, "
+                     f"l'ingresso è stato cercato su quello da <b>{piccolo}</b>.")
+    elif grande:
+        righe.append(f"La figura è sul grafico da <b>{grande}</b>.")
+
+    livello = lettura.get("livello_range")
+    estremo = lettura.get("estremo_superato")
+    rientro = lettura.get("rientro")
+    if livello is not None and estremo is not None and rientro is not None:
+        oltre = "sopra" if lettura.get("verso") == "SHORT" else "sotto"
+        indietro = "sotto" if lettura.get("verso") == "SHORT" else "sopra"
+        righe.append(
+            f"Il bordo da battere era <code>{livello:g}</code>: il prezzo è "
+            f"andato {oltre} fino a <code>{estremo:g}</code> e poi è tornato "
+            f"{indietro}, chiudendo a <code>{rientro:g}</code>.")
+
+    kl = lettura.get("key_level")
+    if kl is not None:
+        tf_kl = _tempo(lettura.get("tf_key_level"))
+        dove = f" del grafico da {tf_kl}" if tf_kl else ""
+        righe.append(f"Il livello che ha fatto da calamita è "
+                     f"<code>{kl:g}</code>{dove}.")
+
+    via = lettura.get("via")
+    if via:
+        righe.append(f"L'ingresso è avvenuto sul {via}.")
     return righe
 
 

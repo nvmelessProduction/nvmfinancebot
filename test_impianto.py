@@ -1328,11 +1328,19 @@ class ProvaSentinella(BaseCollaudo):
         finto.bid, finto.ask = 1.09700, 1.09710     # sotto lo stop
         self.assertEqual(self.sentinella.giro()["chiuse"], 1)
 
-    def test_size_minima_non_fa_parziale_ne_pareggio(self) -> None:
-        """Un quarto di 0.01 lotti non esiste: la posizione prosegue intera.
+    def test_size_minima_niente_parziale_ma_il_pareggio_si(self) -> None:
+        """Un quarto di 0.01 lotti non esiste, ma il pareggio si sposta.
 
-        Applicare il break even senza aver incassato il parziale cambierebbe
-        l'operazione in una che le regole non descrivono.
+        Prima qui non si toccava nulla, con la motivazione che un break even
+        senza parziale incassato sarebbe "un'operazione che le regole non
+        descrivono". Era un argomento dall'assenza di una regola, e sceglieva
+        da solo il lato piu' rischioso: la posizione proseguiva intera con lo
+        stop iniziale, cioe' poteva ancora perdere tutto DOPO aver raggiunto
+        il bersaglio.
+
+        Il parziale incassa, il pareggio protegge: GEST-04 esiste per la
+        seconda cosa, e ESCL-07/08/09 chiedono solo che lo stop si muova una
+        volta sola, a pareggio, e dopo TP1 — che e' esattamente il caso.
         """
         esito = broker.invia_ordine("EURUSD", "BUY", 0.01)
         storage.registra_posizione(
@@ -1342,9 +1350,13 @@ class ProvaSentinella(BaseCollaudo):
         finto.bid, finto.ask = 1.10250, 1.10260
         self.sentinella.giro()
         riga = storage.posizioni_aperte()[0]
-        self.assertAlmostEqual(riga["volume"], 0.01, places=6)
-        self.assertEqual(riga["sl"], 1.09800, "lo stop resta quello iniziale")
-        self.assertEqual(riga["tp1_raggiunto"], 1, "ma non ci si riprova a ogni giro")
+        self.assertAlmostEqual(riga["volume"], 0.01, places=6,
+                               msg="il parziale non e' eseguibile: resta intera")
+        self.assertGreater(riga["sl"], 1.10000,
+                           "lo stop deve stare oltre l'ingresso: da li' non si perde piu'")
+        self.assertLess(riga["sl"], 1.10250,
+                        "ma non oltre il prezzo corrente, o il broker lo rifiuta (10016)")
+        self.assertEqual(riga["tp1_raggiunto"], 1, "e non ci si riprova a ogni giro")
 
     def test_posizione_vecchia_senza_tp1_si_comporta_come_prima(self) -> None:
         """Le posizioni aperte prima della migrazione non hanno TP1: devono

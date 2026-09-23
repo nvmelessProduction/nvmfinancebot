@@ -21,6 +21,7 @@ Le salvaguardie, qui, possono solo dire di no: nessuna di loro apre niente.
 
 import hmac
 import threading
+from math import isclose
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
 
@@ -329,6 +330,12 @@ def _esegui_decisione(
         notifier.invia(f"{testo}\n\n{dettaglio}")
         return "errore", dettaglio, None, None
 
+    # Lo stesso CRT non si apre due volte.
+    gia_presa = _occasione_gia_aperta(simbolo_ordine, decisione)
+    if gia_presa is not None:
+        log.info("apertura saltata: %s", gia_presa)
+        return "bloccato", gia_presa, None, None
+
     # RISK-02 — il ridimensionamento va deciso PRIMA di aprire, perche' PA-63
     # puo' imporre di non aprire affatto: se adeguare una posizione esistente
     # producesse un volume sotto il passo del broker, aprire comunque darebbe
@@ -367,6 +374,51 @@ def _esegui_decisione(
     _applica_ridimensionamenti(adeguamenti)
 
     return "eseguito", f"auto: {esito_ordine.messaggio}", esito_ordine.ticket, esito_ordine.prezzo
+
+
+def _occasione_gia_aperta(simbolo_broker: str, decisione) -> Optional[str]:
+    """Lo stesso CRT ha gia' una posizione aperta?
+
+    Il ramo armato consuma il setup con `ingresso_ltf.conferma_esecuzione`, e
+    quindi non puo' ripresentarsi. Il ramo diretto — `APRI_OGNI_CRT`, che e'
+    una prova diagnostica e non una strategia — non consuma niente: il CRT su
+    un timeframe alto resta valido per decine di barre di esecuzione, e ogni
+    valutazione lo ritrova e riapre.
+
+    Misurato il 2026-09-23, nei primi quindici minuti dopo un riavvio: otto
+    posizioni, tre GBPUSD BUY con stop 1.32237 e target 1.32662, tre USDCHF
+    SELL con stop 0.82605 e target 0.82412, tre XAUUSD BUY con stop 4275.76 —
+    livelli IDENTICI, una entrata ogni cinque minuti, cioe' una per candela
+    M5. Non erano tre segnali: era un segnale moltiplicato per tre.
+
+    Il confronto e' su simbolo, verso e TARGET. Non sullo stop, che dopo TP1
+    la sentinella riscrive a pareggio: due posizioni dello stesso CRT
+    avrebbero stop diversi e passerebbero come occasioni distinte.
+    """
+    try:
+        bersaglio = getattr(decisione, "tp", None)
+        if bersaglio is None:
+            return None
+        verso = str(decisione.azione).upper()
+        for riga in storage.posizioni_aperte():
+            if str(riga["simbolo"]) != simbolo_broker:
+                continue
+            if str(riga["direzione"]).upper() != verso:
+                continue
+            suo = riga.get("tp")
+            if suo is None or not isclose(float(suo), float(bersaglio),
+                                          rel_tol=1e-9, abs_tol=0.0):
+                continue
+            return (
+                f"stesso CRT gia' aperto su {simbolo_broker} {verso} "
+                f"(ticket {riga.get('ticket')}, target {suo}): non si moltiplica "
+                f"la stessa occasione a ogni candela"
+            )
+    except Exception:
+        # Un guasto qui non deve impedire un'apertura che tutte le regole
+        # hanno approvato: si annota e si prosegue.
+        log.exception("controllo dell'occasione gia' aperta fallito")
+    return None
 
 
 def _ridimensionamenti_del_gruppo(

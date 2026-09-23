@@ -464,6 +464,115 @@ class TestIlPareggioNonPuoStareOltreIlPrezzo:
         assert "prezzo_di_uscita(direzione, tick" in corpo
 
 
+class TestLoStessoCrtNonSiApreDueVolte:
+    """Un segnale, una posizione. Non una per candela.
+
+    Il ramo armato consuma il setup con `conferma_esecuzione`. Il ramo diretto
+    — `APRI_OGNI_CRT`, che il suo stesso docstring chiama "una prova, non una
+    strategia" — non consuma niente: il CRT su un timeframe alto resta valido
+    per decine di barre di esecuzione e ogni valutazione lo riapre.
+
+    Misurato il 2026-09-23, quindici minuti dopo un riavvio: otto posizioni,
+    di cui tre GBPUSD BUY con stop 1.32237 e target 1.32662, tre USDCHF SELL
+    con stop 0.82605 e target 0.82412, tre XAUUSD BUY con stop 4275.76. Livelli
+    identici, una entrata ogni cinque minuti: un segnale moltiplicato per tre.
+    """
+
+    def _decisione(self, tp=1.32662, azione="BUY"):
+        from core.models import Decision
+        return Decision(azione=azione, simbolo="GBPUSD", tp=tp, sl=1.32237)
+
+    def test_riconosce_la_stessa_occasione(self, monkeypatch):
+        import main
+        from core import storage
+        monkeypatch.setattr(storage, "posizioni_aperte", lambda: [
+            {"simbolo": "GBPUSD+", "direzione": "BUY", "tp": 1.32662,
+             "ticket": 329964634},
+        ])
+        motivo = main._occasione_gia_aperta("GBPUSD+", self._decisione())
+        assert motivo is not None and "stesso CRT" in motivo
+
+    def test_un_bersaglio_diverso_e_un_altro_crt(self, monkeypatch):
+        import main
+        from core import storage
+        monkeypatch.setattr(storage, "posizioni_aperte", lambda: [
+            {"simbolo": "GBPUSD+", "direzione": "BUY", "tp": 1.33000,
+             "ticket": 1},
+        ])
+        assert main._occasione_gia_aperta("GBPUSD+", self._decisione()) is None
+
+    def test_il_verso_opposto_non_e_la_stessa_occasione(self, monkeypatch):
+        import main
+        from core import storage
+        monkeypatch.setattr(storage, "posizioni_aperte", lambda: [
+            {"simbolo": "GBPUSD+", "direzione": "SELL", "tp": 1.32662,
+             "ticket": 1},
+        ])
+        assert main._occasione_gia_aperta("GBPUSD+", self._decisione()) is None
+
+    def test_un_guasto_non_impedisce_di_aprire(self, monkeypatch):
+        """Tutte le regole hanno gia' approvato: un errore qui non veta."""
+        import main
+        from core import storage
+
+        def esplode():
+            raise RuntimeError("archivio irraggiungibile")
+
+        monkeypatch.setattr(storage, "posizioni_aperte", esplode)
+        assert main._occasione_gia_aperta("GBPUSD+", self._decisione()) is None
+
+    def test_non_si_confronta_sullo_stop(self):
+        """Lo stop lo riscrive la sentinella a pareggio dopo TP1: due
+        posizioni dello stesso CRT avrebbero stop diversi."""
+        import inspect
+        import main
+        corpo = inspect.getsource(main._occasione_gia_aperta)
+        assert 'riga.get("tp")' in corpo
+        assert 'riga.get("sl")' not in corpo
+
+
+class TestIlPareggioNonDipendeDalParziale:
+    """Alla size minima il 25% non si incassa, ma il pareggio si sposta.
+
+    Su un conto da 118 EUR il lotto e' 0,01 e un quarto di 0,01 non esiste.
+    Fino al 2026-09-23 in quel caso la sentinella non toccava nulla: la
+    posizione proseguiva **intera con lo stop iniziale**, quindi poteva ancora
+    perdere tutto dopo aver raggiunto il bersaglio. La motivazione scritta nel
+    codice era che "un break even senza parziale incassato e' un'operazione
+    che le regole non descrivono" -- un argomento dall'assenza di una regola,
+    che sceglieva da solo il lato piu' rischioso.
+
+    Il parziale incassa, il pareggio protegge: sono due cose diverse e GEST-04
+    esiste per la seconda. ESCL-07/08/09 vogliono che lo stop si muova una
+    volta sola, a pareggio, e solo dopo TP1 — e TP1 e' stato raggiunto.
+    """
+
+    def test_il_ramo_senza_parziale_porta_a_pareggio(self):
+        import inspect
+        from core import sentinella
+        corpo = inspect.getsource(sentinella)
+        ramo = corpo[corpo.index("if quota is None:"):]
+        ramo = ramo[:ramo.index("esito = broker.chiudi_posizione")]
+        assert "nuovo_stop = dopo.livello_stop" in ramo, (
+            "il ramo senza parziale non calcola piu' il pareggio")
+        assert "broker.modifica_livelli(ticket, stop=nuovo_stop)" in ramo, (
+            "il pareggio non arriva al broker: se il bot muore, il residuo "
+            "resta protetto al livello sbagliato")
+
+    def test_il_ramo_senza_parziale_tiene_le_due_guardie(self):
+        """Spostare a pareggio non puo' saltare i controlli del ramo buono."""
+        import inspect
+        from core import sentinella
+        corpo = inspect.getsource(sentinella)
+        ramo = corpo[corpo.index("if quota is None:"):]
+        ramo = ramo[:ramo.index("esito = broker.chiudi_posizione")]
+        # ESCL-07/08/09, e il divieto di mettere il pareggio oltre il prezzo
+        # (retcode 10016, nove rifiuti misurati il 2026-09-22).
+        assert "spostamento_stop_ammesso" in ramo
+        assert "ancora_davanti" in ramo
+        assert "prezzo_di_uscita(direzione, tick" in ramo
+
+
 class TestIlPareggioRecuperaLeCommissioni:
     """GEST-04 vuole un pareggio REALE, cioe' al netto dei costi.
 
