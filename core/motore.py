@@ -1380,6 +1380,40 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             rapporto_su_tp1=rapporto,
         )
 
+    # --- 7bis-quater. E lo STOP deve stare dall'altra parte (PRIN-99) ------
+    #
+    # Il controllo qui sopra e' nato per il bersaglio, ma lo stop ha
+    # esattamente lo stesso difetto e nessuno gliel'aveva applicato: nasce
+    # dall'estremo dello sweep -- un livello di struttura -- e col prezzo di
+    # ingresso non lo confronta nessuno. Quando il prezzo l'ha gia' passato,
+    # lo stop finisce dalla parte del bersaglio, e l'operazione e' morta
+    # nell'istante in cui parte.
+    #
+    # Misurato il 2026-09-23, e sono i due casi che l'utente ha visto a occhio:
+    #
+    #   USDJPY SELL  ingresso 158.204  stop 158.196  target 158.167
+    #   XAUUSD SELL  ingresso 4291.11  stop 4289.74  target 4276.71
+    #
+    # In tutti e due lo stop sta SOTTO l'ingresso su uno short, cioe' dalla
+    # stessa parte del bersaglio: il prezzo lo tocca andando nella direzione
+    # giusta. Le due USDJPY sono vissute 4 e 3 secondi.
+    #
+    # Il verso e' quello del CFD e non quello del CRT, per la stessa ragione
+    # spiegata sopra: `6S` e `6J` quotano il reciproco.
+    stop_dietro = (stop >= prezzo_ingresso if verso_ordine is Bias.LONG
+                   else stop <= prezzo_ingresso)
+    if stop_dietro:
+        return _non_operare(
+            foto.strumento, ["PRIN-99"],
+            f"stop {stop:.5f} dalla parte sbagliata rispetto all'ingresso "
+            f"{prezzo_ingresso:.5f} per un ordine "
+            f"{'BUY' if verso_ordine is Bias.LONG else 'SELL'}: "
+            "sarebbe gia' toccato, l'operazione morirebbe appena aperta",
+            applicate,
+            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop,
+            tp1=obiettivo_1, rapporto_su_tp1=rapporto,
+        )
+
     # --- 7ter. Il dato che deve chiudere PA-44 (GIUD-01, 07_casi.md §3.1) --
     #
     # Si REGISTRA, non si decide: `giud01_scelta_target` risponde sempre C —

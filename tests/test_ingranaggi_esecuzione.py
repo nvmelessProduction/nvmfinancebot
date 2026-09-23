@@ -367,6 +367,36 @@ class TestIlBersaglioDeveStareDavanti:
         assert d.azione == "SELL", d.motivo
         assert d.target_finale is not None and d.target_finale < 101.0
 
+    def test_anche_lo_stop_deve_stare_dalla_sua_parte(self, diagnostico):
+        """Lo stesso difetto del bersaglio, sull'altro livello.
+
+        Lo stop nasce dall'estremo dello sweep — un livello di struttura — e
+        col prezzo di ingresso non lo confrontava nessuno. Quando il prezzo
+        l'ha gia' passato, lo stop finisce dalla parte del bersaglio e il
+        prezzo lo tocca andando nella direzione GIUSTA: l'operazione muore
+        appena aperta.
+
+        Misurato il 2026-09-23, i due casi visti a occhio sul telefono:
+        USDJPY SELL ingresso 158.204 stop 158.196 target 158.167, vissuta 4
+        secondi; XAUUSD SELL ingresso 4291.11 stop 4289.74 target 4276.71. In
+        entrambi lo stop stava SOTTO l'ingresso su uno short.
+        """
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore)
+        assert "stop_dietro" in corpo, "la guardia sullo stop non c'e' piu'"
+        # E non e' una copia scollegata: usa lo stesso verso del CFD del
+        # controllo sul bersaglio, perche' 6S e 6J quotano il reciproco.
+        pezzo = corpo[corpo.index("stop_dietro = "):]
+        assert "verso_ordine is Bias.LONG" in pezzo[:200]
+
+    def test_uno_stop_dalla_parte_giusta_non_viene_fermato(self, diagnostico):
+        """La guardia non deve diventare un muro: lo short buono passa."""
+        d = self._decisione(101.0)
+        assert d.azione == "SELL", d.motivo
+        assert d.livello_stop is not None and d.livello_stop > 101.0, (
+            "su uno short lo stop sta sopra l'ingresso")
+
     def test_il_modo_diagnostico_non_lo_puo_spegnere(self):
         """PRIN-99 non e' soppesabile: non e' sfortuna, e' dato incoerente."""
         from core.motore import OBIEZIONI_SOPPESABILI
