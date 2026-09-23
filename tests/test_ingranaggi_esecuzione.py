@@ -387,6 +387,31 @@ class TestIlBersaglioDeveStareDavanti:
         assert "SETUP-02C" in d.regole_che_bloccano
         assert "rapporto 0.10 a 1" in d.motivo
 
+    def test_un_pareggio_rifiutato_dal_broker_non_finisce_in_archivio(self):
+        """Il difetto che uccideva le operazioni in 3-5 secondi.
+
+        Chain misurata il 2026-09-23 sul ticket 330009360:
+          20:05:10  SETUP-17 manda il pareggio al broker -> retcode 10016
+          20:05:10  l'archivio lo scrive lo stesso
+          subito dopo  sentinella: "SL toccato su USDJPY+, livello 158.196"
+        Il broker aveva ancora lo stop vero a 158.400: la posizione e' stata
+        chiusa dall'archivio, non dal mercato.
+
+        La regola era gia' scritta dentro `sentinella.py` per il pareggio di
+        GEST-04 e non era stata portata su questo secondo percorso.
+        """
+        import inspect
+        import main
+        corpo = inspect.getsource(main)
+        pezzo = corpo[corpo.index('elif azione.tipo == "break_even":'):]
+        pezzo = pezzo[:pezzo.index('elif azione.tipo == "estendi_target"')]
+        posto_broker = pezzo.index("broker.modifica_livelli")
+        posto_archivio = pezzo.index("storage.applica_parziale_tp1")
+        assert posto_broker < posto_archivio, (
+            "l'archivio viene scritto prima di sapere se il broker accetta")
+        assert "continue" in pezzo[posto_broker:posto_archivio], (
+            "un rifiuto del broker deve fermare la scrittura in archivio")
+
     def test_un_livello_troppo_vicino_non_parte(self):
         """L'altra causa di `Invalid stops`: la distanza minima del broker.
 

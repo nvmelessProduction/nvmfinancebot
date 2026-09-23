@@ -332,6 +332,39 @@ def _cifre_simbolo(simbolo: str, difetto: int = 5) -> int:
     return int(getattr(info, "digits", difetto) or difetto)
 
 
+def _livello_dalla_parte_sbagliata(
+    direzione: str, prezzo: float, richiesta: dict[str, Any]
+) -> Optional[str]:
+    """Stop o target dalla parte che li rende impossibili?
+
+    Il motore questo controllo ce l'ha, ma lo fa sul prezzo della VALUTAZIONE.
+    Fra la valutazione e l'invio il prezzo si muove, e uno stop che era di un
+    soffio dalla parte giusta finisce dall'altra. Qui si conosce il prezzo
+    vero -- e' quello con cui l'ordine parte -- quindi e' l'ultimo punto in
+    cui si puo' sapere davvero.
+
+    Misurato il 2026-09-23 alle 22:15: `SELL USDJPY+ sl 157.856` inviato
+    mentre il prezzo stava sotto quel livello, rifiutato con `10016`. Il
+    controllo del motore era passato perche' al momento della valutazione lo
+    stop stava ancora sopra.
+    """
+    corta = direzione.upper() == "SELL"
+    stop = richiesta.get("sl")
+    if stop is not None:
+        # Su uno short lo stop sta SOPRA, su un long SOTTO.
+        if (float(stop) <= prezzo) if corta else (float(stop) >= prezzo):
+            return (f"stop {stop} dalla parte sbagliata rispetto al prezzo "
+                    f"{prezzo:.5f} per un ordine {direzione.upper()}: "
+                    "sarebbe gia' toccato")
+    target = richiesta.get("tp")
+    if target is not None:
+        if (float(target) >= prezzo) if corta else (float(target) <= prezzo):
+            return (f"target {target} dalla parte sbagliata rispetto al prezzo "
+                    f"{prezzo:.5f} per un ordine {direzione.upper()}: "
+                    "l'operazione non potrebbe vincere")
+    return None
+
+
 def _livello_troppo_vicino(
     simbolo: str, prezzo: float, richiesta: dict[str, Any]
 ) -> Optional[str]:
@@ -483,10 +516,13 @@ def invia_ordine(
         # Non si sposta il livello per farcelo entrare -- sarebbe uno stop
         # diverso da quello del setup, cioe' un'altra operazione. Si rifiuta
         # l'ordine e si dice perche'.
-        troppo_vicino = _livello_troppo_vicino(simbolo, prezzo, richiesta)
-        if troppo_vicino is not None:
-            log.warning("ordine NON inviato: %s", troppo_vicino)
-            return OrderResult(ok=False, messaggio=troppo_vicino)
+        for controllo in (
+            _livello_dalla_parte_sbagliata(direzione, prezzo, richiesta),
+            _livello_troppo_vicino(simbolo, prezzo, richiesta),
+        ):
+            if controllo is not None:
+                log.warning("ordine NON inviato: %s", controllo)
+                return OrderResult(ok=False, messaggio=controllo)
 
         log.info("invio ordine %s %s %s (sl %s tp %s)", direzione,
                  volume_pulito, simbolo,

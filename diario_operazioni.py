@@ -90,7 +90,10 @@ class Operazione:
     direzione: str
     volume: float
     ingresso: float
+    # Lo stop dell'INGRESSO, preso dalla decisione. Confondere questo con
+    # quello di adesso fa sembrare sbagliata ogni posizione andata a pareggio.
     stop: Optional[float]
+    stop_adesso: Optional[float]
     target: Optional[float]
     tp1: Optional[float]
     tp1_raggiunto: bool
@@ -153,7 +156,20 @@ def operazioni(giorni: Optional[int], limite: Optional[int]) -> list[Operazione]
         soglia = datetime.now(timezone.utc) - timedelta(days=giorni)
         dove = "WHERE aperta_utc >= ?"
         parametri = [soglia.strftime("%Y-%m-%dT%H:%M:%S")]
-    sql = f"SELECT * FROM posizione {dove} ORDER BY aperta_utc DESC"
+    # Lo stop si legge dalla DECISIONE, non dalla posizione.
+    #
+    # `posizione.sl` viene RISCRITTO dalla sentinella quando porta a pareggio
+    # dopo TP1: su uno short il pareggio sta sotto l'ingresso, quindi una
+    # posizione sana e gestita bene sembra avere "lo stop dalla parte
+    # sbagliata". E' successo il 2026-09-23 sul ticket 330022075 -- stop
+    # deciso 4294,91 sopra l'ingresso 4293,00, poi TP1 preso e pareggio a
+    # 4292,76 -- e l'ho segnalato come difetto quando era il contrario.
+    sql = f"""
+        SELECT p.*, d.sl AS sl_deciso, d.tp AS tp_deciso
+        FROM posizione p LEFT JOIN decisione d ON d.id = p.decisione_id
+        {dove.replace('aperta_utc', 'p.aperta_utc')}
+        ORDER BY p.aperta_utc DESC
+    """
     if limite:
         sql += f" LIMIT {int(limite)}"
     righe = conn.execute(sql, parametri).fetchall()
@@ -168,7 +184,11 @@ def operazioni(giorni: Optional[int], limite: Optional[int]) -> list[Operazione]
             id=r["id"], ticket=r["ticket"], simbolo=str(r["simbolo"]),
             direzione=str(r["direzione"]).upper(), volume=float(r["volume"] or 0),
             ingresso=float(r["prezzo_ingresso"] or 0),
-            stop=r["sl"], target=r["tp"], tp1=r["tp1"],
+            # `sl_deciso` quando c'e': e' lo stop con cui l'operazione e'
+            # NATA. `p.sl` e' quello di adesso, che dopo TP1 e' il pareggio.
+            stop=(r["sl_deciso"] if r["sl_deciso"] is not None else r["sl"]),
+            stop_adesso=r["sl"],
+            target=r["tp"], tp1=r["tp1"],
             tp1_raggiunto=bool(r["tp1_raggiunto"]),
             aperta=aperta, chiusa=_quando(r["chiusa_utc"]),
             uscita=r["prezzo_uscita"], motivo=r["motivo_chiusura"],
@@ -273,6 +293,13 @@ def verifica_crt(op: Operazione, fornitore: FornitoreTradingView) -> Verifica:
 
         # Lo stop del CRT sta appena oltre l'estremo della manipolazione. Se
         # quello messo dal bot e' altrove, l'ingresso non nasce da QUESTO CRT.
+        # Se lo stop d'ingresso non e' leggibile dalla decisione si resta
+        # zitti invece di giudicare su `posizione.sl`, che dopo TP1 e' il
+        # pareggio: giudicarlo li' significa chiamare "difetto" una posizione
+        # gestita bene. Vedi la nota in `operazioni()`.
+        if op.stop is not None and op.stop != op.stop_adesso and op.tp1_raggiunto:
+            v.nota = ("stop d'ingresso letto dalla decisione; quello attuale e' "
+                      "il pareggio")
         if op.stop is not None and estremo:
             rischio = abs(op.ingresso - op.stop) or 1e-9
             v.scarto_stop_in_r = abs(op.stop - estremo) / rischio

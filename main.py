@@ -685,18 +685,39 @@ def _gestisci_posizioni_aperte(alert: AlertIn) -> int:
                 # l'ordine parte con `sl` attaccato sono due reti, e due reti
                 # che dicono cose diverse sono peggio di una sola. Si marca
                 # anche come gia' spostato, perche' GEST-05 vieta di rifarlo.
+                # PRIMA il broker, POI l'archivio. L'ordine conta: se il
+                # broker rifiuta lo spostamento e l'archivio se lo scrive lo
+                # stesso, la sentinella al giro dopo legge uno stop che sul
+                # broker non esiste, lo trova toccato e CHIUDE una posizione
+                # che era ancora protetta al livello giusto.
+                #
+                # Misurato il 2026-09-23, ed e' la catena che uccideva le
+                # operazioni in 3-5 secondi:
+                #   20:05:10  SETUP-17 manda il pareggio -> retcode 10016
+                #   20:05:10  l'archivio lo scrive comunque
+                #   subito dopo la sentinella: "SL toccato, livello 158.196"
+                # Il broker aveva ancora lo stop vero a 158.400. E' stato
+                # l'archivio a chiudere la posizione.
+                #
+                # E' lo stesso difetto gia' corretto dentro `sentinella.py`
+                # per il pareggio di GEST-04: la correzione non era stata
+                # portata qui, e due copie della stessa regola divergono
+                # sempre nel punto che muove i soldi.
                 nuovo = float(azione.valore or 0.0)
+                if azione.ticket is not None:
+                    esito = broker.modifica_livelli(int(azione.ticket), stop=nuovo)
+                    if not esito.ok:
+                        log.warning(
+                            "%s: il broker ha rifiutato lo stop %s per %s (%s). "
+                            "L'archivio NON viene toccato: la posizione resta "
+                            "protetta al livello che il broker ha davvero.",
+                            azione.regola, nuovo, azione.ticket, esito.messaggio)
+                        continue
                 storage.applica_parziale_tp1(
                     azione.id_posizione,
                     _volume_attuale(azione.id_posizione),
                     nuovo,
                 )
-                if azione.ticket is not None:
-                    esito = broker.modifica_livelli(int(azione.ticket), stop=nuovo)
-                    if not esito.ok:
-                        log.warning("%s: stop spostato in archivio ma non sul "
-                                    "broker per %s: %s",
-                                    azione.regola, azione.ticket, esito.messaggio)
             elif azione.tipo == "estendi_target":
                 nuovo = float(azione.valore or 0.0)
                 storage.aggiorna_target(azione.id_posizione, nuovo)
