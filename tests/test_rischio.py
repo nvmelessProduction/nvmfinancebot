@@ -449,6 +449,40 @@ class TestRidimensionamento:
         assert esiti == ()
         assert blocco is not None and "PA-63" in blocco
 
+    def test_sotto_la_soglia_pa63_non_blocca_l_apertura(self) -> None:
+        """Sotto `LIMITI_PERDITA_SOPRA_EQUITY` non c'e' niente da spartire.
+
+        Il 2026-09-23, conto a 118,47 EUR, il bot ha rifiutato un XAUUSD LONG
+        con rapporto 5,6 a 1: "ridimensionare la posizione 467 a 0.0027 lotti
+        darebbe zero al passo 0.01". La posizione era gia' al lotto minimo
+        perche' li' e' `calcola_size` stesso a comprare il minimo -- quindi
+        PA-63 chiedeva di ridurre l'irriducibile e bloccava proprio il regime
+        senza limiti in cui si era scelto di operare.
+        """
+        esiti, blocco = r.ridimensionamenti(
+            "XAUUSD", [self.riga(467, 0.01, 0.01)], passo_broker=0.01,
+            equity=118.47,
+        )
+        assert esiti == ()
+        assert blocco is None
+
+    def test_sopra_la_soglia_pa63_blocca_ancora(self) -> None:
+        """La soglia sospende RISK-02, non lo cancella: sopra, si riapplica."""
+        esiti, blocco = r.ridimensionamenti(
+            "XAUUSD", [self.riga(467, 0.01, 0.01)], passo_broker=0.01,
+            equity=r.LIMITI_PERDITA_SOPRA_EQUITY + 100.0,
+        )
+        assert esiti == ()
+        assert blocco is not None and "PA-63" in blocco
+
+    def test_senza_equity_leggibile_valgono_le_regole_piene(self) -> None:
+        """Conto non leggibile: si sta dal lato prudente, non da quello comodo."""
+        esiti, blocco = r.ridimensionamenti(
+            "XAUUSD", [self.riga(467, 0.01, 0.01)], passo_broker=0.01,
+            equity=None,
+        )
+        assert blocco is not None and "PA-63" in blocco
+
     def test_una_posizione_senza_rischio_registrato_si_lascia_stare(self) -> None:
         """Aperta prima che la colonna esistesse: non si sa da dove partiva,
         e indovinarlo significherebbe cambiarle il volume su un numero

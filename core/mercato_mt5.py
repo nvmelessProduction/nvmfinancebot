@@ -134,6 +134,10 @@ class MercatoMT5:
     """Tiene l'archivio aggiornato leggendo dal terminale MT5."""
 
     intervallo_sec: float = 60.0
+    # Quanto aspettare dopo la chiusura prima di chiedere la barra. Serve
+    # solo a dare al terminale il tempo di pubblicarla: la barra che chiude
+    # a :00 e' leggibile subito dopo, non a :00,000.
+    margine_sec: float = 1.5
     su_candela: Optional[Callable[[AlertIn], None]] = None
     segreto: str = ""
     suffisso: str = ""
@@ -167,8 +171,37 @@ class MercatoMT5:
     def in_funzione(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    def attesa_fino_al_confine(self, adesso: Optional[datetime] = None) -> float:
+        """Quanto dormire per svegliarsi subito DOPO una chiusura di candela.
+
+        Dormire `intervallo_sec` fissi sembrava equivalente e non lo e'. Il
+        sonno parte da quando finisce il giro, quindi il risveglio cade in un
+        punto qualsiasi del minuto e ci resta: se il primo giro capita a :36,
+        tutti i successivi capitano intorno a :36. La candela M1 pero' chiude
+        sempre a :00, e l'alert nasce gia' vecchio di quei 36 secondi.
+
+        Misurato il 2026-09-23 sui 4.385 alert della giornata: ritardo mediano
+        **88,5 secondi**, e riga per riga il ritardo era esattamente il secondo
+        del minuto del risveglio -- 17:12:36 -> 36,3s, 17:13:45 -> 45,8s. Non
+        era il calcolo a essere lento: era il risveglio a cadere nel punto
+        sbagliato. Con l'aggancio al confine il ritardo diventa il margine piu'
+        la durata del giro, e il tetto di 15s su M1 torna raggiungibile.
+        """
+        passo = self.intervallo_sec if self.intervallo_sec > 0 else 60.0
+        ora = (adesso or datetime.now(timezone.utc)).timestamp()
+        # Il confine successivo sull'orologio del mondo, non su quello del
+        # bot: e' sull'orologio del mondo che le candele chiudono.
+        attesa = (passo - (ora % passo)) + self.margine_sec
+        # Se siamo dentro il margine di un confine appena passato, la barra
+        # potrebbe non essere ancora pubblicata: si finisce di aspettare il
+        # margine e si prende questa, invece di dormire un minuto intero e
+        # arrivare sulla prossima con un giro di ritardo.
+        if attesa > passo:
+            attesa -= passo
+        return attesa
+
     def _ciclo(self) -> None:
-        while not self._stop.wait(self.intervallo_sec):
+        while not self._stop.wait(self.attesa_fino_al_confine()):
             try:
                 self.giro()
                 self.ultimo_errore = None

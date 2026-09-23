@@ -398,8 +398,15 @@ def _ridimensionamenti_del_gruppo(
             if altro is not None and gruppo_di(altro) == gruppo:
                 nel_gruppo.append(riga)
 
+        # L'equity serve a RISK-02 per sapere se il ridimensionamento ha
+        # senso: sotto la soglia ogni posizione e' gia' al lotto minimo e non
+        # c'e' niente da spartire. Se il conto non e' leggibile si passa None
+        # e valgono le regole piene, che e' il lato prudente.
+        ok_conto, conto, _ = broker.info_conto()
+        equity = float(conto["equity"]) if ok_conto and conto else None
+
         return ridimensionamenti(
-            strumento, nel_gruppo, float(specifiche["volume_step"])
+            strumento, nel_gruppo, float(specifiche["volume_step"]), equity
         )
     except Exception:
         log.exception("calcolo del ridimensionamento RISK-02 fallito")

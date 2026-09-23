@@ -387,6 +387,7 @@ def ridimensionamenti(
     strumento: str,
     aperte_nel_gruppo: Sequence[Mapping[str, Any]],
     passo_broker: float,
+    equity: Optional[float] = None,
 ) -> tuple[tuple[Ridimensionamento, ...], Optional[str]]:
     """RISK-02 (REV-42) — Il ridimensionamento a ogni nuova apertura.
 
@@ -412,7 +413,20 @@ def ridimensionamenti(
     `rischio_corrente` — posizione aperta prima che la colonna esistesse — la
     si lascia stare: non si sa da quale rischio partiva, e indovinarlo
     significherebbe cambiarle il volume su un numero inventato.
+
+    **Sotto `LIMITI_PERDITA_SOPRA_EQUITY` non si ridimensiona nulla.** Li'
+    `calcola_size` compra il lotto minimo del broker per decisione esplicita,
+    quindi ogni posizione del gruppo e' gia' al pezzo piu' piccolo in vendita:
+    non c'e' nessun budget di rischio da spartire in `n` parti, e ridurre
+    0,01 lotti e' impossibile prima ancora che sconsigliabile. Senza questo
+    controllo PA-63 vedeva un bersaglio di 0,0027 lotti, lo trovava non
+    eseguibile e **rifiutava l'apertura nuova** -- bloccando proprio il regime
+    in cui si e' scelto di operare senza limiti per vedere cosa fa il bot.
     """
+    if equity is not None and LIMITI_PERDITA_SOPRA_EQUITY > 0:
+        if equity < LIMITI_PERDITA_SOPRA_EQUITY:
+            return (), None
+
     n = len(aperte_nel_gruppo) + 1                  # piu' quella in valutazione
     nuovo = rischio_per_posizione(n, strumento)
 
