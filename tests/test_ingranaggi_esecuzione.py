@@ -465,14 +465,25 @@ class TestIlBersaglioDeveStareDavanti:
         secondi; XAUUSD SELL ingresso 4291.11 stop 4289.74 target 4276.71. In
         entrambi lo stop stava SOTTO l'ingresso su uno short.
         """
-        import inspect
-        from core import motore
-        corpo = inspect.getsource(motore)
-        assert "stop_dietro" in corpo, "la guardia sullo stop non c'e' piu'"
-        # E non e' una copia scollegata: usa lo stesso verso del CFD del
-        # controllo sul bersaglio, perche' 6S e 6J quotano il reciproco.
-        pezzo = corpo[corpo.index("stop_dietro = "):]
-        assert "verso_ordine is Bias.LONG" in pezzo[:200]
+        from core.definizioni import Bias
+        from core.motore import guardie_sui_livelli
+        from core.parametri import TF
+        # Il caso misurato, chiamando l'agente invece di leggere il sorgente:
+        # da quando la regola vive in una funzione pura si puo' provare.
+        esito = guardie_sui_livelli(
+            bersaglio=158.167, stop=158.196, prezzo_ingresso=158.204,
+            verso_ordine=Bias.SHORT, tf_crt=TF.H1)
+        assert esito is not None
+        regole, motivo = esito
+        assert regole == ["PRIN-99"]
+        assert "sarebbe gia' toccato" in motivo
+        # E uno stop dalla parte giusta, con un bersaglio abbastanza
+        # lontano, non viene fermato. Il bersaglio vero di quell'operazione
+        # (158.167) non basta: col suo stop dava 0,19 a 1, quindi la fermava
+        # comunque il rapporto minimo.
+        assert guardie_sui_livelli(
+            bersaglio=157.800, stop=158.400, prezzo_ingresso=158.204,
+            verso_ordine=Bias.SHORT, tf_crt=TF.H1) is None
 
     def test_uno_stop_dalla_parte_giusta_non_viene_fermato(self, diagnostico):
         """La guardia non deve diventare un muro: lo short buono passa."""
@@ -497,9 +508,16 @@ class TestIlBersaglioDeveStareDavanti:
         from core import motore
         corpo = inspect.getsource(motore.valuta)
         assert "verso_ordine = _verso_sul_cfd(" in corpo
-        # Il confronto usa il verso dell'ordine, non `crt.direzione`.
+        # E l'agente che decide riceve QUEL verso, non `crt.direzione`.
         pezzo = corpo.split("verso_ordine = _verso_sul_cfd(")[1][:400]
-        assert "verso_ordine is Bias.LONG" in pezzo
+        assert "guardie_sui_livelli(" in pezzo
+        assert "verso_ordine, crt.tf" in pezzo
+        agente = inspect.getsource(motore.guardie_sui_livelli)
+        assert "verso_ordine is Bias.LONG" in agente
+        # E l'agente non puo' sbagliarsi: il CRT non gli arriva proprio.
+        parametri = inspect.signature(motore.guardie_sui_livelli).parameters
+        assert "crt" not in parametri
+        assert "verso_ordine" in parametri
 
 
 class TestSenzaSpreadNonSiApre:

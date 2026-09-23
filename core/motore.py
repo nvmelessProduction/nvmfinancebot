@@ -580,6 +580,84 @@ def _non_operare(
 # ===========================================================================
 
 
+def guardie_sui_livelli(
+    bersaglio: Optional[float],
+    stop: float,
+    prezzo_ingresso: float,
+    verso_ordine: Bias,
+    tf_crt: TF,
+) -> Optional[tuple[list[str], str]]:
+    """I quattro controlli sui livelli, prima che l'ordine parta.
+
+    Restituisce `(regole_che_bloccano, motivo)` quando si deve rinunciare, e
+    `None` quando i livelli reggono.
+
+    E' un agente PURO: non conosce la `Fotografia`, non costruisce decisioni,
+    non legge l'archivio. Prende quattro numeri e un verso, e risponde. Per
+    questo si puo' provare da solo — cosa che, finche' queste righe stavano
+    dentro le 686 di `valuta`, era impossibile: ed e' li' dentro che tutti e
+    quattro i difetti qui sotto sono vissuti indisturbati.
+
+    Il verso e' quello del CFD e mai quello del CRT: `6S` e `6J` quotano il
+    reciproco, e un CRT LONG li' e' un ordine SHORT qui. Usare `crt.direzione`
+    farebbe risultare sbagliati esattamente i livelli giusti su USDCHF e
+    USDJPY — lo scambio che una volta ha gia' mandato gli ordini al contrario.
+
+    I quattro, in ordine:
+
+    1. **Un bersaglio deve esistere** (SETUP-14). Senza, il 75% residuo non ha
+       dove andare.
+    2. **Il bersaglio sta davanti al prezzo** (PRIN-99). Nasce da un key
+       level, e col prezzo di ingresso non lo confrontava nessuno: il
+       2026-09-22 un SELL su USDCHF a 0,81891 e' partito con target 0,82029,
+       cioe' SOPRA. L'audit ne contava 48 su 201.
+    3. **Lo stop sta dall'altra parte** (PRIN-99). Stesso difetto del punto 2,
+       sull'altro livello, e nessuno gliel'aveva applicato. Il 2026-09-23:
+       `USDJPY SELL ingresso 158.204 stop 158.196` — lo stop sotto l'ingresso
+       su uno short, cioe' dalla parte del bersaglio: il prezzo lo tocca
+       andando nella direzione GIUSTA. Vissuta 4 secondi.
+    4. **Il gioco vale la candela** (SETUP-02C). Il documento non scrive una
+       soglia ma descrive la costruzione: stop stretto perche' e' l'ombra
+       dello sweep, bersaglio largo perche' e' il lato opposto di un range
+       superiore, "rapporto misurato da 1,85 a 3,92 R". Sotto 1 quella
+       costruzione non regge piu'. Il 2026-09-23 `AUDUSD BUY 0.70412 stop
+       0.70257 target 0.70475`: 155 pip rischiati per farne 63, perdente
+       anche vincendo sei volte su dieci.
+    """
+    lungo = verso_ordine is Bias.LONG
+    nome_ordine = "BUY" if lungo else "SELL"
+
+    if bersaglio is None:
+        return (["PRIN-99"],
+                f"SETUP-14: nessun key level su {tf_crt.value} o superiore a "
+                "cui portare il 75% residuo")
+
+    if (bersaglio <= prezzo_ingresso) if lungo else (bersaglio >= prezzo_ingresso):
+        return (["PRIN-99"],
+                f"bersaglio {bersaglio:.5f} dalla parte sbagliata rispetto "
+                f"all'ingresso {prezzo_ingresso:.5f} per un ordine "
+                f"{nome_ordine}: l'operazione non potrebbe vincere")
+
+    if (stop >= prezzo_ingresso) if lungo else (stop <= prezzo_ingresso):
+        return (["PRIN-99"],
+                f"stop {stop:.5f} dalla parte sbagliata rispetto all'ingresso "
+                f"{prezzo_ingresso:.5f} per un ordine {nome_ordine}: sarebbe "
+                "gia' toccato, l'operazione morirebbe appena aperta")
+
+    rischio_prezzo = abs(prezzo_ingresso - stop)
+    if rischio_prezzo > 0:
+        rapporto_vero = abs(bersaglio - prezzo_ingresso) / rischio_prezzo
+        if rapporto_vero < RAPPORTO_MINIMO:
+            return (["SETUP-02C"],
+                    f"rapporto {rapporto_vero:.2f} a 1: si rischierebbe piu' "
+                    f"di quanto si puo' guadagnare (minimo {RAPPORTO_MINIMO:g}). "
+                    "Lo stop dell'ombra dello sweep non e' cosi' largo: "
+                    "l'ingresso e' lontano dal CRT o il bersaglio e' gia' "
+                    "quasi preso")
+
+    return None
+
+
 def _lettura_del_crt(crt, tf_esecuzione: Optional[TF]) -> dict[str, Any]:
     """I numeri del disegno riconosciuto, per chi legge il messaggio.
 
@@ -1335,114 +1413,24 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         )
         return replace(armata, responso_romeo=responso_romeo)
 
-    # --- 7bis. Un bersaglio deve esistere (SETUP-14, PRIN-99) --------------
-    # Sta DOPO i divieti e non prima: PREC-05 vuole le esclusioni come ultimo
-    # controllo, e un'astensione che le scavalcasse nasconderebbe il motivo
-    # vero per cui quell'ordine non andava mandato.
-    if bersaglio is None:
-        return _non_operare(
-            foto.strumento, ["PRIN-99"],
-            f"SETUP-14: nessun key level su {crt.tf.value} o superiore a cui "
-            "portare il 75% residuo",
-            applicate,
-            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
-            rapporto_su_tp1=rapporto,
-        )
-
-    # --- 7bis-ter. E deve stare DAVANTI al prezzo (PRIN-99) ---------------
+    # --- 7bis. I quattro controlli sui livelli (SETUP-14, PRIN-99, SETUP-02C)
     #
-    # Il bersaglio nasce da un key level: un livello della struttura, che col
-    # prezzo di ingresso non lo confronta nessuno -- lo stesso difetto che
-    # TP1 aveva. Quando il prezzo l'ha gia' superato, il target sta dalla
-    # parte dello stop e descrive un'operazione che non puo' vincere.
+    # Stanno DOPO i divieti e non prima: PREC-05 vuole le esclusioni come
+    # ultimo controllo, e un'astensione che le scavalcasse nasconderebbe il
+    # motivo vero per cui quell'ordine non andava mandato.
     #
-    # Non e' teoria. Il 2026-09-22 alle 13:09 e' partito verso il broker un
-    # SELL su USDCHF a 0,81891 con target a 0,82029, cioe' SOPRA l'ingresso.
-    # L'ha fermato MT5, con `retcode 10016 (Invalid stops)`: finche' gli
-    # ordini partivano nudi quello stesso ordine veniva ESEGUITO, e l'audit
-    # ne contava 48 su 201. Il broker e' l'ultima rete, non la prima.
-    # Il confronto va fatto col verso del CFD, non con quello del future:
-    # `6S` e `6J` quotano il reciproco, e un CRT LONG li' e' un ordine SHORT
-    # qui. Usare `crt.direzione` farebbe risultare "dalla parte sbagliata"
-    # esattamente i bersagli giusti su USDCHF e USDJPY -- lo stesso scambio
-    # che gia' una volta ha mandato gli ordini dalla parte opposta.
+    # La regola vive in `guardie_sui_livelli`, che e' un agente puro e si
+    # prova da solo. Qui restano solo il verso e la consegna.
     verso_ordine = _verso_sul_cfd(foto, crt.direzione)
-    dietro = (bersaglio <= prezzo_ingresso if verso_ordine is Bias.LONG
-              else bersaglio >= prezzo_ingresso)
-    if dietro:
+    guasto = guardie_sui_livelli(
+        bersaglio, stop, prezzo_ingresso, verso_ordine, crt.tf)
+    if guasto is not None:
+        blocchi_livelli, motivo_livelli = guasto
         return _non_operare(
-            foto.strumento, ["PRIN-99"],
-            f"bersaglio {bersaglio:.5f} dalla parte sbagliata rispetto "
-            f"all'ingresso {prezzo_ingresso:.5f} per un ordine "
-            f"{'BUY' if verso_ordine is Bias.LONG else 'SELL'}: "
-            "l'operazione non potrebbe vincere",
-            applicate,
-            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
-            rapporto_su_tp1=rapporto,
-        )
-
-    # --- 7bis-quater. E lo STOP deve stare dall'altra parte (PRIN-99) ------
-    #
-    # Il controllo qui sopra e' nato per il bersaglio, ma lo stop ha
-    # esattamente lo stesso difetto e nessuno gliel'aveva applicato: nasce
-    # dall'estremo dello sweep -- un livello di struttura -- e col prezzo di
-    # ingresso non lo confronta nessuno. Quando il prezzo l'ha gia' passato,
-    # lo stop finisce dalla parte del bersaglio, e l'operazione e' morta
-    # nell'istante in cui parte.
-    #
-    # Misurato il 2026-09-23, e sono i due casi che l'utente ha visto a occhio:
-    #
-    #   USDJPY SELL  ingresso 158.204  stop 158.196  target 158.167
-    #   XAUUSD SELL  ingresso 4291.11  stop 4289.74  target 4276.71
-    #
-    # In tutti e due lo stop sta SOTTO l'ingresso su uno short, cioe' dalla
-    # stessa parte del bersaglio: il prezzo lo tocca andando nella direzione
-    # giusta. Le due USDJPY sono vissute 4 e 3 secondi.
-    #
-    # Il verso e' quello del CFD e non quello del CRT, per la stessa ragione
-    # spiegata sopra: `6S` e `6J` quotano il reciproco.
-    stop_dietro = (stop >= prezzo_ingresso if verso_ordine is Bias.LONG
-                   else stop <= prezzo_ingresso)
-    if stop_dietro:
-        return _non_operare(
-            foto.strumento, ["PRIN-99"],
-            f"stop {stop:.5f} dalla parte sbagliata rispetto all'ingresso "
-            f"{prezzo_ingresso:.5f} per un ordine "
-            f"{'BUY' if verso_ordine is Bias.LONG else 'SELL'}: "
-            "sarebbe gia' toccato, l'operazione morirebbe appena aperta",
-            applicate,
+            foto.strumento, blocchi_livelli, motivo_livelli, applicate,
             direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop,
             tp1=obiettivo_1, rapporto_su_tp1=rapporto,
         )
-
-    # --- 7bis-quinquies. E il gioco deve valere la candela (SETUP-02C) -----
-    #
-    # `SETUP-02C` non scrive una soglia, ma descrive la costruzione e il suo
-    # esito: stop stretto perche' e' l'ombra dello sweep, bersaglio largo
-    # perche' e' il lato opposto di un range superiore, "rapporto misurato da
-    # 1,85 a 3,92 R". Sotto 1 quella costruzione non regge piu': o l'ingresso
-    # e' lontano dall'ombra dello sweep, o il bersaglio e' quasi raggiunto.
-    #
-    # Misurato il 2026-09-23, due ordini partiti nello stesso minuto:
-    #   EURUSD BUY  1.13897  stop 1.13701  target 1.14029  ->  0,67
-    #   AUDUSD BUY  0.70412  stop 0.70257  target 0.70475  ->  0,41
-    # Su AUDUSD sono 155 pip rischiati per farne 63: perdente anche vincendo
-    # sei volte su dieci.
-    rischio_prezzo = abs(prezzo_ingresso - stop)
-    rendimento_prezzo = abs(bersaglio - prezzo_ingresso)
-    if rischio_prezzo > 0:
-        rapporto_vero = rendimento_prezzo / rischio_prezzo
-        if rapporto_vero < RAPPORTO_MINIMO:
-            return _non_operare(
-                foto.strumento, ["SETUP-02C"],
-                f"rapporto {rapporto_vero:.2f} a 1: si rischierebbe piu' di "
-                f"quanto si puo' guadagnare (minimo {RAPPORTO_MINIMO:g}). "
-                "Lo stop dell'ombra dello sweep non e' cosi' largo: "
-                "l'ingresso e' lontano dal CRT o il bersaglio e' gia' quasi preso",
-                applicate,
-                direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop,
-                tp1=obiettivo_1, rapporto_su_tp1=rapporto,
-            )
 
     # --- 7ter. Il dato che deve chiudere PA-44 (GIUD-01, 07_casi.md §3.1) --
     #
