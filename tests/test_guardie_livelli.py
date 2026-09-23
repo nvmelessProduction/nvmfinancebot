@@ -181,3 +181,31 @@ class TestCalcolaLivelli:
         campi = set(Livelli.__dataclass_fields__)
         assert "stop_future" in campi and "bersaglio_future" in campi
         assert "stop" in campi and "bersaglio" in campi
+
+
+class TestFiltroDxy:
+    """Il terzo agente: SETUP-19 + RISK-05, la bias del dollaro.
+
+    La REGOLA e' qui; l'inoltro al giudizio resta a chi chiama, perche'
+    dipende dal timeframe e dal modo diagnostico e non dalla bias.
+    """
+
+    def test_restituisce_il_motivo_non_una_decisione(self):
+        """Separare la regola dall'inoltro e' il punto: una regola che
+        costruisce astensioni non si puo' provare senza il motore."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.filtro_dxy)
+        assert "_non_operare" not in corpo
+        assert "_giudizio_lascia_cadere" not in corpo
+        assert "_apri_ogni_crt" not in corpo
+
+    def test_usa_il_verso_del_cfd_non_quello_del_crt(self):
+        """SETUP-19 e' scritta in direzioni CFD, il CRT e' rilevato sul
+        future: si confrontano solo dopo DEF-33."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.filtro_dxy)
+        assert "_verso_sul_cfd(foto, crt.direzione)" in corpo
+        # E il verso passato a `strumento_eleggibile` e' quello convertito.
+        assert "direzione_del_setup=verso_del_setup.value" in corpo

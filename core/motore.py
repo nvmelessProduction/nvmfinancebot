@@ -596,6 +596,40 @@ class Livelli:
     rapporto: Optional[float]
 
 
+def filtro_dxy(foto: "Fotografia", crt) -> Optional[str]:
+    """SETUP-19 + RISK-05 — la bias del dollaro abilita questa operazione?
+
+    `None` se passa, altrimenti il motivo per cui non passa. La REGOLA sta
+    qui; l'inoltro al giudizio e l'eventuale astensione restano a chi chiama,
+    perche' dipendono dal timeframe e dal modo diagnostico, non dalla bias.
+
+    `SETUP-19` e' scritta in direzioni **CFD** mentre il CRT e' rilevato sul
+    future: le due si confrontano solo dopo DEF-33, ed e' il motivo per cui
+    qui si usa `_verso_sul_cfd` e mai `crt.direzione`.
+
+    Due casi che sembrano guasti e non lo sono:
+
+    - `XAUUSD` non deriva dal DXY (PRIN-09): `direzione_da_dxy` torna None e
+      `strumento_eleggibile` lascia passare il setup proprio (PA-05);
+    - con bias DXY `NESSUNA`, SETUP-19 dice "nessuna operazione su alcuna
+      coppia", quindi si blocca -- ed e' voluto.
+    """
+    verso_del_setup = _verso_sul_cfd(foto, crt.direzione)                # passo 2
+    verso_dal_dxy = stp.direzione_da_dxy(foto.bias_dxy, foto.strumento)  # passo 1
+    if risk.strumento_eleggibile(                                        # passo 3
+        strumento=foto.strumento,
+        direzione_dal_dxy=verso_dal_dxy.value if verso_dal_dxy else None,
+        ha_setup_proprio=True,
+        direzione_del_setup=verso_del_setup.value,
+    ):
+        return None
+    if verso_dal_dxy is None:
+        return (f"bias DXY {foto.bias_dxy.value}: SETUP-19 non abilita alcuna "
+                f"operazione su {foto.strumento}")
+    return (f"bias DXY {foto.bias_dxy.value} vuole {verso_dal_dxy.value} su "
+            f"{foto.strumento}, il CRT porta a {verso_del_setup.value}")
+
+
 def calcola_livelli(
     foto: "Fotografia", crt
 ) -> tuple[Optional[Livelli], Optional[str]]:
@@ -1260,21 +1294,11 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # Con bias DXY NESSUNA, SETUP-19 dice "nessuna operazione su alcuna
     # coppia": `direzione_da_dxy` torna None e `strumento_eleggibile` blocca.
     applicate.extend(["SETUP-19", "RISK-05"])
-    verso_del_setup = _verso_sul_cfd(foto, crt.direzione)            # passo 2
-    verso_dal_dxy = stp.direzione_da_dxy(foto.bias_dxy, foto.strumento)  # passo 1
-    if not risk.strumento_eleggibile(                                # passo 3
-        strumento=foto.strumento,
-        direzione_dal_dxy=verso_dal_dxy.value if verso_dal_dxy else None,
-        ha_setup_proprio=True,
-        direzione_del_setup=verso_del_setup.value,
-    ):
-        motivo = (
-            f"bias DXY {foto.bias_dxy.value}: SETUP-19 non abilita alcuna "
-            f"operazione su {foto.strumento}"
-            if verso_dal_dxy is None else
-            f"bias DXY {foto.bias_dxy.value} vuole {verso_dal_dxy.value} su "
-            f"{foto.strumento}, il CRT porta a {verso_del_setup.value}"
-        )
+    # La regola vive in `filtro_dxy`. Qui resta solo cosa farne, che dipende
+    # dal timeframe e dal modo diagnostico e non dalla bias del dollaro.
+    verso_del_setup = _verso_sul_cfd(foto, crt.direzione)
+    motivo = filtro_dxy(foto, crt)
+    if motivo is not None:
         blocchi_dxy = ["RISK-05"] + indipendenti
         # Su un range alto la bias del dollaro e' il contesto che domina
         # l'operazione e ferma da sola; su uno scalp e' rumore, e la parola
@@ -1290,7 +1314,6 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
                 direzione=crt.direzione, tf_crt=crt.tf,
             )
         applicate.append("GIUD-02")
-
 
     # --- 5. Filtri uniti: CTX-01 + SETUP-15 (REV-17, PREC-04) -------------
     allineato = stp.allineamento_soddisfatto(crt.tf, foto.sbilanciamenti, crt.direzione)
