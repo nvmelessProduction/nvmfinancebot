@@ -248,11 +248,43 @@ class MercatoMT5:
         for strumento, per_tf in nuove_per_strumento.items():
             self._valuta(strumento, per_tf)
 
+        # Lo spread, campionato a intervalli regolari. Va IN FONDO al giro, e
+        # non prima delle valutazioni, perche' non deve aggiungere un
+        # millisecondo al percorso segnale -> ordine: su M1min il tetto e' 15
+        # secondi. Serve alla stima dei costi sullo storico, che e' un lavoro
+        # di settimane, non di adesso.
+        self._campiona_spread()
+
         return {
             "strumenti": len(nuove_per_strumento),
             "candele_nuove": self.candele_nuove,
             "valutazioni": self.valutazioni,
         }
+
+    def _campiona_spread(self) -> None:
+        """Un bid/ask per strumento, una volta a giro.
+
+        Serve a stimare i costi sullo storico. Finche' l'unico spread
+        registrato era quello delle aperture, il campione era distorto: si
+        misurava solo negli istanti in cui il bot aveva deciso di operare,
+        cioe' plausibilmente quelli piu' stretti. Un percentile calcolato li'
+        descrive il momento dell'apertura, non l'ora del giorno.
+
+        Non solleva: un campionamento fallito non deve far cadere il giro.
+        """
+        from core import broker
+
+        misure = []
+        for strumento in UNIVERSO:
+            simbolo = simbolo_esecuzione(strumento, self.suffisso)
+            try:
+                ok, tick, _ = broker.prezzo_corrente(simbolo)
+            except Exception:
+                continue
+            if ok and tick:
+                misure.append((simbolo, tick["bid"], tick["ask"]))
+        if misure:
+            storage.campiona_spread(misure)
 
     def serie_da_chiedere(self, strumento: str, tf: TF, adesso: datetime) -> bool:
         """Ha senso chiedere questa serie adesso?

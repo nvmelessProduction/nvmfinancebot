@@ -14,7 +14,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, Sequence
 
 from core.config import impostazioni
 from core.log import diario
@@ -72,7 +72,41 @@ CREATE TABLE IF NOT EXISTS decisione (
     -- 07_casi.md §3.1: distanza key level/gap normalizzata sull'ATR. Si
     -- registra per ogni decisione e non entra in nessun calcolo: e' il dato
     -- che deve chiudere PA-44 coi numeri invece che a occhio.
-    rapporto_giud01 REAL
+    rapporto_giud01 REAL,
+    -- Il verdetto di CIASCUNA delle otto conferme di Romeo al momento della
+    -- decisione, come JSON: {"CRT-06": true, "CRT-12": null, ...}.
+    --
+    -- Il motore lo calcolava gia' e lo buttava via un passaggio dopo: finiva
+    -- su Telegram e da nessun'altra parte. Senza questa colonna l'archivio
+    -- non contiene UN SOLO esempio che colleghi "quali conferme c'erano" a
+    -- "com'e' finita", quindi non c'e' niente da cui imparare quanto ciascuna
+    -- pesi davvero -- ed e' CRT-14 a chiedere che si pesino: "non si prende
+    -- ogni istanza, il contesto decide quali istanze valgono".
+    responso_romeo  TEXT,
+    -- Su quale coppia di timeframe quel responso e' stato dato. Pesare
+    -- insieme un CRT mensile e uno da cinque minuti mescolerebbe due cose
+    -- diverse.
+    tf_crt          TEXT
+);
+
+-- Lo spread misurato a intervalli regolari, non solo quando si apre.
+--
+-- Serve a stimare i costi sullo storico (Fase 1 del piano): gli R si misurano
+-- al netto, e senza un costo credibile un backtest dice quello che si vuole.
+--
+-- Finche' l'unico spread registrato era `posizione.spread_ingresso`, il
+-- campione era DISTORTO: lo spread veniva letto solo negli istanti in cui il
+-- bot aveva deciso di operare, cioe' plausibilmente quelli piu' stretti. Un
+-- 90esimo percentile calcolato li' descrive il momento dell'apertura, non
+-- l'ora del giorno -- e moltiplicarlo per un fattore di sicurezza non
+-- raddrizza una distorsione, la scala soltanto.
+CREATE TABLE IF NOT EXISTS spread (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    simbolo         TEXT    NOT NULL,
+    misurato_utc    TEXT    NOT NULL,
+    bid             REAL    NOT NULL,
+    ask             REAL    NOT NULL,
+    spread          REAL    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS posizione (
@@ -115,6 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_candela_serie ON candela(strumento, tf, chiusura_
 CREATE INDEX IF NOT EXISTS idx_alert_simbolo ON alert(simbolo);
 CREATE INDEX IF NOT EXISTS idx_decisione_alert ON decisione(alert_id);
 CREATE INDEX IF NOT EXISTS idx_posizione_stato ON posizione(stato);
+CREATE INDEX IF NOT EXISTS idx_spread_simbolo ON spread(simbolo, misurato_utc);
 """
 
 
@@ -193,6 +228,14 @@ def _migra(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE posizione ADD COLUMN {nome} {tipo}")
 
     decisione = {riga["name"] for riga in conn.execute("PRAGMA table_info(decisione)")}
+    # La memoria da cui si impara: vedi il commento nello SCHEMA. Le righe
+    # vecchie restano a NULL, ed e' giusto -- quel responso non e' stato
+    # registrato e inventarlo adesso significherebbe addestrare su dati finti.
+    if decisione:
+        for nome in ("responso_romeo", "tf_crt"):
+            if nome not in decisione:
+                log.warning("archivio da aggiornare: aggiungo decisione.%s", nome)
+                conn.execute(f"ALTER TABLE decisione ADD COLUMN {nome} TEXT")
     if decisione and "rapporto_giud01" not in decisione:
         log.warning("archivio da aggiornare: aggiungo decisione.rapporto_giud01")
         conn.execute("ALTER TABLE decisione ADD COLUMN rapporto_giud01 REAL")
@@ -269,6 +312,62 @@ def salva_alert(alert: AlertIn) -> tuple[int, bool]:
     return id_alert, False
 
 
+def campiona_spread(misure: Sequence[tuple[str, float, float]]) -> int:
+    """Registra lo spread di piu' simboli in una scrittura sola.
+
+    `misure` sono terne `(simbolo, bid, ask)`. Una scrittura per giro e non
+    una per simbolo: la scrittura in SQLite e' serializzata da un lucchetto, e
+    sei lucchetti al minuto per un dato di sola misura sono sei di troppo.
+
+    Non solleva mai. Questo campionamento serve a stimare i costi FRA
+    settimane: un suo guasto non deve far cadere il giro di mercato, che e'
+    quello che tiene aggiornato l'archivio e fa operare il bot.
+    """
+    righe = []
+    adesso = adesso_utc()
+    for simbolo, bid, ask in misure:
+        try:
+            b, a = float(bid), float(ask)
+        except (TypeError, ValueError):
+            continue
+        if b <= 0 or a <= 0 or a < b:
+            continue                      # tick incoerente: non lo si archivia
+        righe.append((str(simbolo), adesso, b, a, a - b))
+    if not righe:
+        return 0
+    try:
+        with connessione(scrittura=True) as conn:
+            conn.executemany(
+                "INSERT INTO spread (simbolo, misurato_utc, bid, ask, spread) "
+                "VALUES (?, ?, ?, ?, ?)",
+                righe,
+            )
+    except Exception:
+        log.exception("campionamento dello spread fallito")
+        return 0
+    return len(righe)
+
+
+def _responso_in_json(responso: Optional[Any]) -> Optional[str]:
+    """Il verdetto delle otto conferme, pronto per l'archivio.
+
+    `None` quando non c'e' responso -- che e' diverso da un responso in cui
+    tutte le conferme valgono `None`. Il primo dice "non e' stato calcolato",
+    il secondo "e' stato calcolato e non si sapeva": per chi dovra' imparare
+    da questi dati sono due cose opposte, e confonderle insegnerebbe il falso.
+
+    Le chiavi si scrivono ordinate: due decisioni identiche danno la stessa
+    stringa, quindi si possono confrontare senza rileggerle come JSON.
+    """
+    if not responso:
+        return None
+    try:
+        return json.dumps(dict(responso), sort_keys=True)
+    except (TypeError, ValueError):
+        log.warning("responso delle conferme non serializzabile: %r", responso)
+        return None
+
+
 def salva_decisione(
     alert_id: int,
     decisione: Decision,
@@ -282,8 +381,9 @@ def salva_decisione(
             """
             INSERT INTO decisione (
                 alert_id, creata_utc, azione, motivo,
-                volume, sl, tp, esito, dettaglio, ticket, rapporto_giud01
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                volume, sl, tp, esito, dettaglio, ticket, rapporto_giud01,
+                responso_romeo, tf_crt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 alert_id,
@@ -297,6 +397,12 @@ def salva_decisione(
                 dettaglio,
                 ticket,
                 decisione.rapporto_giud01,
+                # Si scrive anche per le ASTENSIONI, non solo per gli ordini:
+                # sapere quali conferme c'erano quando NON si e' operato vale
+                # quanto saperlo quando si e' operato. Un modello addestrato
+                # sui soli ingressi impara solo da meta' del mondo.
+                _responso_in_json(decisione.responso_romeo),
+                decisione.tf_crt,
             ),
         )
         id_decisione = cur.lastrowid
