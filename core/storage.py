@@ -452,6 +452,31 @@ def posizioni_aperte() -> list[dict[str, Any]]:
     return [dict(riga) for riga in righe]
 
 
+def crt_gia_stoppati(simbolo: str, direzione: str) -> list[dict[str, Any]]:
+    """Le posizioni di questo simbolo e verso finite allo STOP.
+
+    Serve a non rientrare su un CRT che il mercato ha gia' smentito. Un CRT
+    stoppato non e' un CRT sfortunato: lo stop sta all'estremo dello sweep, e
+    toccarlo significa che il prezzo e' andato OLTRE quell'estremo, cioe' che
+    la lettura del range su cui il setup si reggeva non vale piu' (SETUP-02).
+
+    Il 2026-09-23 il bot rientrava sullo stesso identico setup pochi minuti
+    dopo esserci stato stoppato -- XAUUSD SELL con stop 4289,74 e target
+    4276,71 inviato alle 19:47, 19:50 e 19:54 -- perche' il controllo sui
+    doppioni guardava solo le posizioni ANCORA aperte, e una posizione
+    stoppata in pochi secondi non lo e' piu'.
+    """
+    with connessione() as conn:
+        righe = conn.execute(
+            "SELECT tp, ticket, chiusa_utc FROM posizione "
+            "WHERE simbolo = ? AND direzione = ? AND stato != 'aperta' "
+            "AND motivo_chiusura LIKE 'sl%' AND tp IS NOT NULL "
+            "ORDER BY id DESC LIMIT 200",
+            (simbolo, direzione),
+        ).fetchall()
+    return [dict(riga) for riga in righe]
+
+
 def conteggi() -> dict[str, int]:
     """Numero di righe per tabella: comodo per il collaudo e per /salute."""
     with connessione() as conn:

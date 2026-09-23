@@ -332,6 +332,46 @@ def _cifre_simbolo(simbolo: str, difetto: int = 5) -> int:
     return int(getattr(info, "digits", difetto) or difetto)
 
 
+def _livello_troppo_vicino(
+    simbolo: str, prezzo: float, richiesta: dict[str, Any]
+) -> Optional[str]:
+    """Stop o target sotto la distanza minima che il broker accetta?
+
+    MT5 rifiuta con `retcode 10016 (Invalid stops)` sia quando un livello sta
+    dalla parte sbagliata, sia quando sta troppo VICINO al prezzo: ogni
+    simbolo ha un `trade_stops_level` in punti, e sotto quella soglia il
+    livello non e' piazzabile. Il motore non puo' saperlo -- ragiona su
+    livelli di struttura, non sulle condizioni di questo broker.
+
+    Restituisce il motivo del rifiuto, oppure None se va tutto bene. Con
+    specifiche illeggibili restituisce None: non e' questo il posto dove
+    fermare un'operazione che tutte le regole hanno approvato, e il broker
+    resta comunque l'ultima rete.
+    """
+    ok, spec, _ = specifiche_simbolo(simbolo)
+    if not ok or not spec:
+        return None
+    punto = float(spec.get("punto") or 0.0)
+    livelli_punti = int(spec.get("stops_level_punti") or 0)
+    if punto <= 0 or livelli_punti <= 0:
+        return None
+    minima = livelli_punti * punto
+
+    for campo, nome in (("sl", "stop"), ("tp", "target")):
+        livello = richiesta.get(campo)
+        if livello is None:
+            continue
+        distanza = abs(float(livello) - prezzo)
+        if distanza < minima:
+            return (
+                f"{nome} {livello} a {distanza:.5f} dal prezzo {prezzo:.5f}: "
+                f"{simbolo} ne vuole almeno {minima:.5f} "
+                f"({livelli_punti} punti). L'ordine non parte: spostare il "
+                f"livello vorrebbe dire aprire un'altra operazione"
+            )
+    return None
+
+
 def invia_ordine(
     simbolo: str,
     direzione: str,
@@ -433,6 +473,20 @@ def invia_ordine(
             richiesta["sl"] = round(float(stop), cifre)
         if target is not None:
             richiesta["tp"] = round(float(target), cifre)
+
+        # E i livelli devono stare abbastanza LONTANI dal prezzo, o MT5
+        # rifiuta con `retcode 10016 (Invalid stops)`. E' la seconda causa di
+        # quel rifiuto, dopo lo stop dalla parte sbagliata, e si evita da qui:
+        # il motore ragiona su livelli di struttura e non conosce la distanza
+        # minima che questo broker impone su questo simbolo.
+        #
+        # Non si sposta il livello per farcelo entrare -- sarebbe uno stop
+        # diverso da quello del setup, cioe' un'altra operazione. Si rifiuta
+        # l'ordine e si dice perche'.
+        troppo_vicino = _livello_troppo_vicino(simbolo, prezzo, richiesta)
+        if troppo_vicino is not None:
+            log.warning("ordine NON inviato: %s", troppo_vicino)
+            return OrderResult(ok=False, messaggio=troppo_vicino)
 
         log.info("invio ordine %s %s %s (sl %s tp %s)", direzione,
                  volume_pulito, simbolo,
@@ -724,6 +778,13 @@ def specifiche_simbolo(simbolo: str) -> tuple[bool, Optional[dict[str, Any]], st
                 "valore_punto": valore_punto,
                 "spread_punti": int(getattr(info, "spread", 0)),
                 "contract_size": float(getattr(info, "trade_contract_size", 0.0)),
+                # La distanza minima fra prezzo e stop/target che il broker
+                # accetta, in punti. Sotto questa soglia MT5 rifiuta con
+                # `retcode 10016 (Invalid stops)` — la seconda causa di quel
+                # rifiuto, dopo lo stop dalla parte sbagliata. Va convertita
+                # in prezzo moltiplicandola per `point`.
+                "stops_level_punti": int(getattr(info, "trade_stops_level", 0) or 0),
+                "punto": float(getattr(info, "point", 0.0) or 0.0),
             },
             "specifiche lette",
         )

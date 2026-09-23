@@ -215,6 +215,26 @@ TARGET_DI: Final[dict[TF, Optional[TF]]] = {
 # rendere la strategia perdente.
 COSTO_SPREAD_MASSIMO_IN_R: Final[float] = 0.10
 
+# Il rapporto minimo fra quanto si puo' guadagnare e quanto si rischia.
+#
+# `SETUP-02C` non lo scrive come regola, ma descrive la costruzione e il suo
+# esito: *"Lo stop e' l'ombra dello sweep, quindi STRETTO; il bersaglio e' il
+# lato opposto di un range di timeframe superiore, quindi LARGO. Rapporto
+# misurato: da 1,85 a 3,92 R"*. Un'operazione sotto 1 contraddice quindi la
+# costruzione stessa: vuol dire che l'ingresso e' lontano dall'ombra dello
+# sweep, o che il bersaglio e' quasi raggiunto. Non e' un CRT tirato per i
+# capelli, e' un CRT che non c'e' piu'.
+#
+# Misurato il 2026-09-23, due operazioni partite lo stesso minuto:
+#   EURUSD BUY  ingresso 1.13897  stop 1.13701  target 1.14029  -> 0,67
+#   AUDUSD BUY  ingresso 0.70412  stop 0.70257  target 0.70475  -> 0,41
+# Su AUDUSD significa rischiare 155 pip per farne 63: anche vincendo sei
+# volte su dieci si perde.
+#
+# Il numero e' 1,0 e non 1,85: e' la soglia sotto la quale l'operazione e'
+# perdente per costruzione, non un giudizio su quanto debba essere buona.
+RAPPORTO_MINIMO: Final[float] = 1.0
+
 # Quante volte l'equity puo' valere il nozionale di una singola posizione.
 #
 # `RISK-03` controlla il RISCHIO, non la LEVA, e i due divergono proprio

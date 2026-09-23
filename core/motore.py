@@ -50,6 +50,7 @@ from core.log import diario
 from core.parametri import (
     CONFERME_ROMEO, COPPIE_CRT, INGRESSO_ROMEO,
     COSTO_SPREAD_MASSIMO_IN_R,
+    RAPPORTO_MINIMO,
     MAX_POSIZIONI_PER_STRUMENTO,
     RISK_05_BLOCCA_DA_SOLA, TF, UNIVERSO,
 )
@@ -1413,6 +1414,35 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop,
             tp1=obiettivo_1, rapporto_su_tp1=rapporto,
         )
+
+    # --- 7bis-quinquies. E il gioco deve valere la candela (SETUP-02C) -----
+    #
+    # `SETUP-02C` non scrive una soglia, ma descrive la costruzione e il suo
+    # esito: stop stretto perche' e' l'ombra dello sweep, bersaglio largo
+    # perche' e' il lato opposto di un range superiore, "rapporto misurato da
+    # 1,85 a 3,92 R". Sotto 1 quella costruzione non regge piu': o l'ingresso
+    # e' lontano dall'ombra dello sweep, o il bersaglio e' quasi raggiunto.
+    #
+    # Misurato il 2026-09-23, due ordini partiti nello stesso minuto:
+    #   EURUSD BUY  1.13897  stop 1.13701  target 1.14029  ->  0,67
+    #   AUDUSD BUY  0.70412  stop 0.70257  target 0.70475  ->  0,41
+    # Su AUDUSD sono 155 pip rischiati per farne 63: perdente anche vincendo
+    # sei volte su dieci.
+    rischio_prezzo = abs(prezzo_ingresso - stop)
+    rendimento_prezzo = abs(bersaglio - prezzo_ingresso)
+    if rischio_prezzo > 0:
+        rapporto_vero = rendimento_prezzo / rischio_prezzo
+        if rapporto_vero < RAPPORTO_MINIMO:
+            return _non_operare(
+                foto.strumento, ["SETUP-02C"],
+                f"rapporto {rapporto_vero:.2f} a 1: si rischierebbe piu' di "
+                f"quanto si puo' guadagnare (minimo {RAPPORTO_MINIMO:g}). "
+                "Lo stop dell'ombra dello sweep non e' cosi' largo: "
+                "l'ingresso e' lontano dal CRT o il bersaglio e' gia' quasi preso",
+                applicate,
+                direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop,
+                tp1=obiettivo_1, rapporto_su_tp1=rapporto,
+            )
 
     # --- 7ter. Il dato che deve chiudere PA-44 (GIUD-01, 07_casi.md §3.1) --
     #

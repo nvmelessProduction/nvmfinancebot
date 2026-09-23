@@ -414,6 +414,24 @@ def _occasione_gia_aperta(simbolo_broker: str, decisione) -> Optional[str]:
                 f"(ticket {riga.get('ticket')}, target {suo}): non si moltiplica "
                 f"la stessa occasione a ogni candela"
             )
+
+        # E non si rientra su un CRT che il mercato ha gia' smentito. Lo stop
+        # sta all'estremo dello sweep: toccarlo vuol dire che il prezzo e'
+        # andato OLTRE quell'estremo, quindi il range su cui il setup si
+        # reggeva non vale piu'. Guardare solo le posizioni APERTE non
+        # bastava, perche' una stoppata in pochi secondi aperta non lo e' piu':
+        # il 2026-09-23 lo stesso XAUUSD SELL (stop 4289,74, target 4276,71)
+        # e' partito alle 19:47, 19:50 e 19:54.
+        for riga in storage.crt_gia_stoppati(simbolo_broker, verso):
+            suo = riga.get("tp")
+            if suo is None or not isclose(float(suo), float(bersaglio),
+                                          rel_tol=1e-9, abs_tol=0.0):
+                continue
+            return (
+                f"questo CRT su {simbolo_broker} {verso} (target {suo}) e' gia'"
+                f" finito allo stop: il prezzo ha superato l'estremo dello "
+                f"sweep, il range non regge piu'"
+            )
     except Exception:
         # Un guasto qui non deve impedire un'apertura che tutte le regole
         # hanno approvato: si annota e si prosegue.

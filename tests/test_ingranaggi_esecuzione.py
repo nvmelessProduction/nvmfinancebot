@@ -362,10 +362,69 @@ class TestIlBersaglioDeveStareDavanti:
         assert "non potrebbe vincere" in d.motivo
 
     def test_non_e_un_muro_generico(self, diagnostico):
-        """Col target davanti al prezzo l'ordine passa."""
-        d = self._decisione(101.0)
+        """Col target davanti al prezzo l'ordine passa.
+
+        Il rientro e' a 109 e non a 101 come nella prima stesura: a 101 il
+        prezzo e' gia' a ridosso del bersaglio (100) mentre lo stop sta a 111,
+        cioe' un rapporto di 0,10 a 1. Era un dato che descriveva
+        un'operazione che `SETUP-02C` esclude, e serviva solo a far passare
+        questo test su un'altra regola.
+        """
+        d = self._decisione(109.0)
         assert d.azione == "SELL", d.motivo
-        assert d.target_finale is not None and d.target_finale < 101.0
+        assert d.target_finale is not None and d.target_finale < 109.0
+
+    def test_un_rapporto_sotto_uno_ferma_l_ordine(self, diagnostico):
+        """Rischiare piu' di quanto si puo' guadagnare (SETUP-02C).
+
+        Col rientro a 101 il prezzo e' a ridosso del bersaglio (100) mentre lo
+        stop sta all'estremo dello sweep (111): 0,10 a 1. E' la forma del caso
+        misurato il 2026-09-23, AUDUSD BUY ingresso 0.70412 stop 0.70257
+        target 0.70475, cioe' 155 pip rischiati per farne 63.
+        """
+        d = self._decisione(101.0)
+        assert d.azione == "NONE"
+        assert "SETUP-02C" in d.regole_che_bloccano
+        assert "rapporto 0.10 a 1" in d.motivo
+
+    def test_un_livello_troppo_vicino_non_parte(self):
+        """L'altra causa di `Invalid stops`: la distanza minima del broker.
+
+        Il caso misurato: USDJPY SELL a 158.204 con stop 158.196, cioe' 0,8
+        pip. Anche dalla parte giusta, un livello cosi' vicino MT5 lo rifiuta.
+        """
+        from core import broker
+        vicino = broker._livello_troppo_vicino
+        spec = {"punto": 0.001, "stops_level_punti": 20}   # 0,020 di minima
+        import unittest.mock as mock
+        with mock.patch.object(broker, "specifiche_simbolo",
+                               return_value=(True, spec, "")):
+            motivo = vicino("USDJPY+", 158.204, {"sl": 158.196})
+            assert motivo is not None and "almeno" in motivo
+            assert vicino("USDJPY+", 158.204, {"sl": 158.300}) is None
+
+    def test_senza_specifiche_non_si_blocca_nulla(self):
+        """Non e' questo il posto dove fermare un'operazione approvata."""
+        from core import broker
+        import unittest.mock as mock
+        with mock.patch.object(broker, "specifiche_simbolo",
+                               return_value=(False, None, "non leggibili")):
+            assert broker._livello_troppo_vicino(
+                "USDJPY+", 158.204, {"sl": 158.196}) is None
+
+    def test_il_livello_non_viene_spostato_per_farcelo_entrare(self):
+        """Spostarlo sarebbe un'altra operazione, non la stessa piu' valida."""
+        import inspect
+        from core import broker
+        corpo = inspect.getsource(broker._livello_troppo_vicino)
+        assert "return (" in corpo
+        assert "richiesta[" not in corpo, "qui non si riscrive nessun livello"
+
+    def test_il_rapporto_minimo_e_la_soglia_del_perdente(self):
+        """1,0 e non 1,85: e' il confine sotto cui si perde per costruzione,
+        non un giudizio su quanto l'operazione debba essere buona."""
+        from core.parametri import RAPPORTO_MINIMO
+        assert RAPPORTO_MINIMO == pytest.approx(1.0)
 
     def test_anche_lo_stop_deve_stare_dalla_sua_parte(self, diagnostico):
         """Lo stesso difetto del bersaglio, sull'altro livello.
@@ -392,9 +451,9 @@ class TestIlBersaglioDeveStareDavanti:
 
     def test_uno_stop_dalla_parte_giusta_non_viene_fermato(self, diagnostico):
         """La guardia non deve diventare un muro: lo short buono passa."""
-        d = self._decisione(101.0)
+        d = self._decisione(109.0)
         assert d.azione == "SELL", d.motivo
-        assert d.livello_stop is not None and d.livello_stop > 101.0, (
+        assert d.livello_stop is not None and d.livello_stop > 109.0, (
             "su uno short lo stop sta sopra l'ingresso")
 
     def test_il_modo_diagnostico_non_lo_puo_spegnere(self):
@@ -522,6 +581,34 @@ class TestLoStessoCrtNonSiApreDueVolte:
         motivo = main._occasione_gia_aperta("GBPUSD+", self._decisione())
         assert motivo is not None and "stesso CRT" in motivo
 
+    def test_non_si_rientra_su_un_crt_gia_stoppato(self, monkeypatch):
+        """Un CRT stoppato non e' sfortunato: e' smentito.
+
+        Lo stop sta all'estremo dello sweep. Toccarlo significa che il prezzo
+        e' andato OLTRE quell'estremo, quindi la lettura del range su cui il
+        setup si reggeva non vale piu' (SETUP-02). Guardare solo le posizioni
+        ancora aperte non bastava: una stoppata in tre secondi aperta non lo
+        e' piu'. Il 2026-09-23 lo stesso XAUUSD SELL con stop 4289,74 e
+        target 4276,71 e' partito alle 19:47, alle 19:50 e alle 19:54.
+        """
+        import main
+        from core import storage
+        monkeypatch.setattr(storage, "posizioni_aperte", lambda: [])
+        monkeypatch.setattr(storage, "crt_gia_stoppati", lambda s, d: [
+            {"tp": 1.32662, "ticket": 1, "chiusa_utc": "2026-09-23T19:47:43"},
+        ])
+        motivo = main._occasione_gia_aperta("GBPUSD+", self._decisione())
+        assert motivo is not None and "gia' finito allo stop" in motivo
+
+    def test_un_crt_stoppato_su_un_altro_bersaglio_non_blocca(self, monkeypatch):
+        import main
+        from core import storage
+        monkeypatch.setattr(storage, "posizioni_aperte", lambda: [])
+        monkeypatch.setattr(storage, "crt_gia_stoppati", lambda s, d: [
+            {"tp": 1.33500, "ticket": 1, "chiusa_utc": "2026-09-23T19:47:43"},
+        ])
+        assert main._occasione_gia_aperta("GBPUSD+", self._decisione()) is None
+
     def test_un_bersaglio_diverso_e_un_altro_crt(self, monkeypatch):
         import main
         from core import storage
@@ -529,6 +616,7 @@ class TestLoStessoCrtNonSiApreDueVolte:
             {"simbolo": "GBPUSD+", "direzione": "BUY", "tp": 1.33000,
              "ticket": 1},
         ])
+        monkeypatch.setattr(storage, "crt_gia_stoppati", lambda s, d: [])
         assert main._occasione_gia_aperta("GBPUSD+", self._decisione()) is None
 
     def test_il_verso_opposto_non_e_la_stessa_occasione(self, monkeypatch):
@@ -538,6 +626,7 @@ class TestLoStessoCrtNonSiApreDueVolte:
             {"simbolo": "GBPUSD+", "direzione": "SELL", "tp": 1.32662,
              "ticket": 1},
         ])
+        monkeypatch.setattr(storage, "crt_gia_stoppati", lambda s, d: [])
         assert main._occasione_gia_aperta("GBPUSD+", self._decisione()) is None
 
     def test_un_guasto_non_impedisce_di_aprire(self, monkeypatch):
