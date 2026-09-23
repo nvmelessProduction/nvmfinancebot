@@ -720,6 +720,116 @@ def modelli_allineati(
 
 
 # ===========================================================================
+# Le otto conferme di Romeo, una funzione ciascuna
+# ===========================================================================
+#
+# Stavano tutte dentro `conferme_di_romeo`, 112 righe in un blocco unico.
+# Cosi' NON SE NE POTEVA MISURARE UNA SOLA: per sapere quanto pesa ciascuna
+# serve poterla calcolare, provare e pesare da sola, e finche' erano un blocco
+# l'unica cosa misurabile era il loro AND — che infatti, con tutte accese, su
+# 18 CRT ne blocca 18 e fa tacere il bot del tutto.
+#
+# Ognuna restituisce `True` (c'e'), `False` (manca) o `None` (non valutabile),
+# e prende SOLO cio' che le serve: niente `Fotografia`, niente archivio.
+# `None` non e' un no: trasformare "non lo so" in "no" spegnerebbe il bot
+# senza dirlo.
+
+
+def crt20_peso_ombre(n2: Candela, peso_minimo: float = PESO_OMBRE_MINIMO) -> Optional[bool]:
+    """CRT-20 — Le ombre di N2 pesano abbastanza?
+
+    Ombre piccole: 33,6% di winrate contro il 59,6% della base. Uno sweep
+    "pulito" e' un cattivo segno per la mean-reversion.
+    """
+    peso = peso_ombre(n2)
+    return None if peso is None else peso >= peso_minimo
+
+
+def crt11_cisd(candele_ingresso: Sequence[Candela], direzione: Bias) -> Optional[bool]:
+    """CRT-11 — C'e' un cambio di carattere sul timeframe di ingresso?
+
+    Con l'ingresso di CRT-13 questa e' INTRINSECA: il CISD e' il primo passo
+    della sequenza. Resta perche' il responso serve a chi pesa.
+    """
+    if not candele_ingresso:
+        return None
+    return cisd(candele_ingresso, direzione) is not None
+
+
+def crt12_smt(
+    strumento: str,
+    candele_strumento: Optional[Sequence[Candela]],
+    candele_compagne: Optional[Mapping[str, Sequence[Candela]]],
+    direzione: Bias,
+) -> Optional[bool]:
+    """CRT-12 — C'e' divergenza SMT con almeno una compagna?
+
+    Le fonti la dichiarano una delle tre confluenze NON NEGOZIABILI.
+    """
+    if not candele_compagne or not candele_strumento:
+        return None
+    verso_sweep = Bias.LONG if direzione is Bias.SHORT else Bias.SHORT
+    giudizi = []
+    for compagna, serie in candele_compagne.items():
+        esito = divergenza_smt(
+            strumento, candele_strumento, serie, compagna, verso_sweep)
+        if esito is not None:
+            giudizi.append(esito)
+    return any(giudizi) if giudizi else None
+
+
+def crt10_double_purge(n1: Candela, n2: Candela, direzione: Bias) -> Optional[bool]:
+    """CRT-10 — Se e' un Double Purge, il lato piu' respinto concorda?
+
+    Se la candela non e' un double purge la regola non ha nulla da dire:
+    `None`, non `False`.
+    """
+    if not double_purge(n1, n2):
+        return None
+    verso = verso_del_double_purge(n2)
+    return None if verso is Bias.NESSUNA else verso is direzione
+
+
+def crt15_finestra_ny(istante: datetime, tf_crt: TF) -> Optional[bool]:
+    """CRT-15 — Siamo dentro una delle finestre orarie di New York?"""
+    from core.contesto import dentro_finestra_crt
+    return dentro_finestra_crt(istante, tf_crt)
+
+
+def crt17_meta_range(
+    n1: Candela, candele_ingresso: Sequence[Candela], direzione: Bias
+) -> Optional[bool]:
+    """CRT-17 — La meta' del range tiene, e dalla parte giusta?"""
+    if not candele_ingresso:
+        return None
+    tenuta = meta_tenuta(n1, candele_ingresso)
+    if tenuta is None or tenuta is Bias.NESSUNA:
+        return None
+    return tenuta is direzione
+
+
+def crt18_meta_ombra(n2: Candela, direzione: Bias) -> Optional[bool]:
+    """CRT-18 — N2 chiude oltre il punto medio della propria ombra?"""
+    meta = meta_ombra(n2, superiore=(direzione is Bias.SHORT))
+    if meta is None:
+        return None
+    if direzione is Bias.SHORT:
+        return n2.chiusura <= meta
+    return n2.chiusura >= meta
+
+
+def crt06_allineamento(
+    crt_per_tf: Optional[Mapping[TF, Any]], tf_crt: TF, direzione: Bias
+) -> Optional[bool]:
+    """CRT-06 — Gli altri timeframe con un CRT puntano dalla stessa parte?"""
+    if not crt_per_tf:
+        return None
+    altri = [c.direzione for t, c in crt_per_tf.items()
+             if c is not None and t is not tf_crt]
+    return all(d is direzione for d in altri) if altri else None
+
+
+# ===========================================================================
 # CRT-11 e CRT-19/CRT-20 — le due conferme misurate
 # ===========================================================================
 
@@ -771,69 +881,17 @@ def conferme_di_romeo(
         if esito is False and conferma_attiva(regola):
             blocchi.append(regola)
 
-    # --- CRT-20 — il peso delle ombre di N2 -------------------------------
-    # Ombre piccole: 33,6% di winrate contro il 59,6% della base. Uno sweep
-    # "pulito" e' un cattivo segno per la mean-reversion.
-    peso = peso_ombre(n2)
-    registra("CRT-20", None if peso is None else peso >= peso_ombre_minimo)
-
-    # --- CRT-11 — il CISD sul timeframe di ingresso -----------------------
-    # Con l'ingresso di CRT-13 questa e' INTRINSECA: il CISD e' il primo
-    # passo della sequenza. Resta qui perche' il responso serve al giudice.
-    registra("CRT-11",
-             None if not candele_ingresso else cisd(candele_ingresso, direzione) is not None)
-
-    # --- CRT-12 — la divergenza SMT ---------------------------------------
-    # Le fonti la dichiarano una delle tre confluenze NON NEGOZIABILI.
-    if candele_compagne and candele_strumento:
-        verso_sweep = Bias.LONG if direzione is Bias.SHORT else Bias.SHORT
-        giudizi = []
-        for compagna, serie in candele_compagne.items():
-            esito = divergenza_smt(
-                strumento, candele_strumento, serie, compagna, verso_sweep)
-            if esito is not None:
-                giudizi.append(esito)
-        registra("CRT-12", any(giudizi) if giudizi else None)
-    else:
-        registra("CRT-12", None)
-
-    # --- CRT-10 — il Double Purge Sweep -----------------------------------
-    # Se la candela e' un double purge, il verso lo decide il lato piu'
-    # respinto. Se non lo e', la regola non ha nulla da dire: None, non False.
-    if double_purge(n1, n2):
-        verso = verso_del_double_purge(n2)
-        registra("CRT-10", None if verso is Bias.NESSUNA else verso is direzione)
-    else:
-        registra("CRT-10", None)
-
-    # --- CRT-15 — le finestre orarie di New York --------------------------
-    from core.contesto import dentro_finestra_crt
-
-    registra("CRT-15", dentro_finestra_crt(istante, tf_crt))
-
-    # --- CRT-17 — la tenuta della meta' del range -------------------------
-    if candele_ingresso:
-        tenuta = meta_tenuta(n1, candele_ingresso)
-        registra("CRT-17",
-                 None if tenuta is None or tenuta is Bias.NESSUNA else tenuta is direzione)
-    else:
-        registra("CRT-17", None)
-
-    # --- CRT-18 — il punto medio dell'ombra come livello ------------------
-    meta = meta_ombra(n2, superiore=(direzione is Bias.SHORT))
-    if meta is None:
-        registra("CRT-18", None)
-    elif direzione is Bias.SHORT:
-        registra("CRT-18", n2.chiusura <= meta)
-    else:
-        registra("CRT-18", n2.chiusura >= meta)
-
-    # --- CRT-06 — tre modelli CRT allineati -------------------------------
-    if crt_per_tf:
-        altri = [c.direzione for t, c in crt_per_tf.items()
-                 if c is not None and t is not tf_crt]
-        registra("CRT-06", all(d is direzione for d in altri) if altri else None)
-    else:
-        registra("CRT-06", None)
+    # L'ordine e' quello storico e non conta: ogni conferma e' indipendente
+    # e nessuna legge il responso delle altre. La regola di ciascuna vive
+    # nella sua funzione, qui c'e' solo la raccolta.
+    registra("CRT-20", crt20_peso_ombre(n2, peso_ombre_minimo))
+    registra("CRT-11", crt11_cisd(candele_ingresso, direzione))
+    registra("CRT-12", crt12_smt(
+        strumento, candele_strumento, candele_compagne, direzione))
+    registra("CRT-10", crt10_double_purge(n1, n2, direzione))
+    registra("CRT-15", crt15_finestra_ny(istante, tf_crt))
+    registra("CRT-17", crt17_meta_range(n1, candele_ingresso, direzione))
+    registra("CRT-18", crt18_meta_ombra(n2, direzione))
+    registra("CRT-06", crt06_allineamento(crt_per_tf, tf_crt, direzione))
 
     return not blocchi, tuple(blocchi), responso
