@@ -252,3 +252,53 @@ class TestIDivietiDiContestoSonoUnoSolo:
         from core.motore import ContestoIndipendente
         campi = set(ContestoIndipendente.__dataclass_fields__)
         assert campi == {"blocchi", "limiti", "evento_news", "posizioni_qui"}
+
+
+class TestFiltriEEsclusioni:
+    """L'unione di tre elenchi, e nessuno e' normativo da solo (REV-17).
+
+    `contesto.filtri_attivi` porta la meta' di CTX-01, `setup.
+    esclusioni_setup` quella di SETUP-15, e le due NON coincidono. A queste si
+    aggiunge SETUP-09 quando l'ingresso e' da gap, piu' i divieti di contesto.
+    """
+
+    def test_riceve_il_modo_diagnostico_invece_di_leggerlo(self):
+        """Stesso criterio di `divieti_permanenti`: una regola che legge la
+        configurazione da sola non si prova nei due modi senza cambiarla
+        sotto ai piedi del resto del processo."""
+        import inspect
+        from core import motore
+        parametri = inspect.signature(motore.filtri_e_esclusioni).parameters
+        assert "diagnostico" in parametri
+        assert "_apri_ogni_crt" not in inspect.getsource(motore.filtri_e_esclusioni)
+
+    def test_il_modo_diagnostico_toglie_anche_GEST_01(self):
+        """Il rapporto su TP1 e' un giudizio sul valore dell'operazione, non
+        una salvaguardia del conto.
+
+        Questa riga era andata persa estraendo l'agente: senza, `GEST-01`
+        tornava a bloccare col modo acceso. L'hanno presa i test.
+        """
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.filtri_e_esclusioni)
+        assert 'OBIEZIONI_SOPPESABILI | {"GEST-01"}' in corpo
+
+    def test_le_morbide_cadono_dai_blocchi_E_dai_filtri(self):
+        """Se restassero fra i filtri, il motivo nominerebbe una regola che
+        non sta fermando niente."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.filtri_e_esclusioni)
+        i = corpo.index("if diagnostico:")
+        pezzo = corpo[i:corpo.index("motivo =", i)]
+        assert "filtri = tuple(" in pezzo
+        assert "blocchi = [b for b in blocchi" in pezzo
+
+    def test_tutte_e_tre_le_famiglie_entrano_nei_blocchi(self):
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.filtri_e_esclusioni)
+        for pezzo in ("ctx.filtri_attivi(", "stp.esclusioni_setup(",
+                      "stp.ingresso_da_gap_ammesso(", "contesto.blocchi"):
+            assert pezzo in corpo, f"manca {pezzo}"

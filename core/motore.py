@@ -596,6 +596,83 @@ class Livelli:
     rapporto: Optional[float]
 
 
+def filtri_e_esclusioni(
+    foto: "Fotografia", crt, tf_trigger: TF, comando, contesto,
+    rapporto: Optional[float], da_gap: bool, diagnostico: bool,
+) -> tuple[list[str], str]:
+    """REV-17, PREC-04, SETUP-09 — i filtri uniti e cosa hanno detto.
+
+    Restituisce `(blocchi, motivo)`. Vuoto il primo, si opera.
+
+    **L'unione di tre elenchi, e nessuno dei tre e' normativo da solo.** Per
+    REV-17 le esclusioni sono l'unione di `SETUP-15` e `CTX-01`, che NON
+    coincidono: `contesto.filtri_attivi` porta la sua meta', `setup.
+    esclusioni_setup` l'altra. A queste si aggiunge `SETUP-09` quando
+    l'ingresso e' da gap, e i divieti di contesto che valgono comunque.
+
+    Il `motivo` nomina solo i filtri di `CTX-01`, perche' sono quelli che
+    portano con se' una spiegazione leggibile; le altre due famiglie parlano
+    per codice di regola, e il codice basta a ritrovarle nei documenti.
+
+    Col modo `diagnostico` cadono le obiezioni SOPPESABILI, piu' `GEST-01`:
+    il rapporto su TP1 e' un giudizio sul valore dell'operazione, non una
+    salvaguardia del conto. Cadono dai blocchi E dai filtri, perche' se
+    restassero nei filtri il motivo nominerebbe una regola che non sta
+    fermando niente.
+    """
+    allineato = stp.allineamento_soddisfatto(
+        crt.tf, foto.sbilanciamenti, crt.direzione)
+    limite = bool(contesto.limiti)
+
+    filtri = ctx.filtri_attivi(
+        adesso=foto.istante,
+        strumento=foto.strumento,
+        key_level_preso=True,
+        comando=comando,
+        direzione_crt=crt.direzione,
+        allineamento_ok=allineato,
+        rapporto_su_tp1=rapporto,
+        posizioni_aperte_strumento=contesto.posizioni_qui,
+        limite_rischio_raggiunto=limite,
+        eventi_news=foto.eventi_news,
+        mitigazione_non_determinata=(
+            da_gap and foto.mitigazione is Mitigazione.NON_DETERMINATA),
+        dati_coerenti=foto.dati_coerenti,
+        # Con CRT-13 l'ordine parte al ritorno nell'FVG e il prezzo di
+        # ingresso qui non esiste ancora: GEST-01 si verifica la', dove i
+        # numeri sono quelli veri. Vedi `contesto.filtri_attivi`.
+        rapporto_differito=_ingresso_differito(foto, crt, tf_trigger),
+    )
+    esclusi = stp.esclusioni_setup(
+        crt=crt,
+        comando=comando,
+        key_level_preso=True,
+        sbilanciamenti=foto.sbilanciamenti,
+        posizioni_aperte_strumento=contesto.posizioni_qui,
+        limite_rischio_raggiunto=limite,
+        dentro_finestra_news=contesto.evento_news is not None,
+        dati_coerenti=foto.dati_coerenti,
+        da_gap=da_gap,
+        mitigazione=foto.mitigazione,
+    )
+    # SETUP-09: un ingresso da gap vuole la terza fase, non una qualsiasi.
+    blocchi_gap: tuple[str, ...] = ()
+    if da_gap:
+        _, blocchi_gap = stp.ingresso_da_gap_ammesso(foto.gap_fase, foto.mitigazione)
+
+    blocchi = ([f.regola for f in filtri] + list(esclusi)
+               + list(blocchi_gap) + list(contesto.blocchi))
+
+    if diagnostico:
+        morbide = OBIEZIONI_SOPPESABILI | {"GEST-01"}
+        filtri = tuple(f for f in filtri if f.regola not in morbide)
+        blocchi = [b for b in blocchi if b not in morbide]
+
+    motivo = ("; ".join(f"{f.regola}: {f.motivo}" for f in filtri)
+              or "condizioni non soddisfatte")
+    return blocchi, motivo
+
+
 def divieti_permanenti(
     foto: "Fotografia", crt, comando, tf_comando, stop: float,
     prezzo_ingresso: float, posizioni_qui: int, diagnostico: bool,
@@ -1396,57 +1473,13 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             )
         applicate.append("GIUD-02")
 
-    # --- 5. Filtri uniti: CTX-01 + SETUP-15 (REV-17, PREC-04) -------------
-    allineato = stp.allineamento_soddisfatto(crt.tf, foto.sbilanciamenti, crt.direzione)
+    # --- 5. Filtri uniti: CTX-01 + SETUP-15 + SETUP-09 (REV-17, PREC-04) --
+    # La regola vive in `filtri_e_esclusioni`: l'unione dei tre elenchi, dove
+    # nessuno dei tre e' normativo da solo.
+    blocchi, motivo_filtri = filtri_e_esclusioni(
+        foto, crt, tf_trigger, comando, contesto, rapporto, da_gap,
+        _apri_ogni_crt())
 
-    filtri = ctx.filtri_attivi(
-        adesso=foto.istante,
-        strumento=foto.strumento,
-        key_level_preso=True,
-        comando=comando,
-        direzione_crt=crt.direzione,
-        allineamento_ok=allineato,
-        rapporto_su_tp1=rapporto,
-        posizioni_aperte_strumento=posizioni_qui,
-        limite_rischio_raggiunto=bool(limiti),
-        eventi_news=foto.eventi_news,
-        mitigazione_non_determinata=(da_gap and foto.mitigazione is Mitigazione.NON_DETERMINATA),
-        dati_coerenti=foto.dati_coerenti,
-        # Con CRT-13 l'ordine parte al ritorno nell'FVG e il prezzo di
-        # ingresso qui non esiste ancora: GEST-01 si verifica la', dove i
-        # numeri sono quelli veri. Vedi `contesto.filtri_attivi`.
-        rapporto_differito=_ingresso_differito(foto, crt, tf_trigger),
-    )
-    esclusi = stp.esclusioni_setup(
-        crt=crt,
-        comando=comando,
-        key_level_preso=True,
-        sbilanciamenti=foto.sbilanciamenti,
-        posizioni_aperte_strumento=posizioni_qui,
-        limite_rischio_raggiunto=bool(limiti),
-        dentro_finestra_news=evento_news is not None,
-        dati_coerenti=foto.dati_coerenti,
-        da_gap=da_gap,
-        mitigazione=foto.mitigazione,
-    )
-
-    # --- 5bis. Ingresso da gap: la fase deve essere la terza (SETUP-09) ---
-    blocchi_gap: tuple[str, ...] = ()
-    if da_gap:
-        _, blocchi_gap = stp.ingresso_da_gap_ammesso(foto.gap_fase, foto.mitigazione)
-
-    blocchi = [f.regola for f in filtri] + list(esclusi) + list(blocchi_gap) + indipendenti
-
-    if _apri_ogni_crt():
-        # Restano solo i muri: tutto cio' che un trader potrebbe soppesare
-        # cade, il resto no. L'elenco e' quello di `OBIEZIONI_SOPPESABILI`,
-        # scritto per inclusione, piu' GEST-01.
-        morbide = OBIEZIONI_SOPPESABILI | {"GEST-01"}
-        filtri = tuple(f for f in filtri if f.regola not in morbide)
-        blocchi = [b for b in blocchi if b not in morbide]
-
-    motivo_filtri = ("; ".join(f"{f.regola}: {f.motivo}" for f in filtri)
-                     or "condizioni non soddisfatte")
     if blocchi and _giudizio_lascia_cadere(
             foto, crt, tf_trigger, blocchi, motivo_filtri):
         applicate.append("GIUD-02")
