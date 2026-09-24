@@ -27,7 +27,7 @@ from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.capo import riga as colonne_del_capo
 from nvm.agenti.conferme import SOPRA, contesto, key_level, orario
 from nvm.dati.candele import costruisci
-from nvm.dati.minuti import PUNTO
+from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import SETTIMANA, Risultato, opera
 from nvm.prova.cammino import Tabella
@@ -39,6 +39,9 @@ RADICE = Path(__file__).resolve().parent
 # timeframe basso (1-15 minuti), che senza i minuti il bot non vede.
 PIP = {"EURUSD": 1e-4, "GBPUSD": 1e-4, "AUDUSD": 1e-4, "USDCHF": 1e-4, "USDJPY": 1e-2, "XAUUSD": 1.0}
 STOP_ALTO = 15
+# Le coppie che scendono ai 15 minuti, dove ci sono i minuti: quella del
+# manuale e quella un gradino sotto (`spec/grilletto.md`).
+COPPIA_MINUTI = {False: (TF.H4, TF.M15), True: (TF.D1, TF.M15)}
 
 
 def _istante(anno: int, mese: int = 1) -> int:
@@ -75,12 +78,17 @@ class Bot:
     scelte: list[Risultato] = field(default_factory=list)
 
 
-def operazioni(numero: int, base, fine: int, capo: Capo) -> Bot:
+def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
     variante, stretto = CONFIGURAZIONI[numero]
     bot = Bot()
-    for alto, basso in (GRADINO if numero > 4 else COPPIE):
-        alte = costruisci(base, alto).chiuse_entro(fine)
-        basse = costruisci(base, basso).chiuse_entro(fine)
+    coppie = [(alto, basso, base) for alto, basso in (GRADINO if numero > 4 else COPPIE)]
+    if len(minuti):
+        alto, basso = COPPIA_MINUTI[numero > 4]
+        coppie.append((alto, basso, minuti))
+    for alto, basso, dati in coppie:
+        fine_dati = int(dati.t[-1]) + dati.passo
+        alte = costruisci(dati, alto).chiuse_entro(fine_dati)
+        basse = costruisci(dati, basso).chiuse_entro(fine_dati)
         sopra = costruisci(base, SOPRA[alto]).chiuse_entro(fine)
         ops = opera(alte, basse, _istante(2023), _istante(2024), variante, stretto)
         if not ops:
@@ -118,6 +126,7 @@ def main() -> None:
     ritrovate = {n: [set(), set()] for n in numeri}
     vicine = {n: set() for n in numeri}
     settimane = {n: [defaultdict(int), defaultdict(int)] for n in numeri}
+    coperti: dict[str, tuple[int, int]] = {}
     for strumento in sorted({e.strumento for e in nostre}):
         mie = [e for e in nostre if e.strumento == strumento]
         base, _ = carica_ore(radice, strumento, _istante(2022, 6), _istante(2026, 10))
@@ -125,7 +134,10 @@ def main() -> None:
         ore = costruisci(base, TF.H1).chiuse_entro(fine)
         crt = {(al, ba): caccia(costruisci(base, al).chiuse_entro(fine), costruisci(base, ba).chiuse_entro(fine))
                for al, ba in COPPIE}
-        bot = {n: operazioni(n, base, fine, capi[n]) for n in numeri}
+        minuti = carica_periodo(radice / "minuti", strumento, _istante(2023), _istante(2024))
+        if len(minuti):
+            coperti[strumento] = (int(minuti.t[0]), int(minuti.t[-1]))
+        bot = {n: operazioni(n, base, fine, capi[n], minuti) for n in numeri}
         for n, b in bot.items():
             for k, ops in enumerate((b.tutte, b.scelte)):
                 for op in ops:
@@ -186,14 +198,19 @@ def main() -> None:
           f"(ne servono 7 su 10), e operazioni del bot per ognuna di Romeo nelle stesse settimane "
           f"(al massimo 3; Romeo {n_romeo}). Delle {len(con_rischio)}, {len(alte)} sono sul timeframe alto "
           f"(stop di {STOP_ALTO} pip o piu') e {len(con_rischio) - len(alte)} sul basso.")
+    nei_minuti = {e.id for e in con_rischio if e.id not in alte and e.strumento in coperti
+                  and coperti[e.strumento][0] <= e.dal and e.al <= coperti[e.strumento][1]}
+    print("Minuti: " + (", ".join(f"{k} fino al {datetime.fromtimestamp(v[1], tz=timezone.utc):%d/%m/%Y}"
+                                  for k, v in coperti.items()) or "nessuno")
+          + f"; entrate sul timeframe basso coperte dai minuti: {len(nei_minuti)}")
     print(f"{'conf':>4}  {'variante':16} {'stop':8} {'coppie':13} {'vicine':>6} {'ritrovate':>9} {'di cui alto':>11} "
-          f"{'col Capo':>8} {'per Romeo':>9} {'col Capo':>8}")
+          f"{'di cui basso':>12} {'col Capo':>8} {'per Romeo':>9} {'col Capo':>8}")
     for n in numeri:
         variante, stretto = CONFIGURAZIONI[n]
         per_romeo = [sum(settimane[n][k][s] for s in romeo_settimane) / max(n_romeo, 1) for k in (0, 1)]
         print(f"{n:>4}  {variante.value:16} {'stretto' if stretto else 'estremo':8} "
               f"{'gradino sotto' if n > 4 else 'manuale':13} {len(vicine[n]):>6} {len(ritrovate[n][0]):>9} "
-              f"{len(ritrovate[n][0] & alte):>11} {len(ritrovate[n][1]):>8} {per_romeo[0]:>9.1f} {per_romeo[1]:>8.1f}")
+              f"{len(ritrovate[n][0] & alte):>11} {len(ritrovate[n][0] & nei_minuti):>12} {len(ritrovate[n][1]):>8} {per_romeo[0]:>9.1f} {per_romeo[1]:>8.1f}")
     if a.righe:
         print("\n" + "\n".join(righe))
 
