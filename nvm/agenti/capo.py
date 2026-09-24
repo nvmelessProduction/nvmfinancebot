@@ -43,10 +43,8 @@ PENALITA = 1.0
 # anno (registro/tentativi.md, 24/09/2026): 1 anno ha fatto meglio di 2, 4, 8
 # e di nessun peso.
 EMIVITA_ANNI = 1.0
-# Il Capo che impara Romeo (`spec/capo.md`): la penalita' della sua
-# regressione, e quante operazioni prendere per ognuna di Romeo.
+# La somiglianza a Romeo (`spec/capo.md`): la penalita' della sua regressione.
 PENALITA_ROMEO = 10.0
-RAPPORTO_ROMEO = 3
 # Le colonne che guarda la somiglianza a Romeo: solo le risposte alla Romeo.
 # Con tutte le colonne, fuori campione, riconosceva le sue scelte come il caso
 # (registro/tentativi.md, 24/09/2026).
@@ -131,14 +129,11 @@ class Capo:
     # agenti nella riunione: il prodotto delle due colonne diventa una colonna in piu'.
     interazioni: tuple[tuple[int, int], ...] = ()
     # La somiglianza a Romeo (`spec/capo.md`, "Il Capo impara Romeo"): una
-    # regressione sulle colonne standardizzate, e la soglia sopra cui si entra.
+    # regressione imparata dalle sue entrate. E' un parere che l'equipe sente,
+    # non un obbligo: il Capo decide col guadagno atteso.
     romeo: Optional[Logistica] = None
     romeo_media: Optional[np.ndarray] = None
     romeo_scala: Optional[np.ndarray] = None
-    soglia_romeo: float = 0.0
-    # Fra le operazioni proprio sulla soglia di somiglianza, passano quelle con
-    # il guadagno atteso da qui in su.
-    soglia_atteso: float = 0.0
 
     def _piena(self, x: np.ndarray) -> np.ndarray:
         return _con_interazioni(x, self.interazioni)
@@ -174,32 +169,18 @@ class Capo:
         return self.romeo.probabilita((x - self.romeo_media) / self.romeo_scala)
 
     def entra(self, x: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray) -> np.ndarray:
-        """Si entra se il guadagno atteso e' sopra zero e l'operazione somiglia abbastanza a Romeo."""
-        atteso, simile = self.valore_atteso(x, rr1, rr2, costi), self.somiglianza(x)
-        sulla_soglia = np.isclose(simile, self.soglia_romeo, rtol=0, atol=1e-12)
-        sopra = (simile > self.soglia_romeo) & ~sulla_soglia
-        return (atteso > 0) & (sopra | (sulla_soglia & (atteso >= self.soglia_atteso)))
+        """La decisione del Capo: entra se il guadagno atteso e' sopra zero."""
+        return self.valore_atteso(x, rr1, rr2, costi) > 0
 
-    def impara_romeo(self, x: np.ndarray, y: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray,
-                     quante: int) -> "Capo":
-        """Lo stesso Capo, con la regressione di Romeo allenata su `x`, `y` (1 = la
-        scelta di Romeo) e la soglia che, fra i candidati con guadagno atteso sopra
-        zero, ne fa prendere al massimo `quante`."""
+    def impara_romeo(self, x: np.ndarray, y: np.ndarray) -> "Capo":
+        """Lo stesso Capo, che ha imparato dalle entrate di Romeo quanto
+        un'operazione gli somiglia: `x` i candidati, `y` 1 per le scelte di Romeo."""
         xr = _di_romeo(x)
         media = xr.mean(axis=0)
         scala = xr.std(axis=0)
         scala[scala == 0] = 1.0
         romeo = Logistica(PENALITA_ROMEO).allena((xr - media) / scala, np.asarray(y, float))
-        nuovo = replace(self, romeo=romeo, romeo_media=media, romeo_scala=scala, soglia_romeo=0.0, soglia_atteso=0.0)
-        atteso = self.valore_atteso(x, rr1, rr2, costi)
-        buone = atteso > 0
-        simile, atteso = nuovo.somiglianza(x)[buone], atteso[buone]
-        if 0 < quante < len(simile):
-            # In fila per somiglianza e, a parita' (con quattro risposte si'/no
-            # capita spesso), per guadagno atteso: l'ultima che entra fa le soglie.
-            ultima = np.lexsort((-atteso, -simile))[quante - 1]
-            nuovo.soglia_romeo, nuovo.soglia_atteso = float(simile[ultima]), float(atteso[ultima])
-        return nuovo
+        return replace(self, romeo=romeo, romeo_media=media, romeo_scala=scala)
 
     def fiducia_romeo(self) -> list[tuple[str, float]]:
         """I pesi della regressione di Romeo, colonna per colonna."""
@@ -231,7 +212,7 @@ class Capo:
             "interazioni": [list(c) for c in self.interazioni],
             "romeo": None if self.romeo is None else {
                 "pesi": self.romeo.pesi.tolist(), "media": self.romeo_media.tolist(),
-                "scala": self.romeo_scala.tolist(), "soglia": self.soglia_romeo, "soglia_atteso": self.soglia_atteso,
+                "scala": self.romeo_scala.tolist(),
             },
         }
 
@@ -248,8 +229,6 @@ class Capo:
             capo.romeo = Logistica(PENALITA_ROMEO)
             capo.romeo.pesi = np.array(r["pesi"])
             capo.romeo_media, capo.romeo_scala = np.array(r["media"]), np.array(r["scala"])
-            capo.soglia_romeo = float(r["soglia"])
-            capo.soglia_atteso = float(r.get("soglia_atteso", 0.0))
         return capo
 
 

@@ -90,15 +90,17 @@ numero, e si torna agli agenti.
 
 ## Il Capo impara Romeo (24/09/2026) **[D]**
 
-Scritto dopo il cambio del metro (`PIANO.md`, "il metro è Romeo") e dopo
-aver visto, sul periodo di studio, che la scelta per il solo guadagno
-atteso scarta metà delle entrate di Romeo che il bot trovava
-(`registro/tentativi.md`, 24/09).
+Scritto dopo il cambio del metro (`PIANO.md`, "il metro è Romeo").
+**Decisione dell'utente, 24/09/2026:** *"addestrare però non significa
+obbligarlo e imporgli delle cose"*. Il Capo e gli agenti imparano; nessuna
+regola del bot li obbliga a fare come Romeo o limita quante operazioni
+aprono. Il cancello del `PIANO.md` (7 su 10, al massimo 3 per ognuna) è il
+metro con cui **noi** giudichiamo il bot, non una regola dentro il bot.
 
-**Una terza regressione logistica**, `r`: la probabilità che Romeo prenda
-questa operazione. Guarda le stesse colonne del Capo, comprese le quattro
-risposte alla Romeo (`spec/conferme.md`), standardizzate sul suo periodo di
-allenamento.
+**La somiglianza a Romeo**, `r`: una regressione logistica che stima quanto
+un'operazione somiglia a una che Romeo prenderebbe. È un **parere**:
+l'équipe lo sente, il Capo lo riferisce, ma decide col guadagno atteso,
+come prima.
 
 - **Da dove impara.** Dal catalogo `casi/entrate-romeo.csv`, solo il
   periodo di studio (fino al 2023). I candidati sono tutte le operazioni
@@ -107,27 +109,24 @@ allenamento.
   sono i minuti). Per ogni entrata di Romeo, il candidato dello stesso
   strumento e verso, con l'ingresso nella sua finestra e il prezzo più
   vicino al suo (`nvm/prova/romeo.confronta`), vale 1; tutti gli altri 0.
-- **Penalità L2: 10**, scelta prima di costruire il bot fra 1, 10 e 100,
-  addestrando su tre trimestri del 2023 e provando sul quarto.
-- **Quando entra.** Entra solo se il guadagno atteso è sopra zero **e** la
-  somiglianza a Romeo è sopra la soglia.
-- **La soglia** si calcola da sola, senza sceglierla guardando i
-  risultati: è quella che, sui candidati del 2023 con guadagno atteso
-  sopra zero, fa prendere **3 operazioni per ognuna di Romeo** del periodo
-  di studio. Tre è il massimo che il cancello del `PIANO.md` concede.
-- **Come migliora.** Ogni sabato, dopo il riaddestramento sul dal vivo, il
-  Capo rifà anche `r` e la soglia, perché il guadagno atteso è cambiato.
-  Ogni volta che il catalogo cresce o arrivano i minuti di un periodo
-  nuovo, `python capo.py --vivo` rifà tutto e il bot si aggiorna da solo.
+- **Cosa guarda.** Solo le quattro risposte alla Romeo
+  (`spec/conferme.md`). Con tutte le colonne del Capo, provata fuori
+  campione per trimestre, riconosceva le sue scelte come il caso (AUC
+  0,51); con le quattro risposte 0,59 (`registro/tentativi.md`).
+- **Penalità L2: 10**, scelta fra 1, 10 e 100 allenando su tre trimestri
+  del 2023 e provando sul quarto.
+- **Come arriva Romeo nelle decisioni.** Le risposte alla Romeo sono
+  colonne del Capo: quanto contano per il guadagno atteso lo impara dai
+  risultati, dello storico e dal vivo, come per ogni altro agente.
+- **Come migliora.** Ogni sabato il Capo ripassa le entrate di Romeo e si
+  riaddestra sui risultati della settimana. Quando il catalogo cresce o
+  arrivano i minuti di un periodo nuovo, `python capo.py --vivo` rifà
+  tutto e il bot si aggiorna da solo.
 - **Come si giudica.** Sul periodo di studio solo fuori campione (tre
   trimestri per allenare, il quarto per provare); il giudizio vero è una
   volta sola sul 2024–2026, nella Fase G.
 
-**Correzione del 24/09/2026 (tentativo nuovo, `registro/tentativi.md`).**
-Provata fuori campione per trimestre, la somiglianza su tutte le colonne
-del Capo riconosceva le scelte di Romeo come il caso (AUC 0,51): con 35
-esempi, 26 colonne sono troppe. Sulle sole quattro risposte alla Romeo
-arriva a 0,59. Da qui la somiglianza guarda **solo le risposte alla
-Romeo**. Con quattro risposte sì/no molte operazioni hanno la stessa
-somiglianza: la soglia diventa la più bassa che ne fa prendere **al
-massimo** 3 per ognuna di Romeo. Tutto il resto della regola resta com'era.
+Una prima versione (24/09, sera) faceva entrare il Capo solo sopra una
+soglia di somiglianza, calcolata per dare al massimo 3 operazioni per
+ognuna di Romeo. Tolta lo stesso giorno per la decisione dell'utente: era
+un obbligo, non un addestramento.

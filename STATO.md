@@ -99,17 +99,19 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   distinguono le scelte di Romeo (fuori campione, come tirare a sorte).
   Quattro risposte nuove, prese dalle sue frasi (`spec/conferme.md`): l'ora
   di Londra (1–5 NY) e di New York (8–11 NY), il CRT dentro uno più grande,
-  il comprare a sconto sulla settimana. Con queste il Capo riconosce un po'
-  le sue scelte (0,62, dove il caso è 0,5), soprattutto per l'ora. Il Capo
-  ha ora una terza regressione, la **somiglianza a Romeo**, allenata sulle
-  sue entrate del 2023: entra solo se il guadagno atteso è sopra zero e la
-  somiglianza supera una soglia che dà 3 operazioni per ognuna di Romeo
-  (`spec/capo.md`). Guarda solo le risposte alla Romeo: con tutte le
-  colonne, fuori campione, era come tirare a sorte. Fuori campione: 1,7
-  operazioni per ognuna di Romeo (prima 8,4), ma ne ritrova 1 su 11 (prima 4). **Ha imparato quanto è
-  selettivo, non ancora cosa sceglie.** Nel bot dal vivo dal 24/09: si
-  riallena ogni sabato e ogni volta che arrivano esempi nuovi (minuti,
-  catalogo); l'équipe dice per ogni decisione quanto somiglia a Romeo.
+  il comprare a sconto sulla settimana. Il Capo impara dalle entrate di
+  Romeo del 2023 quanto un'operazione gli somiglia (fuori campione 0,59,
+  dove il caso è 0,5). **È un parere, non un obbligo** (decisione
+  dell'utente: *"addestrare non significa obbligarlo e imporgli delle
+  cose"*): l'équipe lo sente, il Capo decide col guadagno atteso e impara
+  dai risultati quanto pesare le risposte alla Romeo. Il cancello del
+  PIANO (7 su 10, al massimo 3 per ognuna) è il nostro metro per giudicare
+  il bot, non una regola dentro il bot.
+- **Romeo entra sul minuto dentro il CRT a 4 ore.** Sui minuti di EURUSD
+  gennaio–maggio 2023, il 4 ore → 1 minuto arriva vicino a tutte le sue 15
+  entrate, e su quelle al minuto a 1–2 pip dal suo prezzo; ma sono 43
+  candidati per ognuna delle sue, e il guadagno atteso imparato sulle
+  orarie non sa stimare stop così piccoli. Si rifà sull'anno intero.
 - **Le otto configurazioni contro Romeo** (`--configurazioni 1-8`). Delle
   25 entrate con lo stop letto, 11 sono sul timeframe alto: il manuale ne
   ritrova 6, ma con 26–31 operazioni per ognuna delle sue; il Capo ne

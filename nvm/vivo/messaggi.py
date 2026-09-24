@@ -89,9 +89,8 @@ def pareri(d: Decisione) -> str:
         + ("dentro la golden candle (9–13)." if d.orario.gct else "fuori dalla golden candle (9–13)."),
         f"• Bias: {testo_bias}" + _sconto(d) + ".",
         _romeo(d),
-        f"• Capo: primo target {d.p1:.0%}, secondo {d.q:.0%} → guadagno atteso {erre(d.atteso)}"
-        + (f"; somiglia a Romeo al {d.romeo:.0%} (soglia {d.soglia:.0%})" if d.soglia else "") + ". "
-        + ("Entro." if d.entra else ("Non entro: Romeo questa non la prenderebbe." if d.atteso > 0 else "Non entro.")),
+        f"• Capo: primo target {d.p1:.0%}, secondo {d.q:.0%} → guadagno atteso {erre(d.atteso)}. "
+        + ("Entro." if d.entra else "Non entro."),
     ])
 
 
@@ -111,7 +110,8 @@ def _romeo(d: Decisione) -> str:
         return "• Alla Romeo: non so."
     ora = "ora di Londra di Romeo" if ar.londra else ("ora di New York di Romeo" if ar.new_york else "fuori dalle ore di Romeo")
     grande = "dentro un CRT più grande" if ar.annidato else "nessun CRT più grande nello stesso verso"
-    return f"• Alla Romeo: {ora}, {grande}."
+    simile = "" if d.romeo is None else f"; somiglia alle sue entrate al {d.romeo:.0%}"
+    return f"• Alla Romeo: {ora}, {grande}{simile}."
 
 
 def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, singola: bool) -> str:

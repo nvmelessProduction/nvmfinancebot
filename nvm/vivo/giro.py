@@ -43,16 +43,14 @@ class Decisione:
     atteso: float
     # Le colonne del Capo per questa decisione: servono al riaddestramento.
     x: np.ndarray
-    # Le risposte alla Romeo, e quanto il Capo pensa che somigli a una sua entrata.
+    # Le risposte alla Romeo, e quanto il Capo pensa che somigli a una sua
+    # entrata: un parere per l'equipe, non un obbligo.
     alla_romeo: Optional[AllaRomeo] = None
-    romeo: float = 1.0
-    soglia: float = 0.0
-    # La decisione del Capo: guadagno atteso sopra zero e abbastanza simile a Romeo.
-    scelta: Optional[bool] = None
+    romeo: Optional[float] = None
 
     @property
     def entra(self) -> bool:
-        return self.atteso > 0 if self.scelta is None else self.scelta
+        return self.atteso > 0
 
     @property
     def chiave(self) -> str:
@@ -87,8 +85,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                 atteso = capo.valore_atteso(x, np.array([r.rr1]), np.array([r.rr2]), np.array([r.costo_erre]))
                 decisioni.append(Decisione(
                     r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0],
-                    ar, float(capo.somiglianza(x)[0]), capo.soglia_romeo,
-                    bool(capo.entra(x, np.array([r.rr1]), np.array([r.rr2]), np.array([r.costo_erre]))[0])))
+                    ar, float(capo.somiglianza(x)[0]) if capo.romeo is not None else None))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

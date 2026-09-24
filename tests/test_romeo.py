@@ -109,7 +109,7 @@ def test_le_risposte_alla_romeo_sono_quelle_che_si_contano_a_mano():
         assert a.sconto == (dove < 0.5 if r.verso is Verso.LONG else dove > 0.5)
 
 
-def _capo_con_romeo(seme=0, n=3000, quante=40):
+def _capo_con_romeo(seme=0, n=3000):
     rng = np.random.default_rng(seme)
     x = rng.integers(0, 2, size=(n, len(COLONNE))).astype(float)
     x[:, COLONNE.index("RR1")] = rng.uniform(0.5, 4, n)
@@ -120,29 +120,34 @@ def _capo_con_romeo(seme=0, n=3000, quante=40):
     # Romeo sceglie quasi solo le operazioni nell'ora di New York.
     y = (x[:, COLONNE.index("ora di Romeo: New York")] == 1) & (rng.random(n) < 0.05)
     rr1, rr2, costi = x[:, COLONNE.index("RR1")], x[:, COLONNE.index("RR2")], np.full(n, 0.05)
-    return capo.impara_romeo(x, y, rr1, rr2, costi, quante), x, rr1, rr2, costi
+    return capo.impara_romeo(x, y), x, rr1, rr2, costi
 
 
-def test_il_capo_impara_cosa_sceglie_romeo_e_la_soglia_da_le_operazioni_chieste():
+def test_il_capo_impara_cosa_sceglie_romeo():
     capo, x, rr1, rr2, costi = _capo_con_romeo()
     pesi = dict(capo.fiducia_romeo())
     assert max(pesi, key=pesi.get) == "ora di Romeo: New York"
-    assert capo.entra(x, rr1, rr2, costi).sum() == 40
     simili = capo.somiglianza(x)
     ny_ = x[:, COLONNE.index("ora di Romeo: New York")] == 1
     assert simili[ny_].mean() > 2 * simili[~ny_].mean()
+
+
+def test_la_somiglianza_e_un_parere_non_un_obbligo():
+    """Addestrare non vuol dire imporre (decisione dell'utente, 24/09/2026):
+    il Capo decide col guadagno atteso, la somiglianza a Romeo non lo blocca."""
+    capo, x, rr1, rr2, costi = _capo_con_romeo(seme=3)
+    assert (capo.entra(x, rr1, rr2, costi) == (capo.valore_atteso(x, rr1, rr2, costi) > 0)).all()
 
 
 def test_il_capo_salvato_ricorda_romeo():
     capo, x, rr1, rr2, costi = _capo_con_romeo(seme=1)
     di_nuovo = Capo.da_dati(capo.come_dati())
     assert np.allclose(di_nuovo.somiglianza(x), capo.somiglianza(x))
-    assert di_nuovo.soglia_romeo == capo.soglia_romeo
     assert (di_nuovo.entra(x, rr1, rr2, costi) == capo.entra(x, rr1, rr2, costi)).all()
 
 
-def test_senza_romeo_decide_solo_il_guadagno_atteso():
+def test_senza_romeo_la_somiglianza_non_si_sa():
     capo, x, rr1, rr2, costi = _capo_con_romeo(seme=2)
     senza = Capo(capo.media, capo.scala, capo.primo, capo.secondo)
     assert (senza.somiglianza(x) == 1).all()
-    assert (senza.entra(x, rr1, rr2, costi) == (senza.valore_atteso(x, rr1, rr2, costi) > 0)).all()
+    assert (senza.entra(x, rr1, rr2, costi) == capo.entra(x, rr1, rr2, costi)).all()

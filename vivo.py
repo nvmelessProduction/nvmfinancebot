@@ -226,7 +226,7 @@ class Bot:
             per = spinte(self.capo, d.x)
             argomenti = prove(d.x, self.storico.x, self.storico.erre) if self.storico.erre is not None else {}
             self.tg.equipe(messaggi.pareri(d) + "\n\n" + discussione_con_prove(per, d.entra, d.atteso, argomenti,
-                                                                              d.romeo, d.soglia))
+                                                                              d.romeo))
             aperta = False
             if d.entra and adesso - d.r.quando <= finestra:
                 viva, fatto = self.esecutore.apri(d, conto)
@@ -242,10 +242,10 @@ class Bot:
                         op.ingresso, op.stop, op.tp1, op.tp2, d.scadenza, aperta,
                         [float(v) for v in d.x], d.r.rr1, d.r.rr2, d.r.costo_erre, d.p1, d.q, d.atteso,
                         spinte=per, leggibile=f"{d.r.strumento} {d.r.verso.value.upper()}, {messaggi.coppia(d)}, {messaggi.quando(d.r.quando)}",
-                        romeo=d.romeo)
+                        romeo=1.0 if d.romeo is None else d.romeo)
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
-                     atteso=d.atteso, romeo=d.romeo, soglia=d.soglia, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
+                     atteso=d.atteso, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
 
     def _finita(self, s: Seguita) -> None:
         testo, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.atteso)

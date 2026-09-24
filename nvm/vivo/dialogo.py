@@ -165,9 +165,9 @@ LAVORO: dict[str, str] = {
     "Bias": "Leggo il bias dalle chiusure: la candela del range e il timeframe sopra, a favore o contro il CRT. "
             "E guardo se compriamo a sconto e vendiamo a premio sulla settimana.",
     "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, e la parte che ho imparato dagli errori.",
-    "Capo": "Ascolto tutti, peso i pareri e decido: entro solo se il guadagno atteso è sopra zero "
-            "e se l'operazione somiglia a una che prenderebbe Romeo. Imparo dalle sue entrate e, ogni sabato, "
-            "dagli errori della settimana.",
+    "Capo": "Ascolto tutti, peso i pareri e decido: entro se il guadagno atteso è sopra zero. "
+            "Imparo dalle entrate di Romeo quanto un'operazione gli somiglia e, ogni sabato, dai risultati "
+            "della settimana quanto fidarmi di ognuno.",
 }
 
 
@@ -204,8 +204,8 @@ def presentazioni(pagelle: dict, capo: Capo, parte: float) -> list[str]:
             if capo.romeo is not None:
                 pesi = sorted(capo.fiducia_romeo(), key=lambda a: -a[1])
                 righe.append("Da Romeo ho imparato che le sue entrate hanno soprattutto: "
-                             + ", ".join(n for n, w in pesi[:3] if w > 0) + ". "
-                             + f"Entro solo sopra il {capo.soglia_romeo:.0%} di somiglianza.")
+                             + ", ".join(n for n, w in pesi[:3] if w > 0)
+                             + ". Lo tengo come parere: decido io, col guadagno atteso che imparo dai risultati.")
         righe.append(f"— {nome}")
         testi.append("\n".join(righe))
     return testi
@@ -236,7 +236,7 @@ def prove(x: np.ndarray, sx: np.ndarray, sr: np.ndarray) -> dict[str, str]:
 
 
 def discussione_con_prove(per: dict[str, float], entra: bool, atteso: float, testi: dict[str, str],
-                          romeo: Optional[float] = None, soglia: Optional[float] = None) -> str:
+                          romeo: Optional[float] = None) -> str:
     righe = ["💬 Il confronto:"]
     for nome, v in sorted(per.items(), key=lambda a: -a[1]):
         posizione = "spingo a entrare" if v >= NEUTRO else ("freno" if v <= -NEUTRO else "resto neutro")
@@ -244,14 +244,9 @@ def discussione_con_prove(per: dict[str, float], entra: bool, atteso: float, tes
     favore = sum(v >= NEUTRO for v in per.values())
     contro = sum(v <= -NEUTRO for v in per.values())
     capo = f"  Capo: {favore} a favore, {contro} contro; tutto pesato il guadagno atteso è {erre(atteso)}"
-    if romeo is not None and soglia:
-        capo += f", e somiglia a un'entrata di Romeo al {romeo:.0%} (mi serve almeno il {soglia:.0%})"
-    if entra:
-        capo += ": entro."
-    elif atteso > 0:
-        capo += ": non entro, Romeo questa non la prenderebbe."
-    else:
-        capo += ": non entro."
+    if romeo is not None:
+        capo += f" (e somiglia alle entrate di Romeo al {romeo:.0%})"
+    capo += ": entro." if entra else ": non entro."
     righe.append(capo)
     return "\n".join(righe)
 

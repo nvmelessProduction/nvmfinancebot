@@ -38,19 +38,13 @@ class Storico:
     # quanto un'operazione somiglia a Romeo (`spec/capo.md`).
     romeo_x: Optional[np.ndarray] = None
     romeo_y: Optional[np.ndarray] = None
-    romeo_rr1: Optional[np.ndarray] = None
-    romeo_rr2: Optional[np.ndarray] = None
-    romeo_costi: Optional[np.ndarray] = None
-    romeo_quante: int = 0
 
     @classmethod
     def carica(cls, percorso) -> "Storico":
         with np.load(percorso) as f:
             c = lambda k: f[k] if k in f.files else None
             return cls(f["x"], f["tp1"].astype(bool), f["tp2"].astype(bool), c("erre"), c("quando"), c("kelly_f"), c("kelly_r"),
-                       c("romeo_x"), None if c("romeo_y") is None else f["romeo_y"].astype(bool),
-                       c("romeo_rr1"), c("romeo_rr2"), c("romeo_costi"),
-                       int(f["romeo_quante"]) if "romeo_quante" in f.files else 0)
+                       c("romeo_x"), None if c("romeo_y") is None else f["romeo_y"].astype(bool))
 
 
 def _x(s: Seguita) -> list[float]:
@@ -114,11 +108,9 @@ def riunione(
         quando = np.r_[storico.quando, [s.esito["quando"] for s in finite]]
         pesi = pesi_per_eta(quando, int(quando.max()))
     nuovo = Capo.allena(x, tp1, tp2, interazioni=tuple(c for _, c in scelti), pesi=pesi)
-    romeo = storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) and storico.romeo_quante > 0
+    romeo = storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) and storico.romeo_y.any()
     if romeo:
-        # La somiglianza a Romeo si rifa' col guadagno atteso nuovo: la soglia dipende da quello.
-        nuovo = nuovo.impara_romeo(storico.romeo_x, storico.romeo_y, storico.romeo_rr1, storico.romeo_rr2,
-                                   storico.romeo_costi, storico.romeo_quante)
+        nuovo = nuovo.impara_romeo(storico.romeo_x, storico.romeo_y)
     prima, dopo = fiducia_per_agente(capo), fiducia_per_agente(nuovo)
 
     settimanali: dict[str, list[int]] = {}
@@ -155,16 +147,18 @@ def riunione(
     r = np.r_[storico.kelly_r if storico.kelly_r is not None else [], [s.esito["erre"] for s in dal_vivo]]
     nuova_parte = impara_parte(f, r) if len(f) else parte
     if romeo:
-        simili = [s for s in nuove if s.romeo >= nuovo.soglia_romeo]
         pesi_romeo = sorted(nuovo.fiducia_romeo(), key=lambda a: -a[1])
+        prese_simili = [s.romeo for s in nuove if s.entrata]
+        scartate_simili = [s.romeo for s in nuove if not s.entrata]
         righe += [
             "",
-            f"Capo, su Romeo: mi sono riallenato anche sulle sue {int(storico.romeo_y.sum())} entrate del 2023. "
-            f"Le sue scelte hanno soprattutto: {', '.join(n for n, w in pesi_romeo[:3] if w > 0)}. "
-            f"Da oggi entro solo sopra il {nuovo.soglia_romeo:.0%} di somiglianza "
-            f"(era {capo.soglia_romeo:.0%}); questa settimana {len(simili)} decisioni su {len(nuove)} "
-            "l'avrebbero superata.",
+            f"Capo, su Romeo: ho ripassato le sue {int(storico.romeo_y.sum())} entrate del 2023. "
+            f"Le sue scelte hanno soprattutto: {', '.join(n for n, w in pesi_romeo[:3] if w > 0)}.",
         ]
+        if prese_simili and scartate_simili:
+            righe.append(f"  Questa settimana le mie prese gli somigliavano in media al {np.mean(prese_simili):.0%}, "
+                         f"le scartate al {np.mean(scartate_simili):.0%}. Quanto pesano le risposte alla Romeo "
+                         "lo imparo dai risultati, come per tutti.")
     righe += [
         "",
         f"Rischio: rifatti i conti su {len(f)} puntate ({len(dal_vivo)} dal vivo), la parte del Kelly che fa crescere "
