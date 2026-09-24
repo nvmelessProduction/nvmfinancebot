@@ -32,13 +32,32 @@ from nvm.prova.campo import Operazione
 from nvm.tempo import TF
 
 
-def piano(s: Scatto, basse: Candele, parziale: float = 0.5, pareggio: bool = True) -> Optional[Operazione]:
-    """L'operazione del manuale per uno scatto, o None se non si puo' fare."""
+# Lo stop stretto sta oltre il livello del Model#1 di questa frazione
+# dell'escursione della candela del turtle soup.
+MARGINE_STOP_STRETTO = 0.10
+
+
+def piano(
+    s: Scatto, basse: Candele, parziale: float = 0.5, pareggio: bool = True,
+    stop_stretto: bool = False,
+) -> Optional[Operazione]:
+    """L'operazione del manuale per uno scatto, o None se non si puo' fare.
+
+    `stop_stretto` e' la variante dichiarata: lo stop appena oltre il livello
+    del Model#1 (l'apertura della candela del turtle soup) invece che oltre
+    l'estremo. E' quello che Romeo fa nelle operazioni che ha pubblicato:
+    stop di 1-5 pip su EURUSD e GBPUSD, e sull'oro il 17/07/2024 stop a 2474
+    con il livello a 2473,26 (`casi/CASO-004.md`).
+    """
     crt = s.crt
     short = crt.verso is Verso.SHORT
     # Si vende in bid e si compra in ask, alla chiusura della candela che scatta.
     ingresso = float((basse.bid if short else basse.ask)[s.indice, CHIUSURA])
-    stop = crt.estremo_a(s.quando)
+    if stop_stretto:
+        margine = MARGINE_STOP_STRETTO * (s.turtle_soup_massimo - s.turtle_soup_minimo)
+        stop = s.livello + margine if short else s.livello - margine
+    else:
+        stop = crt.estremo_a(s.quando)
     if stop is None:
         return None
     tp1, tp2 = crt.crt_50, (crt.crt_low if short else crt.crt_high)

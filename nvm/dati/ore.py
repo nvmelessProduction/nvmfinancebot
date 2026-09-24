@@ -32,20 +32,28 @@ def _mesi(dal: int, al: int) -> list[tuple[int, int]]:
     return [(int(str(m)[:4]), int(str(m)[5:7])) for m in np.arange(inizio, fine + 1)]
 
 
-def carica(radice: Path, strumento: str, dal: int, al: int) -> tuple[Minuti, Resoconto]:
-    """Le ore in [dal, al). `radice` contiene le cartelle `ore` e `ore_bid`."""
+def carica(radice: Path, strumento: str, dal: int, al: int, solo_bid: bool = False) -> tuple[Minuti, Resoconto]:
+    """Le ore in [dal, al). `radice` contiene le cartelle `ore` e `ore_bid`.
+
+    Con `solo_bid` i mesi senza ask si prendono anche senza modello di
+    spread, con l'ask uguale al bid: serve per riconoscere i CRT, che
+    guardano solo il bid. Mai per misurare risultati.
+    """
     esatti_tutti = [Minuti.carica(p) for p in sorted((radice / "ore" / strumento).glob("*.npz"))]
     esatti_tutti = [m for m in esatti_tutti if len(m)]
     modello = ModelloSpread.da(esatti_tutti) if esatti_tutti else None
     pezzi, conti = [], Resoconto(0, 0, 0)
     for anno, mese in _mesi(dal, al):
         esatto = file_del_mese(radice / "ore", strumento, anno, mese)
-        solo_bid = file_del_mese(radice / "ore_bid", strumento, anno, mese)
+        solo_bid_p = file_del_mese(radice / "ore_bid", strumento, anno, mese)
         if esatto.exists():
             pezzi.append(Minuti.carica(esatto))
             conti.esatti += 1
-        elif solo_bid.exists() and modello is not None:
-            pezzi.append(modello.applica(Minuti.carica(solo_bid)))
+        elif solo_bid_p.exists() and modello is not None:
+            pezzi.append(modello.applica(Minuti.carica(solo_bid_p)))
+            conti.stimati += 1
+        elif solo_bid_p.exists() and solo_bid:
+            pezzi.append(Minuti.carica(solo_bid_p))
             conti.stimati += 1
         else:
             conti.mancanti += 1

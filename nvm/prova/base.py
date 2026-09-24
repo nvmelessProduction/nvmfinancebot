@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from nvm.agenti.cacciatore import Variante, Verso, caccia
-from nvm.agenti.grilletto import scatti
+from nvm.agenti.grilletto import scatto
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import Candele
 from nvm.prova.campo import Uscita, simula
@@ -40,20 +40,39 @@ class Risultato:
     rischio: float
 
 
-def opera(alte: Candele, basse: Candele, dal: int, al: int, variante: Variante = Variante.MANUALE) -> list[Risultato]:
+# Quante volte il Grilletto puo' sparare sullo stesso CRT: dopo la prima,
+# solo dopo uno stop e con un turtle soup nuovo (`spec/grilletto.md`). La
+# candela che prende lo stop puo' essere lei stessa il turtle soup nuovo: e'
+# la spinta che spazza e poi crolla ("one last turtle soup", il KOD).
+COLPI_PER_CRT = 3
+
+
+def opera(
+    alte: Candele, basse: Candele, dal: int, al: int,
+    variante: Variante = Variante.MANUALE, stop_stretto: bool = False,
+) -> list[Risultato]:
     """Tutte le operazioni del manuale con ingresso in [dal, al)."""
     risultati = []
-    for s in scatti(caccia(alte, basse, variante), basse):
-        if not dal <= s.quando < al:
-            continue
-        op = piano(s, basse)
-        if op is None:
-            continue
-        esito = simula(op, basse, scadenza(s))
-        risultati.append(Risultato(
-            op.strumento, alte.tf, basse.tf, op.verso, op.quando, esito.erre,
-            esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio,
-        ))
+    for crt in caccia(alte, basse, variante):
+        dopo = None
+        for _ in range(COLPI_PER_CRT):
+            s = scatto(crt, basse, dopo)
+            if s is None:
+                break
+            op = piano(s, basse, stop_stretto=stop_stretto)
+            if op is None:
+                break
+            esito = simula(op, basse, scadenza(s))
+            if dal <= s.quando < al:
+                risultati.append(Risultato(
+                    op.strumento, alte.tf, basse.tf, op.verso, op.quando, esito.erre,
+                    esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio,
+                ))
+            if esito.uscita is not Uscita.STOP:
+                break
+            # Il turtle soup nuovo puo' cominciare dalla candela dello stop.
+            dopo = int(basse.inizio[int(np.searchsorted(basse.fine, esito.quando))])
+    risultati.sort(key=lambda r: r.quando)
     return risultati
 
 

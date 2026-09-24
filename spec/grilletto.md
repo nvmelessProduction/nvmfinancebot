@@ -41,8 +41,12 @@ Non guarda key level, orari o SMT: sono Conferme e Contesto.
    "confirmed with close below". Conta il corpo, non l'ombra. Si entra alla
    chiusura di quella candela.
 
-5. **Una volta sola** **[D]**. Un CRT, un ingresso: dopo lo scatto il
-   Grilletto non spara più su quel CRT.
+5. **Fino a tre tentativi** **[D]**, corretto dal CASO-004. Dopo uno stop il
+   Grilletto può sparare ancora sullo stesso CRT, finché è armato, ma solo
+   con un turtle soup **nuovo**. La candela che prende lo stop può essere lei
+   stessa il turtle soup nuovo: è la spinta che spazza e poi crolla, il
+   "kiss of death" di Romeo ("there's always one last turtle soup"). Nel
+   CASO-004 l'operazione di Romeo è proprio il secondo Model#1.
 
 ## Cosa risponde
 
@@ -55,7 +59,7 @@ Non guarda key level, orari o SMT: sono Conferme e Contesto.
 | Cosa | Chi | Punto di partenza | Fonte |
 |---|---|---|---|
 | Stop | Livelli | appena oltre l'estremo del turtle soup | **[R]** msg 163: "turtle soup high has to be the ceiling" |
-| Stop, variante | Livelli | più stretto, dentro l'ombra | l'operazione vera di Romeo su GBPUSD del 29/03/2024 sembra avere lo stop sotto il massimo dell'ombra: **da verificare sui dati** (`casi/`) |
+| Stop, **variante dichiarata "stop stretto"** | Livelli | oltre il livello del Model#1, più il 10% dell'escursione della candela del turtle soup | è quello che Romeo fa nelle operazioni pubblicate: stop di 1–5 pip su EURUSD e GBPUSD; sull'oro (CASO-004) stop 2474.00 contro 2474.47 del bot. La misura decide fra le due |
 | Primo target | Livelli | `CRT 50%` | **[R]** "the 50% is almost always guaranteed" (msg 6561) |
 | Target finale | Livelli | il lato opposto del range | **[R]** "take profit at 50% and then CRTH/L" |
 | Ingresso già oltre il 50% | Livelli | niente operazione: il primo target starebbe alle spalle | **[D]**, nel vecchio bot "12 posizioni su 17 morte in 6 secondi" |

@@ -112,3 +112,29 @@ def test_niente_sbirciate():
         allora = {(s.crt.range_inizio, s.crt.verso, s.quando, s.livello) for s in scatti(caccia(a, b), b)}
         attesi = {(s.crt.range_inizio, s.crt.verso, s.quando, s.livello) for s in tutti if s.quando <= istante}
         assert allora == attesi, istante
+
+
+def test_dopo_uno_stop_si_ritenta_con_un_turtle_soup_nuovo():
+    from nvm.prova.base import opera
+
+    # Primo Model#1, poi una spinta nuova (rialzista, oltre il vecchio
+    # estremo) che prende lo stop e fa da turtle soup; poi il crollo.
+    quarti = SALITA + [
+        TURTLE_SOUP, (1.1120, 1.1125, 1.1095, 1.1085),      # scatto 1
+        (1.1085, 1.1150, 1.1084, 1.1145),                    # stop, e turtle soup nuovo
+        (1.1145, 1.1146, 1.1060, 1.1070),                    # scatto 2
+        (1.1070, 1.1071, 1.0990, 1.0995),                    # target
+    ]
+    crt, b = _crt(quarti)
+    a = candele("EURUSD", TF.H4, ALTE)
+    r = opera(a, b, C1, C3 + 4 * 3600)
+    corti = [x for x in r if x.verso is Verso.SHORT]
+    assert [x.uscita.value for x in corti] == ["stop", "target"]
+
+
+def test_stop_stretto_oltre_il_livello():
+    crt, b = _crt(SALITA + [TURTLE_SOUP, (1.1120, 1.1125, 1.1095, 1.1100), (1.1100, 1.1102, 1.1080, 1.1085)])
+    s = scatto(crt, b)
+    op = piano(s, b, stop_stretto=True)
+    # Livello 1.1090 piu' il 10% dell'escursione del turtle soup (1.1130 - 1.1088).
+    assert op.stop == pytest.approx(1.1090 + 0.1 * (1.1130 - 1.1088))

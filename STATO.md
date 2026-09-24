@@ -14,6 +14,12 @@ file. Il piano completo è in `PIANO.md`.
   decise sulle fonti, con una variante dichiarata (`spec/cacciatore.md`).
 - **Manca:** i casi presi dai grafici pubblicati da Romeo; le schede del
   Grilletto (Model#1) e degli altri agenti.
+- **Casi verificati sui dati:** CASO-002 (EURUSD giornaliero), CASO-003
+  (EURUSD mensile), CASO-004 (XAUUSD giornaliero). Hanno corretto tre
+  regole: la durata dell'operazione (due volte), i tentativi del Grilletto,
+  e hanno fatto nascere la variante "stop stretto".
+- **Varianti dichiarate:** 2 su 3. "Chiusura dentro" per il Cacciatore,
+  "stop stretto" per Livelli.
 - **Già pronto per la Fase C:** il codice del Cacciatore
   (`nvm/agenti/cacciatore.py`), con la variante dichiarata e le prove sugli
   schemi di Romeo, compresa quella che controlla che non sbirci il futuro.

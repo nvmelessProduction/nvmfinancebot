@@ -29,25 +29,33 @@ class Scatto:
     indice: int
     livello: float
     turtle_soup_inizio: int
+    # Massimo e minimo della candela del turtle soup: servono allo stop stretto.
+    turtle_soup_massimo: float
+    turtle_soup_minimo: float
 
 
-def scatto(crt: CRT, basse: Candele) -> Optional[Scatto]:
-    """Il Model#1 su un CRT, se scatta mentre il CRT e' armato."""
-    i = int(np.searchsorted(basse.inizio, crt.manipolazione_inizio))
+def scatto(crt: CRT, basse: Candele, dopo: Optional[int] = None) -> Optional[Scatto]:
+    """Il Model#1 su un CRT, se scatta mentre il CRT e' armato.
+
+    Con `dopo` si guardano solo le candele che aprono da quell'istante in poi:
+    serve per sparare di nuovo dopo uno stop, con un turtle soup nuovo.
+    """
+    inizio = crt.manipolazione_inizio if dopo is None else max(crt.manipolazione_inizio, dopo)
+    i = int(np.searchsorted(basse.inizio, inizio))
     # Le candele che chiudono prima che il CRT decada: quella che lo fa
     # decadere (per esempio toccando il lato opposto) e' gia' troppo tardi.
     j = int(np.searchsorted(basse.fine, crt.decaduto_quando, side="left"))
     short = crt.verso is Verso.SHORT
     livello: Optional[float] = None
-    turtle_soup_inizio = 0
+    ts = (0, 0.0, 0.0)
     for n in range(i, j):
         o, h, l, c = (float(x) for x in basse.bid[n, [APERTURA, MASSIMO, MINIMO, CHIUSURA]])
         if livello is not None and (c < livello if short else c > livello):
-            return Scatto(crt, int(basse.fine[n]), n, livello, turtle_soup_inizio)
+            return Scatto(crt, int(basse.fine[n]), n, livello, *ts)
         # La candela del turtle soup: rialzista oltre CRT high per uno short,
         # ribassista oltre CRT low per un long. Una piu' recente sposta il livello.
         if (c > o and h > crt.crt_high) if short else (c < o and l < crt.crt_low):
-            livello, turtle_soup_inizio = o, int(basse.inizio[n])
+            livello, ts = o, (int(basse.inizio[n]), h, l)
     return None
 
 
