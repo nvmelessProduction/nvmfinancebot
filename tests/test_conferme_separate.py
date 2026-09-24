@@ -228,3 +228,54 @@ class TestLeConfermeSiValutanoSuOgniCoppia:
         """
         assert stp.crt11_cisd([N2], Bias.SHORT) is None
         assert stp.crt11_cisd([], Bias.SHORT) is None
+
+
+class TestCrt11RilevaIlCisdAvvenuto:
+    """Non "esiste una serie da rompere": "e' stata rotta".
+
+    Le fonti: il CISD e' la chiusura oltre l'apertura della precedente
+    consegna -- apertura/chiusura, e stampa prima dell'MSS che rompe uno
+    swing su massimi e minimi.
+
+    Fino al 24/09 la conferma faceva `cisd(...) is not None`, cioe' una
+    domanda diversa e quasi sempre vera: bastava una candela contraria in
+    coda. Il ramo armato lo faceva gia' giusto (`ingresso_ltf.controlla`
+    verifica `ultima.chiusura > candidato`): due implementazioni della stessa
+    regola che rispondevano a due domande.
+    """
+
+    def _serie(self, chiusura_finale):
+        """Due candele ribassiste (consegna al ribasso) e una che le rompe."""
+        return [
+            cand(massimo=110, minimo=104, chiusura=105, apertura=109),
+            cand(massimo=106, minimo=101, chiusura=102, apertura=105),
+            cand(massimo=112, minimo=101, chiusura=chiusura_finale, apertura=102),
+        ]
+
+    def test_rotto_verso_l_alto_e_un_cisd(self):
+        """Il livello e' l'apertura della PRIMA contraria: 109."""
+        assert stp.crt11_cisd(self._serie(110), Bias.LONG) is True
+
+    def test_non_rotto_non_e_un_cisd(self):
+        """La serie c'e' ma nessuno l'ha superata: e' `False`, non `True`."""
+        assert stp.crt11_cisd(self._serie(106), Bias.LONG) is False
+
+    def test_senza_serie_contraria_non_c_e_nulla_da_rompere(self):
+        salgono = [cand(massimo=110, minimo=100, chiusura=109, apertura=101),
+                   cand(massimo=112, minimo=108, chiusura=111, apertura=109)]
+        assert stp.crt11_cisd(salgono, Bias.LONG) is None
+
+    def test_con_una_candela_sola_non_si_puo_dire(self):
+        assert stp.crt11_cisd([cand(110, 100, 105, 109)], Bias.LONG) is None
+        assert stp.crt11_cisd([], Bias.LONG) is None
+
+    def test_le_due_strade_fanno_la_stessa_domanda(self):
+        """Il ramo armato e la conferma devono chiedere la stessa cosa."""
+        import inspect
+        from core import ingresso_ltf
+        armato = inspect.getsource(ingresso_ltf.controlla)
+        conferma = inspect.getsource(stp.crt11_cisd)
+        for corpo in (armato, conferma):
+            assert "cisd(" in corpo
+            assert "chiusura >" in corpo or "chiusura <" in corpo, (
+                "una delle due non verifica la ROTTURA")

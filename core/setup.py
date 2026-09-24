@@ -772,19 +772,44 @@ CISD_CANDELE_MINIME: Final[int] = 2
 
 
 def crt11_cisd(candele_ingresso: Sequence[Candela], direzione: Bias) -> Optional[bool]:
-    """CRT-11 — C'e' un cambio di carattere sul timeframe di ingresso?
+    """CRT-11 — il cambio di stato della consegna e' AVVENUTO?
 
-    Con l'ingresso di CRT-13 questa e' INTRINSECA: il CISD e' il primo passo
-    della sequenza. Resta perche' il responso serve a chi pesa.
+    Le fonti: il CISD e' *"la chiusura del prezzo oltre l'apertura della
+    precedente consegna"* -- si misura su apertura e chiusura, e stampa prima
+    dell'MSS, che invece rompe uno swing e si misura su massimi e minimi.
+
+    Due passi, e servono entrambi:
+
+    1. `definizioni.cisd` trova il LIVELLO: risale la serie di candele
+       contrarie in coda e restituisce l'apertura della prima;
+    2. si guarda se l'ultima barra ha CHIUSO oltre quel livello.
+
+    ## Il difetto, trovato il 2026-09-24
+
+    Qui c'era `cisd(...) is not None`, cioe' *"esiste una serie da rompere"* e
+    non *"e' stata rotta"*. Una domanda diversa, e quasi sempre vera: bastava
+    una candela contraria in coda. Il ramo armato lo faceva gia' giusto --
+    `ingresso_ltf.controlla` verifica `ultima.chiusura > candidato` -- quindi
+    erano due implementazioni della stessa regola che rispondevano a due
+    domande. E' la conferma che il documento chiama *"l'unica che regge"*:
+    misurarla sbagliata avrebbe insegnato alla Fase 2 il valore di un segnale
+    che non e' quello.
 
     Con meno di `CISD_CANDELE_MINIME` barre si risponde `None`, non `False`:
-    un CISD che non si puo' cercare non e' un CISD che manca. Trasformare
-    "non lo so" in "no" e' proprio cio' che questo file vieta -- e qui
-    costerebbe caro, perche' su `False` il setup si arma e aspetta.
+    un CISD che non si puo' cercare non e' un CISD che manca, e su `False` il
+    setup si arma e aspetta.
     """
     if len(candele_ingresso) < CISD_CANDELE_MINIME:
         return None
-    return cisd(candele_ingresso, direzione) is not None
+    # Il livello si cerca sulle barre PRECEDENTI l'ultima: la serie contraria
+    # e' quella che l'ultima deve rompere, non quella che la comprende.
+    livello = cisd(candele_ingresso[:-1], direzione)
+    if livello is None:
+        return None
+    ultima = candele_ingresso[-1]
+    if direzione is Bias.LONG:
+        return ultima.chiusura > livello
+    return ultima.chiusura < livello
 
 
 def crt12_smt(
