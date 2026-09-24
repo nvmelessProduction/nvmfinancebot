@@ -768,6 +768,9 @@ def interroga_conferme(
         candele_strumento=basse,
         strumento=foto.strumento,
         crt_per_tf=foto.crt_per_tf,
+        # Le barre VERE della fase di manipolazione: CRT-10 e CRT-18 leggono
+        # la forma delle candele, e la sintetica ne rappresenta una sola.
+        barre_fase=getattr(crt, "barre_fase", ()),
     )
     if ok or diagnostico:
         return RespondoConferme(responso=responso)

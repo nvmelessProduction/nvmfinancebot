@@ -67,6 +67,14 @@ class Crt:
     n1: Candela
     n2: Candela
     key_level: KeyLevel
+    # Le barre VERE della fase di manipolazione, dalla prima che supera il
+    # livello a quella che rientra. `n2` le impacchetta in una candela sola
+    # per lo stop e per la chiusura, ma l'impacchettamento perde informazione
+    # che due conferme leggono: `CRT-10` vuole sapere se una barra ha spazzato
+    # ENTRAMBI i lati, `CRT-18` vuole l'ombra vera di quella che ha spazzato.
+    # Con la sola sintetica la prima non risultava mai e la seconda risultava
+    # sempre -- misurato su 226 decisioni il 2026-09-24.
+    barre_fase: tuple[Candela, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -140,7 +148,7 @@ def _manipolazione_e_rientro(
     c_rif: Candela,
     barre: Sequence[Candela],
     verso: Bias,
-) -> Optional[tuple[float, Candela]]:
+) -> Optional[tuple[float, Candela, tuple[Candela, ...]]]:
     """SETUP-02 — Cerca manipolazione e rientro DENTRO la candela successiva.
 
     Il documento e' esplicito su dove guardare:
@@ -157,14 +165,20 @@ def _manipolazione_e_rientro(
     `barre` sono le candele del timeframe di ESECUZIONE che cadono dentro la
     candela di riferimento successiva, in ordine.
 
-    Restituisce `(sweep, barra_del_rientro)`: lo sweep e' l'estremo piu'
-    lontano raggiunto oltre il livello -- il documento lo chiama `sweep_high`
-    -- ed e' li' che GEST-02 mette lo stop.
+    Restituisce `(sweep, barra_del_rientro, barre_della_fase)`: lo sweep e'
+    l'estremo piu' lontano raggiunto oltre il livello -- il documento lo
+    chiama `sweep_high` -- ed e' li' che GEST-02 mette lo stop.
+
+    Le barre della fase sono quelle VERE, dalla prima che supera il livello a
+    quella che rientra. Servono alle conferme che leggono la forma delle
+    candele e non i soli livelli: `CRT-10` (una barra ha spazzato entrambi i
+    lati?) e `CRT-18` (il punto medio dell'ombra di chi ha spazzato).
 
     `None` se la sequenza non si e' completata.
     """
     livello = c_rif.massimo if verso is Bias.SHORT else c_rif.minimo
     sweep: Optional[float] = None
+    fase: list[Candela] = []
 
     for barra in barre:
         superato = (barra.massimo > livello if verso is Bias.SHORT
@@ -176,6 +190,9 @@ def _manipolazione_e_rientro(
             else:
                 sweep = max(sweep, estremo) if verso is Bias.SHORT else min(sweep, estremo)
 
+        if sweep is not None:
+            fase.append(barra)
+
         # "una barra successiva O LA STESSA": il rientro puo' avvenire sulla
         # barra che ha manipolato, e per questo il controllo sta qui sotto e
         # non in un secondo giro.
@@ -184,7 +201,7 @@ def _manipolazione_e_rientro(
         rientrato = (barra.chiusura < livello if verso is Bias.SHORT
                      else barra.chiusura > livello)
         if rientrato:
-            return sweep, barra
+            return sweep, barra, tuple(fase)
     return None
 
 
@@ -248,10 +265,11 @@ def crt_short(
     esito = _manipolazione_e_rientro(c_rif, barre, Bias.SHORT)
     if esito is None:
         return None
-    sweep, rientro = esito
+    sweep, rientro, fase = esito
     if sweep <= key_level.valore:          # presa del key level (DEF-38)
         return None
-    return Crt(Bias.SHORT, tf_crt, c_rif, _n2_sintetica(sweep, rientro, Bias.SHORT), key_level)
+    return Crt(Bias.SHORT, tf_crt, c_rif,
+               _n2_sintetica(sweep, rientro, Bias.SHORT), key_level, fase)
 
 
 def crt_long(
@@ -268,10 +286,11 @@ def crt_long(
     esito = _manipolazione_e_rientro(c_rif, barre, Bias.LONG)
     if esito is None:
         return None
-    sweep, rientro = esito
+    sweep, rientro, fase = esito
     if sweep >= key_level.valore:
         return None
-    return Crt(Bias.LONG, tf_crt, c_rif, _n2_sintetica(sweep, rientro, Bias.LONG), key_level)
+    return Crt(Bias.LONG, tf_crt, c_rif,
+               _n2_sintetica(sweep, rientro, Bias.LONG), key_level, fase)
 
 
 def cerca_crt(
@@ -790,16 +809,32 @@ def crt12_smt(
     return any(giudizi) if giudizi else None
 
 
-def crt10_double_purge(n1: Candela, n2: Candela, direzione: Bias) -> Optional[bool]:
-    """CRT-10 — Se e' un Double Purge, il lato piu' respinto concorda?
+def crt10_double_purge(
+    n1: Candela, barre_fase: Sequence[Candela], direzione: Bias
+) -> Optional[bool]:
+    """CRT-10 — Se c'e' un Double Purge, il lato piu' respinto concorda?
 
-    Se la candela non e' un double purge la regola non ha nulla da dire:
+    Le fonti: *"una singola candela spazza la liquidita' sopra E sotto il
+    range, e per essere valida deve chiudere dentro entrambi gli estremi"*.
+    Quindi si guarda barra per barra, sulle barre VERE della fase di
+    manipolazione.
+
+    Fino al 2026-09-24 riceveva `n2`, la candela sintetica: quella impacchetta
+    un lato solo -- per uno short il massimo e' lo sweep e il minimo non
+    scende mai sotto il range -- quindi un double purge non poteva risultare
+    mai. Misurato: 226 decisioni, 226 volte `None`.
+
+    Se nessuna barra e' un double purge la regola non ha nulla da dire:
     `None`, non `False`.
     """
-    if not double_purge(n1, n2):
-        return None
-    verso = verso_del_double_purge(n2)
-    return None if verso is Bias.NESSUNA else verso is direzione
+    for barra in barre_fase:
+        if not double_purge(n1, barra):
+            continue
+        verso = verso_del_double_purge(barra)
+        if verso is Bias.NESSUNA:
+            continue
+        return verso is direzione
+    return None
 
 
 def crt15_finestra_ny(istante: datetime, tf_crt: TF) -> Optional[bool]:
@@ -820,14 +855,48 @@ def crt17_meta_range(
     return tenuta is direzione
 
 
-def crt18_meta_ombra(n2: Candela, direzione: Bias) -> Optional[bool]:
-    """CRT-18 — N2 chiude oltre il punto medio della propria ombra?"""
-    meta = meta_ombra(n2, superiore=(direzione is Bias.SHORT))
+def crt18_meta_ombra(
+    barre_fase: Sequence[Candela], direzione: Bias
+) -> Optional[bool]:
+    """CRT-18 — il punto medio dell'ombra tiene, o il prezzo lo attraversa?
+
+    *"Il punto medio dell'ombra e' un livello. Tenerlo favorisce la
+    continuazione, attraversarlo invalida."*
+
+    E' un LIVELLO, e la domanda riguarda cio' che succede DOPO. Il punto medio
+    si calcola sull'ombra della barra che ha spazzato -- la piu' estrema della
+    fase -- e poi si guarda se le barre successive lo tengono.
+
+    ## Due difetti, misurati il 2026-09-24
+
+    La versione precedente confrontava la chiusura della candela con la
+    propria ombra: `chiusura <= meta_ombra`. **E' una tautologia.** Il punto
+    medio sta fra il corpo e l'estremo, quindi la chiusura ci sta sempre
+    sotto, per qualunque candela. Su 226 decisioni ha risposto `True` 226
+    volte -- e una costante non e' un segnale.
+
+    Riceveva inoltre `n2`, la candela sintetica, la cui ombra va dal rientro
+    fino allo sweep: enorme per costruzione.
+
+    `None` quando non c'e' una barra dopo quella che ha spazzato: il livello
+    esiste ma nessuno l'ha ancora messo alla prova, e "non lo so" non e' "no".
+    """
+    if not barre_fase:
+        return None
+    corta = direzione is Bias.SHORT
+    indice = max(range(len(barre_fase)),
+                 key=lambda i: barre_fase[i].massimo if corta
+                 else -barre_fase[i].minimo)
+    meta = meta_ombra(barre_fase[indice], superiore=corta)
     if meta is None:
         return None
-    if direzione is Bias.SHORT:
-        return n2.chiusura <= meta
-    return n2.chiusura >= meta
+
+    dopo = barre_fase[indice + 1:]
+    if not dopo:
+        return None
+    if corta:
+        return all(c.chiusura <= meta for c in dopo)
+    return all(c.chiusura >= meta for c in dopo)
 
 
 def crt06_allineamento(
@@ -858,6 +927,7 @@ def conferme_di_romeo(
     strumento: str = "",
     crt_per_tf: Optional[Mapping[TF, Any]] = None,
     peso_ombre_minimo: float = PESO_OMBRE_MINIMO,
+    barre_fase: Sequence[Candela] = (),
 ) -> tuple[bool, tuple[str, ...], dict[str, Optional[bool]]]:
     """TUTTE le conferme di Romeo. Restituisce anche COSA HA DETTO CIASCUNA.
 
@@ -900,10 +970,10 @@ def conferme_di_romeo(
     registra("CRT-11", crt11_cisd(candele_ingresso, direzione))
     registra("CRT-12", crt12_smt(
         strumento, candele_strumento, candele_compagne, direzione))
-    registra("CRT-10", crt10_double_purge(n1, n2, direzione))
+    registra("CRT-10", crt10_double_purge(n1, barre_fase, direzione))
     registra("CRT-15", crt15_finestra_ny(istante, tf_crt))
     registra("CRT-17", crt17_meta_range(n1, candele_ingresso, direzione))
-    registra("CRT-18", crt18_meta_ombra(n2, direzione))
+    registra("CRT-18", crt18_meta_ombra(barre_fase, direzione))
     registra("CRT-06", crt06_allineamento(crt_per_tf, tf_crt, direzione))
 
     return not blocchi, tuple(blocchi), responso

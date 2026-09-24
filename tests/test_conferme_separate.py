@@ -75,7 +75,20 @@ class TestOgnunaRispondeDaSola:
         """Non e' un no: e' "non ho nulla da dire". Trasformarlo in False
         spegnerebbe il bot senza dirlo."""
         piatta = cand(massimo=105, minimo=104, chiusura=104.5, apertura=104.5)
-        assert stp.crt10_double_purge(N1, piatta, Bias.SHORT) is None
+        assert stp.crt10_double_purge(N1, [piatta], Bias.SHORT) is None
+        assert stp.crt10_double_purge(N1, [], Bias.SHORT) is None
+
+    def test_il_double_purge_si_cerca_barra_per_barra(self):
+        """Le fonti: *una singola candela spazza sopra E sotto il range, e per
+        essere valida chiude dentro entrambi gli estremi*.
+
+        Fino al 24/09 la regola riceveva la candela SINTETICA, che impacchetta
+        un lato solo: su 226 decisioni ha risposto `None` 226 volte.
+        """
+        # N1 va da 100 a 110. Una barra che spazza entrambi e richiude dentro.
+        doppia = cand(massimo=112, minimo=98, chiusura=104, apertura=106)
+        innocua = cand(massimo=105, minimo=104, chiusura=104.5, apertura=104.5)
+        assert stp.crt10_double_purge(N1, [innocua, doppia], Bias.SHORT) is not None
 
     def test_senza_altri_timeframe_l_allineamento_tace(self):
         assert stp.crt06_allineamento(None, TF.H4, Bias.SHORT) is None
@@ -89,9 +102,32 @@ class TestOgnunaRispondeDaSola:
         assert stp.crt06_allineamento(per_tf, TF.H4, Bias.SHORT) is True
         assert stp.crt06_allineamento(per_tf, TF.H4, Bias.LONG) is False
 
-    def test_la_meta_dell_ombra(self):
-        assert stp.crt18_meta_ombra(N2, Bias.SHORT) in (True, False, None)
-        assert stp.crt18_meta_ombra(N2, Bias.LONG) in (True, False, None)
+    def test_la_meta_dell_ombra_usa_la_barra_che_ha_spazzato(self):
+        """L'ombra e' quella VERA della barra piu' estrema della fase.
+
+        Con la candela sintetica l'ombra e' enorme per costruzione e la
+        chiusura ci sta sempre dalla parte giusta: 226 `True` su 226.
+        """
+        assert stp.crt18_meta_ombra([], Bias.SHORT) is None
+        # La barra che spazza: ombra alta da 101 a 120, punto medio 110,5.
+        spazza = cand(massimo=120, minimo=99, chiusura=100, apertura=101)
+        # Da sola non basta: il livello esiste ma nessuno l'ha messo alla prova.
+        assert stp.crt18_meta_ombra([spazza], Bias.SHORT) is None
+        # La barra dopo chiude sotto il punto medio: tiene.
+        sotto = cand(massimo=108, minimo=99, chiusura=103, apertura=105)
+        assert stp.crt18_meta_ombra([spazza, sotto], Bias.SHORT) is True
+        # La barra dopo chiude sopra: lo attraversa.
+        sopra = cand(massimo=118, minimo=105, chiusura=115, apertura=106)
+        assert stp.crt18_meta_ombra([spazza, sopra], Bias.SHORT) is False
+
+    def test_la_vecchia_versione_era_una_tautologia(self):
+        """`chiusura <= meta_ombra` non puo' che essere vero: il punto medio
+        sta fra il corpo e l'estremo, e la chiusura non supera mai il corpo."""
+        from core.definizioni import meta_ombra
+        for c in (cand(massimo=120, minimo=99, chiusura=100, apertura=101),
+                  cand(massimo=120, minimo=99, chiusura=119, apertura=101),
+                  cand(massimo=111, minimo=108, chiusura=110, apertura=109)):
+            assert c.chiusura <= meta_ombra(c, superiore=True)
 
 
 class TestIlDispacciatoreNonAggiungeNulla:
@@ -110,10 +146,10 @@ class TestIlDispacciatoreNonAggiungeNulla:
             "CRT-20": stp.crt20_peso_ombre(N2),
             "CRT-11": stp.crt11_cisd([], Bias.SHORT),
             "CRT-12": stp.crt12_smt("", None, None, Bias.SHORT),
-            "CRT-10": stp.crt10_double_purge(N1, N2, Bias.SHORT),
+            "CRT-10": stp.crt10_double_purge(N1, (), Bias.SHORT),
             "CRT-15": stp.crt15_finestra_ny(istante, TF.H4),
             "CRT-17": stp.crt17_meta_range(N1, [], Bias.SHORT),
-            "CRT-18": stp.crt18_meta_ombra(N2, Bias.SHORT),
+            "CRT-18": stp.crt18_meta_ombra((), Bias.SHORT),
             "CRT-06": stp.crt06_allineamento(None, TF.H4, Bias.SHORT),
         }
         assert responso == a_mano
