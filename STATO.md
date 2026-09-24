@@ -14,13 +14,19 @@ file. Il piano completo è in `PIANO.md`.
   decise sulle fonti, con una variante dichiarata (`spec/cacciatore.md`).
 - **Manca:** i casi presi dai grafici pubblicati da Romeo; le schede del
   Grilletto (Model#1) e degli altri agenti.
+- **Già pronto per la Fase C:** il codice del Cacciatore
+  (`nvm/agenti/cacciatore.py`), con la variante dichiarata e le prove sugli
+  schemi di Romeo, compresa quella che controlla che non sbirci il futuro.
+  Non si considera buono finché non passa i casi.
 
 **B.** Una fonte sola, candele ricostruite con la giornata che chiude alle
 17:00 di New York (`spec/dati.md`).
 
-- **Manca:** il codice dello scaricamento e dei controlli; lo scaricamento
-  dei vent'anni, che gira sulla VPS perché Dukascopy blocca i server
-  condivisi.
+- **Fatto:** scaricatore, candele, controlli (`nvm/dati/`, `scarica.py`).
+  Verificato il pacchetto del vecchio branch: minuti e orarie giusti, 4 ore
+  e giornaliere su confini sbagliati (`registro/verifica-dati-vecchi.md`).
+- **Manca:** lo scaricamento dei vent'anni, che gira sulla VPS perché
+  Dukascopy blocca i server condivisi.
 
 ### Cosa serve da te
 

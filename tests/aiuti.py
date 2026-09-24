@@ -39,3 +39,28 @@ def minuti_piatti(strumento: str, dal: int, al: int, prezzo: float = 1.1) -> Min
     """Un minuto ogni minuto fra due istanti, tutti allo stesso prezzo."""
     t = list(range(dal, al, 60))
     return minuti(strumento, t, [(prezzo, prezzo, prezzo, prezzo)] * len(t))
+
+
+def candele(strumento: str, tf, righe: list[tuple[int, float, float, float, float]]):
+    """Candele scritte a mano: (inizio, apertura, massimo, minimo, chiusura)."""
+    from nvm.dati.candele import Candele
+    from nvm.tempo import fine_candela
+
+    inizi = np.array([r[0] for r in righe], np.int64)
+    prezzi = np.array([r[1:] for r in righe], np.float64)
+    fini = np.array([fine_candela(int(i), tf) for i in inizi], np.int64)
+    return Candele(strumento, tf, inizi, fini, prezzi, prezzi.copy(), np.ones(len(righe)))
+
+
+def passeggiata(strumento: str, dal: int, al: int, seme: int = 1, prezzo: float = 1.1) -> Minuti:
+    """Minuti di una passeggiata casuale, per le prove senza sbirciate."""
+    rng = np.random.default_rng(seme)
+    t = np.arange(dal, al, 60, dtype=np.int64)
+    passi = rng.normal(0, 0.0002, len(t))
+    chiusure = prezzo + np.cumsum(passi)
+    aperture = np.r_[prezzo, chiusure[:-1]]
+    rumore = np.abs(rng.normal(0, 0.0001, (len(t), 2)))
+    massimi = np.maximum(aperture, chiusure) + rumore[:, 0]
+    minimi = np.minimum(aperture, chiusure) - rumore[:, 1]
+    prezzi = np.c_[aperture, massimi, minimi, chiusure]
+    return minuti(strumento, t.tolist(), [tuple(r) for r in prezzi])
