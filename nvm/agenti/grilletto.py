@@ -50,7 +50,11 @@ def scatto(crt: CRT, basse: Candele, dopo: Optional[int] = None) -> Optional[Sca
     ts = (0, 0.0, 0.0)
     for n in range(i, j):
         o, h, l, c = (float(x) for x in basse.bid[n, [APERTURA, MASSIMO, MINIMO, CHIUSURA]])
-        if livello is not None and (c < livello if short else c > livello):
+        # Si scatta solo sul CRT gia' armato. Col manuale e' sempre cosi'; con
+        # la chiusura dentro il CRT si arma alla fine della candela 2, e una
+        # chiusura sotto il livello prima di allora non si poteva usare.
+        armato = int(basse.fine[n]) >= crt.armato_quando
+        if livello is not None and armato and (c < livello if short else c > livello):
             return Scatto(crt, int(basse.fine[n]), n, livello, *ts)
         # La candela del turtle soup: rialzista oltre CRT high per uno short,
         # ribassista oltre CRT low per un long. Una piu' recente sposta il livello.

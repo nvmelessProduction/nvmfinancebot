@@ -7,7 +7,7 @@ l'ingresso.
 
 import pytest
 
-from nvm.agenti.cacciatore import Motivo, Verso, caccia
+from nvm.agenti.cacciatore import Motivo, Variante, Verso, caccia
 from nvm.agenti.grilletto import scatti, scatto
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import costruisci
@@ -102,14 +102,15 @@ def test_il_long_e_lo_specchio():
     assert op.stop == pytest.approx(2.2 - 1.1130) and op.tp2 == pytest.approx(2.2 - 1.1000)
 
 
-def test_niente_sbirciate():
+@pytest.mark.parametrize("variante", list(Variante))
+def test_niente_sbirciate(variante):
     m = passeggiata("EURUSD", ny(2026, 9, 6, 17), ny(2026, 9, 11, 17), seme=11)
     alte, basse = costruisci(m, TF.H4), costruisci(m, TF.M15)
-    tutti = scatti(caccia(alte, basse), basse)
+    tutti = scatti(caccia(alte, basse, variante), basse)
     assert tutti, "la passeggiata deve produrre qualche scatto"
     for istante in range(int(basse.fine[40]), int(basse.fine[-1]), 5 * Q):
         a, b = alte.chiuse_entro(istante), basse.chiuse_entro(istante)
-        allora = {(s.crt.range_inizio, s.crt.verso, s.quando, s.livello) for s in scatti(caccia(a, b), b)}
+        allora = {(s.crt.range_inizio, s.crt.verso, s.quando, s.livello) for s in scatti(caccia(a, b, variante), b)}
         attesi = {(s.crt.range_inizio, s.crt.verso, s.quando, s.livello) for s in tutti if s.quando <= istante}
         assert allora == attesi, istante
 

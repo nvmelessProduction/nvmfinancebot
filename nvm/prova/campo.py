@@ -11,6 +11,9 @@ autoconvince:
 - **la candela del primo target non si riesamina contro lo stop nuovo.**
   Prima del primo target quello stop non esisteva (errore gia' fatto nel
   vecchio progetto);
+- **se una candela apre gia' oltre lo stop** (un salto, di solito dopo il
+  fine settimana), si esce all'apertura, non allo stop: lo stop non poteva
+  essere eseguito a un prezzo che il mercato non ha mai fatto;
 - **le commissioni si tolgono**, in R.
 """
 
@@ -24,7 +27,7 @@ import numpy as np
 
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import Candele
-from nvm.dati.minuti import CHIUSURA, MASSIMO, MINIMO
+from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
 
 # Commissione di un giro (apertura e chiusura), in prezzo per unita' di
 # strumento. Circa 7 dollari per lotto standard, come un conto RAW.
@@ -106,7 +109,9 @@ def simula(op: Operazione, basse: Candele, scadenza: Optional[int] = None) -> Es
         stop_toccato = contro <= stop if long else contro >= stop
         if stop_toccato:
             uscita = Uscita.PAREGGIO if tp1_preso and stop == op.ingresso else Uscita.STOP
-            return risultato(stop, uscita, int(basse.fine[n]))
+            apertura = float(lato[n, APERTURA])
+            prezzo = min(stop, apertura) if long else max(stop, apertura)
+            return risultato(prezzo, uscita, int(basse.fine[n]))
         if segno * (favore - op.tp2) >= 0:
             return risultato(op.tp2, Uscita.TARGET, int(basse.fine[n]))
         if not tp1_preso and segno * (favore - op.tp1) >= 0:

@@ -36,6 +36,13 @@ def test_stop_e_target_nella_stessa_candela_vince_lo_stop():
     assert esito.erre == pytest.approx(-1 - esito.costo_erre)
 
 
+def test_se_la_candela_apre_oltre_lo_stop_si_esce_all_apertura():
+    # Lo short ha lo stop a 1.1100; la candela dopo il fine settimana apre a 1.1120.
+    esito = simula(_short(), _basse([(1.1120, 1.1125, 1.1060, 1.1070)]))
+    assert esito.uscita is Uscita.STOP
+    assert esito.erre == pytest.approx(-(1.1120 - 1.1080) / 0.002 - esito.costo_erre)
+
+
 def test_lo_stop_dello_short_scatta_sull_ask():
     # Il bid arriva a 1.1098, l'ask a 1.11005: lo short e' stoppato.
     esito = simula(_short(), _basse([(1.108, 1.1098, 1.107, 1.108)], spread=0.00025))
