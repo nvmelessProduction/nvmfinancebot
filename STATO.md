@@ -72,6 +72,30 @@ Resta da misurare solo il giornaliero → 15 minuti della terza variante,
 che aspetta vent'anni di minuti (da qui Dukascopy ne dà uno ogni 30–75
 secondi: un anno di uno strumento richiede circa 11 ore).
 
+**Il metro Romeo (24/09).** Guardate tutte le 1.266 foto del suo canale
+(marzo 2023 – settembre 2026). Le sue entrate lette dalle foto sono in
+`casi/entrate-romeo.csv`: 112, di cui 62 del 2023 (periodo di studio) e 50
+del 2024–2026 (chiuse fino alla Fase G); 15 sono su indici (NAS100,
+S&P 500), che non abbiamo ancora nei dati. `python romeo.py` le controlla
+sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
+
+- **Le letture reggono:** per tutte le 82 entrate con un prezzo letto, il
+  prezzo è passato davvero di lì nella finestra. L'ora del suo server è New
+  York + 7 ore; le ore lette sull'asse dei grafici sbagliano di 1–2 ore, e
+  per quelle la finestra è larga.
+- **Il bot oggi non entra come Romeo.** Delle 25 entrate del 2023 con
+  ingresso e stop letti, il bot ne ritrova 6 entro metà del rischio di
+  Romeo (3 con il filtro del Capo). Il cancello chiede 7 su 10. E ne fa
+  troppe: nelle settimane in cui Romeo entra, 25,8 operazioni per ognuna
+  delle sue (7,2 col Capo); il cancello ne chiede al massimo 3.
+- **Perché:** le sei ritrovate sono sue idee sul timeframe alto (stop di
+  20–70 pip). Le sue esecuzioni sono sul minuto–15 minuti con stop di 1–9
+  pip, in due fasce orarie (1–5 e 8:30–10:45 di New York): senza i minuti
+  il bot non le può nemmeno vedere. E un CRT armato nel suo verso c'è quasi
+  sempre (49 volte su 53), ma c'è anche nel verso opposto (45): vedere un
+  CRT non distingue la scelta di Romeo. La scelta sta nell'ora, nel key
+  level e nel bias, cioè negli agenti che il Capo oggi quasi ignora.
+
 ### Cosa serve da te
 
 - [x] **Spegnere il vecchio bot sulla VPS.** Fatto il 24/09.

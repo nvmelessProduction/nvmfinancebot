@@ -48,6 +48,9 @@ class Risultato:
     rr2: float = 0.0
     stop_su_ampiezza: float = 0.0
     chiusa_quando: int = 0
+    # I prezzi dell'operazione: servono a confrontarla con le entrate di Romeo.
+    ingresso: float = 0.0
+    stop: float = 0.0
 
 
 # Quante volte il Grilletto puo' sparare sullo stesso CRT: dopo la prima,
@@ -82,6 +85,7 @@ def opera(
                     rr2=abs(op.tp2 - op.ingresso) / op.rischio,
                     stop_su_ampiezza=op.rischio / (crt.crt_high - crt.crt_low),
                     chiusa_quando=esito.quando,
+                    ingresso=op.ingresso, stop=op.stop,
                 ))
             if esito.uscita is not Uscita.STOP:
                 break

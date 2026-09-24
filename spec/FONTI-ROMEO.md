@@ -84,6 +84,50 @@ sta all'**apertura** di quella candela: *"confirmed with close below"*. Per il
 long: *"Thick downclose candle that liquidated an old low = bullish
 orderblock"*, *"+ob, confirms with close above"*.
 
+### Dalla rassegna di tutte le foto del canale (24/09/2026)
+
+Tutte le 1.266 foto del canale, dal marzo 2023 al settembre 2026, guardate
+una per una. Le sue entrate lette dalle foto sono nel catalogo
+`casi/entrate-romeo.csv` (112 righe); le note di lavoro, foto per foto,
+restano fuori dal repository. Qui le regole nuove, con il messaggio da cui
+vengono. Le frasi fra virgolette sono sue; dove c'è "(foto)" il testo è
+scritto nell'immagine e riportato quasi parola per parola.
+
+| Data | Msg | Cosa dice |
+|---|---|---|
+| 06/04/2023 | 772 | *"3 trades a day. 3-5am, 930, 1330"* |
+| 15/04/2023 | 959 | (foto) le operazioni "pane quotidiano": durano 1–2 ore o meno, 15–30 pip, sul 5 minuti, 15 a settimana, 2–3 al giorno |
+| 15/04/2023 | 961 | (foto, tweet del 16/02/2023) quanto ci mette un setup: 4 ore = una settimana a formarsi e 3 giorni a svolgersi; 1 ora = 3–4 giorni e 1–2; 15 minuti = 2 giorni e 1; 5 minuti = 8 ore e 4 |
+| 18/04/2023 | 1067 | (foto, tweet del 15/02/2023) *"Range lows are for buying or watching only, not selling. Range highs are for selling or watching only, not buying."* |
+| 19/04/2023 | 1096 | *"I don't post every setup I take, the best ones are kept for my journal."* Il catalogo è un campione scelto da lui |
+| 10/05/2023 | 1891 | (foto, tweet) *"Entry 1: turtle soup. Entry 2: ob/fvg. Entry 3: brk/OTE. Always."* |
+| 10/12/2023 | 3814 | (foto) il diagramma **"Enter a trade?"**: 1) il prezzo ha raggiunto un PD array del timeframe alto? 2) è allineato all'orderflow del timeframe alto? 3) c'è un draw on liquidity chiaro? 4) c'è la conferma sul timeframe basso secondo il modello d'ingresso? 5) si è formato nelle ore di trading stabilite? Un solo no, e non si entra |
+| 12/12/2023 | 3848 | *"Tuesdays and Wednesdays are the highest probability days of the week."* |
+| 13/12/2023 | 3860 | (foto) lo sgabello **"Elements of a high probability trade setup"**, tre gambe: *manipulation time*, *pre-manipulation liquidity pool*, *higher timeframe key level* (lo stesso della pagina di manuale del msg 6718) |
+| 20/12/2023 | 3991 | *"A complete system: 1- Time. 2- Price. 3- Risk management."* |
+| 21/12/2023 | 3997 | *"I had shared more than 140 live trade ideas + biases … 3 trade ideas/biases per week. The accuracy overall for the year was around 80%."* Seguono (msg 4002–4180) le idee del 2023 ripubblicate, prima e dopo |
+| 22/12/2023 | 4051 | *"'Where is price being drawn to' is the first question when framing a trade idea."* |
+| 22/12/2023 | 4072–4073 | *"09:00 am."* *"Try to master a certain hour of the day."* |
+| 28/12/2023 | 4235–4236 | *"London prints the high of the day till New York. Bulletproof model."* *"If you enter at a certain time; you must exit at a certain time."* |
+| 30/01/2024 | 4559 | *"Pick tops in bearish markets. Don't pick tops in bullish markets. Pick bottoms in bullish markets. Don't pick bottoms in bearish markets."* |
+| 09/02/2024 | 4595 | *"A higher timeframe wick above a high or below a low is a CSD on the timeframes below the wick timeframe. This is the entry."* |
+| 10/02/2024 | 4604, 4606 | *"I only enter based on turtle soup. I only exit based on turtle soup."* *"Every exit is an entry, and every entry is an exit."* |
+| 02/09/2024 | 5500 | (foto) BTC a 4 ore: *"CRT high (target 2)"*, *"CRT 50% - target 1"*, *"CRT low (turtle soup)"*: i due target dei Livelli |
+| 26/09/2025 | 6391 | (foto, tweet del 01/02/2023) *"When day trading; always double check the hourly/4 hour candle profiles for confluence. That's how you catch 1-5 pip stop loss trades."* |
+| 29/09/2025 | 6405 | (foto) *"This is on my mind before and during every trade I take"*: la candela a 4 ore, la giornaliera e la settimanale, *"candle opens here … closes here"* |
+| 28/10/2025 | 6551 | (foto) *"Stages of the ideal trade"*: 1 pianificare (segnare il key level), 2 aspettare che il prezzo ci arrivi, 3 eseguire, 4 aspettare target o stop |
+
+**Cosa si vede nelle sue entrate** (periodo di studio, 2023, strumenti
+nostri; dal catalogo):
+
+- Le esecuzioni sono quasi tutte sul timeframe basso (1–15 minuti) con stop
+  di **1–9 pip** e rapporto fra target e stop da 2,4 a 15. Le idee sul
+  timeframe alto (1 ora – giornaliero) hanno stop di 20–150 pip e rapporto
+  2–5.
+- Dove l'ora si legge bene, entra in due fasce: **1–5 di New York** (Londra)
+  e **8:30–10:45 di New York**. Sono le fasce che dice lui (msg 772, 4072).
+- Una o due entrate per strumento a settimana; molte settimane nessuna.
+
 ### I suoi schemi
 
 - **Tre candele** (nel post "CRT is fractal"): la candela 1 fa il range; la
