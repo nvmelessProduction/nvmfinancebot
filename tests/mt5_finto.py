@@ -15,7 +15,7 @@ BARRA = np.dtype([("time", "i8"), ("open", "f8"), ("high", "f8"), ("low", "f8"),
 
 
 class MT5Finto:
-    TIMEFRAME_H1 = 16385
+    TIMEFRAME_H1, TIMEFRAME_M15 = 16385, 15
     ACCOUNT_TRADE_MODE_DEMO, ACCOUNT_TRADE_MODE_REAL = 0, 2
     TRADE_ACTION_DEAL, TRADE_ACTION_SLTP = 1, 6
     ORDER_TYPE_BUY, ORDER_TYPE_SELL = 0, 1
@@ -61,7 +61,7 @@ class MT5Finto:
         return self.tick.get(simbolo)
 
     def copy_rates_from_pos(self, simbolo, tf, inizio, quante):
-        b = self.barre.get(simbolo)
+        b = self.barre.get(simbolo if tf == self.TIMEFRAME_H1 else (simbolo, tf))
         return None if b is None else b[max(0, len(b) - quante):]
 
     def order_calc_profit(self, tipo, simbolo, volume, apertura, chiusura):

@@ -131,6 +131,9 @@ def salva_per_il_vivo(t: Tabella) -> None:
     risultati veri.
     """
     cartella = RADICE / "nvm" / "vivo"
+    if t.x.shape[1] < len(COLONNE):
+        # Colonne aggiunte dopo (la coppia 4 ore -> 15 minuti): nello storico valgono zero.
+        t.x = np.c_[t.x, np.zeros((len(t), len(COLONNE) - t.x.shape[1]))]
     fine = int(t.chiusa.max())
     capo = Capo.allena(t.x, t.tp1, t.tp2, pesi=pesi_per_eta(t.chiusa, fine))
     (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")

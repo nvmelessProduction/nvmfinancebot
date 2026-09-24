@@ -243,3 +243,17 @@ def test_il_rischio_impara_a_fidarsi_meno_se_il_capo_sbaglia():
     buone = np.tile([2.0, -1.0], 100)       # vince davvero: si fida molto
     cattive = np.tile([1.2, -1.0], 100)     # vince poco: si fida meno
     assert impara_parte(f, buone) > impara_parte(f, cattive)
+
+
+def test_il_diario_parla_come_una_persona():
+    from nvm.vivo.dialogo import firma
+    x = np.zeros(len(COLONNE))
+    x[COLONNE.index("coppia D1-H1")] = 1
+    x[COLONNE.index("ora 09-13")] = 1
+    x[COLONNE.index("key level: fvg")] = 1
+    x[COLONNE.index("RR1")] = 2.4
+    assert firma("Cacciatore", x) == "giornaliero → 1 ora"
+    assert firma("Orario", x) == "09–13 NY"
+    assert firma("Key level", x) == "FVG"
+    assert firma("Livelli", x) == "primo target fra 2 e 3 R"
+    assert firma("Grilletto", x) == "primo colpo"

@@ -58,6 +58,10 @@ class Stato:
     ultima_riunione: str = ""
     # Per agente: [volte che aveva ragione, volte che si era schierato].
     pagelle: dict = field(default_factory=dict)
+    # Per agente e per segnale dato: [vinte, totali] dal vivo. Serve a capire dove migliorare.
+    diario: dict = field(default_factory=dict)
+    # L'ultimo quarto d'ora guardato per la coppia 4 ore -> 15 minuti.
+    ultimo_quarto: Optional[int] = None
 
     @classmethod
     def carica(cls, cartella: Path) -> "Stato":
@@ -70,7 +74,7 @@ class Stato:
             vive=[Viva(**v) for v in d.get("vive", [])],
             seguite=[Seguita(**s) for s in d.get("seguite", [])],
             ultima_riunione=d.get("ultima_riunione", ""),
-            pagelle=d.get("pagelle", {}),
+            pagelle=d.get("pagelle", {}), diario=d.get("diario", {}), ultimo_quarto=d.get("ultimo_quarto"),
         )
 
     def salva(self, cartella: Path) -> None:

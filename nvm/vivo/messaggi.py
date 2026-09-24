@@ -138,3 +138,20 @@ def allarme(testo: str) -> str:
 
 def ora_utc(t: int) -> Optional[str]:
     return datetime.fromtimestamp(int(t), tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def armati(crt: list) -> str:
+    """Il Cacciatore annuncia i CRT che si sono armati nell'ultimo giro."""
+    righe = ["🔔 Cacciatore: CRT armati adesso."]
+    for c in crt[:20]:
+        k = c.strumento
+        short = c.verso is Verso.SHORT
+        righe.append(
+            f"  {k} {c.verso.value.upper()}, {NOMI_TF[c.alto_tf]} → {NOMI_TF[c.basso_tf]}: alle {quando(c.armato_quando)[6:]} il prezzo è "
+            f"{'salito sopra il massimo' if short else 'sceso sotto il minimo'} del range "
+            f"({prezzo(k, c.crt_high if short else c.crt_low)})."
+        )
+    if len(crt) > 20:
+        righe.append(f"  … e altri {len(crt) - 20}.")
+    righe.append("Grilletto: aspetto il Model#1 su questi. — Cacciatore e Grilletto")
+    return "\n".join(righe)

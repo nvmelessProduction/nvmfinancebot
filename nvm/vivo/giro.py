@@ -13,6 +13,7 @@ from typing import Optional
 
 import numpy as np
 
+from nvm.agenti.cacciatore import CRT, caccia
 from nvm.agenti.capo import Capo, riga
 from nvm.agenti.conferme import SOPRA, Contesto, KeyLevel, Orario, contesto, key_level, orario
 from nvm.agenti.livelli import piano, scadenza
@@ -22,7 +23,10 @@ from nvm.prova.base import Risultato, opera
 from nvm.prova.campo import Operazione
 from nvm.tempo import TF
 
+# Le coppie che si guardano con le orarie, ogni ora.
 COPPIE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
+# La quarta coppia di Romeo si guarda con i quarti d'ora di MT5, ogni quarto d'ora.
+COPPIA_VELOCE = (TF.H4, TF.M15)
 
 
 @dataclass
@@ -49,13 +53,13 @@ class Decisione:
         return f"{r.strumento} {r.alto_tf.value}-{r.basso_tf.value} {r.verso.value} {r.quando} colpo {r.colpo}"
 
 
-def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo) -> list[Decisione]:
+def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`."""
     decisioni = []
     for strumento, base in basi.items():
         if not len(base):
             continue
-        for alto, basso in COPPIE:
+        for alto, basso in coppie:
             alte = costruisci(base, alto).chiuse_entro(adesso)
             basse = costruisci(base, basso).chiuse_entro(adesso)
             sopra = costruisci(base, SOPRA[alto]).chiuse_entro(adesso)
@@ -69,3 +73,17 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo) -> list[Dec
                     r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0]))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
+
+
+def armati(basi: dict[str, Minuti], dal: int, adesso: int, coppie=COPPIE) -> list[CRT]:
+    """I CRT che il Cacciatore ha visto armarsi in [dal, adesso]."""
+    trovati = []
+    for base in basi.values():
+        if not len(base):
+            continue
+        for alto, basso in coppie:
+            alte = costruisci(base, alto).chiuse_entro(adesso)
+            basse = costruisci(base, basso).chiuse_entro(adesso)
+            trovati += [c for c in caccia(alte, basse) if dal <= c.armato_quando <= adesso]
+    trovati.sort(key=lambda c: (c.armato_quando, c.strumento))
+    return trovati

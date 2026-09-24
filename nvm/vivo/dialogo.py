@@ -19,7 +19,7 @@ from nvm.vivo.messaggi import erre, quando
 
 # Quali colonne del Capo vengono da quale agente.
 AGENTI: dict[str, tuple[int, ...]] = {
-    "Cacciatore": (16, 17),
+    "Cacciatore": (16, 17, 21),
     "Grilletto": (14, 15),
     "Livelli": (18, 19, 20),
     "Key level": (0, 1, 2, 3, 4),
@@ -47,7 +47,9 @@ SEGNALI: dict[str, tuple[str, int]] = {
 
 def spinte(capo: Capo, x: np.ndarray) -> dict[str, float]:
     """La spinta di ogni agente su questa decisione. Le combinazioni contano meta' per ciascuno."""
-    s = capo.spinte(np.asarray(x, float))
+    x = np.asarray(x, float)
+    x = np.r_[x, np.zeros(len(COLONNE) - len(x))]
+    s = capo.spinte(x)
     per = {nome: float(s[list(c)].sum()) for nome, c in AGENTI.items()}
     for k, (i, j) in enumerate(capo.interazioni):
         for nome, c in AGENTI.items():
@@ -140,3 +142,139 @@ def consigli(x: np.ndarray, r: np.ndarray, minimo: int = 200, quanti: int = 3) -
         if len(scelti) == quanti:
             break
     return scelti
+
+
+# --- Le presentazioni all'avvio ---
+
+LAVORO: dict[str, str] = {
+    "Cacciatore": "Guardo se c'è un CRT: una candela fa da range e quella dopo ne spazza un lato. "
+                  "Coppie: mensile → giornaliero, settimanale → 4 ore, giornaliero → 1 ora, 4 ore → 15 minuti.",
+    "Grilletto": "Aspetto il Model#1 di Romeo: la candela del turtle soup e la chiusura oltre la sua apertura. "
+                 "Dopo uno stop posso sparare ancora, fino a tre colpi sullo stesso CRT.",
+    "Livelli": "Metto lo stop oltre l'estremo della manipolazione, il primo target al 50% del range, il secondo al lato opposto.",
+    "Key level": "Guardo se la manipolazione è arrivata su una zona del timeframe sopra: un massimo, un rejection block, un FVG.",
+    "Orario": "Guardo a che ora di New York scatta l'ingresso. La golden candle di Romeo è 9–13.",
+    "Bias": "Leggo il bias dalle chiusure: la candela del range e il timeframe sopra, a favore o contro il CRT.",
+    "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, e la parte che ho imparato dagli errori.",
+    "Capo": "Ascolto tutti, peso i pareri e decido: entro solo se il guadagno atteso è sopra zero. "
+            "Mi riaddestro ogni sabato sugli errori della settimana.",
+}
+
+
+def _pagella(pagelle: dict, nome: str) -> str:
+    giuste, totali = pagelle.get(nome, [0, 0])
+    if not totali:
+        return "pagella vuota: non ho ancora casi dal vivo"
+    return f"pagella {giuste} su {totali} ({giuste / totali:.0%})"
+
+
+def fiducia_per_agente(capo: Capo) -> dict[str, float]:
+    """Quanto il Capo ascolta ogni agente: la somma dei pesi (in valore assoluto) delle sue colonne."""
+    pesi = np.abs(capo.primo.pesi[1:])
+    per = {nome: float(pesi[[c for c in col if c < len(pesi)]].sum()) for nome, col in AGENTI.items()}
+    for k, (i, j) in enumerate(capo.interazioni):
+        for nome, col in AGENTI.items():
+            per[nome] += float(pesi[len(COLONNE) + k]) * ((i in col) + (j in col)) / 2
+    return per
+
+
+def presentazioni(pagelle: dict, capo: Capo, parte: float) -> list[str]:
+    testi = []
+    for nome, lavoro in LAVORO.items():
+        g, t = pagelle.get(nome, [0, 0])
+        righe = [f"👋 Sono il {nome}." if nome not in ("Key level", "Orario", "Bias", "Rischio") else f"👋 Sono l'agente {nome}.",
+                 lavoro, f"Stato: {grado(g, t)}, {_pagella(pagelle, nome)}."]
+        if nome == "Rischio":
+            righe.append(f"Oggi uso {parte:.2f} del Kelly: l'ho imparato su 16 anni di puntate del Capo.".replace(".", ",", 1))
+        if nome == "Capo":
+            f = fiducia_per_agente(capo)
+            ordine = sorted(f.items(), key=lambda a: -a[1])
+            righe.append("Oggi ascolto soprattutto: " + ", ".join(n for n, _ in ordine[:3])
+                         + "; meno: " + ", ".join(n for n, _ in ordine[-2:]) + ".")
+        righe.append(f"— {nome}")
+        testi.append("\n".join(righe))
+    return testi
+
+
+# --- Le prove che ognuno porta, dallo storico ---
+
+BINARIE: dict[str, tuple[int, ...]] = {
+    "Cacciatore": (16, 17, 21), "Grilletto": (14, 15), "Key level": (0, 1, 2, 3, 4),
+    "Orario": (5, 6, 7, 8, 9), "Bias": (10, 11, 12, 13),
+}
+
+
+def prove(x: np.ndarray, sx: np.ndarray, sr: np.ndarray) -> dict[str, str]:
+    """Per ogni agente: com'è andata nello storico quando ha dato gli stessi segnali di adesso."""
+    x = np.r_[np.asarray(x, float), np.zeros(len(COLONNE) - len(x))]
+    testi = {}
+    for nome, col in BINARIE.items():
+        col = [c for c in col if c < sx.shape[1]]
+        uguali = np.all(sx[:, col] == x[col], axis=1)
+        if uguali.sum() >= 30:
+            testi[nome] = f"nello storico, con gli stessi miei segnali: {erre(float(sr[uguali].mean()))} su {int(uguali.sum())} casi"
+    rr1 = x[COLONNE.index("RR1")]
+    vicini = np.abs(sx[:, COLONNE.index("RR1")] - rr1) <= 0.2 * max(rr1, 0.5)
+    if vicini.sum() >= 30:
+        testi["Livelli"] = f"con un primo target a {rr1:.1f} R, nello storico: {erre(float(sr[vicini].mean()))} su {int(vicini.sum())} casi".replace(".", ",", 1)
+    return testi
+
+
+def discussione_con_prove(per: dict[str, float], entra: bool, atteso: float, testi: dict[str, str]) -> str:
+    righe = ["💬 Il confronto:"]
+    for nome, v in sorted(per.items(), key=lambda a: -a[1]):
+        posizione = "spingo a entrare" if v >= NEUTRO else ("freno" if v <= -NEUTRO else "resto neutro")
+        righe.append(f"  {nome}: {posizione} ({v:+.2f})".replace(".", ",") + (f", {testi[nome]}." if nome in testi else "."))
+    favore = sum(v >= NEUTRO for v in per.values())
+    contro = sum(v <= -NEUTRO for v in per.values())
+    righe.append(f"  Capo: {favore} a favore, {contro} contro; tutto pesato il guadagno atteso è {erre(atteso)}: "
+                 + ("entro." if entra else "non entro."))
+    return "\n".join(righe)
+
+
+# --- Dopo il risultato: come migliorare ---
+
+_FASCE = {5: "21–01 NY", 6: "01–05 NY", 7: "05–09 NY", 8: "09–13 NY", 9: "13–17 NY"}
+_KEY = {0: "massimo preso", 1: "arriva al massimo", 2: "rejection block", 3: "FVG", 4: "non so"}
+_BIAS = {10: "range a favore", 11: "range contro", 12: "sopra a favore", 13: "sopra contro"}
+
+
+def firma(nome: str, x) -> str:
+    """I segnali che un agente ha dato su una decisione, in parole: la chiave del suo diario."""
+    x = list(x) + [0.0] * (len(COLONNE) - len(x))
+    si = lambda c: x[c] == 1
+    if nome == "Cacciatore":
+        return ("4 ore → 15 minuti" if si(21) else "giornaliero → 1 ora" if si(17)
+                else "settimanale → 4 ore" if si(16) else "mensile → giornaliero")
+    if nome == "Grilletto":
+        return "terzo colpo" if si(15) else ("secondo colpo" if si(14) else "primo colpo")
+    if nome == "Key level":
+        return ", ".join(v for c, v in _KEY.items() if si(c)) or "nessuna zona"
+    if nome == "Orario":
+        return next((v for c, v in _FASCE.items() if si(c)), "17–21 NY")
+    if nome == "Bias":
+        return ", ".join(v for c, v in _BIAS.items() if si(c)) or "bias neutro"
+    rr1 = x[COLONNE.index("RR1")]
+    return ("primo target sotto 1 R" if rr1 < 1 else "primo target fra 1 e 2 R" if rr1 < 2
+            else "primo target fra 2 e 3 R" if rr1 < 3 else "primo target oltre 3 R")
+
+
+def aggiorna_diario(diario: dict, x, vinta: bool) -> None:
+    for nome in list(BINARIE) + ["Livelli"]:
+        f = firma(nome, x)
+        diario.setdefault(nome, {}).setdefault(f, [0, 0])
+        diario[nome][f][0] += int(vinta)
+        diario[nome][f][1] += 1
+
+
+def come_migliorare(torto: list[str], diario: dict, x) -> str:
+    righe = []
+    for nome in torto:
+        if nome not in BINARIE and nome != "Livelli":
+            continue
+        f = firma(nome, x)
+        v, t = diario.get(nome, {}).get(f, [0, 0])
+        righe.append(f"  {nome}: ho sbagliato. Dal vivo, con «{f}», {v} vinte su {t}"
+                     + (": se continua così, sabato chiedo al Capo di ascoltarmi meno quando lo vedo." if t >= 3 and v / t < 0.4
+                        else ": troppo presto per cambiare idea, lo segno."))
+    return ("🛠 Come miglioriamo:\n" + "\n".join(righe)) if righe else ""

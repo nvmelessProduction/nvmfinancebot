@@ -30,6 +30,9 @@ COLONNE = (
     "secondo colpo", "terzo colpo",
     "coppia W1-H4", "coppia D1-H1",
     "RR1", "RR2", "stop su ampiezza",
+    # Aggiunta il 24/09/2026 per il bot dal vivo: nello storico non ci sono i
+    # 15 minuti di vent'anni, quindi il Capo su questa coppia impara dal vivo.
+    "coppia H4-M15",
 )
 # Penalita' L2, fissata nella scheda.
 PENALITA = 1.0
@@ -66,6 +69,7 @@ def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contes
     x[16] = r.alto_tf is TF.W1
     x[17] = r.alto_tf is TF.D1
     x[18:21] = r.rr1, r.rr2, r.stop_su_ampiezza
+    x[21] = r.alto_tf is TF.H4
     return x
 
 

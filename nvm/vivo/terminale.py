@@ -113,27 +113,31 @@ class Terminale:
     # --- le orarie ------------------------------------------------------------
 
     def orarie(self, strumento: str, quante: int) -> Minuti:
-        """Le orarie gia' chiuse, in UTC, con bid e ask in punti come nelle prove."""
+        return self.barre(strumento, quante, 3600)
+
+    def barre(self, strumento: str, quante: int, passo: int) -> Minuti:
+        """Le barre gia' chiuse (orarie o da 15 minuti), in UTC, con bid e ask in punti come nelle prove."""
         simbolo = self.simbolo(strumento)
         if not self.mt5.symbol_select(simbolo, True):
             raise ErroreMT5(f"il simbolo {simbolo} non c'e' su questo conto: {self.mt5.last_error()}")
         self._scarto_dal_tick(simbolo)
         if self.scarto is None:
             raise ErroreMT5("non so ancora l'ora del server: aspetto che il mercato si muova")
-        barre = self.mt5.copy_rates_from_pos(simbolo, self.mt5.TIMEFRAME_H1, 0, quante)
+        tf = {3600: self.mt5.TIMEFRAME_H1, 900: self.mt5.TIMEFRAME_M15}[passo]
+        barre = self.mt5.copy_rates_from_pos(simbolo, tf, 0, quante)
         if barre is None or len(barre) == 0:
-            raise ErroreMT5(f"nessuna oraria per {simbolo}: {self.mt5.last_error()}")
+            raise ErroreMT5(f"nessuna barra da {passo // 60} minuti per {simbolo}: {self.mt5.last_error()}")
         info = self.mt5.symbol_info(simbolo)
         t = np.asarray(barre["time"], np.int64) - self.scarto * 3600
         adesso = int(self._orologio())
-        chiuse = t + 3600 <= adesso  # l'ultima e' ancora in formazione
+        chiuse = t + passo <= adesso  # l'ultima e' ancora in formazione
         barre, t = barre[chiuse], t[chiuse]
         punto = PUNTO[strumento]
         bid = np.rint(np.c_[barre["open"], barre["high"], barre["low"], barre["close"]] / punto).astype(np.int64)
         spread = np.rint(np.asarray(barre["spread"], np.float64) * float(info.point) / punto).astype(np.int64)
         ask = bid + spread[:, None]
         volume = np.asarray(barre["tick_volume"], np.float32)
-        return Minuti(strumento, t, bid, ask, volume, volume.copy(), passo=3600)
+        return Minuti(strumento, t, bid, ask, volume, volume.copy(), passo=passo)
 
     # --- gli ordini -----------------------------------------------------------
 
