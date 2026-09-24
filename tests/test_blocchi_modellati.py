@@ -30,16 +30,31 @@ class TestCrt20:
         """
         assert blocca_da_sola("CRT-20") is True
 
-    def test_le_conferme_sono_veti_tranne_CRT_11(self):
-        """Tutte tranne una, e l'eccezione ha un motivo preciso.
+    def test_le_conferme_sono_veti_tranne_due(self):
+        """Due eccezioni, ognuna con un motivo scritto.
 
         `CRT-11` non e' un veto all'armamento perche' il CISD avviene DOPO la
         chiusura di `N2`: chiederlo li' vuol dire chiederlo prima che possa
         essere successo. Resta obbligatorio dove conta -- all'ingresso, dove
         `ingresso_ltf.controlla` senza CISD non entra mai.
+
+        `CRT-15` non e' un veto perche' `PRIN-12` dice che il sistema e'
+        attivo 24 ore su 24 e non esistono fasce orarie escluse. Farla
+        bloccare contraddiceva quel principio, e `BIBBIA-CRT.md` e' esplicita:
+        le finestre valgono +0,0 e -0,2 sigma e "PRIN-12 non va toccata".
+        Misurato il 24/09: fermava 61 decisioni su 238.
+
+        Nessuna delle due e' spenta: restano valutate e nel responso, che e'
+        cio' che la Fase 2 dovra' pesare.
         """
         spente = sorted(k for k, v in CONFERME_CHE_BLOCCANO_DA_SOLE.items() if not v)
-        assert spente == ["CRT-11"], f"conferme non applicate: {spente}"
+        assert spente == ["CRT-11", "CRT-15"], f"conferme non applicate: {spente}"
+
+    def test_le_due_non_bloccanti_restano_nel_responso(self):
+        """Non bloccare non vuol dire non calcolare: il responso deve
+        contenerle comunque, o la Fase 2 peserebbe sei segnali su otto."""
+        from core.parametri import CONFERME_ROMEO
+        assert "CRT-11" in CONFERME_ROMEO and "CRT-15" in CONFERME_ROMEO
 
     def test_CRT_11_resta_obbligatoria_all_ingresso(self):
         """Toglierla dai veti non la rende facoltativa: la sposta."""

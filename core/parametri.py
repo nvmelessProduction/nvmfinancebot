@@ -785,7 +785,29 @@ CONFERME_CHE_BLOCCANO_DA_SOLE: Final[dict[str, bool]] = {
     # CISD `controlla` non entra mai.
     "CRT-11": False,  # CISD — gia' INTRINSECO all'ingresso di CRT-13
     "CRT-12": True,   # divergenza SMT
-    "CRT-15": True,   # finestre orarie di New York
+    # CRT-15 — finestre orarie di New York: VALUTATA, non bloccante.
+    #
+    # `PRIN-12` dice: *"Il sistema e' attivo 24 ore su 24 nei giorni di
+    # mercato aperto. Non esistono fasce orarie escluse."* Farla bloccare
+    # contraddice quel principio, e il docstring di `dentro_finestra_crt` dice
+    # che quella decisione non e' mai stata presa: *"finche' quella decisione
+    # non e' presa, questa funzione esiste per MISURARE, e il motore non la
+    # chiama."* Il motore la chiamava, e bloccava.
+    #
+    # `BIBBIA-CRT.md` e' esplicita su cosa fare: le finestre valgono +0,0 e
+    # -0,2 sigma -- nessun vantaggio -- e *"su D1->H1 quasi tutti i segnali
+    # cadono FUORI dalle finestre, il che dice che sono pensate per timeframe
+    # d'ingresso piu' bassi di quelli che il bot puo' usare. PRIN-12 non va
+    # toccata."*
+    #
+    # Misurato il 2026-09-24 sulle decisioni reali: fermava 61 casi su 238, un
+    # quarto, su H1 e H4. Un veto senza vantaggio misurato, contro un
+    # principio che dice il contrario.
+    #
+    # Resta VALUTATA e nel responso: e' uno degli otto segnali che la Fase 2
+    # dovra' pesare, e il giorno in cui i dati dicessero che vale, si riaccende
+    # -- ma riscrivendo PRIN-12, non aggirandola.
+    "CRT-15": False,
     "CRT-17": True,   # tenuta della meta' del range
     "CRT-18": True,   # punto medio dell'ombra
 }
