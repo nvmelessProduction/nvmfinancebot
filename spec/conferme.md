@@ -135,3 +135,23 @@ Per ciascun livello: a favore, contro, o niente.
 In `registro/tentativi.md`, con il numero di candidati provati: ogni
 risposta confrontata è un candidato, e alza l'asticella del cancello
 (`PIANO.md` §2, punto 5).
+
+## Le risposte alla Romeo (24/09/2026) **[D]**
+
+Scritte dopo che la regola "il metro è Romeo" (`PIANO.md`) ha mostrato che
+le risposte di prima non distinguono le sue entrate dalle altre del bot
+(`registro/tentativi.md`, 24/09). Sono quattro domande in più, ognuna presa
+da una sua frase o dal modo in cui entra nel periodo di studio (2023). Come
+le altre conferme non decidono niente da sole: le pesa il Capo.
+
+| Agente | Domanda | Risposta | Fonte |
+|---|---|---|---|
+| Orario | La candela dello scatto cade nell'ora di Londra di Romeo? | sì se tocca l'1–5 di New York | msg 772 *"3-5am"*; le sue entrate del 2023 alle 1:40 e fra le 3 e le 5 |
+| Orario | La candela dello scatto cade nell'ora di New York di Romeo? | sì se tocca l'8–11 di New York | msg 772 *"930"*, msg 4072 *"09:00 am"*; le sue entrate del 2023 alle 8:50, 9:36, 10:42 |
+| Cacciatore | Il CRT sta dentro uno più grande, nello stesso verso? | sì se, all'istante dello scatto, un CRT di una coppia con il range più grande è armato nello stesso verso | msg 5121 *"There is always a micro CRT within the macro CRT"* |
+| Bias | Si compra a sconto e si vende a premio? | per un long, l'ingresso è nella metà bassa della settimana chiusa prima; per uno short, nella metà alta. "Non so" se la settimana manca | msg 1067 *"Range lows are for buying… range highs are for selling"*; msg 3691, *premium/discount* |
+
+Le ore toccate sono quelle di New York coperte dalla candela dello scatto:
+una candela di un'ora o di un quarto d'ora ne tocca una, una di quattro
+ore quattro, una giornaliera tutte. L'ordine delle coppie per "più grande"
+è quello del range: mensile, settimanale, giornaliero, 4 ore.

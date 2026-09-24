@@ -15,12 +15,13 @@ import numpy as np
 
 from nvm.agenti.cacciatore import CRT, caccia
 from nvm.agenti.capo import Capo, riga
-from nvm.agenti.conferme import SOPRA, Contesto, KeyLevel, Orario, contesto, key_level, orario
+from nvm.agenti.conferme import SOPRA, AllaRomeo, Contesto, KeyLevel, Orario, tutti_i_pareri
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.prova.base import Risultato, opera
 from nvm.prova.campo import Operazione
+from nvm.prova.romeo import grandi
 from nvm.tempo import TF
 
 # Le coppie che si guardano con le orarie, ogni ora.
@@ -42,10 +43,14 @@ class Decisione:
     atteso: float
     # Le colonne del Capo per questa decisione: servono al riaddestramento.
     x: np.ndarray
+    # Le risposte alla Romeo, e quanto il Capo pensa che somigli a una sua entrata.
+    alla_romeo: Optional[AllaRomeo] = None
+    romeo: float = 1.0
+    soglia: float = 0.0
 
     @property
     def entra(self) -> bool:
-        return self.atteso > 0
+        return self.atteso > 0 and self.romeo >= self.soglia
 
     @property
     def chiave(self) -> str:
@@ -53,24 +58,34 @@ class Decisione:
         return f"{r.strumento} {r.alto_tf.value}-{r.basso_tf.value} {r.verso.value} {r.quando} colpo {r.colpo}"
 
 
-def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE) -> list[Decisione]:
-    """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`."""
+def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
+         orarie: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
+    """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
+
+    `orarie` sono le ore di ogni strumento, se `basi` sono i quarti d'ora: da
+    li' vengono il timeframe sopra, la settimana e i CRT piu' grandi.
+    """
+    orarie = basi if orarie is None else orarie
     decisioni = []
     for strumento, base in basi.items():
-        if not len(base):
+        ore = orarie.get(strumento, base)
+        if not len(base) or not len(ore):
             continue
+        g = grandi(ore, adesso)
+        settimane = costruisci(ore, TF.W1).chiuse_entro(adesso)
         for alto, basso in coppie:
             alte = costruisci(base, alto).chiuse_entro(adesso)
             basse = costruisci(base, basso).chiuse_entro(adesso)
-            sopra = costruisci(base, SOPRA[alto]).chiuse_entro(adesso)
+            sopra = costruisci(ore, SOPRA[alto]).chiuse_entro(adesso)
             for r in opera(alte, basse, dal, adesso + 1):
                 op = piano(r.scatto, basse)
-                kl, ora, ctx = key_level(r.scatto, sopra, basse), orario(r.scatto, basse), contesto(r.scatto, alte, sopra)
-                x = riga(r, kl, ora, ctx)[None]
+                kl, ora, ctx, ar = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
+                x = riga(r, kl, ora, ctx, ar)[None]
                 p1, q = capo.probabilita(x)
                 atteso = capo.valore_atteso(x, np.array([r.rr1]), np.array([r.rr2]), np.array([r.costo_erre]))
                 decisioni.append(Decisione(
-                    r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0]))
+                    r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0],
+                    ar, float(capo.somiglianza(x)[0]), capo.soglia_romeo))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

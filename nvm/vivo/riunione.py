@@ -34,12 +34,23 @@ class Storico:
     # Le puntate di Kelly del cammino anno per anno e i loro risultati: il Rischio impara da qui.
     kelly_f: Optional[np.ndarray] = None
     kelly_r: Optional[np.ndarray] = None
+    # I candidati del 2023 e le scelte di Romeo fra loro: il Capo impara da qui
+    # quanto un'operazione somiglia a Romeo (`spec/capo.md`).
+    romeo_x: Optional[np.ndarray] = None
+    romeo_y: Optional[np.ndarray] = None
+    romeo_rr1: Optional[np.ndarray] = None
+    romeo_rr2: Optional[np.ndarray] = None
+    romeo_costi: Optional[np.ndarray] = None
+    romeo_quante: int = 0
 
     @classmethod
     def carica(cls, percorso) -> "Storico":
         with np.load(percorso) as f:
             c = lambda k: f[k] if k in f.files else None
-            return cls(f["x"], f["tp1"].astype(bool), f["tp2"].astype(bool), c("erre"), c("quando"), c("kelly_f"), c("kelly_r"))
+            return cls(f["x"], f["tp1"].astype(bool), f["tp2"].astype(bool), c("erre"), c("quando"), c("kelly_f"), c("kelly_r"),
+                       c("romeo_x"), None if c("romeo_y") is None else f["romeo_y"].astype(bool),
+                       c("romeo_rr1"), c("romeo_rr2"), c("romeo_costi"),
+                       int(f["romeo_quante"]) if "romeo_quante" in f.files else 0)
 
 
 def _x(s: Seguita) -> list[float]:
@@ -103,6 +114,11 @@ def riunione(
         quando = np.r_[storico.quando, [s.esito["quando"] for s in finite]]
         pesi = pesi_per_eta(quando, int(quando.max()))
     nuovo = Capo.allena(x, tp1, tp2, interazioni=tuple(c for _, c in scelti), pesi=pesi)
+    romeo = storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) and storico.romeo_quante > 0
+    if romeo:
+        # La somiglianza a Romeo si rifa' col guadagno atteso nuovo: la soglia dipende da quello.
+        nuovo = nuovo.impara_romeo(storico.romeo_x, storico.romeo_y, storico.romeo_rr1, storico.romeo_rr2,
+                                   storico.romeo_costi, storico.romeo_quante)
     prima, dopo = fiducia_per_agente(capo), fiducia_per_agente(nuovo)
 
     settimanali: dict[str, list[int]] = {}
@@ -138,6 +154,17 @@ def riunione(
               [kelly(esiti(s.p1, s.q, s.rr1, s.rr2, s.costi)) for s in dal_vivo]]
     r = np.r_[storico.kelly_r if storico.kelly_r is not None else [], [s.esito["erre"] for s in dal_vivo]]
     nuova_parte = impara_parte(f, r) if len(f) else parte
+    if romeo:
+        simili = [s for s in nuove if s.romeo >= nuovo.soglia_romeo]
+        pesi_romeo = sorted(nuovo.fiducia_romeo(), key=lambda a: -a[1])
+        righe += [
+            "",
+            f"Capo, su Romeo: mi sono riallenato anche sulle sue {int(storico.romeo_y.sum())} entrate del 2023. "
+            f"Le sue scelte hanno soprattutto: {', '.join(n for n, w in pesi_romeo[:3] if w > 0)}. "
+            f"Da oggi entro solo sopra il {nuovo.soglia_romeo:.0%} di somiglianza "
+            f"(era {capo.soglia_romeo:.0%}); questa settimana {len(simili)} decisioni su {len(nuove)} "
+            "l'avrebbero superata.",
+        ]
     righe += [
         "",
         f"Rischio: rifatti i conti su {len(f)} puntate ({len(dal_vivo)} dal vivo), la parte del Kelly che fa crescere "

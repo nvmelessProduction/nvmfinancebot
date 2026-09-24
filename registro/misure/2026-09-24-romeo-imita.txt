@@ -1,0 +1,26 @@
+python romeo.py --imita   (24/09/2026)
+
+Il Capo che imita Romeo, fuori campione per trimestre: 3047 candidati del 2023, 35 sono le scelte di Romeo.
+  tutte le operazioni                        prese  3047  vicine  35  ritrovate  7 (timeframe alto 7/11)  per ognuna di Romeo  34.4
+  solo guadagno atteso > 0                   prese   761  vicine  17  ritrovate  4 (timeframe alto 4/11)  per ognuna di Romeo   8.4
+  guadagno atteso > 0 e somiglianza a Romeo  prese   188  vicine   5  ritrovate  1 (timeframe alto 1/11)  per ognuna di Romeo   2.0
+
+python romeo.py --configurazioni 1-8   (con le risposte alla Romeo nelle colonne del Capo)
+112 entrate nel catalogo; 15 su strumenti non ancora nei dati (NAS100, SPX500).
+
+Periodo di studio (2023), strumenti nostri: 53 entrate, 41 con l'ingresso letto, 25 anche con lo stop.
+Letture che non reggono (il prezzo non e' mai passato dall'ingresso): 0 su 82
+Esiti misurati sulle ore (studio): {'senza prezzi': 20, 'target': 8, 'stop': 5, 'aperta': 1, 'incerto': 7}; rispetto a quello che dice Romeo: {'uguale': 9, 'diverso': 2}
+CRT armato nello stesso verso durante la finestra di Romeo (coppie del manuale): MN-D1 26, W1-H4 37, D1-H1 42, almeno una 49 (su 53); nel verso opposto, almeno una: 45
+
+Il cancello: ritrovate entro meta' del rischio su 25 con lo stop letto (ne servono 7 su 10), e operazioni del bot per ognuna di Romeo nelle stesse settimane (al massimo 3; Romeo 53). Delle 25, 11 sono sul timeframe alto (stop di 15 pip o piu') e 14 sul basso.
+Minuti: EURUSD fino al 31/05/2023; entrate sul timeframe basso coperte dai minuti: 4
+conf  variante         stop     coppie        vicine ritrovate di cui alto di cui basso col Capo per Romeo col Capo
+   1  manuale          estremo  manuale           35         7           7            0        4      34.4      8.4
+   2  manuale          stretto  manuale           36         7           7            0        3      40.9      4.5
+   3  chiusura dentro  estremo  manuale           23         4           4            0        1       7.3      1.5
+   4  chiusura dentro  stretto  manuale           23         4           4            0        1       8.9      0.8
+   5  manuale          estremo  gradino sotto     25         5           5            0        2      12.8      3.2
+   6  manuale          stretto  gradino sotto     25         5           5            0        2      14.7      2.9
+   7  chiusura dentro  estremo  gradino sotto      8         2           2            0        0       1.7      0.6
+   8  chiusura dentro  stretto  gradino sotto      9         2           2            0        1       2.0      0.4

@@ -68,3 +68,81 @@ def test_il_bot_la_ritrova_solo_nello_stesso_verso_nella_finestra_e_vicino_al_pr
     c = confronta(e, [lontana, opposta, fuori, vicina])
     assert [x.operazione for x in c] == [vicina, lontana]
     assert c[0].ritrovata and not c[1].ritrovata
+
+
+# --- Le risposte alla Romeo e il Capo che lo imita ---
+
+import numpy as np
+
+from nvm.agenti.cacciatore import Stato, caccia
+from nvm.agenti.capo import COLONNE, Capo
+from nvm.agenti.conferme import GRANDEZZA, LONDRA, NEW_YORK, Grandi, alla_romeo
+from nvm.dati.candele import costruisci
+from nvm.dati.minuti import CHIUSURA, MASSIMO, MINIMO
+from nvm.prova.base import opera
+from nvm.tempo import NEW_YORK as FUSO, ny
+from tests.aiuti import passeggiata
+
+
+def test_le_risposte_alla_romeo_sono_quelle_che_si_contano_a_mano():
+    from datetime import datetime
+    m = passeggiata("EURUSD", ny(2026, 1, 4, 17), ny(2026, 4, 26, 17), seme=5)
+    tutti = []
+    for alto, basso in ((TF.W1, TF.H4), (TF.D1, TF.H1)):
+        tutti += caccia(costruisci(m, alto), costruisci(m, basso))
+    grandi = Grandi.da(tutti)
+    settimane = costruisci(m, TF.W1)
+    alte, basse = costruisci(m, TF.H4), costruisci(m, TF.M15)
+    operazioni = opera(alte, basse, ny(2026, 2, 1, 17), ny(2026, 4, 26, 17))
+    assert len(operazioni) > 20
+    for r in operazioni:
+        s = r.scatto
+        a = alla_romeo(s, basse, settimane, grandi)
+        ora = datetime.fromtimestamp(int(basse.inizio[s.indice]), tz=FUSO).hour
+        assert a.londra == (LONDRA[0] <= ora < LONDRA[1])
+        assert a.new_york == (NEW_YORK[0] <= ora < NEW_YORK[1])
+        armato = [c for c in tutti if c.verso is r.verso and GRANDEZZA[c.alto_tf] > GRANDEZZA[TF.H4]
+                  and c.stato_a(s.quando) is Stato.ARMATO]
+        assert a.annidato == bool(armato)
+        k = int(np.searchsorted(settimane.fine, s.quando, side="right")) - 1
+        dove = (basse.bid[s.indice, CHIUSURA] - settimane.bid[k, MINIMO]) / (settimane.bid[k, MASSIMO] - settimane.bid[k, MINIMO])
+        assert a.sconto == (dove < 0.5 if r.verso is Verso.LONG else dove > 0.5)
+
+
+def _capo_con_romeo(seme=0, n=3000, quante=40):
+    rng = np.random.default_rng(seme)
+    x = rng.integers(0, 2, size=(n, len(COLONNE))).astype(float)
+    x[:, COLONNE.index("RR1")] = rng.uniform(0.5, 4, n)
+    x[:, COLONNE.index("RR2")] = rng.uniform(1, 8, n)
+    tp1 = rng.random(n) < 0.4
+    tp2 = tp1 & (rng.random(n) < 0.4)
+    capo = Capo.allena(x, tp1, tp2)
+    # Romeo sceglie quasi solo le operazioni nell'ora di New York.
+    y = (x[:, COLONNE.index("ora di Romeo: New York")] == 1) & (rng.random(n) < 0.05)
+    rr1, rr2, costi = x[:, COLONNE.index("RR1")], x[:, COLONNE.index("RR2")], np.full(n, 0.05)
+    return capo.impara_romeo(x, y, rr1, rr2, costi, quante), x, rr1, rr2, costi
+
+
+def test_il_capo_impara_cosa_sceglie_romeo_e_la_soglia_da_le_operazioni_chieste():
+    capo, x, rr1, rr2, costi = _capo_con_romeo()
+    pesi = dict(capo.fiducia_romeo())
+    assert max(pesi, key=pesi.get) == "ora di Romeo: New York"
+    assert capo.entra(x, rr1, rr2, costi).sum() == 40
+    simili = capo.somiglianza(x)
+    ny_ = x[:, COLONNE.index("ora di Romeo: New York")] == 1
+    assert simili[ny_].mean() > 2 * simili[~ny_].mean()
+
+
+def test_il_capo_salvato_ricorda_romeo():
+    capo, x, rr1, rr2, costi = _capo_con_romeo(seme=1)
+    di_nuovo = Capo.da_dati(capo.come_dati())
+    assert np.allclose(di_nuovo.somiglianza(x), capo.somiglianza(x))
+    assert di_nuovo.soglia_romeo == capo.soglia_romeo
+    assert (di_nuovo.entra(x, rr1, rr2, costi) == capo.entra(x, rr1, rr2, costi)).all()
+
+
+def test_senza_romeo_decide_solo_il_guadagno_atteso():
+    capo, x, rr1, rr2, costi = _capo_con_romeo(seme=2)
+    senza = Capo(capo.media, capo.scala, capo.primo, capo.secondo)
+    assert (senza.somiglianza(x) == 1).all()
+    assert (senza.entra(x, rr1, rr2, costi) == (senza.valore_atteso(x, rr1, rr2, costi) > 0)).all()

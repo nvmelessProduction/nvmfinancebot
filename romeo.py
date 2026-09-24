@@ -3,6 +3,7 @@
     python romeo.py                          # il periodo di studio (2023), configurazione 1
     python romeo.py --configurazioni 1-8     # tutte le configurazioni di capo.py
     python romeo.py --righe                  # anche il dettaglio riga per riga
+    python romeo.py --imita                  # il Capo che imita Romeo, fuori campione per trimestre
 
 Per il periodo di studio: la lettura regge, com'e' andata, se il Cacciatore
 vedeva il CRT e, per ogni configurazione, se il bot ha fatto la stessa
@@ -25,13 +26,14 @@ from capo import CONFIGURAZIONI, COPPIE, GRADINO
 from nvm.agenti.cacciatore import Verso, caccia
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.capo import riga as colonne_del_capo
-from nvm.agenti.conferme import SOPRA, contesto, key_level, orario
+from nvm.agenti.conferme import SOPRA, tutti_i_pareri
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import SETTIMANA, Risultato, opera
 from nvm.prova.cammino import Tabella
-from nvm.prova.romeo import Entrata, al_prezzo, armati, confronta, esito, leggi
+from nvm.prova.romeo import Entrata, al_prezzo, armati, candidati, confronta, esito, etichette, grandi, leggi
+from nvm.agenti.capo import RAPPORTO_ROMEO
 from nvm.tempo import TF, come_testo
 
 RADICE = Path(__file__).resolve().parent
@@ -82,6 +84,8 @@ def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
     variante, stretto = CONFIGURAZIONI[numero]
     bot = Bot()
     coppie = [(alto, basso, base) for alto, basso in (GRADINO if numero > 4 else COPPIE)]
+    g = grandi(base, fine)
+    settimane = costruisci(base, TF.W1).chiuse_entro(fine)
     if len(minuti):
         alto, basso = COPPIA_MINUTI[numero > 4]
         coppie.append((alto, basso, minuti))
@@ -93,13 +97,51 @@ def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
         ops = opera(alte, basse, _istante(2023), _istante(2024), variante, stretto)
         if not ops:
             continue
-        x = np.array([colonne_del_capo(r, key_level(r.scatto, sopra, basse), orario(r.scatto, basse),
-                                       contesto(r.scatto, alte, sopra)) for r in ops])
+        x = np.array([colonne_del_capo(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)) for r in ops])
         atteso = capo.valore_atteso(x, np.array([r.rr1 for r in ops]), np.array([r.rr2 for r in ops]),
                                     np.array([r.costo_erre for r in ops]))
         bot.tutte += ops
         bot.scelte += [r for r, a in zip(ops, atteso) if a > 0]
     return bot
+
+
+def imita(radice: Path, entrate: list[Entrata]) -> None:
+    """Il Capo che impara Romeo (`spec/capo.md`), giudicato fuori campione: per
+    ogni trimestre del 2023 impara la somiglianza sugli altri tre e sceglie in
+    quello. Il guadagno atteso e' quello del Capo di inizio 2023."""
+    capo = _capo_del_2023(1)
+    ops, xs, ys = [], [], []
+    for strumento in sorted({e.strumento for e in entrate}):
+        ore, _ = carica_ore(radice, strumento, _istante(2021), _istante(2024, 3))
+        minuti = carica_periodo(radice / "minuti", strumento, _istante(2023), _istante(2024))
+        o, x = candidati(ore, minuti, _istante(2023), _istante(2024))
+        ops += o
+        xs.append(x)
+        ys.append(etichette([e for e in entrate if e.strumento == strumento], o))
+    x, y = np.vstack(xs), np.concatenate(ys)
+    rr1, rr2 = np.array([o.rr1 for o in ops]), np.array([o.rr2 for o in ops])
+    costi = np.array([o.costo_erre for o in ops])
+    trimestre = np.array([datetime.fromtimestamp(o.quando, tz=timezone.utc).month - 1 for o in ops]) // 3
+    trim_romeo = np.array([datetime.fromtimestamp(e.dal, tz=timezone.utc).month - 1 for e in entrate]) // 3
+    atteso = capo.valore_atteso(x, rr1, rr2, costi) > 0
+    scelte_romeo = np.zeros(len(ops), bool)
+    for k in range(4):
+        prova = trimestre == k
+        quante = RAPPORTO_ROMEO * int((trim_romeo != k).sum())
+        c = capo.impara_romeo(x[~prova], y[~prova], rr1[~prova], rr2[~prova], costi[~prova], quante)
+        scelte_romeo[prova] = c.entra(x[prova], rr1[prova], rr2[prova], costi[prova])
+    settimane_romeo = Counter(e.dal // SETTIMANA for e in entrate)
+    alte = {e.id for e in entrate if e.rischio and e.rischio / PIP[e.strumento] >= STOP_ALTO}
+    print(f"\nIl Capo che imita Romeo, fuori campione per trimestre: {len(ops)} candidati del 2023, "
+          f"{int(y.sum())} sono le scelte di Romeo.")
+    for nome, scelta in (("tutte le operazioni", np.ones(len(ops), bool)), ("solo guadagno atteso > 0", atteso),
+                         ("guadagno atteso > 0 e somiglianza a Romeo", scelte_romeo)):
+        prese = [o for o, v in zip(ops, scelta) if v]
+        vicine = {e.id for e in entrate if confronta(e, prese)}
+        trovate = {e.id for e in entrate if (c := confronta(e, prese)) and c[0].ritrovata}
+        per_romeo = sum(Counter(o.quando // SETTIMANA for o in prese)[w] for w in settimane_romeo) / len(entrate)
+        print(f"  {nome:42} prese {len(prese):5}  vicine {len(vicine):3}  ritrovate {len(trovate):2} "
+              f"(timeframe alto {len(trovate & alte)}/{len(alte)})  per ognuna di Romeo {per_romeo:5.1f}")
 
 
 def main() -> None:
@@ -108,8 +150,12 @@ def main() -> None:
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
     parser.add_argument("--configurazioni", default="1")
     parser.add_argument("--righe", action="store_true")
+    parser.add_argument("--imita", action="store_true")
     a = parser.parse_args()
     radice = Path(a.cartella)
+    if a.imita:
+        imita(radice, [e for e in leggi(Path(a.catalogo)) if e.periodo == "studio" and e.strumento in PUNTO])
+        return
     numeri = _numeri(a.configurazioni)
     capi = {n: _capo_del_2023(n) for n in numeri}
     tutte = leggi(Path(a.catalogo))

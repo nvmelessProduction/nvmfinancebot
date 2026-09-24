@@ -12,12 +12,12 @@ piano, mai lo strumento; e ogni peso si legge.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.conferme import Contesto, KeyLevel, Orario
+from nvm.agenti.conferme import AllaRomeo, Contesto, KeyLevel, Orario
 from nvm.prova.base import Risultato
 from nvm.prova.campo import Uscita
 from nvm.tempo import TF
@@ -33,6 +33,8 @@ COLONNE = (
     # Aggiunta il 24/09/2026 per il bot dal vivo: nello storico non ci sono i
     # 15 minuti di vent'anni, quindi il Capo su questa coppia impara dal vivo.
     "coppia H4-M15",
+    # Le risposte alla Romeo (`spec/conferme.md`), aggiunte il 24/09/2026.
+    "ora di Romeo: Londra", "ora di Romeo: New York", "dentro un CRT più grande", "a sconto sulla settimana",
 )
 # Penalita' L2, fissata nella scheda.
 PENALITA = 1.0
@@ -41,6 +43,10 @@ PENALITA = 1.0
 # anno (registro/tentativi.md, 24/09/2026): 1 anno ha fatto meglio di 2, 4, 8
 # e di nessun peso.
 EMIVITA_ANNI = 1.0
+# Il Capo che impara Romeo (`spec/capo.md`): la penalita' della sua
+# regressione, e quante operazioni prendere per ognuna di Romeo.
+PENALITA_ROMEO = 10.0
+RAPPORTO_ROMEO = 3
 
 
 def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI) -> np.ndarray:
@@ -49,7 +55,8 @@ def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI)
     return w / w.mean()
 
 
-def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contesto]) -> np.ndarray:
+def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contesto],
+         ar: Optional[AllaRomeo] = None) -> np.ndarray:
     """Le colonne del Capo per un'operazione, nell'ordine di `COLONNE`."""
     x = np.zeros(len(COLONNE))
     if kl is None:
@@ -70,6 +77,8 @@ def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contes
     x[17] = r.alto_tf is TF.D1
     x[18:21] = r.rr1, r.rr2, r.stop_su_ampiezza
     x[21] = r.alto_tf is TF.H4
+    if ar is not None:
+        x[22:26] = ar.londra, ar.new_york, ar.annidato, bool(ar.sconto)
     return x
 
 
@@ -117,6 +126,12 @@ class Capo:
     # Le combinazioni di due colonne che il Capo prova, nate dai consigli fra
     # agenti nella riunione: il prodotto delle due colonne diventa una colonna in piu'.
     interazioni: tuple[tuple[int, int], ...] = ()
+    # La somiglianza a Romeo (`spec/capo.md`, "Il Capo impara Romeo"): una
+    # regressione sulle colonne standardizzate, e la soglia sopra cui si entra.
+    romeo: Optional[Logistica] = None
+    romeo_media: Optional[np.ndarray] = None
+    romeo_scala: Optional[np.ndarray] = None
+    soglia_romeo: float = 0.0
 
     def _piena(self, x: np.ndarray) -> np.ndarray:
         return _con_interazioni(x, self.interazioni)
@@ -142,6 +157,39 @@ class Capo:
         p1, q = self.primo.probabilita(z), self.secondo.probabilita(z)
         return p1 * (0.5 * rr1 + 0.5 * q * rr2) - (1 - p1) - costi
 
+    def somiglianza(self, x: np.ndarray) -> np.ndarray:
+        """Quanto ogni operazione somiglia a una che Romeo prenderebbe, da 0 a 1.
+        Senza la regressione di Romeo, 1: decide solo il guadagno atteso."""
+        x = np.atleast_2d(x)
+        if self.romeo is None:
+            return np.ones(len(x))
+        return self.romeo.probabilita((x - self.romeo_media) / self.romeo_scala)
+
+    def entra(self, x: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray) -> np.ndarray:
+        """Si entra se il guadagno atteso e' sopra zero e l'operazione somiglia abbastanza a Romeo."""
+        return (self.valore_atteso(x, rr1, rr2, costi) > 0) & (self.somiglianza(x) >= self.soglia_romeo)
+
+    def impara_romeo(self, x: np.ndarray, y: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray,
+                     quante: int) -> "Capo":
+        """Lo stesso Capo, con la regressione di Romeo allenata su `x`, `y` (1 = la
+        scelta di Romeo) e la soglia che, fra i candidati con guadagno atteso sopra
+        zero, ne fa prendere `quante`."""
+        media = x.mean(axis=0)
+        scala = x.std(axis=0)
+        scala[scala == 0] = 1.0
+        romeo = Logistica(PENALITA_ROMEO).allena((x - media) / scala, np.asarray(y, float))
+        nuovo = replace(self, romeo=romeo, romeo_media=media, romeo_scala=scala, soglia_romeo=0.0)
+        simile = nuovo.somiglianza(x)[self.valore_atteso(x, rr1, rr2, costi) > 0]
+        if 0 < quante < len(simile):
+            nuovo.soglia_romeo = float(np.sort(simile)[::-1][quante - 1])
+        return nuovo
+
+    def fiducia_romeo(self) -> list[tuple[str, float]]:
+        """I pesi della regressione di Romeo, colonna per colonna."""
+        if self.romeo is None:
+            return []
+        return [(n, float(w)) for n, w in zip(COLONNE, self.romeo.pesi[1:])]
+
     def nomi(self) -> list[str]:
         return list(COLONNE) + [f"{COLONNE[i]} × {COLONNE[j]}" for i, j in self.interazioni]
 
@@ -164,6 +212,10 @@ class Capo:
             "colonne": list(COLONNE), "media": self.media.tolist(), "scala": self.scala.tolist(),
             "primo": self.primo.pesi.tolist(), "secondo": self.secondo.pesi.tolist(),
             "interazioni": [list(c) for c in self.interazioni],
+            "romeo": None if self.romeo is None else {
+                "pesi": self.romeo.pesi.tolist(), "media": self.romeo_media.tolist(),
+                "scala": self.romeo_scala.tolist(), "soglia": self.soglia_romeo,
+            },
         }
 
     @classmethod
@@ -172,8 +224,15 @@ class Capo:
             raise ValueError("il Capo salvato ha colonne diverse da quelle di oggi: va riallenato")
         primo, secondo = Logistica(), Logistica()
         primo.pesi, secondo.pesi = np.array(d["primo"]), np.array(d["secondo"])
-        return cls(np.array(d["media"]), np.array(d["scala"]), primo, secondo,
+        capo = cls(np.array(d["media"]), np.array(d["scala"]), primo, secondo,
                    tuple(tuple(c) for c in d.get("interazioni", [])))
+        r = d.get("romeo")
+        if r:
+            capo.romeo = Logistica(PENALITA_ROMEO)
+            capo.romeo.pesi = np.array(r["pesi"])
+            capo.romeo_media, capo.romeo_scala = np.array(r["media"]), np.array(r["scala"])
+            capo.soglia_romeo = float(r["soglia"])
+        return capo
 
 
 def _con_interazioni(x: np.ndarray, interazioni) -> np.ndarray:

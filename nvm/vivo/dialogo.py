@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from itertools import combinations
 
 import numpy as np
@@ -19,12 +21,12 @@ from nvm.vivo.messaggi import erre, quando
 
 # Quali colonne del Capo vengono da quale agente.
 AGENTI: dict[str, tuple[int, ...]] = {
-    "Cacciatore": (16, 17, 21),
+    "Cacciatore": (16, 17, 21, 24),
     "Grilletto": (14, 15),
     "Livelli": (18, 19, 20),
     "Key level": (0, 1, 2, 3, 4),
-    "Orario": (5, 6, 7, 8, 9),
-    "Bias": (10, 11, 12, 13),
+    "Orario": (5, 6, 7, 8, 9, 22, 23),
+    "Bias": (10, 11, 12, 13, 25),
 }
 # Sotto questa spinta un agente non si schiera.
 NEUTRO = 0.02
@@ -42,6 +44,10 @@ SEGNALI: dict[str, tuple[str, int]] = {
     "secondo colpo": ("Grilletto", COLONNE.index("secondo colpo")),
     "settimanale": ("Cacciatore", COLONNE.index("coppia W1-H4")),
     "giornaliero": ("Cacciatore", COLONNE.index("coppia D1-H1")),
+    "ora di Londra di Romeo": ("Orario", COLONNE.index("ora di Romeo: Londra")),
+    "ora di New York di Romeo": ("Orario", COLONNE.index("ora di Romeo: New York")),
+    "dentro un CRT più grande": ("Cacciatore", COLONNE.index("dentro un CRT più grande")),
+    "a sconto sulla settimana": ("Bias", COLONNE.index("a sconto sulla settimana")),
 }
 
 
@@ -148,16 +154,20 @@ def consigli(x: np.ndarray, r: np.ndarray, minimo: int = 200, quanti: int = 3) -
 
 LAVORO: dict[str, str] = {
     "Cacciatore": "Guardo se c'è un CRT: una candela fa da range e quella dopo ne spazza un lato. "
-                  "Coppie: mensile → giornaliero, settimanale → 4 ore, giornaliero → 1 ora, 4 ore → 15 minuti.",
+                  "Coppie: mensile → giornaliero, settimanale → 4 ore, giornaliero → 1 ora, 4 ore → 15 minuti. "
+                  "E dico se il CRT sta dentro uno più grande, come vuole Romeo.",
     "Grilletto": "Aspetto il Model#1 di Romeo: la candela del turtle soup e la chiusura oltre la sua apertura. "
                  "Dopo uno stop posso sparare ancora, fino a tre colpi sullo stesso CRT.",
     "Livelli": "Metto lo stop oltre l'estremo della manipolazione, il primo target al 50% del range, il secondo al lato opposto.",
     "Key level": "Guardo se la manipolazione è arrivata su una zona del timeframe sopra: un massimo, un rejection block, un FVG.",
-    "Orario": "Guardo a che ora di New York scatta l'ingresso. La golden candle di Romeo è 9–13.",
-    "Bias": "Leggo il bias dalle chiusure: la candela del range e il timeframe sopra, a favore o contro il CRT.",
+    "Orario": "Guardo a che ora di New York scatta l'ingresso. Le ore di Romeo: 1–5 (Londra) e 8–11 (New York); "
+              "la sua golden candle è 9–13.",
+    "Bias": "Leggo il bias dalle chiusure: la candela del range e il timeframe sopra, a favore o contro il CRT. "
+            "E guardo se compriamo a sconto e vendiamo a premio sulla settimana.",
     "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, e la parte che ho imparato dagli errori.",
-    "Capo": "Ascolto tutti, peso i pareri e decido: entro solo se il guadagno atteso è sopra zero. "
-            "Mi riaddestro ogni sabato sugli errori della settimana.",
+    "Capo": "Ascolto tutti, peso i pareri e decido: entro solo se il guadagno atteso è sopra zero "
+            "e se l'operazione somiglia a una che prenderebbe Romeo. Imparo dalle sue entrate e, ogni sabato, "
+            "dagli errori della settimana.",
 }
 
 
@@ -191,6 +201,11 @@ def presentazioni(pagelle: dict, capo: Capo, parte: float) -> list[str]:
             ordine = sorted(f.items(), key=lambda a: -a[1])
             righe.append("Oggi ascolto soprattutto: " + ", ".join(n for n, _ in ordine[:3])
                          + "; meno: " + ", ".join(n for n, _ in ordine[-2:]) + ".")
+            if capo.romeo is not None:
+                pesi = sorted(capo.fiducia_romeo(), key=lambda a: -a[1])
+                righe.append("Da Romeo ho imparato che le sue entrate hanno soprattutto: "
+                             + ", ".join(n for n, w in pesi[:3] if w > 0) + ". "
+                             + f"Entro solo sopra il {capo.soglia_romeo:.0%} di somiglianza.")
         righe.append(f"— {nome}")
         testi.append("\n".join(righe))
     return testi
@@ -199,8 +214,8 @@ def presentazioni(pagelle: dict, capo: Capo, parte: float) -> list[str]:
 # --- Le prove che ognuno porta, dallo storico ---
 
 BINARIE: dict[str, tuple[int, ...]] = {
-    "Cacciatore": (16, 17, 21), "Grilletto": (14, 15), "Key level": (0, 1, 2, 3, 4),
-    "Orario": (5, 6, 7, 8, 9), "Bias": (10, 11, 12, 13),
+    "Cacciatore": (16, 17, 21, 24), "Grilletto": (14, 15), "Key level": (0, 1, 2, 3, 4),
+    "Orario": (5, 6, 7, 8, 9, 22, 23), "Bias": (10, 11, 12, 13, 25),
 }
 
 
@@ -220,15 +235,24 @@ def prove(x: np.ndarray, sx: np.ndarray, sr: np.ndarray) -> dict[str, str]:
     return testi
 
 
-def discussione_con_prove(per: dict[str, float], entra: bool, atteso: float, testi: dict[str, str]) -> str:
+def discussione_con_prove(per: dict[str, float], entra: bool, atteso: float, testi: dict[str, str],
+                          romeo: Optional[float] = None, soglia: Optional[float] = None) -> str:
     righe = ["💬 Il confronto:"]
     for nome, v in sorted(per.items(), key=lambda a: -a[1]):
         posizione = "spingo a entrare" if v >= NEUTRO else ("freno" if v <= -NEUTRO else "resto neutro")
         righe.append(f"  {nome}: {posizione} ({v:+.2f})".replace(".", ",") + (f", {testi[nome]}." if nome in testi else "."))
     favore = sum(v >= NEUTRO for v in per.values())
     contro = sum(v <= -NEUTRO for v in per.values())
-    righe.append(f"  Capo: {favore} a favore, {contro} contro; tutto pesato il guadagno atteso è {erre(atteso)}: "
-                 + ("entro." if entra else "non entro."))
+    capo = f"  Capo: {favore} a favore, {contro} contro; tutto pesato il guadagno atteso è {erre(atteso)}"
+    if romeo is not None and soglia:
+        capo += f", e somiglia a un'entrata di Romeo al {romeo:.0%} (mi serve almeno il {soglia:.0%})"
+    if entra:
+        capo += ": entro."
+    elif atteso > 0:
+        capo += ": non entro, Romeo questa non la prenderebbe."
+    else:
+        capo += ": non entro."
+    righe.append(capo)
     return "\n".join(righe)
 
 

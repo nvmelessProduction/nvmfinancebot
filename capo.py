@@ -20,15 +20,16 @@ from pathlib import Path
 import numpy as np
 
 from nvm.agenti.cacciatore import Variante
-from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
+from nvm.agenti.capo import COLONNE, RAPPORTO_ROMEO, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
-from nvm.agenti.conferme import SOPRA, contesto, key_level, orario
+from nvm.agenti.conferme import SOPRA, tutti_i_pareri
 from nvm.dati.candele import costruisci
-from nvm.dati.minuti import PUNTO
+from nvm.dati.minuti import PUNTO, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.dati.spread import allarga
 from nvm.prova.base import opera
 from nvm.prova.cammino import Tabella, cammino, giudica
+from nvm.prova.romeo import candidati, etichette, grandi, leggi
 from nvm.tempo import TF
 
 RADICE = Path(__file__).resolve().parent
@@ -67,6 +68,8 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
     for strumento in PUNTO:
         base, _ = carica_ore(radice, strumento, dal - 70 * 86400, al + 70 * 86400)
         fine = int(base.t[-1]) + base.passo
+        g = grandi(base, fine)
+        settimane = costruisci(base, TF.W1).chiuse_entro(fine)
         for alto, basso in (GRADINO if numero > 4 else COPPIE):
             alte = costruisci(base, alto).chiuse_entro(fine)
             basse = costruisci(base, basso).chiuse_entro(fine)
@@ -75,7 +78,7 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
                 basse = allarga(basse, spread)
             r = opera(alte, basse, dal, al, variante, stretto)
             risultati += r
-            pareri += [(key_level(x.scatto, sopra, basse), orario(x.scatto, basse), contesto(x.scatto, alte, sopra)) for x in r]
+            pareri += [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) for x in r]
             print(f"  conf {numero} {strumento} {alto.value}-{basso.value}: {len(r)} operazioni", flush=True)
     t = Tabella.da(risultati, pareri)
     t.salva(percorso)
@@ -136,7 +139,6 @@ def salva_per_il_vivo(t: Tabella) -> None:
         t.x = np.c_[t.x, np.zeros((len(t), len(COLONNE) - t.x.shape[1]))]
     fine = int(t.chiusa.max())
     capo = Capo.allena(t.x, t.tp1, t.tp2, pesi=pesi_per_eta(t.chiusa, fine))
-    (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
     anni = t.anno
     f_tutte, r_tutte, q_tutte = [], [], []
     for a in range(PRIMO_GIUDICATO, AL + 1):
@@ -154,10 +156,36 @@ def salva_per_il_vivo(t: Tabella) -> None:
     kelly_f, kelly_r = np.array(f_tutte)[ordine], np.array(r_tutte)[ordine]
     parte = impara_parte(kelly_f, kelly_r)
     (cartella / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
+    romeo = candidati_di_romeo()
+    capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"], romeo["romeo_rr1"], romeo["romeo_rr2"],
+                             romeo["romeo_costi"], int(romeo["romeo_quante"]))
+    (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
     np.savez_compressed(cartella / "storico.npz", x=t.x, tp1=t.tp1, tp2=t.tp2, erre=t.erre, quando=t.chiusa,
-                        kelly_f=kelly_f, kelly_r=kelly_r)
+                        kelly_f=kelly_f, kelly_r=kelly_r, **romeo)
     print(f"Capo allenato su {len(t)} operazioni; il Rischio usa {parte:.2f} del Kelly "
-          f"(imparato su {len(kelly_f)} puntate 2008-2023). Salvati in {cartella}")
+          f"(imparato su {len(kelly_f)} puntate 2008-2023). Somiglianza a Romeo imparata su "
+          f"{len(romeo['romeo_y'])} candidati del 2023, {int(romeo['romeo_y'].sum())} le sue scelte; "
+          f"soglia {capo.soglia_romeo:.3f}. Salvati in {cartella}")
+
+
+def candidati_di_romeo(radice: Path = RADICE / "dati" / "grezzi") -> dict[str, np.ndarray]:
+    """I candidati del periodo di studio per la somiglianza a Romeo (`spec/capo.md`):
+    le operazioni del 2023 delle coppie del bot dal vivo, e quali sono le sue scelte."""
+    entrate = [e for e in leggi(RADICE / "casi" / "entrate-romeo.csv")
+               if e.periodo == "studio" and e.strumento in PUNTO]
+    xs, ys, rr1, rr2, costi = [], [], [], [], []
+    for strumento in PUNTO:
+        ore, _ = carica_ore(radice, strumento, _istante(2021), _istante(2024) + 60 * 86400)
+        minuti = carica_periodo(radice / "minuti", strumento, _istante(2023), _istante(2024))
+        ops, x = candidati(ore, minuti, _istante(2023), _istante(2024))
+        xs.append(x)
+        ys.append(etichette([e for e in entrate if e.strumento == strumento], ops))
+        rr1 += [o.rr1 for o in ops]
+        rr2 += [o.rr2 for o in ops]
+        costi += [o.costo_erre for o in ops]
+    return {"romeo_x": np.vstack(xs), "romeo_y": np.concatenate(ys), "romeo_rr1": np.array(rr1),
+            "romeo_rr2": np.array(rr2), "romeo_costi": np.array(costi),
+            "romeo_quante": np.array(RAPPORTO_ROMEO * len(entrate))}
 
 
 def _giudicati(t: Tabella) -> np.ndarray:

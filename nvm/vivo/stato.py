@@ -47,6 +47,8 @@ class Seguita:
     spinte: dict = field(default_factory=dict)
     # Come la si chiama nei messaggi: "EURUSD SHORT, giornaliero → 1 ora, 09/09 03:00 NY".
     leggibile: str = ""
+    # Quanto somigliava a un'entrata di Romeo, per il Capo (`spec/capo.md`).
+    romeo: float = 1.0
 
 
 @dataclass

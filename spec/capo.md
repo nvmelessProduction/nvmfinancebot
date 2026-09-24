@@ -87,3 +87,38 @@ della configurazione 1):
 
 Se nessuna configurazione passa, la Fase F non è chiusa: si scrive il
 numero, e si torna agli agenti.
+
+## Il Capo impara Romeo (24/09/2026) **[D]**
+
+Scritto dopo il cambio del metro (`PIANO.md`, "il metro è Romeo") e dopo
+aver visto, sul periodo di studio, che la scelta per il solo guadagno
+atteso scarta metà delle entrate di Romeo che il bot trovava
+(`registro/tentativi.md`, 24/09).
+
+**Una terza regressione logistica**, `r`: la probabilità che Romeo prenda
+questa operazione. Guarda le stesse colonne del Capo, comprese le quattro
+risposte alla Romeo (`spec/conferme.md`), standardizzate sul suo periodo di
+allenamento.
+
+- **Da dove impara.** Dal catalogo `casi/entrate-romeo.csv`, solo il
+  periodo di studio (fino al 2023). I candidati sono tutte le operazioni
+  del 2023 delle coppie del bot dal vivo (mensile → giornaliero,
+  settimanale → 4 ore, giornaliero → 1 ora, e 4 ore → 15 minuti dove ci
+  sono i minuti). Per ogni entrata di Romeo, il candidato dello stesso
+  strumento e verso, con l'ingresso nella sua finestra e il prezzo più
+  vicino al suo (`nvm/prova/romeo.confronta`), vale 1; tutti gli altri 0.
+- **Penalità L2: 10**, scelta prima di costruire il bot fra 1, 10 e 100,
+  addestrando su tre trimestri del 2023 e provando sul quarto.
+- **Quando entra.** Entra solo se il guadagno atteso è sopra zero **e** la
+  somiglianza a Romeo è sopra la soglia.
+- **La soglia** si calcola da sola, senza sceglierla guardando i
+  risultati: è quella che, sui candidati del 2023 con guadagno atteso
+  sopra zero, fa prendere **3 operazioni per ognuna di Romeo** del periodo
+  di studio. Tre è il massimo che il cancello del `PIANO.md` concede.
+- **Come migliora.** Ogni sabato, dopo il riaddestramento sul dal vivo, il
+  Capo rifà anche `r` e la soglia, perché il guadagno atteso è cambiato.
+  Ogni volta che il catalogo cresce o arrivano i minuti di un periodo
+  nuovo, `python capo.py --vivo` rifà tutto e il bot si aggiorna da solo.
+- **Come si giudica.** Sul periodo di studio solo fuori campione (tre
+  trimestri per allenare, il quarto per provare); il giudizio vero è una
+  volta sola sul 2024–2026, nella Fase G.

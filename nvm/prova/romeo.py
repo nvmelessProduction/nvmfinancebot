@@ -31,10 +31,12 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.cacciatore import CRT, Verso
-from nvm.dati.candele import Candele
-from nvm.dati.minuti import MASSIMO, MINIMO
-from nvm.prova.base import Risultato
+from nvm.agenti.cacciatore import CRT, Verso, caccia
+from nvm.agenti.capo import COLONNE, riga
+from nvm.agenti.conferme import SOPRA, Grandi, tutti_i_pareri
+from nvm.dati.candele import Candele, costruisci
+from nvm.dati.minuti import MASSIMO, MINIMO, Minuti
+from nvm.prova.base import Risultato, opera
 from nvm.tempo import NEW_YORK, TF
 
 # L'ora del server di Romeo: New York + 7 ore, estate e inverno.
@@ -52,6 +54,9 @@ ORIZZONTE = 45 * 86400
 PASSO_BASSO = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400}
 # Meta' del rischio di Romeo: la soglia del PIANO.md.
 META_RISCHIO = 0.5
+# Le coppie del bot dal vivo: tre sulle ore, e il 4 ore -> 15 minuti dove ci sono i minuti.
+COPPIE_ORE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
+COPPIA_MINUTI = (TF.H4, TF.M15)
 
 
 @dataclass
@@ -185,3 +190,41 @@ def confronta(e: Entrata, operazioni: list[Risultato]) -> list[Confronto]:
         trovate.append(Confronto(op, d))
     trovate.sort(key=lambda c: (c.distanza is None, c.distanza or 0.0))
     return trovate
+
+
+def grandi(ore: Minuti, fine: int) -> Grandi:
+    """I CRT delle coppie sulle ore, per la domanda "dentro un CRT piu' grande?"."""
+    return Grandi.da([c for alto, basso in COPPIE_ORE
+                      for c in caccia(costruisci(ore, alto).chiuse_entro(fine), costruisci(ore, basso).chiuse_entro(fine))])
+
+
+def candidati(ore: Minuti, minuti: Minuti, dal: int, al: int) -> tuple[list[Risultato], np.ndarray]:
+    """Le operazioni che il bot dal vivo avrebbe visto con ingresso in [dal, al),
+    con le colonne del Capo. `minuti` puo' essere vuoto: allora niente 4 ore -> 15 minuti."""
+    fine = int(ore.t[-1]) + ore.passo
+    g = grandi(ore, fine)
+    settimane = costruisci(ore, TF.W1).chiuse_entro(fine)
+    coppie = [(alto, basso, ore) for alto, basso in COPPIE_ORE]
+    if len(minuti):
+        coppie.append((*COPPIA_MINUTI, minuti))
+    ops, righe = [], []
+    for alto, basso, dati in coppie:
+        f = int(dati.t[-1]) + dati.passo
+        alte, basse = costruisci(dati, alto).chiuse_entro(f), costruisci(dati, basso).chiuse_entro(f)
+        sopra = costruisci(ore, SOPRA[alto]).chiuse_entro(fine)
+        for r in opera(alte, basse, dal, al):
+            ops.append(r)
+            righe.append(riga(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)))
+    return ops, np.array(righe, dtype=float).reshape(len(ops), len(COLONNE))
+
+
+def etichette(entrate: list[Entrata], operazioni: list[Risultato]) -> np.ndarray:
+    """1 per il candidato che e' la scelta di Romeo (per ogni sua entrata, il piu'
+    vicino al suo prezzo fra quelli nello stesso verso e nella sua finestra), 0 per gli altri."""
+    y = np.zeros(len(operazioni), bool)
+    posto = {id(o): i for i, o in enumerate(operazioni)}
+    for e in entrate:
+        c = confronta(e, operazioni)
+        if c:
+            y[posto[id(c[0].operazione)]] = True
+    return y

@@ -17,7 +17,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.cacciatore import Verso
+from nvm.agenti.cacciatore import CRT, Verso
 from nvm.agenti.grilletto import Scatto
 from nvm.dati.candele import Candele
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
@@ -35,6 +35,11 @@ TOLLERANZA = 0.10
 
 # La Golden candle time di Romeo: 9:00-13:00 di New York (msg 6110).
 GCT = (9, 13)
+# Le ore in cui entra Romeo, di New York (`spec/conferme.md`, le risposte alla Romeo).
+LONDRA = (1, 5)
+NEW_YORK = (8, 11)
+# Quale range e' piu' grande: una coppia sta dentro l'altra se il suo range e' piu' piccolo.
+GRANDEZZA = {TF.MN: 4, TF.W1: 3, TF.D1: 2, TF.H4: 1}
 
 
 @dataclass(frozen=True)
@@ -174,3 +179,81 @@ def contesto(s: Scatto, alte: Candele, sopra: Candele) -> Optional[Contesto]:
     if k < 1 or n < 2:
         return None
     return Contesto(bias(alte.bid[k - 1], alte.bid[k]), bias(sopra.bid[n - 2], sopra.bid[n - 1]))
+
+
+@dataclass(frozen=True)
+class AllaRomeo:
+    """Le quattro domande di `spec/conferme.md`, "le risposte alla Romeo"."""
+
+    londra: bool
+    new_york: bool
+    # Un CRT di una coppia piu' grande armato nello stesso verso (msg 5121).
+    annidato: bool
+    # Long nella meta' bassa della settimana chiusa prima, short in quella alta.
+    # None se la settimana manca.
+    sconto: Optional[bool]
+
+
+def _ore_toccate(inizio: int, fine: int) -> set[int]:
+    passi = np.arange(inizio, fine, 900, dtype=np.int64)
+    return set(((passi + scarti_ny(passi)) % 86400 // 3600).tolist())
+
+
+@dataclass
+class Grandi:
+    """I CRT delle coppie, pronti per la domanda "chi era armato a quell'istante?".
+
+    Per ogni verso e grandezza del range: gli istanti in cui si armano, in
+    ordine, e il piu' tardo fra quelli in cui decadono, fino a li'. Un CRT
+    era armato all'istante t se si e' armato entro t e decade dopo t: basta
+    che il piu' tardo a decadere, fra quelli armati entro t, decada dopo t.
+    """
+
+    armati: dict[tuple[Verso, int], np.ndarray]
+    decadono: dict[tuple[Verso, int], np.ndarray]
+
+    @classmethod
+    def da(cls, crt: list[CRT]) -> "Grandi":
+        armati, decadono = {}, {}
+        for chiave in {(c.verso, GRANDEZZA.get(c.alto_tf, 0)) for c in crt}:
+            scelti = sorted((c for c in crt if (c.verso, GRANDEZZA.get(c.alto_tf, 0)) == chiave),
+                            key=lambda c: c.armato_quando)
+            armati[chiave] = np.array([c.armato_quando for c in scelti], np.int64)
+            decadono[chiave] = np.maximum.accumulate(np.array([c.decaduto_quando for c in scelti], np.int64))
+        return cls(armati, decadono)
+
+    def armato(self, verso: Verso, piu_grande_di: int, istante: int) -> bool:
+        for (v, grandezza), inizi in self.armati.items():
+            if v is not verso or grandezza <= piu_grande_di:
+                continue
+            k = int(np.searchsorted(inizi, istante, side="right"))
+            if k and self.decadono[(v, grandezza)][k - 1] > istante:
+                return True
+        return False
+
+
+def alla_romeo(s: Scatto, basse: Candele, settimane: Candele, grandi: Grandi) -> AllaRomeo:
+    """Le risposte alla Romeo per uno scatto, con quello che si sapeva allo scatto.
+
+    `settimane` sono le candele settimanali dello strumento, `grandi` i CRT
+    delle coppie: conta solo chi era armato all'istante dello scatto.
+    """
+    crt = s.crt
+    ore = _ore_toccate(int(basse.inizio[s.indice]), int(basse.fine[s.indice]))
+    londra = any(LONDRA[0] <= h < LONDRA[1] for h in ore)
+    new_york = any(NEW_YORK[0] <= h < NEW_YORK[1] for h in ore)
+    annidato = grandi.armato(crt.verso, GRANDEZZA.get(crt.alto_tf, 0), s.quando)
+    k = int(np.searchsorted(settimane.fine, s.quando, side="right"))
+    sconto = None
+    if k >= 1:
+        alto, basso = float(settimane.bid[k - 1, MASSIMO]), float(settimane.bid[k - 1, MINIMO])
+        if alto > basso:
+            dove = (float(basse.bid[s.indice, CHIUSURA]) - basso) / (alto - basso)
+            sconto = dove < 0.5 if crt.verso is Verso.LONG else dove > 0.5
+    return AllaRomeo(londra, new_york, annidato, sconto)
+
+
+def tutti_i_pareri(s: Scatto, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, grandi: Grandi):
+    """Le risposte di tutte le conferme a uno scatto, nell'ordine che vuole il Capo."""
+    return (key_level(s, sopra, basse), orario(s, basse), contesto(s, alte, sopra),
+            alla_romeo(s, basse, settimane, grandi))

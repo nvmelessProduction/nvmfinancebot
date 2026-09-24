@@ -87,10 +87,31 @@ def pareri(d: Decisione) -> str:
         f"• Key level: {testo_kl}.",
         f"• Orario: scatto alle {d.orario.ora_scatto}:00 NY, "
         + ("dentro la golden candle (9–13)." if d.orario.gct else "fuori dalla golden candle (9–13)."),
-        f"• Bias: {testo_bias}.",
-        f"• Capo: primo target {d.p1:.0%}, secondo {d.q:.0%} → guadagno atteso {erre(d.atteso)}. "
-        + ("Entro." if d.entra else "Non entro."),
+        f"• Bias: {testo_bias}" + _sconto(d) + ".",
+        _romeo(d),
+        f"• Capo: primo target {d.p1:.0%}, secondo {d.q:.0%} → guadagno atteso {erre(d.atteso)}"
+        + (f"; somiglia a Romeo al {d.romeo:.0%} (soglia {d.soglia:.0%})" if d.soglia else "") + ". "
+        + ("Entro." if d.entra else ("Non entro: Romeo questa non la prenderebbe." if d.atteso > 0 else "Non entro.")),
     ])
+
+
+def _sconto(d: Decisione) -> str:
+    ar = d.alla_romeo
+    if ar is None or ar.sconto is None:
+        return ""
+    compra = d.r.verso.value == "long"
+    if ar.sconto:
+        return "; " + ("compriamo a sconto" if compra else "vendiamo a premio") + " sulla settimana"
+    return "; " + ("compriamo caro" if compra else "vendiamo a sconto") + " sulla settimana"
+
+
+def _romeo(d: Decisione) -> str:
+    ar = d.alla_romeo
+    if ar is None:
+        return "• Alla Romeo: non so."
+    ora = "ora di Londra di Romeo" if ar.londra else ("ora di New York di Romeo" if ar.new_york else "fuori dalle ore di Romeo")
+    grande = "dentro un CRT più grande" if ar.annidato else "nessun CRT più grande nello stesso verso"
+    return f"• Alla Romeo: {ora}, {grande}."
 
 
 def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, singola: bool) -> str:

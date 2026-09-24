@@ -51,6 +51,12 @@ class CapoFinto:
     def valore_atteso(self, x, rr1, rr2, costi):
         return self.p1 * (0.5 * rr1 + 0.5 * self.q * rr2) - (1 - self.p1) - costi
 
+    # Nessuna regressione di Romeo: decide solo il guadagno atteso.
+    soglia_romeo = 0.0
+
+    def somiglianza(self, x):
+        return np.ones(len(np.atleast_2d(x)))
+
 
 # --- impostazioni e Telegram ---
 
@@ -235,6 +241,25 @@ def test_la_riunione_riaddestra_il_capo_con_i_dati_dal_vivo():
     assert "Riunione" in testo and "30 dal vivo" in testo
     assert not np.allclose(nuovo.primo.pesi, capo.primo.pesi)
     assert 0 < parte <= 1
+
+
+def test_la_riunione_rifa_anche_la_somiglianza_a_romeo_e_le_decisioni_vecchie_non_la_rompono():
+    rng = np.random.default_rng(2)
+    n = 600
+    x = rng.integers(0, 2, size=(n, len(COLONNE))).astype(float)
+    storico = Storico(x, rng.random(n) < 0.4, rng.random(n) < 0.15)
+    storico.romeo_x, storico.romeo_y = x, (x[:, COLONNE.index("ora di Romeo: Londra")] == 1) & (rng.random(n) < 0.1)
+    storico.romeo_rr1, storico.romeo_rr2, storico.romeo_costi = np.full(n, 2.0), np.full(n, 4.0), np.full(n, 0.05)
+    storico.romeo_quante = 30
+    capo = Capo.allena(storico.x, storico.tp1, storico.tp2)
+    # Una decisione registrata prima delle colonne alla Romeo: 22 colonne invece di 26.
+    vecchia = Seguita("k", "EURUSD", "D1", "H1", "short", 100, 1.1, 1.101, 1.099, 1.098, 10**9, False,
+                      [0.0] * 22, 1.0, 2.0, 0.01, 0.5, 0.4, 0.1,
+                      esito={"uscita": "stop", "erre": -1.0, "quando": 200, "tp1": False, "tp2": False})
+    testo, nuovo, _ = riunione([vecchia], capo, storico, 0, "2026-S39")
+    assert nuovo.romeo is not None and nuovo.soglia_romeo > 0
+    assert "Romeo" in testo
+    assert nuovo.entra(x, storico.romeo_rr1, storico.romeo_rr2, storico.romeo_costi).sum() <= 30
 
 
 def test_il_rischio_impara_a_fidarsi_meno_se_il_capo_sbaglia():

@@ -95,6 +95,20 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   sempre (49 volte su 53), ma c'è anche nel verso opposto (45): vedere un
   CRT non distingue la scelta di Romeo. La scelta sta nell'ora, nel key
   level e nel bias, cioè negli agenti che il Capo oggi quasi ignora.
+- **Il Capo impara Romeo (24/09, sera).** Le risposte di prima non
+  distinguono le scelte di Romeo (fuori campione, come tirare a sorte).
+  Quattro risposte nuove, prese dalle sue frasi (`spec/conferme.md`): l'ora
+  di Londra (1–5 NY) e di New York (8–11 NY), il CRT dentro uno più grande,
+  il comprare a sconto sulla settimana. Con queste il Capo riconosce un po'
+  le sue scelte (0,62, dove il caso è 0,5), soprattutto per l'ora. Il Capo
+  ha ora una terza regressione, la **somiglianza a Romeo**, allenata sulle
+  sue entrate del 2023: entra solo se il guadagno atteso è sopra zero e la
+  somiglianza supera una soglia che dà 3 operazioni per ognuna di Romeo
+  (`spec/capo.md`). Fuori campione: 2 operazioni per ognuna di Romeo
+  (prima 8,4), ma ne ritrova 1 su 11 (prima 4). **Ha imparato quanto è
+  selettivo, non ancora cosa sceglie.** Nel bot dal vivo dal 24/09: si
+  riallena ogni sabato e ogni volta che arrivano esempi nuovi (minuti,
+  catalogo); l'équipe dice per ogni decisione quanto somiglia a Romeo.
 - **Le otto configurazioni contro Romeo** (`--configurazioni 1-8`). Delle
   25 entrate con lo stop letto, 11 sono sul timeframe alto: il manuale ne
   ritrova 6, ma con 26–31 operazioni per ognuna delle sue; il Capo ne
