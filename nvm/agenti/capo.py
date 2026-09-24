@@ -98,22 +98,68 @@ class Capo:
     scala: np.ndarray
     primo: Logistica
     secondo: Logistica
+    # Le combinazioni di due colonne che il Capo prova, nate dai consigli fra
+    # agenti nella riunione: il prodotto delle due colonne diventa una colonna in piu'.
+    interazioni: tuple[tuple[int, int], ...] = ()
+
+    def _piena(self, x: np.ndarray) -> np.ndarray:
+        return _con_interazioni(x, self.interazioni)
 
     @classmethod
-    def allena(cls, x: np.ndarray, tp1: np.ndarray, tp2: np.ndarray) -> "Capo":
-        media = x.mean(axis=0)
-        scala = x.std(axis=0)
+    def allena(cls, x: np.ndarray, tp1: np.ndarray, tp2: np.ndarray,
+               interazioni: tuple[tuple[int, int], ...] = ()) -> "Capo":
+        xp = _con_interazioni(x, interazioni)
+        media = xp.mean(axis=0)
+        scala = xp.std(axis=0)
         scala[scala == 0] = 1.0
-        z = (x - media) / scala
+        z = (xp - media) / scala
         primo = Logistica().allena(z, tp1.astype(float))
         secondo = Logistica().allena(z[tp1], tp2[tp1].astype(float))
-        return cls(media, scala, primo, secondo)
+        return cls(media, scala, primo, secondo, tuple(tuple(c) for c in interazioni))
+
+    def _z(self, x: np.ndarray) -> np.ndarray:
+        return (self._piena(x) - self.media) / self.scala
 
     def valore_atteso(self, x: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray) -> np.ndarray:
-        z = (x - self.media) / self.scala
+        z = self._z(x)
         p1, q = self.primo.probabilita(z), self.secondo.probabilita(z)
         return p1 * (0.5 * rr1 + 0.5 * q * rr2) - (1 - p1) - costi
 
+    def nomi(self) -> list[str]:
+        return list(COLONNE) + [f"{COLONNE[i]} × {COLONNE[j]}" for i, j in self.interazioni]
+
     def fiducia(self) -> list[tuple[str, float, float]]:
         """Per ogni colonna, il peso nelle due regressioni (sulle colonne standardizzate)."""
-        return [(n, float(a), float(b)) for n, a, b in zip(COLONNE, self.primo.pesi[1:], self.secondo.pesi[1:])]
+        return [(n, float(a), float(b)) for n, a, b in zip(self.nomi(), self.primo.pesi[1:], self.secondo.pesi[1:])]
+
+    def probabilita(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """p1 e q per ogni riga."""
+        z = self._z(x)
+        return self.primo.probabilita(z), self.secondo.probabilita(z)
+
+    def spinte(self, x: np.ndarray) -> np.ndarray:
+        """Di quanto ogni colonna sposta la stima del primo target per questa riga
+        (sul logaritmo delle quote): sopra zero spinge a entrare, sotto frena."""
+        return self.primo.pesi[1:] * self._z(x[None])[0]
+
+    def come_dati(self) -> dict:
+        return {
+            "colonne": list(COLONNE), "media": self.media.tolist(), "scala": self.scala.tolist(),
+            "primo": self.primo.pesi.tolist(), "secondo": self.secondo.pesi.tolist(),
+            "interazioni": [list(c) for c in self.interazioni],
+        }
+
+    @classmethod
+    def da_dati(cls, d: dict) -> "Capo":
+        if tuple(d["colonne"]) != COLONNE:
+            raise ValueError("il Capo salvato ha colonne diverse da quelle di oggi: va riallenato")
+        primo, secondo = Logistica(), Logistica()
+        primo.pesi, secondo.pesi = np.array(d["primo"]), np.array(d["secondo"])
+        return cls(np.array(d["media"]), np.array(d["scala"]), primo, secondo,
+                   tuple(tuple(c) for c in d.get("interazioni", [])))
+
+
+def _con_interazioni(x: np.ndarray, interazioni) -> np.ndarray:
+    if not interazioni:
+        return x
+    return np.c_[x, np.column_stack([x[:, i] * x[:, j] for i, j in interazioni])]

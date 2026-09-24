@@ -15,3 +15,5 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+# Lo stato del bot dal vivo: resta sulla macchina dove gira
+dati/vivo/

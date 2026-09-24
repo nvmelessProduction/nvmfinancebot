@@ -1,2 +1,6 @@
 numpy>=2.0
 pytest>=8.0
+# L'ora di New York: su Windows il database dei fusi orari non c'e' di serie.
+tzdata
+# MetaTrader5 esiste solo per Windows: altrove il bot dal vivo non parte, il resto si'.
+MetaTrader5>=5.0.45 ; sys_platform == "win32"

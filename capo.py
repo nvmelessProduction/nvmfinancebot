@@ -13,13 +13,14 @@ Ogni giudizio va scritto in `registro/tentativi.md`, anche quando va male.
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 
 from nvm.agenti.cacciatore import Variante
-from nvm.agenti.capo import COLONNE
+from nvm.agenti.capo import COLONNE, Capo
 from nvm.agenti.conferme import SOPRA, contesto, key_level, orario
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO
@@ -85,8 +86,13 @@ def main() -> None:
     parser.add_argument("--configurazioni", default="1,2,3,4")
     parser.add_argument("--spread", type=float, default=1.0)
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
+    parser.add_argument("--vivo", action="store_true",
+                        help="allena il Capo su tutto il 2006-2023 (configurazione 1) e lo salva per il bot dal vivo")
     a = parser.parse_args()
     radice = Path(a.cartella)
+    if a.vivo:
+        salva_per_il_vivo(tabella(1, 1.0, radice))
+        return
 
     base = tabella(1, a.spread, radice)
     giudicati = _giudicati(base)
@@ -112,6 +118,15 @@ def main() -> None:
         print(f"  fiducia del Capo nel {ultimo} (peso su p1 / su q, colonne standardizzate):")
         for nome, w1, w2 in c.fiducia[ultimo]:
             print(f"    {nome:28} {w1:+.3f} / {w2:+.3f}")
+
+
+def salva_per_il_vivo(t: Tabella) -> None:
+    """Il Capo di partenza del bot dal vivo, e lo storico su cui si riaddestra ogni fine settimana."""
+    cartella = RADICE / "nvm" / "vivo"
+    capo = Capo.allena(t.x, t.tp1, t.tp2)
+    (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
+    np.savez_compressed(cartella / "storico.npz", x=t.x, tp1=t.tp1, tp2=t.tp2, erre=t.erre, quando=t.quando)
+    print(f"Capo allenato su {len(t)} operazioni, salvato in {cartella}")
 
 
 def _giudicati(t: Tabella) -> np.ndarray:
