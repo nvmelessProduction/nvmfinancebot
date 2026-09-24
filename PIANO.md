@@ -31,14 +31,15 @@ del manuale (vedi §2).
 
 | Agente | La sua domanda | Da dove parte | Cosa può imparare |
 |---|---|---|---|
-| **Cacciatore** | C'è un CRT qui? | la definizione di Romeo nella sua scheda, verificata sui casi annotati | all'inizio niente: la definizione è fissa. Più avanti, le soglie (es. quanto deve essere profonda la manipolazione) |
+| **Cacciatore** | C'è un CRT sul timeframe alto, e il prezzo lo sta manipolando? | la definizione di Romeo nella sua scheda, verificata sui casi annotati | all'inizio niente: la definizione è fissa. Più avanti, le soglie (es. quanto deve essere profonda la manipolazione) |
+| **Grilletto** | Il Model#1 è scattato sul timeframe basso? | il Model#1 di Romeo: turtle soup e chiusura oltre il livello CISD | le soglie del suo modello |
 | **Conferme** (un agente per conferma di Romeo) | Questa conferma c'è? | la regola della sua scheda | la soglia della sua conferma |
 | **Contesto** | Il momento è favorevole? (dollaro, sessione, notizie) | la regola della sua scheda | quanto conta il contesto |
 | **Livelli** | Dove vanno stop, primo target e target finale? | la regola della sua scheda | le distanze |
 | **Rischio** | Quanto si rischia, e quanto costa entrare? | percentuale fissa, costi misurati | la stima dei costi per ora e per strumento |
 | **Sentinella** | Quando si va a pareggio, quando si prende il parziale? | la regola della sua scheda | i punti di pareggio e parziale, guardando il percorso di ogni operazione |
 | **Capo** (l'algoritmo che sta sopra tutti) | Tutto considerato, conviene entrare? | entra se ci sono tutte le conferme obbligatorie | quanto fidarsi di ogni agente |
-| **Cronista** | — | racconta ogni decisione su Telegram, agente per agente, in italiano semplice | niente |
+| **Cronista** | — | scrive nei due canali Telegram (§1, "I due canali Telegram"), in italiano semplice | niente |
 | **Esecutore** | — | manda l'ordine al broker (solo dalla Fase H) e registra **prezzo e motivo di ogni chiusura, letti dal broker** | niente |
 
 Il Capo non decide con una soglia fissa: stima la probabilità `p` che
@@ -83,8 +84,8 @@ flowchart LR
     end
     E -. dopo l'ordine .-> R
     V -. fine settimana, mai<br/>a operazione aperta .-> A
-    R -. coda separata .-> T[Gruppo Telegram]
-    M -. coda separata .-> T
+    R -. coda separata .-> T1[Canale operativo]
+    M -. coda separata .-> T2[Canale équipe]
 ```
 
 - **Il tempo veloce** apre le operazioni. Tutto in memoria, dentro un solo
@@ -114,18 +115,21 @@ cancello. Se passa, l'agente entra in prova. Se non passa, il consiglio resta
 scritto insieme al numero che l'ha bocciato. Così nessuno cambia perché "un
 altro l'ha detto", ma solo perché i dati gli danno ragione.
 
-### Il gruppo Telegram
+### I due canali Telegram
 
-Il gruppo è la finestra sull'équipe: lì si vede lavorare e discutere.
+| Canale | Cosa ci si legge |
+|---|---|
+| **Operativo** | l'avvio del bot; ogni decisione di aprire un'operazione, con il perché agente per agente; ogni chiusura, con prezzo, motivo e risultato; gli avvisi urgenti (stop colpito, freno d'emergenza) |
+| **Équipe** | **solo** la comunicazione fra gli agenti: consigli, prove, promozioni e bocciature, con i numeri. È sempre attivo, ma il suo momento principale è il rendiconto del fine settimana, a mercati chiusi |
 
-- **Ogni decisione:** il verbale, un agente per riga, in italiano semplice.
-  Parte **dopo** che l'ordine è stato inviato, mai prima.
-- **La riunione:** consigli, prove, promozioni e bocciature, con i numeri.
+Il canale operativo resta pulito: lì arriva solo quello che riguarda le
+operazioni, e un avviso urgente non si perde in mezzo ai consigli.
 
-Su Telegram un bot non può leggere i messaggi degli altri bot in un gruppo.
-Per questo la discussione avviene dentro il programma, e Telegram la
-mostra. I messaggi escono da una coda separata: se Telegram è lento o non
-risponde, nessun ordine aspetta.
+I messaggi del canale operativo partono **dopo** che l'ordine è stato
+inviato, mai prima. Su Telegram un bot non può leggere i messaggi degli
+altri bot, quindi la discussione dell'équipe avviene dentro il programma, e
+il canale la mostra. Tutti i messaggi escono da una coda separata: se
+Telegram è lento o non risponde, nessun ordine aspetta.
 
 ---
 
@@ -200,9 +204,9 @@ Si passa alla fase successiva solo quando `STATO.md` dice che quella attuale
 | **C. Cacciatore** | Il codice del Cacciatore, provato sui casi annotati. | trova il 100% dei casi CRT, esattamente lì, e scarta il 100% dei casi "non è un CRT" |
 | **D. La base** | Si prendono tutti i CRT 2006–2023, con i costi veri. È il numero da battere. | il numero è scritto in `STATO.md` |
 | **E. Gli altri agenti** | Uno alla volta: scheda → casi → codice → misura contro la base. | ogni agente ha la sua riga nella tabella di `STATO.md` |
-| **F. Capo e apprendimento** | Il Capo impara di chi fidarsi, gli agenti imparano sullo storico, tutto dietro il cancello. Al massimo 3 varianti, dichiarate prima. La riunione gira sullo storico, e le carriere si vedono già nel gruppo Telegram. | sì o no: la strategia batte la base di almeno 0,10 R per operazione, con i criteri del §2, e regge anche con lo spread × 1,5 |
+| **F. Capo e apprendimento** | Il Capo impara di chi fidarsi, gli agenti imparano sullo storico, tutto dietro il cancello. Al massimo 3 varianti, dichiarate prima. La riunione gira sullo storico, e le carriere si vedono già nel canale équipe. | sì o no: la strategia batte la base di almeno 0,10 R per operazione, con i criteri del §2, e regge anche con lo spread × 1,5 |
 | **G. Verifica finale** | Si apre il periodo 2024–2026, una volta sola. | conferma o smentita |
-| **H. Dal vivo, in demo** | Esecutore, Sentinella dal vivo, apprendimento dal vivo, verbale di ogni decisione nel gruppo Telegram. Conto demo con la **cifra che useresti davvero**. | almeno 8 settimane con risultati coerenti con la Fase G |
+| **H. Dal vivo, in demo** | Esecutore, Sentinella dal vivo, apprendimento dal vivo, canale operativo. Conto demo con la **cifra che useresti davvero**. | almeno 8 settimane con risultati coerenti con la Fase G |
 
 Il conto reale si considera solo dopo la Fase H, e solo con una tua
 decisione esplicita.

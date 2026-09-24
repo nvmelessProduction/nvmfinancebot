@@ -9,3 +9,4 @@ male**. Serve per due motivi:
 
 | Data | Fase | Cosa si è provato | Criterio scritto prima | Risultato | Passa? |
 |---|---|---|---|---|---|
+| 24/09/2026 | A | Ricerca delle fonti sul CRT di Romeo: post su X, schemi, thread degli studenti. I video YouTube non sono raggiungibili da qui. | — | fonti in `spec/FONTI-ROMEO.md`, bozza in `spec/cacciatore.md` | — |

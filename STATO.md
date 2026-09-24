@@ -10,6 +10,11 @@ file. Il piano completo è in `PIANO.md`.
 Si riscrive insieme il **CRT di RomeoTPT**, partendo dal **Cacciatore**
 (l'agente che risponde a "c'è un CRT qui?"), e si raccolgono i casi annotati.
 
+- **Fatto:** le fonti su Romeo sono raccolte (`spec/FONTI-ROMEO.md`) e la
+  bozza del Cacciatore è scritta (`spec/cacciatore.md`).
+- **Manca:** le tue risposte alle domande della bozza, l'approvazione e i
+  casi.
+
 ### Cosa serve da te
 
 - [ ] **Spegnere il vecchio bot sulla VPS.** Vedi sotto.
@@ -17,10 +22,9 @@ Si riscrive insieme il **CRT di RomeoTPT**, partendo dal **Cacciatore**
       nella storia del vecchio branch, e con lui il token. Su Telegram:
       @BotFather → `/revoke` → scegli il bot. Il token nuovo va solo nel
       `.env` sul computer.
-- [ ] **Le fonti di Romeo:** i link ai video e ai post da cui prendi la
-      strategia. Ogni regola della specifica dovrà dire da dove viene.
-- [ ] **Raccontare il CRT con parole tue**, come lo fa Romeo: da lì scriviamo
-      insieme la scheda del Cacciatore.
+- [ ] **Leggere la bozza del Cacciatore** (`spec/cacciatore.md`) e
+      rispondere alle 7 domande in fondo, con quello che hai imparato dai
+      video di Romeo. Le fonti trovate in rete sono in `spec/FONTI-ROMEO.md`.
 - [ ] **Casi annotati:** almeno 20 CRT e 10 "sembra un CRT ma non lo è", con
       il modello `casi/MODELLO-CASO.md`. Meglio se presi dai grafici che
       Romeo stesso mostra. Uno screenshot con due orari basta: i prezzi li
@@ -47,7 +51,8 @@ Si riscrive insieme il **CRT di RomeoTPT**, partendo dal **Cacciatore**
 | 24/09/2026 | Architettura ad agenti. Gli agenti imparano sia sullo storico sia dal vivo, sempre dietro il cancello del `PIANO.md` §2. |
 | 24/09/2026 | Ogni agente fa carriera (neolaureato → in prova → promosso), e sopra tutti c'è il Capo, che impara anche lui. |
 | 24/09/2026 | Due tempi: l'apertura delle operazioni avviene tutta in memoria; la riunione (riallenamento, consigli, promozioni) è staccata e non la rallenta mai. |
-| 24/09/2026 | Gli agenti si danno consigli nella riunione senza influenzarsi: un consiglio è un'ipotesi che solo l'agente responsabile può provare, con il cancello. Tutto si vede nel gruppo Telegram dell'équipe, già collegato. |
+| 24/09/2026 | Gli agenti si danno consigli nella riunione senza influenzarsi: un consiglio è un'ipotesi che solo l'agente responsabile può provare, con il cancello. Tutto si vede nel canale Telegram dell'équipe. |
+| 24/09/2026 | Due canali Telegram, già collegati. **Operativo:** avvio del bot, decisioni di apertura, chiusure, avvisi urgenti. **Équipe:** solo la comunicazione fra gli agenti, sempre attivo, con il rendiconto principale nel fine settimana. |
 
 ## Domande aperte
 
@@ -55,20 +60,13 @@ Si decidono durante la Fase A.
 
 - **Strumenti:** quali? Il vecchio bot usava EURUSD, GBPUSD, USDCHF, USDJPY,
   AUDUSD e XAUUSD, ma dal vivo operava quasi solo sull'oro.
-- **Coppie di timeframe** su cui cercare il CRT. I vecchi documenti si
-  contraddicevano: uno diceva settimanale → giornaliero e 4 ore → 1 ora,
-  l'altro settimanale → 4 ore e 4 ore → 15 minuti. Cosa fa Romeo?
-- **Quanto si aspetta dopo il CRT** prima che il setup decada, su ogni coppia.
-- **Il target:** il lato opposto del range, o un livello chiave? Anche qui i
-  vecchi documenti si contraddicevano.
+- **Il CRT di Romeo:** le 7 domande in fondo a `spec/cacciatore.md`.
 - **Fonte dei prezzi:** una sola per tutti i timeframe. Il vecchio progetto
   mescolava future, CFD, Dukascopy e MT5, e molti errori venivano da lì.
-- **Telegram: un bot o uno per agente?** Un solo bot che scrive col nome di
-  ogni agente è più semplice. Un bot per agente, ognuno con il suo nome e la
-  sua foto, rende l'équipe più viva, ma vuol dire crearne una decina con
-  @BotFather. Si decide prima della Fase F.
-- **Avvisi urgenti** (stop colpito, freno d'emergenza): nello stesso gruppo o
-  in una chat a parte, per non perderli in mezzo ai verbali?
+- **Canale équipe: un bot o uno per agente?** Un solo bot che scrive col
+  nome di ogni agente è più semplice. Un bot per agente, ognuno con il suo
+  nome e la sua foto, rende l'équipe più viva, ma vuol dire crearne una
+  decina con @BotFather. Si decide prima della Fase F.
 - **Rischio per operazione, e cifra del conto demo.** Il vecchio conto demo
   era stato portato a 1.000.000 €, con operazioni da 50 lotti d'oro: in 7
   ore −13.915 €. Il demo deve avere la cifra che useresti davvero.
