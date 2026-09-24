@@ -1516,19 +1516,30 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # del 2026-09-23, per cui su M5 e M1min non venivano valutate affatto.
     tf_ingresso = COPPIE_CRT.get(tf_trigger)
 
+    # Lo stesso inoltro si ripete su piu' obiezioni: se il giudizio la fa
+    # cadere, l'obiezione non ferma e GIUD-02 va DICHIARATA -- altrimenti la
+    # decisione direbbe che e' passata senza dire chi l'ha lasciata passare.
+    # `assoluta` e' l'obiezione che non si sottopone: il giudizio non la vede
+    # nemmeno.
+    def giudizio_salva(blocchi_qui, motivo_qui, assoluta: bool = False) -> bool:
+        if assoluta:
+            return False
+        if _apri_ogni_crt() or _giudizio_lascia_cadere(
+                foto, crt, tf_trigger, list(blocchi_qui), motivo_qui or ""):
+            applicate.append("GIUD-02")
+            return True
+        return False
+
     applicate.extend(sorted(CONFERME_ROMEO))
     conferme = interroga_conferme(foto, crt, basse, _apri_ogni_crt())
     responso_romeo = conferme.responso
     if conferme.blocchi:
         blocchi_qui = list(conferme.blocchi) + indipendenti
-        if not _giudizio_lascia_cadere(
-                foto, crt, tf_trigger, blocchi_qui, conferme.motivo):
+        if not giudizio_salva(blocchi_qui, conferme.motivo):
             fermata = _non_operare(
                 foto.strumento, blocchi_qui, conferme.motivo or "",
-                applicate, direzione=crt.direzione, tf_crt=crt.tf,
-            )
+                applicate, direzione=crt.direzione, tf_crt=crt.tf)
             return replace(fermata, responso_romeo=responso_romeo)
-        applicate.append("GIUD-02")
 
     # --- 4. Livelli: stop, TP1, target (GEST-02, GEST-07, SETUP-14) -------
     #
@@ -1540,8 +1551,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         # si manda un ordine con livelli che non si sanno leggere.
         return _non_operare(
             foto.strumento, ["PRIN-99", "ESCL-12"], errore_livelli or "",
-            applicate, direzione=crt.direzione, tf_crt=crt.tf,
-        )
+            applicate, direzione=crt.direzione, tf_crt=crt.tf)
     applicate.extend(["GEST-02", "GEST-07", "SETUP-14"])
     da_gap = livelli.da_gap
     prezzo_ingresso = livelli.prezzo_ingresso
@@ -1551,6 +1561,18 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     stop_future = livelli.stop_future
     bersaglio_future = livelli.bersaglio_future
     rapporto = livelli.rapporto
+
+
+    # Da qui in poi ogni astensione dichiara gli stessi cinque campi: verso,
+    # timeframe del CRT, stop, parziale e rapporto. Ripeterli a ogni uscita
+    # era un invito a dimenticarne uno -- e un'astensione che non dice lo stop
+    # e' un'astensione che il diario non puo' spiegare.
+    def ferma(regole, motivo: str) -> Decisione:
+        return _non_operare(
+            foto.strumento, list(regole), motivo, applicate,
+            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=livelli.stop,
+            tp1=obiettivo_1, rapporto_su_tp1=livelli.rapporto,
+        )
 
     # --- 4bis-ter. Un parziale dietro le spalle non e' un parziale -------
     #
@@ -1574,11 +1596,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     troppo_caro = _spread_troppo_caro(foto.spread, prezzo_ingresso, stop,
                                        foto.costo_commissione)
     if troppo_caro:
-        return _non_operare(
-            foto.strumento, ["RISK-03"], troppo_caro, applicate,
-            direzione=crt.direzione, tf_crt=crt.tf,
-            livello_stop=stop, tp1=obiettivo_1, rapporto_su_tp1=rapporto,
-        )
+        return ferma(["RISK-03"], troppo_caro)
 
     # --- 4ter. Il filtro DXY, DOPO i livelli (SETUP-19, RISK-05) ---------
     #
@@ -1615,15 +1633,10 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         # passa al giudizio. Vedi `RISK_05_BLOCCA_DA_SOLA` in core/parametri.
         assoluta = (crt.tf.value in RISK_05_BLOCCA_DA_SOLA
                     and not _apri_ogni_crt())
-        cade = _apri_ogni_crt() or (
-            not assoluta
-            and _giudizio_lascia_cadere(foto, crt, tf_trigger, blocchi_dxy, motivo))
-        if not cade:
+        if not giudizio_salva(blocchi_dxy, motivo, assoluta):
             return _non_operare(
                 foto.strumento, blocchi_dxy, motivo, applicate,
-                direzione=crt.direzione, tf_crt=crt.tf,
-            )
-        applicate.append("GIUD-02")
+                direzione=crt.direzione, tf_crt=crt.tf)
 
     # --- 5. Filtri uniti: CTX-01 + SETUP-15 + SETUP-09 (REV-17, PREC-04) --
     # La regola vive in `filtri_e_esclusioni`: l'unione dei tre elenchi, dove
@@ -1632,21 +1645,19 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         foto, crt, tf_trigger, comando, contesto, rapporto, da_gap,
         _apri_ogni_crt())
 
+    # Qui NON si passa da `giudizio_salva`: quell'aiutante fa cadere
+    # l'obiezione anche col solo modo diagnostico, e a questo punto i blocchi
+    # comprendono i MURI che `filtri_e_esclusioni` tiene apposta (ESCL-02,
+    # RISK-06, i limiti di perdita). Il modo diagnostico ha gia' tolto li'
+    # dentro cio' che era soppesabile; quello che resta lo puo' far cadere
+    # solo il giudizio.
     if blocchi and _giudizio_lascia_cadere(
             foto, crt, tf_trigger, blocchi, motivo_filtri):
         applicate.append("GIUD-02")
         blocchi = []
 
     if blocchi:
-        return _non_operare(
-            foto.strumento, blocchi, motivo_filtri,
-            applicate,
-            direzione=crt.direzione,
-            tf_crt=crt.tf,
-            livello_stop=stop,
-            tp1=obiettivo_1,
-            rapporto_su_tp1=rapporto,
-        )
+        return ferma(blocchi, motivo_filtri)
 
     # --- 6. Size (RISK-01, RISK-02, RISK-03, DEF-47) ----------------------
     n2_future = crt.n2.chiusura
@@ -1664,11 +1675,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     )
     applicate.extend(["RISK-01", "RISK-02", "RISK-03", "DEF-47"])
     if esito_size.lotti is None:
-        return _non_operare(
-            foto.strumento, ["RISK-03"], esito_size.motivo, applicate,
-            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
-            rapporto_su_tp1=rapporto,
-        )
+        return ferma(["RISK-03"], esito_size.motivo)
 
     # --- 7. Ultima riga di difesa: i divieti permanenti (PREC-05) ---------
     divieti = divieti_permanenti(
@@ -1676,12 +1683,8 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         contesto.posizioni_qui, _apri_ogni_crt(),
     )
     if divieti:
-        return _non_operare(
-            foto.strumento, [d.regola for d in divieti],
-            "; ".join(f"{d.regola}: {d.motivo}" for d in divieti), applicate,
-            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop, tp1=obiettivo_1,
-            rapporto_su_tp1=rapporto,
-        )
+        return ferma([d.regola for d in divieti],
+                     "; ".join(f"{d.regola}: {d.motivo}" for d in divieti))
     applicate.append("PREC-05")
 
     # --- 7bis. CRT-13 — si ARMA, non si ordina ----------------------------
@@ -1728,11 +1731,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         bersaglio, stop, prezzo_ingresso, verso_ordine, crt.tf)
     if guasto is not None:
         blocchi_livelli, motivo_livelli = guasto
-        return _non_operare(
-            foto.strumento, blocchi_livelli, motivo_livelli, applicate,
-            direzione=crt.direzione, tf_crt=crt.tf, livello_stop=stop,
-            tp1=obiettivo_1, rapporto_su_tp1=rapporto,
-        )
+        return ferma(blocchi_livelli, motivo_livelli)
 
     # --- 7ter. Il dato che deve chiudere PA-44 (GIUD-01, 07_casi.md §3.1) --
     #

@@ -127,3 +127,34 @@ class TestLeEsclusioni:
             motore.divieti_permanenti).parameters
         assert "_apri_ogni_crt" not in inspect.getsource(
             motore.divieti_permanenti)
+
+
+class TestIlModoNonScavalcaIFiltriUniti:
+    """Il modo diagnostico non fa cadere i MURI al punto dei filtri uniti.
+
+    Estraendo `valuta()` ho raccolto l'inoltro al giudizio in un aiutante che
+    fa cadere l'obiezione anche col solo modo acceso -- giusto per la bias DXY
+    e per le conferme, sbagliato qui: a questo punto i blocchi comprendono
+    ESCL-02, RISK-06 e i limiti di perdita, che `filtri_e_esclusioni` tiene
+    apposta. Il modo ha gia' tolto li' dentro cio' che era soppesabile.
+
+    Tre test su 897 l'hanno presa. Questo la tiene ferma.
+    """
+
+    def test_i_filtri_uniti_passano_solo_dal_giudizio(self):
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        pezzo = corpo[corpo.index("if blocchi and"):]
+        pezzo = pezzo[:pezzo.index("blocchi = []")]
+        assert "_giudizio_lascia_cadere(" in pezzo
+        assert "giudizio_salva(" not in pezzo, (
+            "il modo diagnostico scavalcherebbe anche i muri")
+
+    def test_l_aiutante_serve_alle_obiezioni_soppesabili(self):
+        """Dove invece il modo basta: bias DXY e conferme di Romeo."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        assert corpo.count("giudizio_salva(") >= 3      # def + due usi
+        assert "_apri_ogni_crt() or _giudizio_lascia_cadere(" in corpo
