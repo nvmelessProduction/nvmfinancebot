@@ -927,12 +927,52 @@ def crt18_meta_ombra(
 def crt06_allineamento(
     crt_per_tf: Optional[Mapping[TF, Any]], tf_crt: TF, direzione: Bias
 ) -> Optional[bool]:
-    """CRT-06 — Gli altri timeframe con un CRT puntano dalla stessa parte?"""
+    """CRT-06 — gli altri timeframe con un CRT puntano dalla stessa parte?
+
+    *«Tre modelli CRT allineati danno l'accuratezza massima.»*
+
+    La regola parla di un CONTEGGIO, non di un si'/no: tre allineati valgono
+    piu' di due, due piu' di uno. Il responso delle conferme pero' e'
+    booleano, quindi qui esce la risposta secca e il conteggio viene da
+    `quanti_modelli_allineati`, che e' la funzione che il documento cita.
+
+    Fino al 2026-09-24 questa funzione reimplementava il conteggio inline
+    mentre `modelli_allineati` -- quella nominata dal documento -- non la
+    chiamava nessuno: due implementazioni della stessa regola, e il documento
+    puntava a quella morta.
+
+    **La gradazione non entra ancora nella Fase 2.** Perche' entri serve un
+    canale numerico accanto al responso booleano; finche' non c'e', questa
+    conferma le fa perdere proprio l'informazione che il documento indica come
+    il punto. Annotato.
+    """
+    quanti = quanti_modelli_allineati(crt_per_tf, tf_crt, direzione)
+    if quanti is None:
+        return None
+    return quanti > 0
+
+
+def quanti_modelli_allineati(
+    crt_per_tf: Optional[Mapping[TF, Any]], tf_crt: TF, direzione: Bias
+) -> Optional[int]:
+    """CRT-06 — QUANTI altri timeframe hanno un CRT nella stessa direzione.
+
+    `None` quando non c'e' nessun altro CRT: "non lo so" non e' "zero".
+    `0` quando ce ne sono e almeno uno punta altrove -- un disaccordo non e'
+    una direzione debole, e' assenza di direzione (la stessa distinzione che
+    fa `modelli_allineati`).
+
+    E' il numero che `CRT-06` chiede davvero: *«tre modelli allineati danno
+    l'accuratezza massima»*.
+    """
     if not crt_per_tf:
         return None
     altri = [c.direzione for t, c in crt_per_tf.items()
              if c is not None and t is not tf_crt]
-    return all(d is direzione for d in altri) if altri else None
+    if not altri:
+        return None
+    return len(altri) if all(d is direzione for d in altri) else 0
+
 
 
 # ===========================================================================

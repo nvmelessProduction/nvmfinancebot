@@ -94,6 +94,13 @@ si esegue mai contro l'alto.
 ### CRT-06 — Tre modelli CRT allineati danno l'accuratezza massima
 `1h/5m` + `4h/15m` + `D/1h` che puntano nella stessa direzione.
 
+**Nel motore dal 2026-09-23** (`core/setup.py: crt06_allineamento`), che dal
+24/09 deriva da `quanti_modelli_allineati`: prima reimplementava il conteggio
+inline mentre `modelli_allineati` — quella citata qui sotto — non la chiamava
+nessuno. **La gradazione non entra ancora nella Fase 2**: il responso delle
+conferme è booleano, e finché non c'è un canale numerico accanto si perde
+proprio l'informazione che questa regola indica come il punto.
+
 **SCRITTA** — `core/setup.py: modelli_allineati`. Non ancora misurata:
 richiede di incrociare tre coppie sullo stesso istante. Delle tre coppie che
 le fonti nominano, **una sola** è esprimibile coi timeframe che DEF-01 ammette.
@@ -128,6 +135,12 @@ Raid su un pool di liquidità significativo, poi rientro. È Raschke, 1995.
 Una candela che rompe **entrambi** i lati del range e richiude dentro è la
 forma più forte del pattern.
 
+**Corretta il 2026-09-24.** Riceveva `n2`, la candela **sintetica** creata
+dalla riscrittura di `SETUP-02` del 23/09, che impacchetta un lato solo della
+manipolazione: un double purge — che chiede *entrambi* i lati spazzati — non
+poteva risultare mai. Su 226 decisioni reali ha risposto `None` 226 volte.
+Adesso guarda le barre **vere** della fase, una per una.
+
 **SCRITTA E MISURATA — non regge.** `core/definizioni.py: double_purge`,
 `verso_del_double_purge`. 88,7% di winrate e R **negativa**: tante vittorie
 piccole e poche perdite grandi. La variante *concorde*, quella che segue il
@@ -154,8 +167,17 @@ su `D1→H1` — e senza di esso il CRT rende **negativo** (−0,045 R). Positiv
 Resta comunque sotto il costo dello spread. Vedi
 `docs/MISURA-REGOLE-MANCANTI-2026-09-16.md`.
 
-**Non è ancora nel motore**: vive in `core/definizioni.py` e non lo chiama
-nessuno, che è esattamente lo stato in cui si trovava `DEF-33`.
+**Nel motore dal 2026-09-23**, come una delle otto conferme
+(`core/setup.py: crt11_cisd`). Non è un veto all'armamento — il CISD avviene
+dopo la chiusura di `N2`, chiederlo lì vuol dire chiederlo prima che possa
+essere successo — ma è obbligatorio all'ingresso: `ingresso_ltf.controlla`
+senza CISD non entra mai.
+
+**Il 2026-09-24 la conferma è stata corretta.** Faceva `cisd(...) is not
+None`, cioè *«esiste una serie da rompere»* e non *«è stata rotta»*: una
+domanda diversa e quasi sempre vera. Il ramo armato lo faceva già giusto, e
+per due giorni sono state due implementazioni della stessa regola che
+rispondevano a due domande.
 
 ### CRT-12 — Divergenza SMT fra mercati correlati
 Uno strumento fa un nuovo estremo, il correlato no: è divergenza, e le fonti
@@ -203,6 +225,10 @@ dentro_finestra_crt`, con l'ora convertita **adesso** e non una volta per
 tutte: il fuso di New York cambia due volte l'anno e una tabella in UTC
 sarebbe sbagliata per metà anno.
 
+**Nel motore dal 2026-09-23 come veto, e tolta dai veti il 24/09**: fermava
+61 decisioni su 238 — un quarto — contro `PRIN-12`, che dice che il sistema è
+attivo 24 ore su 24 e non ha fasce escluse. Resta **valutata** e nel responso.
+
 +0,0σ e −0,2σ. Su `D1→H1` quasi tutti i segnali cadono *fuori* dalle finestre,
 il che dice che sono pensate per timeframe d'ingresso più bassi di quelli che
 il bot può usare. `PRIN-12` non va toccata.
@@ -237,7 +263,15 @@ stesso aspetto: un numero troppo bello.
 ### CRT-18 — Il punto medio dell'ombra è un livello
 Tenerlo favorisce la continuazione, attraversarlo invalida.
 
-**ASSENTE.**
+**NEL MOTORE dal 2026-09-23** (`core/setup.py: crt18_meta_ombra`), e
+**corretta il 24/09**: la prima versione confrontava `chiusura <= meta_ombra`
+della stessa candela, che è una **tautologia** — il punto medio sta fra il
+corpo e l'estremo, quindi la chiusura ci sta sempre sotto. Su 226 decisioni
+reali ha risposto `True` 226 volte, e una costante non è un segnale.
+
+Il punto medio è un **livello**: adesso si calcola sull'ombra della barra che
+ha spazzato e si guarda se le barre successive lo tengono. `None` quando non
+ce n'è nessuna dopo — il livello esiste ma nessuno l'ha messo alla prova.
 
 ### CRT-19 — Ombre piccole su C2 favoriscono l'espansione
 ### CRT-20 — Ombre grandi su C2 favoriscono la mean-reversion

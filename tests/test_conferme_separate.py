@@ -279,3 +279,47 @@ class TestCrt11RilevaIlCisdAvvenuto:
             assert "cisd(" in corpo
             assert "chiusura >" in corpo or "chiusura <" in corpo, (
                 "una delle due non verifica la ROTTURA")
+
+
+class TestCrt06PortaIlConteggio:
+    """*«Tre modelli CRT allineati danno l'accuratezza massima.»*
+
+    E' un CONTEGGIO: tre valgono piu' di due, due piu' di uno. Il responso
+    delle conferme e' booleano, quindi la gradazione esce da una funzione sua.
+
+    Fino al 24/09 `crt06_allineamento` reimplementava il conteggio inline
+    mentre `modelli_allineati` -- quella che il documento cita -- non la
+    chiamava nessuno. Due implementazioni della stessa regola, e il documento
+    puntava a quella morta.
+    """
+
+    class FintoCrt:
+        def __init__(self, d): self.direzione = d
+
+    def _per_tf(self, *direzioni):
+        tfs = (TF.H4, TF.D1, TF.W1)
+        return {tf: self.FintoCrt(d) for tf, d in zip(tfs, direzioni)}
+
+    def test_il_conteggio_cresce_coi_timeframe_allineati(self):
+        """Il proprio timeframe non si conta: la domanda e' sugli ALTRI."""
+        per_tf = self._per_tf(Bias.SHORT, Bias.SHORT, Bias.SHORT)
+        assert stp.quanti_modelli_allineati(per_tf, TF.H4, Bias.SHORT) == 2
+
+    def test_un_disaccordo_azzera(self):
+        """Non e' una direzione debole: e' assenza di direzione."""
+        per_tf = self._per_tf(Bias.SHORT, Bias.SHORT, Bias.LONG)
+        assert stp.quanti_modelli_allineati(per_tf, TF.H4, Bias.SHORT) == 0
+
+    def test_senza_altri_crt_non_si_sa(self):
+        """`None` non e' `0`: zero vuol dire "ce ne sono e non concordano"."""
+        assert stp.quanti_modelli_allineati(None, TF.H4, Bias.SHORT) is None
+        solo_suo = {TF.H4: self.FintoCrt(Bias.SHORT)}
+        assert stp.quanti_modelli_allineati(solo_suo, TF.H4, Bias.SHORT) is None
+
+    def test_la_conferma_deriva_dal_conteggio(self):
+        """Una sola implementazione: il booleano e' il conteggio > 0."""
+        for direzioni in ((Bias.SHORT, Bias.SHORT), (Bias.SHORT, Bias.LONG)):
+            per_tf = self._per_tf(Bias.SHORT, *direzioni)
+            quanti = stp.quanti_modelli_allineati(per_tf, TF.H4, Bias.SHORT)
+            atteso = None if quanti is None else quanti > 0
+            assert stp.crt06_allineamento(per_tf, TF.H4, Bias.SHORT) is atteso
