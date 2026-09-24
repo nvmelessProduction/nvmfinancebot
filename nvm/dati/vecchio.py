@@ -57,3 +57,33 @@ def salva_per_mese(ore: Minuti, radice: Path) -> int:
         ).salva(file_del_mese(radice, ore.strumento, anno, m))
         n += 1
     return n
+
+
+def leggi_grezzi(bid_csv: Path, ask_csv: Path, strumento: str) -> Minuti:
+    """Le ore con bid e ask dai file .bi5 del vecchio bot, decodificati in csv.
+
+    Sono i file di Dukascopy cosi' come sono (`dati/candele/grezzi/` sul
+    vecchio branch): tutte le ore, anche quelle senza scambi, con il volume.
+    Si tengono le ore dove almeno un lato ha scambiato, come in
+    `nvm.dati.dukascopy`.
+    """
+    def tabella(percorso: Path) -> dict[int, tuple[list[float], float]]:
+        righe = {}
+        with gzip.open(percorso, "rt", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                t = int(datetime.strptime(r["apertura_utc"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
+                righe[t] = ([float(r[k]) for k in ("apertura", "massimo", "minimo", "chiusura")], float(r["volume"]))
+        return righe
+
+    bid, ask = tabella(bid_csv), tabella(ask_csv)
+    comuni = sorted(t for t in bid.keys() & ask.keys() if bid[t][1] > 0 or ask[t][1] > 0)
+    punto = PUNTO[strumento]
+    return Minuti(
+        strumento,
+        np.array(comuni, np.int64),
+        np.rint(np.array([bid[t][0] for t in comuni]) / punto).astype(np.int32),
+        np.rint(np.array([ask[t][0] for t in comuni]) / punto).astype(np.int32),
+        np.array([bid[t][1] for t in comuni], np.float32),
+        np.array([ask[t][1] for t in comuni], np.float32),
+        3600,
+    )

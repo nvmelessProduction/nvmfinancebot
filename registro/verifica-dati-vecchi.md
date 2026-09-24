@@ -65,3 +65,22 @@ l'ask vero da `scarica.py --solo-ask`. Nei mesi non ancora completati
 l'ask è il bid più lo spread misurato nello stesso strumento, anno e ora
 (`nvm/dati/spread.py`), e ogni misura dice quanti mesi sono esatti e
 quanti stimati.
+
+---
+
+## Bid e ask dai file grezzi del vecchio bot (24/09/2026, sera)
+
+L'altra sessione ha decodificato anche i file `.bi5` in cache sulla VPS
+(`dati/candele/grezzi/` sul vecchio branch): bid **e ask** orari, sei
+strumenti, gennaio 2006 – agosto 2026, tutte le ore.
+
+| Verifica | Esito |
+|---|---|
+| Confronto con i mesi scaricati direttamente da Dukascopy (EURUSD gen–ott 2006, GBPUSD gen 2006) | **bid e ask identici** su tutti e 11 i mesi |
+| Mesi mancanti prima del 2024 | USDJPY 2016-03, 2017-01, 2020-12; XAUUSD 2022-07, 2022-11 |
+| Spread mediano | EURUSD 1,0 pip (2006) → 0,3 (dal 2015); GBPUSD 2,0 → 1,0; USDJPY 2,0 → 0,3–0,6; XAUUSD 0,3–0,5 $ |
+| Ask sotto il bid | 73 ore su AUDUSD nel 2007: dati sporchi di quegli anni |
+| Spread enormi | eventi veri: franco svizzero il 15/01/2015, Covid a marzo 2020 |
+
+Importati in `dati/grezzi/ore/` con `importa_grezzi.py`. Lo spread stimato
+di `nvm/dati/spread.py` non serve più per questi anni.

@@ -31,10 +31,11 @@ file. Il piano completo è in `PIANO.md`.
 - **Fatto:** scaricatore, candele, controlli (`nvm/dati/`, `scarica.py`).
   Verificato il pacchetto del vecchio branch: minuti e orarie giusti, 4 ore
   e giornaliere su confini sbagliati (`registro/verifica-dati-vecchi.md`).
-- **In corso:** lo scaricamento orario dei vent'anni da questa macchina.
-  Dukascopy qui lascia passare circa un mese ogni 3 minuti: ci vogliono
-  decine di ore, riprende da solo. I minuti per la coppia 4 ore → 15
-  minuti vengono dopo.
+- **Fatto:** vent'anni di ore con bid e ask per i sei strumenti, dai file
+  Dukascopy del vecchio bot. Verificati identici, bid e ask, a quelli
+  scaricati direttamente. Mancano cinque mesi prima del 2024 (tre di
+  USDJPY, due di XAUUSD), in scaricamento. AUDUSD 2007–2010 ha dati sporchi
+  (buchi, ask sotto il bid): da tenere presente.
 
 ### Cosa serve da te
 
@@ -83,11 +84,30 @@ Si decidono durante la Fase A.
 
 ## Numeri validi
 
-Nessuno, per ora.
+### La base (Fase D), misurata il 24/09/2026
 
-Solo come riferimento, dal vecchio progetto: prendendo tutti i CRT dal 2006
-al 2023, con i costi, la base rendeva −0,05 R per operazione. Va rimisurato:
-il nuovo Cacciatore sarà diverso.
+Tutti i CRT col manuale (Cacciatore → Grilletto → Livelli), 2006–2023, sei
+strumenti, orarie Dukascopy con **bid e ask veri** e commissioni. Il
+2024–2026 è chiuso. Intervallo al 95% a blocchi settimanali.
+
+| Coppia | Operazioni | R medio | IC95 |
+|---|---:|---:|---|
+| mensile → giornaliero | 1.876 | −0,008 | [−0,105; +0,098] |
+| settimanale → 4 ore | 9.289 | −0,047 | [−0,099; +0,008] |
+| giornaliero → 1 ora | 38.524 | −0,072 | [−0,094; −0,050] |
+| **tutto** | **49.689** | **−0,065** | **[−0,087; −0,043]** |
+
+È il numero da battere. Per passare, la Fase F deve fare almeno +0,10 R
+meglio di questo, con i criteri del `PIANO.md` §2.
+
+Com'è fatta (giornaliero → 1 ora): 63% allo stop, 17% al target (+2,7 R
+in media), 19% in pareggio dopo il primo target; 41 operazioni a settimana
+su sei strumenti; stop mediano su EURUSD di 25 pip. Romeo dice "1-2 a
+settimana" e usa stop di 1-5 pip: filtri e stop stretto sono le prime cose
+da guardare.
+
+La coppia 4 ore → 15 minuti non si può ancora misurare: servono i quindici
+minuti di vent'anni, che non ci sono.
 
 ## Fasi
 
@@ -96,7 +116,7 @@ il nuovo Cacciatore sarà diverso.
 | A. Specifica | in corso |
 | B. Dati | in corso |
 | C. Cacciatore | — |
-| D. La base | — |
+| D. La base | fatta per tre coppie su quattro (24/09) |
 | E. Gli altri agenti | — |
 | F. Capo e apprendimento | — |
 | G. Verifica finale | — |
