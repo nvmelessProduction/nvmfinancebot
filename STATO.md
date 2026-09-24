@@ -120,8 +120,11 @@ Si decidono durante la Fase A.
 
 ## Il bot dal vivo (dal 24/09/2026)
 
-Pronto per la VPS: istruzioni in `AVVIO.md`, codice in `vivo.py` e
-`nvm/vivo/`. Decisioni dell'utente: il bot apre posizioni sul **conto demo
+**Gira dal 24/09/2026 sera** sulla VPS, cartella `Desktop\nvmfinancebot`,
+conto demo 903400 su UltimaMarkets-Demo (1.000 €, server UTC+3).
+Istruzioni in `AVVIO.md`, codice in `vivo.py` e `nvm/vivo/`. Il registro
+dal vivo resta sulla VPS (`dati/vivo/`): da qui si vede solo quello che
+l'utente riporta dai canali. Decisioni dell'utente: il bot apre posizioni sul **conto demo
 da 1.000 €**, **decide il bot**, e gli agenti si addestrano ma non si
 bloccano.
 
