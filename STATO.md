@@ -95,6 +95,14 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   sempre (49 volte su 53), ma c'è anche nel verso opposto (45): vedere un
   CRT non distingue la scelta di Romeo. La scelta sta nell'ora, nel key
   level e nel bias, cioè negli agenti che il Capo oggi quasi ignora.
+- **Le otto configurazioni contro Romeo** (`--configurazioni 1-8`). Delle
+  25 entrate con lo stop letto, 11 sono sul timeframe alto: il manuale ne
+  ritrova 6, ma con 26–31 operazioni per ognuna delle sue; il Capo ne
+  scarta metà e resta a 4–7 per ognuna. La "chiusura dentro" col Capo
+  scende a una operazione per ognuna di Romeo, ma ne ritrova solo una.
+  Nessuna configurazione vede le 14 sul timeframe basso. **Il prossimo
+  passo sono i minuti** (EURUSD e GBPUSD 2023, in scaricamento: circa
+  un'ora per mese).
 
 ### Cosa serve da te
 
