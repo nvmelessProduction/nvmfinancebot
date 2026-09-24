@@ -1613,11 +1613,21 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # era un invito a dimenticarne uno -- e un'astensione che non dice lo stop
     # e' un'astensione che il diario non puo' spiegare.
     def ferma(regole, motivo: str) -> Decisione:
-        return _non_operare(
+        fermata = _non_operare(
             foto.strumento, list(regole), motivo, applicate,
             direzione=crt.direzione, tf_crt=crt.tf, livello_stop=livelli.stop,
             tp1=obiettivo_1, rapporto_su_tp1=livelli.rapporto,
         )
+        # Il responso viaggia anche sulle ASTENSIONI. Sapere quali conferme
+        # c'erano quando NON si e' operato vale quanto saperlo quando si e'
+        # operato: un modello addestrato sui soli ingressi impara da meta' del
+        # mondo, e le astensioni sono la maggioranza.
+        #
+        # Misurato il 2026-09-24, sette minuti dopo un riavvio: 66 decisioni,
+        # ZERO col responso. Lo conservavano tre percorsi su nove -- l'ordine,
+        # l'astensione delle conferme stesse e l'armamento -- e tutti gli
+        # altri lo buttavano via.
+        return replace(fermata, responso_romeo=responso_romeo)
 
     # --- 4bis-ter. Un parziale dietro le spalle non e' un parziale -------
     #

@@ -176,3 +176,42 @@ class TestIlCampionamentoNonRallentaGliOrdini:
         corpo = inspect.getsource(MercatoMT5.giro)
         assert corpo.index("self._valuta(") < corpo.index("self._campiona_spread()"), (
             "il campionamento precede le valutazioni: ritarderebbe gli ordini")
+
+
+class TestIlResponsoSopravviveAOgniAstensione:
+    """Il buco della Fase 0, trovato in produzione il 24/09.
+
+    Sette minuti dopo un riavvio: **66 decisioni, ZERO col responso**. Lo
+    conservavano tre percorsi su nove -- l'ordine, l'astensione delle conferme
+    stesse e l'armamento -- e tutti gli altri lo buttavano via: spread, bias
+    DXY, filtri uniti, size, divieti permanenti, guardie sui livelli.
+
+    Il piano della Fase 0 lo dice: *"Si scrive anche per le ASTENSIONI. Un
+    modello addestrato sui soli ingressi impara da meta' del mondo"* -- e le
+    astensioni sono la maggioranza. Il test che avevo scritto provava
+    `storage.salva_decisione`, cioe' l'archivio, non il motore che lo riempie.
+    """
+
+    def test_l_aiutante_delle_astensioni_lo_porta(self):
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        aiutante = corpo[corpo.index("def ferma(regole"):]
+        aiutante = aiutante[:aiutante.index("# --- 4bis-ter")]
+        assert "responso_romeo=responso_romeo" in aiutante, (
+            "le astensioni dopo le conferme perdono di nuovo il responso")
+
+    def test_tutte_le_uscite_del_motore_lo_portano(self):
+        """Ogni `_non_operare` che sta DOPO le conferme deve passare da
+        `ferma`, o tornare a perderlo di nuovo."""
+        import inspect
+        from core import motore
+        for funzione in (motore.valuta, motore._decidi_sul_candidato):
+            corpo = inspect.getsource(funzione)
+            dopo = corpo[corpo.index("conferme = interroga_conferme")
+                         if "conferme = interroga_conferme" in corpo else 0:]
+            nude = dopo.count("return _non_operare(")
+            portanti = dopo.count("responso_romeo=responso_romeo")
+            assert nude <= portanti, (
+                f"{funzione.__name__}: {nude} astensioni nude dopo le conferme, "
+                f"solo {portanti} portano il responso")
