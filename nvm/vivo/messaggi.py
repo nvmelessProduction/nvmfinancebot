@@ -149,6 +149,16 @@ def avvio(login: int, server: str, saldo: float, valuta: str, strumenti: list[st
     ])
 
 
+def collegamento(prove: list[tuple[str, bool, str]], aperte: int) -> str:
+    """La prova del collegamento con MT5 all'avvio: nessun ordine mandato, solo il controllo del broker."""
+    righe = ["🔌 Prova del collegamento con MT5 (nessun ordine mandato: chiedo solo al broker se lo accetterebbe)."]
+    righe += [f"{'✅' if ok else '❌'} {strumento}: {testo}." for strumento, ok, testo in prove]
+    if all(ok for _, ok, _ in prove):
+        righe.append("Il collegamento per aprire funziona su tutti gli strumenti.")
+    righe.append(f"Operazioni del bot aperte adesso su MT5: {aperte}.")
+    return "\n".join(righe)
+
+
 def saltata(d: Decisione, motivo: str) -> str:
     return f"⏭ {d.r.strumento} {d.r.verso.value.upper()} ({coppia(d)}): il Capo entrerebbe, ma non apro: {motivo}."
 

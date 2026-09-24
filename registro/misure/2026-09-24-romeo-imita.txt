@@ -1,5 +1,7 @@
-python romeo.py --imita   (24/09/2026, la somiglianza come parere, il Capo decide col guadagno atteso)
+python romeo.py --imita   (24/09/2026, il Capo con la voce di Romeo, fiducia imparata dai risultati)
 
-La somiglianza a Romeo, fuori campione per trimestre: 3047 candidati del 2023, 35 sono le scelte di Romeo. Le riconosce al 0.59 (0,50 = a caso); somiglianza media delle sue scelte 1.3%, degli altri 1.1%.
-  tutte le operazioni                        prese  3047  vicine  35  ritrovate  7 (timeframe alto 7/11)  per ognuna di Romeo  34.4
-  le scelte del Capo (guadagno atteso > 0)   prese   761  vicine  17  ritrovate  4 (timeframe alto 4/11)  per ognuna di Romeo   8.4
+La somiglianza a Romeo, fuori campione per trimestre: 3165 candidati del 2023, 36 sono le scelte di Romeo. Le riconosce al 0.60 (0,50 = a caso); somiglianza media delle sue scelte 1.3%, degli altri 1.1%.
+  Fiducia in Romeo imparata dai risultati, trimestre per trimestre: +0.007, +0.038, +0.047, +0.005
+  tutte le operazioni                prese  3165  R medio -0.054  scelte di Romeo 36/36  vicine  36  ritrovate  8 (timeframe alto 8/11)  per ognuna di Romeo  35.4
+  il Capo senza la voce di Romeo     prese   788  R medio +0.006  scelte di Romeo 11/36  vicine  18  ritrovate  5 (timeframe alto 5/11)  per ognuna di Romeo   8.6
+  il Capo con la voce di Romeo       prese   821  R medio +0.030  scelte di Romeo 12/36  vicine  19  ritrovate  5 (timeframe alto 5/11)  per ognuna di Romeo   9.0

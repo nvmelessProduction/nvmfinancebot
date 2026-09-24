@@ -31,7 +31,7 @@ from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
     aggiorna_diario, aggiorna_pagelle, come_migliorare, discussione_con_prove, presentazioni, prove, resoconto, spinte,
 )
-from nvm.vivo.esecutore import Esecutore
+from nvm.vivo.esecutore import MAGIC, Esecutore
 from nvm.vivo.giro import COPPIA_VELOCE, COPPIE, armati
 from nvm.vivo.giro import giro as giro_orario
 from nvm.vivo.riunione import Storico, riunione
@@ -158,6 +158,7 @@ class Bot:
             riavvio.unlink()
         else:
             self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(PUNTO), self.terminale.scarto))
+        self.prova_collegamento()
         if not self.imp.chat_equipe:
             self.tg.operativo(messaggi.allarme(
                 "Il canale équipe non è impostato: nel file .env manca la riga TELEGRAM_CHAT_EQUIPE= con l'id del "
@@ -167,6 +168,22 @@ class Bot:
             for testo in presentazioni(self.stato.pagelle, self.capo, self.esecutore.parte):
                 self.tg.equipe(testo)
             presentati.write_text("sì", encoding="utf-8")
+
+    def prova_collegamento(self) -> None:
+        """A ogni avvio: MT5 accetterebbe un ordine su ogni strumento? Lo dice sul canale operativo."""
+        prove = []
+        for strumento in PUNTO:
+            try:
+                e = self.terminale.prova_ordine(strumento, MAGIC)
+                prove.append((strumento, e.ok, e.messaggio))
+            except Exception as errore:
+                prove.append((strumento, False, f"errore: {errore}"))
+        try:
+            aperte = len(self.terminale.aperte(MAGIC))
+        except ErroreMT5:
+            aperte = 0
+        self.tg.operativo(messaggi.collegamento(prove, aperte))
+        registra(CARTELLA, "collegamento", prove=prove, aperte=aperte)
 
     # --- il giro di ogni minuto ---
 

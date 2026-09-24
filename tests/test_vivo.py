@@ -165,6 +165,21 @@ def _una_decisione():
     return next(x for x in d if x.entra)
 
 
+def test_la_prova_del_collegamento_non_manda_ordini_e_spiega_i_rifiuti():
+    from nvm.vivo import messaggi
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=1.1, ask=1.1001)
+    t = Terminale(mt5=m)
+    e = t.prova_ordine("EURUSD", 1)
+    assert e.ok and m.richieste == [] and m.posizioni == {}
+    assert not t.prova_ordine("GBPUSD", 1).ok        # simbolo che il conto non ha
+    m.order_check = lambda r: NS(retcode=10027, comment="AutoTrading disabled by client")
+    rifiuto = t.prova_ordine("EURUSD", 1)
+    assert not rifiuto.ok and "Algo Trading" in rifiuto.messaggio
+    testo = messaggi.collegamento([("EURUSD", True, e.messaggio), ("GBPUSD", False, rifiuto.messaggio)], 2)
+    assert "✅ EURUSD" in testo and "❌ GBPUSD" in testo and "aperte adesso su MT5: 2" in testo
+
+
 def test_apre_due_meta_sposta_a_pareggio_e_chiude():
     d = _una_decisione()
     m = MT5Finto()

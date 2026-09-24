@@ -50,6 +50,18 @@ class Esito:
     volume: float = 0.0
 
 
+# Le risposte piu' comuni di MT5 a un ordine, in parole.
+_SPIEGAZIONI = {
+    10018: "mercato chiuso: si riprova alla prossima apertura",
+    10027: "MT5 non permette al bot di operare: accendi il pulsante \"Algo Trading\" in alto nel terminale",
+    10014: "volume non accettato dal broker",
+    10016: "stop o target non accettati dal broker",
+    10019: "margine non sufficiente",
+    10030: "modo di esecuzione non accettato dal broker",
+    10017: "trading disabilitato su questo simbolo",
+}
+
+
 class Terminale:
     def __init__(self, suffisso: str = "", mt5: Any = None, dormi=time.sleep, orologio=time.time):
         if mt5 is None:
@@ -191,6 +203,33 @@ class Terminale:
         if r.retcode != self.mt5.TRADE_RETCODE_DONE:
             return Esito(False, f"ordine rifiutato: codice {r.retcode} {getattr(r, 'comment', '')}")
         return Esito(True, "aperta", ticket=int(r.order), prezzo=float(r.price), volume=float(r.volume))
+
+    def prova_ordine(self, strumento: str, magic: int) -> Esito:
+        """Chiede a MT5 di controllare un ordine minimo, senza mandarlo: se il
+        broker lo accetterebbe, il collegamento per aprire funziona."""
+        simbolo = self.simbolo(strumento)
+        if not self.mt5.symbol_select(simbolo, True):
+            return Esito(False, f"il simbolo {simbolo} non c'è su questo conto")
+        info = self.mt5.symbol_info(simbolo)
+        tick = self.mt5.symbol_info_tick(simbolo)
+        if info is None or tick is None:
+            return Esito(False, f"MT5 non dà prezzi per {simbolo}: {self.mt5.last_error()}")
+        cifre = int(info.digits)
+        ask = float(tick.ask)
+        # Stop e target larghi (1% e 2% del prezzo), ben oltre la distanza minima del broker.
+        richiesta = {
+            "action": self.mt5.TRADE_ACTION_DEAL, "symbol": simbolo, "volume": float(info.volume_min),
+            "type": self.mt5.ORDER_TYPE_BUY, "price": ask,
+            "sl": round(ask * 0.99, cifre), "tp": round(ask * 1.02, cifre),
+            "deviation": 20, "magic": magic, "comment": "nvm prova collegamento",
+            "type_time": self.mt5.ORDER_TIME_GTC, "type_filling": self._riempimento(simbolo),
+        }
+        r = self.mt5.order_check(richiesta)
+        if r is None:
+            return Esito(False, f"MT5 non risponde al controllo: {self.mt5.last_error()}")
+        if int(r.retcode) in (0, self.mt5.TRADE_RETCODE_DONE):
+            return Esito(True, f"il broker accetterebbe {float(info.volume_min):g} lotti", volume=float(info.volume_min))
+        return Esito(False, _SPIEGAZIONI.get(int(r.retcode), f"codice {r.retcode}") + f" ({getattr(r, 'comment', '')})")
 
     def sposta_stop(self, strumento: str, ticket: int, stop: float, target: float) -> Esito:
         simbolo = self.simbolo(strumento)

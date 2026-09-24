@@ -29,6 +29,7 @@ from nvm.dati.ore import carica as carica_ore
 from nvm.dati.spread import allarga
 from nvm.prova.base import opera
 from nvm.prova.cammino import Tabella, cammino, giudica
+from nvm.prova.campo import Uscita
 from nvm.prova.romeo import candidati, etichette, grandi, leggi
 from nvm.tempo import TF
 
@@ -157,13 +158,14 @@ def salva_per_il_vivo(t: Tabella) -> None:
     parte = impara_parte(kelly_f, kelly_r)
     (cartella / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
     romeo = candidati_di_romeo()
-    capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"])
+    capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"]).impara_fiducia(romeo["romeo_x"], romeo["romeo_tp1"])
     (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
     np.savez_compressed(cartella / "storico.npz", x=t.x, tp1=t.tp1, tp2=t.tp2, erre=t.erre, quando=t.chiusa,
                         kelly_f=kelly_f, kelly_r=kelly_r, **romeo)
     print(f"Capo allenato su {len(t)} operazioni; il Rischio usa {parte:.2f} del Kelly "
           f"(imparato su {len(kelly_f)} puntate 2008-2023). Somiglianza a Romeo imparata su "
-          f"{len(romeo['romeo_y'])} candidati del 2023, {int(romeo['romeo_y'].sum())} le sue scelte. "
+          f"{len(romeo['romeo_y'])} candidati del 2023, {int(romeo['romeo_y'].sum())} le sue scelte; "
+          f"fiducia in Romeo imparata dai risultati {capo.fiducia_in_romeo:+.3f}. "
           f"Salvati in {cartella}")
 
 
@@ -172,14 +174,15 @@ def candidati_di_romeo(radice: Path = RADICE / "dati" / "grezzi") -> dict[str, n
     le operazioni del 2023 delle coppie del bot dal vivo, e quali sono le sue scelte."""
     entrate = [e for e in leggi(RADICE / "casi" / "entrate-romeo.csv")
                if e.periodo == "studio" and e.strumento in PUNTO]
-    xs, ys = [], []
+    xs, ys, tp1 = [], [], []
     for strumento in PUNTO:
         ore, _ = carica_ore(radice, strumento, _istante(2021), _istante(2024) + 60 * 86400)
         minuti = carica_periodo(radice / "minuti", strumento, _istante(2023), _istante(2024))
         ops, x = candidati(ore, minuti, _istante(2023), _istante(2024))
         xs.append(x)
         ys.append(etichette([e for e in entrate if e.strumento == strumento], ops))
-    return {"romeo_x": np.vstack(xs), "romeo_y": np.concatenate(ys)}
+        tp1 += [o.tp1_preso or o.uscita is Uscita.TARGET for o in ops]
+    return {"romeo_x": np.vstack(xs), "romeo_y": np.concatenate(ys), "romeo_tp1": np.array(tp1, bool)}
 
 
 def _giudicati(t: Tabella) -> np.ndarray:

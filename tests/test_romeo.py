@@ -151,3 +151,24 @@ def test_senza_romeo_la_somiglianza_non_si_sa():
     senza = Capo(capo.media, capo.scala, capo.primo, capo.secondo)
     assert (senza.somiglianza(x) == 1).all()
     assert (senza.entra(x, rr1, rr2, costi) == capo.entra(x, rr1, rr2, costi)).all()
+
+
+def test_la_fiducia_in_romeo_si_impara_dai_risultati():
+    rng = np.random.default_rng(7)
+    n = 4000
+    x = rng.integers(0, 2, size=(n, len(COLONNE))).astype(float)
+    y_romeo = (x[:, COLONNE.index("ora di Romeo: Londra")] == 1) & (rng.random(n) < 0.05)
+    capo = Capo.allena(x, rng.random(n) < 0.35, rng.random(n) < 0.1).impara_romeo(x, y_romeo)
+    londra = x[:, COLONNE.index("ora di Romeo: Londra")] == 1
+    vincono = rng.random(n) < np.where(londra, 0.55, 0.30)     # le operazioni alla Romeo vincono di piu'
+    perdono = rng.random(n) < np.where(londra, 0.20, 0.40)     # ...oppure di meno
+    a_caso = rng.random(n) < 0.35
+    assert capo.impara_fiducia(x, vincono).fiducia_in_romeo > 0.2
+    assert capo.impara_fiducia(x, perdono).fiducia_in_romeo < -0.1
+    assert abs(capo.impara_fiducia(x, a_caso).fiducia_in_romeo) < 0.1
+    fidato = capo.impara_fiducia(x, vincono)
+    p_con, _ = fidato.probabilita(x)
+    p_senza, _ = capo.probabilita(x)
+    assert p_con[londra].mean() > p_senza[londra].mean()
+    di_nuovo = Capo.da_dati(fidato.come_dati())
+    assert np.allclose(di_nuovo.probabilita(x)[0], p_con)

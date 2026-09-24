@@ -32,6 +32,7 @@ from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import SETTIMANA, Risultato, opera
 from nvm.prova.cammino import Tabella
+from nvm.prova.campo import Uscita
 from nvm.prova.romeo import Entrata, al_prezzo, armati, candidati, confronta, esito, etichette, grandi, leggi
 from nvm.tempo import TF, come_testo
 
@@ -128,24 +129,35 @@ def imita(radice: Path, entrate: list[Entrata]) -> None:
         ys.append(etichette([e for e in entrate if e.strumento == strumento], o))
     x, y = np.vstack(xs), np.concatenate(ys)
     trimestre = np.array([datetime.fromtimestamp(o.quando, tz=timezone.utc).month - 1 for o in ops]) // 3
+    rr1, rr2 = np.array([o.rr1 for o in ops]), np.array([o.rr2 for o in ops])
+    costi = np.array([o.costo_erre for o in ops])
+    tp1 = np.array([o.tp1_preso or o.uscita is Uscita.TARGET for o in ops])
+    erre = np.array([o.erre for o in ops])
     simile = np.zeros(len(ops))
+    con_romeo = np.zeros(len(ops), bool)
+    fiducia = []
     for k in range(4):
         prova = trimestre == k
-        simile[prova] = capo.impara_romeo(x[~prova], y[~prova]).somiglianza(x[prova])
-    atteso = capo.valore_atteso(x, np.array([o.rr1 for o in ops]), np.array([o.rr2 for o in ops]),
-                                np.array([o.costo_erre for o in ops])) > 0
+        c = capo.impara_romeo(x[~prova], y[~prova]).impara_fiducia(x[~prova], tp1[~prova])
+        simile[prova] = c.somiglianza(x[prova])
+        con_romeo[prova] = c.entra(x[prova], rr1[prova], rr2[prova], costi[prova])
+        fiducia.append(f"{c.fiducia_in_romeo:+.3f}")
+    atteso = capo.valore_atteso(x, rr1, rr2, costi) > 0
     settimane_romeo = Counter(e.dal // SETTIMANA for e in entrate)
     alte = {e.id for e in entrate if e.rischio and e.rischio / PIP[e.strumento] >= STOP_ALTO}
     print(f"\nLa somiglianza a Romeo, fuori campione per trimestre: {len(ops)} candidati del 2023, "
           f"{int(y.sum())} sono le scelte di Romeo. Le riconosce al {_auc(simile, y):.2f} (0,50 = a caso); "
           f"somiglianza media delle sue scelte {simile[y].mean():.1%}, degli altri {simile[~y].mean():.1%}.")
-    for nome, scelta in (("tutte le operazioni", np.ones(len(ops), bool)), ("le scelte del Capo (guadagno atteso > 0)", atteso)):
+    print(f"  Fiducia in Romeo imparata dai risultati, trimestre per trimestre: {', '.join(fiducia)}")
+    for nome, scelta in (("tutte le operazioni", np.ones(len(ops), bool)), ("il Capo senza la voce di Romeo", atteso),
+                         ("il Capo con la voce di Romeo", con_romeo)):
         prese = [o for o, v in zip(ops, scelta) if v]
         vicine = {e.id for e in entrate if confronta(e, prese)}
         trovate = {e.id for e in entrate if (c := confronta(e, prese)) and c[0].ritrovata}
         per_romeo = sum(Counter(o.quando // SETTIMANA for o in prese)[w] for w in settimane_romeo) / len(entrate)
-        print(f"  {nome:42} prese {len(prese):5}  vicine {len(vicine):3}  ritrovate {len(trovate):2} "
-              f"(timeframe alto {len(trovate & alte)}/{len(alte)})  per ognuna di Romeo {per_romeo:5.1f}")
+        print(f"  {nome:34} prese {len(prese):5}  R medio {erre[scelta].mean():+.3f}  scelte di Romeo {int(y[scelta].sum())}/{int(y.sum())}"
+              f"  vicine {len(vicine):3}  ritrovate {len(trovate):2} (timeframe alto {len(trovate & alte)}/{len(alte)})"
+              f"  per ognuna di Romeo {per_romeo:5.1f}")
 
 
 def main() -> None:

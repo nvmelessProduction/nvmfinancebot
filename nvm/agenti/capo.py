@@ -134,6 +134,12 @@ class Capo:
     romeo: Optional[Logistica] = None
     romeo_media: Optional[np.ndarray] = None
     romeo_scala: Optional[np.ndarray] = None
+    # La fiducia in Romeo: di quanto una somiglianza sopra la media alza la
+    # stima del primo target (sul logaritmo delle quote). Non la sceglie
+    # nessuno: il Capo la impara dai risultati, del 2023 e dal vivo.
+    fiducia_in_romeo: float = 0.0
+    romeo_logit_media: float = 0.0
+    romeo_logit_scala: float = 1.0
 
     def _piena(self, x: np.ndarray) -> np.ndarray:
         return _con_interazioni(x, self.interazioni)
@@ -155,9 +161,43 @@ class Capo:
         return (self._piena(x) - self.media) / self.scala
 
     def valore_atteso(self, x: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray) -> np.ndarray:
-        z = self._z(x)
-        p1, q = self.primo.probabilita(z), self.secondo.probabilita(z)
+        p1, q = self.probabilita(x)
         return p1 * (0.5 * rr1 + 0.5 * q * rr2) - (1 - p1) - costi
+
+    def voce_di_romeo(self, x: np.ndarray) -> np.ndarray:
+        """Quanto la somiglianza a Romeo sposta la stima del primo target, sul
+        logaritmo delle quote: sopra zero spinge a entrare, sotto frena."""
+        x = np.atleast_2d(x)
+        if self.romeo is None or self.fiducia_in_romeo == 0:
+            return np.zeros(len(x))
+        return self.fiducia_in_romeo * self._romeo_z(x)
+
+    def _romeo_z(self, x: np.ndarray) -> np.ndarray:
+        s = np.clip(self.somiglianza(x), 1e-9, 1 - 1e-9)
+        return (np.log(s / (1 - s)) - self.romeo_logit_media) / self.romeo_logit_scala
+
+    def impara_fiducia(self, x: np.ndarray, tp1: np.ndarray) -> "Capo":
+        """Lo stesso Capo, con la fiducia in Romeo imparata dai risultati: quanto,
+        a parita' di tutto il resto, le operazioni che gli somigliano di piu'
+        prendono davvero il primo target."""
+        if self.romeo is None or len(x) == 0:
+            return self
+        s = np.clip(self.somiglianza(x), 1e-9, 1 - 1e-9)
+        lg = np.log(s / (1 - s))
+        media, scala = float(lg.mean()), float(lg.std()) or 1.0
+        z = (lg - media) / scala
+        base = self.primo.probabilita(self._z(x))
+        base = np.clip(base, 1e-9, 1 - 1e-9)
+        scarto = np.log(base / (1 - base))
+        y = np.asarray(tp1, float)
+        b = 0.0
+        for _ in range(50):
+            p = 1 / (1 + np.exp(-(scarto + b * z)))
+            passo = (np.sum(z * (p - y)) + PENALITA * b) / (np.sum(z * z * p * (1 - p)) + PENALITA)
+            b -= passo
+            if abs(passo) < 1e-10:
+                break
+        return replace(self, fiducia_in_romeo=float(b), romeo_logit_media=media, romeo_logit_scala=scala)
 
     def somiglianza(self, x: np.ndarray) -> np.ndarray:
         """Quanto ogni operazione somiglia a una che Romeo prenderebbe, da 0 a 1.
@@ -196,9 +236,14 @@ class Capo:
         return [(n, float(a), float(b)) for n, a, b in zip(self.nomi(), self.primo.pesi[1:], self.secondo.pesi[1:])]
 
     def probabilita(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """p1 e q per ogni riga."""
+        """p1 e q per ogni riga. La stima del primo target sente anche la voce di Romeo."""
         z = self._z(x)
-        return self.primo.probabilita(z), self.secondo.probabilita(z)
+        p1 = self.primo.probabilita(z)
+        voce = self.voce_di_romeo(x)
+        if voce.any():
+            p1 = np.clip(p1, 1e-9, 1 - 1e-9)
+            p1 = 1 / (1 + np.exp(-(np.log(p1 / (1 - p1)) + voce)))
+        return p1, self.secondo.probabilita(z)
 
     def spinte(self, x: np.ndarray) -> np.ndarray:
         """Di quanto ogni colonna sposta la stima del primo target per questa riga
@@ -212,7 +257,8 @@ class Capo:
             "interazioni": [list(c) for c in self.interazioni],
             "romeo": None if self.romeo is None else {
                 "pesi": self.romeo.pesi.tolist(), "media": self.romeo_media.tolist(),
-                "scala": self.romeo_scala.tolist(),
+                "scala": self.romeo_scala.tolist(), "fiducia": self.fiducia_in_romeo,
+                "logit_media": self.romeo_logit_media, "logit_scala": self.romeo_logit_scala,
             },
         }
 
@@ -229,6 +275,9 @@ class Capo:
             capo.romeo = Logistica(PENALITA_ROMEO)
             capo.romeo.pesi = np.array(r["pesi"])
             capo.romeo_media, capo.romeo_scala = np.array(r["media"]), np.array(r["scala"])
+            capo.fiducia_in_romeo = float(r.get("fiducia", 0.0))
+            capo.romeo_logit_media = float(r.get("logit_media", 0.0))
+            capo.romeo_logit_scala = float(r.get("logit_scala", 1.0))
         return capo
 
 

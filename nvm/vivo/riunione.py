@@ -38,13 +38,15 @@ class Storico:
     # quanto un'operazione somiglia a Romeo (`spec/capo.md`).
     romeo_x: Optional[np.ndarray] = None
     romeo_y: Optional[np.ndarray] = None
+    romeo_tp1: Optional[np.ndarray] = None
 
     @classmethod
     def carica(cls, percorso) -> "Storico":
         with np.load(percorso) as f:
             c = lambda k: f[k] if k in f.files else None
             return cls(f["x"], f["tp1"].astype(bool), f["tp2"].astype(bool), c("erre"), c("quando"), c("kelly_f"), c("kelly_r"),
-                       c("romeo_x"), None if c("romeo_y") is None else f["romeo_y"].astype(bool))
+                       c("romeo_x"), None if c("romeo_y") is None else f["romeo_y"].astype(bool),
+                       None if c("romeo_tp1") is None else f["romeo_tp1"].astype(bool))
 
 
 def _x(s: Seguita) -> list[float]:
@@ -111,6 +113,16 @@ def riunione(
     romeo = storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) and storico.romeo_y.any()
     if romeo:
         nuovo = nuovo.impara_romeo(storico.romeo_x, storico.romeo_y)
+        # La fiducia in Romeo: dai risultati dei candidati del 2023 e di tutte le decisioni dal vivo.
+        casi_x, casi_tp1 = [], []
+        if storico.romeo_tp1 is not None:
+            casi_x.append(storico.romeo_x)
+            casi_tp1.append(storico.romeo_tp1)
+        if finite:
+            casi_x.append(np.array([_x(s) for s in finite]))
+            casi_tp1.append(np.array([bool(s.esito["tp1"]) for s in finite]))
+        if casi_x:
+            nuovo = nuovo.impara_fiducia(np.vstack(casi_x), np.concatenate(casi_tp1))
     prima, dopo = fiducia_per_agente(capo), fiducia_per_agente(nuovo)
 
     settimanali: dict[str, list[int]] = {}
@@ -133,6 +145,14 @@ def riunione(
             + f". Dopo il riaddestramento ti ascolto {verso} ({_peso(prima[nome])} → {_peso(dopo[nome])})."
         )
         righe.append(f"     {_risposta(nome, diario)}")
+    if nuovo.romeo is not None:
+        g, t = settimanali.get("Romeo", [0, 0])
+        tot = (pagelle or {}).get("Romeo", [0, 0])
+        righe.append(
+            f"  → Romeo: questa settimana avevi ragione {g} volte su {t}"
+            + (f" (in tutto {tot[0]} su {tot[1]})" if tot[1] else "")
+            + f". Dai risultati, la mia fiducia in te passa da {_peso(capo.fiducia_in_romeo)} a {_peso(nuovo.fiducia_in_romeo)}."
+        )
 
     righe += ["", "I consigli fra agenti (li provo da oggi come combinazioni):"]
     righe += [f"  • {testo}" for testo, _ in scelti] or ["  • nessuna coppia che cambi davvero il risultato."]

@@ -115,9 +115,23 @@ come prima.
   0,51); con le quattro risposte 0,59 (`registro/tentativi.md`).
 - **Penalità L2: 10**, scelta fra 1, 10 e 100 allenando su tre trimestri
   del 2023 e provando sul quarto.
-- **Come arriva Romeo nelle decisioni.** Le risposte alla Romeo sono
-  colonne del Capo: quanto contano per il guadagno atteso lo impara dai
-  risultati, dello storico e dal vivo, come per ogni altro agente.
+- **Come arriva Romeo nelle decisioni: la fiducia in Romeo.** L'utente,
+  24/09: *"voglio che il capo diventi il cervello di Romeo… nulla toglie
+  che può migliorarsi da solo"*. Romeo è un membro dell'équipe: la sua voce
+  sposta la stima del primo target del Capo di `fiducia × z`, dove `z` è
+  quanto la somiglianza di questa operazione è sopra la media (sul
+  logaritmo delle quote). **La fiducia non la sceglie nessuno**: il Capo la
+  impara dai risultati, a parità di tutto il resto (una regressione con un
+  solo peso, penalità 1), prima sui candidati del 2023 e poi, ogni sabato,
+  anche su tutte le decisioni dal vivo. Se le operazioni alla Romeo vanno
+  meglio, lo ascolta di più; se vanno peggio, di meno. Ha la sua pagella
+  come gli altri.
+- **Perché ha senso.** Fra i candidati del 2023, quelli che sono le scelte
+  di Romeo hanno preso il primo target nel 63% dei casi contro il 36% (R
+  medio +1,37 contro −0,06), e il Capo stimava 36% per tutti. Con un
+  limite: Romeo pubblica soprattutto le operazioni riuscite, quindi il 63%
+  è probabilmente alto. Il Capo ne tiene conto da solo, perché la fiducia
+  la impara dai risultati e non da quel numero.
 - **Come migliora.** Ogni sabato il Capo ripassa le entrate di Romeo e si
   riaddestra sui risultati della settimana. Quando il catalogo cresce o
   arrivano i minuti di un periodo nuovo, `python capo.py --vivo` rifà

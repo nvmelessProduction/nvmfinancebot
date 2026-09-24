@@ -60,6 +60,8 @@ def spinte(capo: Capo, x: np.ndarray) -> dict[str, float]:
     for k, (i, j) in enumerate(capo.interazioni):
         for nome, c in AGENTI.items():
             per[nome] += float(s[len(COLONNE) + k]) * ((i in c) + (j in c)) / 2
+    if capo.romeo is not None:
+        per["Romeo"] = float(capo.voce_di_romeo(x)[0])
     return per
 
 
@@ -164,6 +166,9 @@ LAVORO: dict[str, str] = {
               "la sua golden candle è 9–13.",
     "Bias": "Leggo il bias dalle chiusure: la candela del range e il timeframe sopra, a favore o contro il CRT. "
             "E guardo se compriamo a sconto e vendiamo a premio sulla settimana.",
+    "Romeo": "Sono la voce di Romeo nell'équipe: dalle sue entrate ho imparato quanto un'operazione gli somiglia, "
+             "e lo dico a ogni decisione. Il Capo mi ascolta quanto i risultati gli dicono di fare, e ogni sabato "
+             "ricalcola quanto fidarsi di me.",
     "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, e la parte che ho imparato dagli errori.",
     "Capo": "Ascolto tutti, peso i pareri e decido: entro se il guadagno atteso è sopra zero. "
             "Imparo dalle entrate di Romeo quanto un'operazione gli somiglia e, ogni sabato, dai risultati "
@@ -185,6 +190,8 @@ def fiducia_per_agente(capo: Capo) -> dict[str, float]:
     for k, (i, j) in enumerate(capo.interazioni):
         for nome, col in AGENTI.items():
             per[nome] += float(pesi[len(COLONNE) + k]) * ((i in col) + (j in col)) / 2
+    if capo.romeo is not None:
+        per["Romeo"] = abs(capo.fiducia_in_romeo)
     return per
 
 
@@ -192,8 +199,15 @@ def presentazioni(pagelle: dict, capo: Capo, parte: float) -> list[str]:
     testi = []
     for nome, lavoro in LAVORO.items():
         g, t = pagelle.get(nome, [0, 0])
-        righe = [f"👋 Sono il {nome}." if nome not in ("Key level", "Orario", "Bias", "Rischio") else f"👋 Sono l'agente {nome}.",
+        righe = [f"👋 Sono {nome}." if nome == "Romeo" else (
+                 f"👋 Sono il {nome}." if nome not in ("Key level", "Orario", "Bias", "Rischio") else f"👋 Sono l'agente {nome}."),
                  lavoro, f"Stato: {grado(g, t)}, {_pagella(pagelle, nome)}."]
+        if nome == "Romeo":
+            if capo.romeo is None:
+                righe.append("Il Capo non ha ancora imparato niente da me.")
+            else:
+                righe.append(f"Oggi il Capo mi dà una fiducia di {capo.fiducia_in_romeo:+.2f}".replace(".", ",")
+                             + ": l'ha imparata dai risultati delle operazioni che mi somigliano.")
         if nome == "Rischio":
             righe.append(f"Oggi uso {parte:.2f} del Kelly: l'ho imparato su 16 anni di puntate del Capo.".replace(".", ",", 1))
         if nome == "Capo":

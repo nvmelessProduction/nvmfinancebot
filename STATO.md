@@ -107,6 +107,17 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   dai risultati quanto pesare le risposte alla Romeo. Il cancello del
   PIANO (7 su 10, al massimo 3 per ognuna) è il nostro metro per giudicare
   il bot, non una regola dentro il bot.
+- **Il Capo come cervello di Romeo (proposta approvata dall'utente, 24/09).**
+  Le scelte di Romeo fra i candidati del 2023 hanno preso il primo target
+  nel 63% dei casi contro il 36% (probabilmente meno: lui pubblica
+  soprattutto le riuscite). Romeo è un membro dell'équipe: la sua voce
+  alza o abbassa la stima del Capo, con una fiducia che il Capo impara dai
+  risultati e ricalcola ogni sabato anche dal vivo. Oggi è piccola (+0,03),
+  perché il Capo lo riconosce ancora poco: crescerà se le operazioni alla
+  Romeo andranno meglio e se impara a riconoscerlo (i minuti).
+- **Il collegamento con MT5:** a ogni avvio il bot chiede al broker se
+  accetterebbe un ordine minimo su ogni strumento (senza mandarlo) e lo
+  scrive sul canale operativo.
 - **Romeo entra sul minuto dentro il CRT a 4 ore.** Sui minuti di EURUSD
   gennaio–maggio 2023, il 4 ore → 1 minuto arriva vicino a tutte le sue 15
   entrate, e su quelle al minuto a 1–2 pip dal suo prezzo; ma sono 43

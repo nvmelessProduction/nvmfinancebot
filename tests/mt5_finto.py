@@ -68,6 +68,10 @@ class MT5Finto:
         contratto = 100 if simbolo.startswith("XAU") else 100000
         return (chiusura - apertura) * contratto * volume * (1 if tipo == self.ORDER_TYPE_BUY else -1)
 
+    def order_check(self, r):
+        # Controlla soltanto: non apre niente.
+        return NS(retcode=0, comment="Done")
+
     def order_send(self, r):
         self.richieste.append(dict(r))
         if r["action"] == self.TRADE_ACTION_DEAL:
