@@ -302,3 +302,71 @@ class TestFiltriEEsclusioni:
         for pezzo in ("ctx.filtri_attivi(", "stp.esclusioni_setup(",
                       "stp.ingresso_da_gap_ammesso(", "contesto.blocchi"):
             assert pezzo in corpo, f"manca {pezzo}"
+
+
+class TestTrovaCrt:
+    """La ricerca del CRT, e il perche' quando non c'e'.
+
+    `tf_trigger` e' il timeframe di ESECUZIONE; il RANGE e' la candela di
+    riferimento del timeframe alto della coppia. Prima si prendevano le ultime
+    due candele di `tf_trigger` qualunque fosse: con un alert su M1 il range
+    era un minuto e l'ingresso lo stesso minuto, cioe' tre candele dello
+    stesso timeframe -- l'errore che REV-50 ha corretto in SETUP-01.
+
+    Misurato il 2026-09-22 su 458 ordini: 317 da M1min e 141 da M5, **zero da
+    un timeframe di range valido**.
+    """
+
+    def test_un_timeframe_senza_coppia_e_CRT_04(self):
+        """`TF_1W` e' un RANGE di CRT-04, non un'esecuzione: non c'e' una
+        coppia in cui faccia da timeframe basso.
+
+        `M1min` invece una coppia ce l'ha -- e' l'esecuzione di `15m -> 1m` --
+        ed e' l'errore che questo test faceva nella prima stesura.
+        """
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto
+        from core.motore import trova_crt
+        from core.parametri import TF
+        esito = trova_crt(foto(), TF.W1)
+        assert esito.crt is None
+        assert esito.regola == "CRT-04"
+        # E un timeframe che una coppia ce l'ha non finisce qui.
+        assert trova_crt(foto(), TF.MIN1).regola != "CRT-04"
+
+    def test_senza_candela_di_riferimento_e_DEF_26(self):
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto, N2
+        from core.motore import trova_crt
+        from core.parametri import TF
+        # H4 c'e', ma il suo range (W1) e' vuoto.
+        esito = trova_crt(foto(candele_per_tf={TF.H4: [N2]}), TF.H4)
+        assert esito.crt is None
+        assert esito.regola == "DEF-26"
+
+    def test_restituisce_le_barre_che_servono_a_valle(self):
+        """Il CISD e la divergenza SMT si leggono su quelle: se l'agente non
+        le restituisse, chi chiama dovrebbe ricalcolarle -- e ricalcolarle
+        diversamente e' come nasce una seconda verita'."""
+        import sys
+        if "tests" not in sys.path:
+            sys.path.insert(0, "tests")
+        from test_motore import foto
+        from core.motore import trova_crt
+        from core.parametri import TF
+        esito = trova_crt(foto(), TF.H4)
+        assert esito.crt is not None
+        assert esito.barre, "le barre di esecuzione non tornano indietro"
+
+    def test_SETUP_00_si_dichiara_solo_se_valutata(self):
+        """Con CRT-04 o DEF-26 ci si ferma prima. Dichiararla direbbe che e'
+        stata valutata quando non lo e' stata, e la statistica "quante volte
+        ciascuna regola ha deciso" si regge su questa distinzione."""
+        import inspect
+        from core import motore
+        corpo = inspect.getsource(motore.valuta)
+        assert 'if ricerca.regola in (None, "SETUP-00"):' in corpo

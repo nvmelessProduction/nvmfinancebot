@@ -581,6 +581,73 @@ def _non_operare(
 
 
 @dataclass(frozen=True)
+class RicercaCrt:
+    """Il CRT trovato, oppure la regola per cui non c'e'."""
+
+    crt: Any = None
+    barre: tuple = ()
+    regola: Optional[str] = None
+    motivo: Optional[str] = None
+
+
+def trova_crt(foto: "Fotografia", tf_trigger: TF) -> RicercaCrt:
+    """SETUP-00, SETUP-02, CRT-04 — cerca il CRT su questa coppia.
+
+    `tf_trigger` e' il timeframe di ESECUZIONE: la candela appena chiusa su
+    cui si cerca il rientro. Il RANGE e' la candela di riferimento del
+    timeframe alto della coppia, e le barre in cui cercare manipolazione e
+    rientro sono quelle di `tf_trigger` chiuse DOPO di essa -- cioe' dentro la
+    candela di riferimento successiva.
+
+    Restituisce anche `barre`, che servono a valle: e' su quelle che si legge
+    il CISD e si misura la divergenza SMT.
+
+    **Perche' il range non e' `tf_trigger` stesso.** `CRT-04` dice che il CRT
+    e' una COPPIA -- range sull'alto, sweep e ingresso sul basso -- e le sue
+    coppie piu' piccole sono `15m -> 1m` e `5m -> 15s`. Un range da un minuto
+    non esiste in nessuna di esse. Prima qui si prendevano le ultime due
+    candele di `tf_trigger` qualunque fosse: con un alert su `M1` il range era
+    un minuto e l'ingresso lo stesso minuto, cioe' tre candele dello stesso
+    timeframe -- l'errore che `REV-50` ha corretto in `SETUP-01`, *"che e'
+    un'altra strategia"*.
+
+    Non e' teoria, e' tutto cio' che il bot ha fatto. Misurato il 2026-09-22
+    su 458 ordini: **317 da `M1min` e 141 da `M5`, zero da un timeframe di
+    range valido**. Il motivo e' meccanico: su un timeframe di range
+    `INGRESSO_ROMEO` fa ARMARE il setup e l'ordine parte dopo, dal ritorno
+    nell'FVG; su `M1` e `M5` non esiste una coppia in cui fare da range,
+    quindi non si poteva armare e si cadeva dritti sull'ordine a mercato. La
+    strada diretta sparava solo dove non doveva.
+
+    Quegli alert servono comunque, e li usa `valuta_ingresso_armato`: sono il
+    secondo tempo di CRT-13, dove un setup gia' armato trova il suo ingresso.
+    Li' non c'e' un CRT nuovo da cercare.
+    """
+    tf_range = _range_della_coppia(tf_trigger)
+    if tf_range is None:
+        return RicercaCrt(regola="CRT-04", motivo=(
+            f"{tf_trigger.value} non e' il timeframe di esecuzione di nessuna "
+            "coppia di CRT-04: non c'e' un range di cui essere la coppia"))
+
+    alte = candele_visibili(foto.candele_per_tf.get(tf_range, ()), foto.istante)
+    if not alte:
+        return RicercaCrt(regola="DEF-26", motivo=(
+            f"storia insufficiente su {tf_range.value}: manca la candela di "
+            "riferimento che definisce il range"))
+
+    c_rif = alte[-1]
+    basse = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
+    barre = tuple(c for c in basse if c.orario > c_rif.orario)
+
+    crt = stp.cerca_crt(c_rif, list(barre), tf_range, foto.key_level_presi)
+    if crt is None:
+        return RicercaCrt(barre=tuple(basse), regola="SETUP-00", motivo=(
+            "nessun CRT valido: serve la presa di un key level di timeframe "
+            "superiore"))
+    return RicercaCrt(crt=crt, barre=tuple(basse))
+
+
+@dataclass(frozen=True)
 class Livelli:
     """I tre livelli di un CRT, gia' sulla scala su cui partira' l'ordine."""
 
@@ -1257,73 +1324,22 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             foto.strumento, ["SETUP-06"] + indipendenti, "nessuna bias di comando", applicate
         )
 
-    # --- 4. Il CRT (SETUP-00, SETUP-02) -----------------------------------
-    #
-    # Il range deve stare su un timeframe che CRT-04 ammette come range.
-    #
-    # `CRT-04` dice che il CRT e' una COPPIA di timeframe -- range sull'alto,
-    # sweep e ingresso sul basso -- e le sue coppie piu' piccole sono
-    # `15m -> 1m` e `5m -> 15s`. Un range da un minuto non esiste in nessuna
-    # di esse.
-    #
-    # Qui sotto pero' si prendono le ultime due candele di `tf_trigger` e si
-    # cerca il CRT li' dentro, qualunque timeframe sia. Con un alert su `M1`
-    # il range e' un minuto e l'ingresso e' lo stesso minuto: sono tre
-    # candele dello stesso timeframe, cioe' esattamente l'errore che `REV-50`
-    # ha corretto in `SETUP-01` -- *"che e' un'altra strategia"*.
-    #
-    # Non e' teoria, e' tutto cio' che il bot ha fatto. Misurato il
-    # 2026-09-22 su 458 ordini: **317 da `M1min` e 141 da `M5`, zero da un
-    # timeframe di range valido**. Il motivo e' meccanico: su un timeframe di
-    # range `INGRESSO_ROMEO` fa ARMARE il setup e l'ordine parte dopo, dal
-    # ritorno nell'FVG; su `M1` e `M5` non esiste una coppia in cui fare da
-    # range, quindi non si puo' armare e si cadeva dritti sull'ordine a
-    # mercato. La strada diretta sparava solo dove non doveva.
-    #
-    # Quegli alert servono comunque, e li usa `valuta_ingresso_armato`: sono
-    # il secondo tempo di CRT-13, dove un setup gia' armato trova il suo
-    # ingresso. Qui non c'e' un CRT nuovo da cercare.
-    # Il CRT si forma sul timeframe di ESECUZIONE, col range preso dall'alto.
-    #
-    # `tf_trigger` qui e' il timeframe di ESECUZIONE: la candela appena chiusa
-    # su cui si cerca il rientro. Il RANGE e' la candela di riferimento del
-    # timeframe alto della coppia, e le barre in cui cercare manipolazione e
-    # rientro sono quelle di `tf_trigger` che cadono DOPO la sua chiusura --
-    # cioe' dentro la candela di riferimento successiva.
-    tf_range = _range_della_coppia(tf_trigger)
-    if tf_range is None:
+    # --- 4. Il CRT (SETUP-00, SETUP-02, CRT-04) ---------------------------
+    # La ricerca vive in `trova_crt`, che sa anche perche' un CRT non c'e'.
+    ricerca = trova_crt(foto, tf_trigger)
+    # `SETUP-00` si dichiara solo se la ricerca ci e' arrivata: con `CRT-04`
+    # o `DEF-26` ci si ferma prima, e dichiararla direbbe che e' stata
+    # valutata quando non lo e' stata. La statistica "quante volte ciascuna
+    # regola ha deciso" si regge su questa distinzione.
+    if ricerca.regola in (None, "SETUP-00"):
+        applicate.append("SETUP-00")
+    if ricerca.crt is None:
         return _non_operare(
-            foto.strumento, ["CRT-04"] + indipendenti,
-            f"{tf_trigger.value} non e' il timeframe di esecuzione di nessuna "
-            "coppia di CRT-04: non c'e' un range di cui essere la coppia",
-            applicate,
+            foto.strumento, [ricerca.regola] + indipendenti,
+            ricerca.motivo or "", applicate,
         )
-
-    alte = candele_visibili(foto.candele_per_tf.get(tf_range, ()), foto.istante)
-    if not alte:
-        return _non_operare(
-            foto.strumento, ["DEF-26"] + indipendenti,
-            f"storia insufficiente su {tf_range.value}: manca la candela di "
-            "riferimento che definisce il range",
-            applicate,
-        )
-    c_rif = alte[-1]
-
-    # Le barre basse DENTRO la candela di riferimento successiva, cioe' quelle
-    # chiuse dopo `c_rif`. Prima si confrontavano due candele del timeframe di
-    # range, e su `4h -> 15m` significava concedere UNA occasione invece di
-    # sedici.
-    basse = candele_visibili(foto.candele_per_tf.get(tf_trigger, ()), foto.istante)
-    barre = [c for c in basse if c.orario > c_rif.orario]
-
-    crt = stp.cerca_crt(c_rif, barre, tf_range, foto.key_level_presi)
-    applicate.append("SETUP-00")
-    if crt is None:
-        return _non_operare(
-            foto.strumento, ["SETUP-00"] + indipendenti,
-            "nessun CRT valido: serve la presa di un key level di timeframe superiore",
-            applicate,
-        )
+    crt = ricerca.crt
+    basse = list(ricerca.barre)
     applicate.append("SETUP-02A" if crt.direzione is Bias.SHORT else "SETUP-02B")
 
     # --- 4ter. Le otto conferme di Romeo (CRT-06/10/11/12/15/17/18/20) ----
