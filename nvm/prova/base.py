@@ -11,13 +11,14 @@ indipendenti farebbe sembrare il risultato piu' sicuro di quanto e'.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Optional
 
 import numpy as np
 
 from nvm.agenti.cacciatore import Variante, Verso, caccia
-from nvm.agenti.grilletto import scatto
+from nvm.agenti.grilletto import Scatto, scatto
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import Candele
 from nvm.prova.campo import Uscita, simula
@@ -38,6 +39,8 @@ class Risultato:
     tp1_preso: bool
     costo_erre: float
     rischio: float
+    # Lo scatto da cui e' nata: le Conferme rispondono su questo.
+    scatto: Optional[Scatto] = field(default=None, repr=False, compare=False)
 
 
 # Quante volte il Grilletto puo' sparare sullo stesso CRT: dopo la prima,
@@ -66,7 +69,7 @@ def opera(
             if dal <= s.quando < al:
                 risultati.append(Risultato(
                     op.strumento, alte.tf, basse.tf, op.verso, op.quando, esito.erre,
-                    esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio,
+                    esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio, s,
                 ))
             if esito.uscita is not Uscita.STOP:
                 break

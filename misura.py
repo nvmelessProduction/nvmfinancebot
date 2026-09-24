@@ -3,6 +3,7 @@
     python misura.py                                  # le tre coppie orarie, 2006-2023
     python misura.py --coppie D1-H1 --strumenti EURUSD --dal 2015-01
     python misura.py --variante "chiusura dentro"
+    python misura.py --conferme                       # la base divisa in si'/no per ogni conferma
 
 Gli anni 2024-2026 sono chiusi (`PIANO.md` §2): si aprono una volta sola,
 nella Fase G, con --apri-holdout. Ogni misura va scritta in
@@ -15,11 +16,15 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
 from nvm.agenti.cacciatore import Variante
+from nvm.agenti.conferme import SOPRA, Contesto, contesto, key_level, orario
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import opera, riassumi
+from nvm.prova.confronto import confronta
 from nvm.tempo import TF
 
 RADICE = Path(__file__).resolve().parent
@@ -45,6 +50,7 @@ def main() -> None:
     parser.add_argument("--variante", default=Variante.MANUALE.value, choices=[v.value for v in Variante])
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
     parser.add_argument("--apri-holdout", action="store_true", help="solo nella Fase G, una volta")
+    parser.add_argument("--conferme", action="store_true", help="dividi la base per ogni conferma (Fase E)")
     a = parser.parse_args()
 
     dal, al = _istante(a.dal), _istante(a.al, fine=True)
@@ -53,11 +59,11 @@ def main() -> None:
     variante = Variante(a.variante)
     radice = Path(a.cartella)
 
-    tutti = []
+    tutti, pareri_tutti = [], []
     for nome in a.coppie.split(","):
         alto, basso = COPPIE[nome]
         unita = "minuti" if basso is TF.M15 else "ore"
-        risultati = []
+        risultati, pareri = [], []
         for strumento in a.strumenti.split(","):
             if unita == "ore":
                 base, conti = carica_ore(radice, strumento, dal - MARGINE, al + MARGINE)
@@ -72,9 +78,52 @@ def main() -> None:
             r = opera(alte, basse, dal, al, variante)
             print(f"{nome} {strumento}{nota}: {riassumi(r).testo()}")
             risultati += r
-        print(f"== {nome}, tutti gli strumenti: {riassumi(risultati).testo()}\n")
+            if a.conferme:
+                sopra = costruisci(base, SOPRA[alto]).chiuse_entro(int(base.t[-1]) + base.passo)
+                pareri += [
+                    (key_level(x.scatto, sopra, basse), orario(x.scatto, basse), contesto(x.scatto, alte, sopra))
+                    for x in r
+                ]
+        print(f"== {nome}, tutti gli strumenti: {riassumi(risultati).testo()}")
+        if a.conferme:
+            stampa_conferme(risultati, pareri)
+        print()
         tutti += risultati
+        pareri_tutti += pareri
     print(f"== TUTTO ({variante.value}): {riassumi(tutti).testo()}")
+    if a.conferme:
+        stampa_conferme(tutti, pareri_tutti)
+
+
+def stampa_conferme(risultati, pareri) -> None:
+    """Per ogni conferma, le operazioni col si' contro quelle col no."""
+    noti = [i for i, p in enumerate(pareri) if p[0] is not None]
+    r_kl = [risultati[i] for i in noti]
+    kl = [pareri[i][0] for i in noti]
+    print(f"   key level (risponde su {len(noti)} di {len(risultati)}):")
+    for nome, si in (
+        ("massimo", [k.massimo for k in kl]),
+        ("arriva al massimo", [k.tocca for k in kl]),
+        ("rejection block", [k.rejection_block for k in kl]),
+        ("fvg", [k.fvg for k in kl]),
+        ("almeno uno", [k.quanti >= 1 for k in kl]),
+        ("almeno due", [k.quanti >= 2 for k in kl]),
+    ):
+        print(f"     {nome:17} {confronta(r_kl, np.array(si)).testo()}")
+    ore = [p[1] for p in pareri]
+    print("   orario:")
+    print(f"     {'gct 9-13 NY':16} {confronta(risultati, np.array([o.gct for o in ore])).testo()}")
+    erre = np.array([r.erre for r in risultati])
+    scatto = np.array([o.ora_scatto for o in ore])
+    righe = [f"{h:02d}:{int((scatto == h).sum())}/{erre[scatto == h].mean():+.2f}" for h in range(24) if (scatto == h).any()]
+    print("     per ora NY dello scatto (ora:n/R medio):")
+    for k in range(0, len(righe), 8):
+        print("       " + "  ".join(righe[k:k + 8]))
+    print("   bias (a favore del verso contro il resto; contro contro il resto):")
+    for nome in ("range", "sopra"):
+        lati = [None if p[2] is None else Contesto.dalla_parte(getattr(p[2], nome), r.verso) for p, r in zip(pareri, risultati)]
+        print(f"     {nome + ' a favore':16} {confronta(risultati, np.array([x is True for x in lati])).testo()}")
+        print(f"     {nome + ' contro':16} {confronta(risultati, np.array([x is False for x in lati])).testo()}")
 
 
 if __name__ == "__main__":

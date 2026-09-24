@@ -5,19 +5,29 @@ _Aggiornato il 24/09/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
-## Fasi attuali: A — Specifica, e B — Dati in parallelo
+## Fasi attuali: A — Specifica, B — Dati, E — Gli altri agenti
 
 **A.** Il CRT di RomeoTPT si riscrive dalle fonti, partendo dal
 **Cacciatore** (l'agente che risponde a "c'è un CRT qui?").
 
 - **Fatto:** fonti raccolte (`spec/FONTI-ROMEO.md`); regole del Cacciatore
-  decise sulle fonti, con una variante dichiarata (`spec/cacciatore.md`).
-- **Manca:** i casi presi dai grafici pubblicati da Romeo; le schede del
-  Grilletto (Model#1) e degli altri agenti.
-- **Casi verificati sui dati:** CASO-002 (EURUSD giornaliero), CASO-003
-  (EURUSD mensile), CASO-004 (XAUUSD giornaliero). Hanno corretto tre
-  regole: la durata dell'operazione (due volte), i tentativi del Grilletto,
-  e hanno fatto nascere la variante "stop stretto".
+  decise sulle fonti, con una variante dichiarata (`spec/cacciatore.md`);
+  schede del Grilletto (`spec/grilletto.md`) e delle prime conferme
+  (`spec/conferme.md`).
+- **Manca:** altri casi fino a 20 CRT, e i casi "non è un CRT"; le schede
+  di Rischio e Sentinella. CASO-001 (GBPUSD a 15 minuti) aspetta i minuti.
+- **Casi verificati sui dati:** sette, da CASO-002 a CASO-008 (EURUSD
+  giornaliero, settimanale e mensile, XAUUSD giornaliero, 2024–2025). Il
+  bot ritrova tutti i CRT di Romeo, con livelli entro 1–2 pip. Hanno
+  corretto tre regole: la durata dell'operazione (due volte), i tentativi
+  del Grilletto, e hanno fatto nascere la variante "stop stretto". Dove si
+  vede l'ingresso, Romeo entra su un timeframe più basso e più in alto del
+  bot, spesso al secondo colpo. Obiettivo del PIANO: 20 CRT e 10 "non è un
+  CRT"; per ora 8 e 0.
+- **Fonte nuova (msg 6718, febbraio 2026):** una pagina del manuale di
+  Romeo, "Elements of a high probability trade setup": key level del
+  timeframe alto, ora della manipolazione, massimo prima della
+  manipolazione; *"ignore the fvgs, obs, brks"*.
 - **Varianti dichiarate:** 2 su 3. "Chiusura dentro" per il Cacciatore,
   "stop stretto" per Livelli.
 - **Già pronto per la Fase C:** il codice del Cacciatore
@@ -33,9 +43,18 @@ file. Il piano completo è in `PIANO.md`.
   e giornaliere su confini sbagliati (`registro/verifica-dati-vecchi.md`).
 - **Fatto:** vent'anni di ore con bid e ask per i sei strumenti, dai file
   Dukascopy del vecchio bot. Verificati identici, bid e ask, a quelli
-  scaricati direttamente. Mancano cinque mesi prima del 2024 (tre di
-  USDJPY, due di XAUUSD), in scaricamento. AUDUSD 2007–2010 ha dati sporchi
-  (buchi, ask sotto il bid): da tenere presente.
+  scaricati direttamente. I cinque mesi che mancavano prima del 2024 sono
+  stati scaricati il 24/09: lo storico 2006–2023 è completo. AUDUSD
+  2007–2010 ha dati sporchi (buchi, ask sotto il bid): da tenere presente.
+- **Manca:** i quindici minuti e i minuti di vent'anni (per la coppia 4 ore
+  → 15 minuti e per entrare come Romeo, sul timeframe basso). Da qui
+  Dukascopy risponde piano: un mese di ore richiede da 30 secondi a 10
+  minuti.
+
+**E.** Le prime conferme sono scritte, provate e misurate
+(`spec/conferme.md`, `nvm/agenti/conferme.py`): key level, orario, bias.
+Nessuna, da sola, separa le operazioni buone dalle cattive in modo stabile.
+Il loro peso lo deciderà il Capo nella Fase F.
 
 ### Cosa serve da te
 
@@ -92,10 +111,13 @@ strumenti, orarie Dukascopy con **bid e ask veri** e commissioni. Il
 
 | Coppia | Operazioni | R medio | IC95 |
 |---|---:|---:|---|
-| mensile → giornaliero | 1.876 | −0,008 | [−0,105; +0,098] |
-| settimanale → 4 ore | 9.289 | −0,047 | [−0,099; +0,008] |
-| giornaliero → 1 ora | 38.524 | −0,072 | [−0,094; −0,050] |
-| **tutto** | **49.689** | **−0,065** | **[−0,087; −0,043]** |
+| mensile → giornaliero | 1.884 | −0,011 | [−0,110; +0,088] |
+| settimanale → 4 ore | 9.314 | −0,049 | [−0,101; +0,005] |
+| giornaliero → 1 ora | 38.609 | −0,072 | [−0,094; −0,049] |
+| **tutto** | **49.807** | **−0,065** | **[−0,087; −0,043]** |
+
+Rifatta lo stesso giorno con i cinque mesi che mancavano: il totale non
+cambia. Uscita completa in `registro/misure/2026-09-24-base-e-conferme.txt`.
 
 È il numero da battere. Per passare, la Fase F deve fare almeno +0,10 R
 meglio di questo, con i criteri del `PIANO.md` §2.
@@ -109,6 +131,35 @@ da guardare.
 La coppia 4 ore → 15 minuti non si può ancora misurare: servono i quindici
 minuti di vent'anni, che non ci sono.
 
+### Gli agenti della Fase E, contro la base
+
+Operazioni col sì contro quelle col no, su tutte e tre le coppie
+(2006–2023). Differenza in R per operazione, intervallo al 95% a blocchi
+settimanali, e in quanti anni la differenza ha lo stesso segno (il cancello
+chiede l'80%).
+
+| Agente | Lettura | Quante col sì | Differenza | IC95 | Anni concordi |
+|---|---|---:|---:|---|---:|
+| Conferma key level | massimo preso | 3% | −0,066 | [−0,180; +0,054] | 56% |
+| | arriva al massimo | 2% | −0,053 | [−0,199; +0,092] | 67% |
+| | rejection block | 14% | −0,059 | [−0,117; −0,002] | 67% |
+| | FVG | 12% | +0,074 | [+0,008; +0,147] | 78% |
+| | almeno uno | 25% | −0,001 | [−0,048; +0,047] | 44% |
+| Conferma orario | Golden candle time 9–13 NY | 22% | +0,033 | [−0,014; +0,080] | 67% |
+| Contesto: bias | candela del range a favore | 24% | −0,025 | [−0,058; +0,010] | 61% |
+| | timeframe sopra a favore | 40% | −0,015 | [−0,057; +0,026] | 50% |
+
+**Candidati provati finora nella Fase E: 11.** Con 11 tentativi il
+cancello chiede un intervallo al 99,5% invece che al 95% (`PIANO.md` §2,
+punto 5): nessuna lettura ci arriva. La più vicina è l'FVG, che però
+Romeo stesso nel 2026 dice di ignorare.
+
+Quello che i numeri dicono, in parole semplici: prendere tutti i CRT
+sull'ora con lo stop all'estremo perde un po', e nessun filtro di Romeo
+preso da solo lo raddrizza. Nei casi verificati Romeo entra più tardi e
+più in alto, sul timeframe basso, con stop di pochi pip: la differenza
+vera sembra lì, nel **come** si entra, più che nel **quando**.
+
 ## Fasi
 
 | Fase | Stato |
@@ -117,7 +168,7 @@ minuti di vent'anni, che non ci sono.
 | B. Dati | in corso |
 | C. Cacciatore | — |
 | D. La base | fatta per tre coppie su quattro (24/09) |
-| E. Gli altri agenti | — |
+| E. Gli altri agenti | in corso: key level, orario e bias misurati (24/09) |
 | F. Capo e apprendimento | — |
 | G. Verifica finale | — |
 | H. Dal vivo, in demo | — |

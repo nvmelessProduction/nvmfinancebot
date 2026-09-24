@@ -56,6 +56,7 @@ Livelli di affidabilità usati nella specifica:
 |---|---|---|
 | 20/03/2023 | 163 | *"Turtle soup high has to be the ceiling otherwise I'm not interested anymore."* |
 | 16/11/2023 | 3672 | *"1- Entry (least important). 2- Stoploss (invalidation of thesis). 3- Target (draw on liquidity, potential reversal)."* |
+| 18/12/2023 | 3967 | *"If they close above the rejection block, they're going to 50% of the wick. If they close above 50% of the wick, they're going to the end of the wick."* (dal suo diario: *"how to probe orderflow for invalidation/validation of bias"*) |
 | 19/03/2024 | 4838 | *"Model #1. Orderblock = turtle soup."* Con due schemi (sotto) |
 | 29/03/2024 | 4971–4972 | *"Model #1 in action"*: GBPUSD a 15 minuti, 29/03/2024, con la sua vendita su MT5 |
 | 29/03/2024 | 4973 | *"Every HTF key level will give you three LTF entries: 1- Turtle soup. 2- Orderblock/fvg. 3- OTE/brk."* |
@@ -66,11 +67,15 @@ Livelli di affidabilità usati nella specifica:
 | 23/08/2024 | 5390 | *"Step 1: Know where price is going - CRT. Step 2: Entry pattern - model#1, FVG, ob..etc"* |
 | 01/09/2024 | 5489 | *"Step 1- What candle am I looking to trade? Step 2- Where is that candle likely to go? Step 3- How can I find my entry, stoploss and target..."* |
 | 10/12/2024 | 5730 | *"EURUSD CRT. Entry in the wick."*: giornaliero, dicembre 2024 |
+| 16/12/2024 | 5754 | Foglio **"Determining HTF bias for next candle"**: *"1 Close above = higher prices. 2 Close below = lower prices. 3 Wick above = lower prices. 4 Wick below = higher prices."* *"Use for HTF bias mainly, & secondly for stop loss / stop run trading setups."* In fondo: *"All of this only matters if it occurs at a key level."* |
 | 06/04/2025 | 6110 | **Terminologia**: CRTH, CRTL, ±Ts (turtle soup), ±KOD Ts, ±Fs, ±FMSS, WOP/DOP, WOT/WCT/DOT/DCT, ±Model#1, ±RTM1 (*"retrade to model#1"*), *"50% = halfway point of price range"*, *"GCT: Golden candle time (9am-1pm NY time)"* |
 | 25/06/2025 | 6180 | *"Most of you should be trading exclusively model#1 and OTEs for a long, long time."* |
+| 08/09/2025 | 6326 | *"SMT is a 'confirmation' tool, not a primary factor to determine bias, I always arrive at my trade ideas regardless of SMT."* |
 | 09/09/2025 | 6332 | *"Entire trading careers can be built on taking price from the CRTH/L to the 50%."* |
 | 29/10/2025 | 6561 | *"The 50% is almost always guaranteed folks."* |
 | 04/11/2025 | 6615 | *"When I'm bearish, this is the ideal reaction: 1- Candle opens. 2- Stabs into an old CRTH. 3- Dumps."* |
+| 09/02/2026 | 6702 | *"At the beginning of each trading week, I genuinely intend on placing ZERO trades… I wait and pick the best one. This is how to trade A+ setups only."* |
+| 11/02/2026 | 6718 | Foglio del suo manuale (capitolo 10, pag. 143), **"Elements of a high probability trade setup"**: *"1. Plan the higher timeframe key level. 2. Mark the manipulation time. 3. Mark a pre-manipulation swing high/low. 4. 2 & 1 are more important than 3."* Note: *"Ignore the patterns, ignore the fvgs, obs, brks etc, put the majority of your focus on the above 3 factors."* *"Go back in time, look at your winning trades… they all comply to this system. No exceptions."* Nel disegno il prezzo supera il massimo prima della manipolazione (3), **arriva** alla linea del key level (1) all'ora della manipolazione (2), e crolla |
 | 29/05/2026 | 6744 | *"MOB, the make or break level. If this level is broken through, the target will be hit. If respected, it will block the target… scratch the trade idea."* |
 
 **Il Model#1, disegnato da lui (msg 4836):** *"Thick up-close candle that
