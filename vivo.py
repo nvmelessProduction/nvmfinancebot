@@ -7,8 +7,8 @@ d'ora guarda la coppia 4 ore -> 15 minuti; ogni ora le altre tre: il
 Cacciatore dice quali CRT si sono armati, a ogni Model#1 l'equipe si
 confronta, il Capo decide, il Rischio sceglie la puntata, l'Esecutore apre.
 Quando un'operazione finisce (presa o sulla carta) si vede chi aveva
-ragione e chi ha sbagliato dice come migliorare. Poi guarda se su GitHub
-c'e' una versione nuova. Il sabato mattina la riunione col Capo.
+ragione e chi ha sbagliato dice come migliorare. Ogni due minuti guarda se
+su GitHub c'e' una versione nuova. Il sabato mattina la riunione col Capo.
 
 Chiude con il codice 3 quando si e' aggiornato: `avvia.bat` lo riavvia.
 """
@@ -46,6 +46,7 @@ ORARIE = 13000          # circa due anni: servono al key level del mensile
 QUARTI = 4000           # circa sei settimane di quarti d'ora: il 4 ore e il giornaliero sopra
 RITARDO_GIRO = 20       # secondi dopo la chiusura, per dare al broker il tempo di chiudere la barra
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
+CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
@@ -119,6 +120,7 @@ class Bot:
         self.basi: dict[str, Minuti] = {}
         self.fini: dict[str, Minuti] = {}
         self._allarmi: dict[str, float] = {}
+        self._ultimo_controllo = 0.0
 
     def allarme(self, testo: str) -> None:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
@@ -158,7 +160,7 @@ class Bot:
             riavvio.unlink()
         else:
             self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(PUNTO), self.terminale.scarto))
-        self.prova_collegamento()
+        self.prova_collegamento(solo_se_non_va=da_aggiornamento)
         if not self.imp.chat_equipe:
             self.tg.operativo(messaggi.allarme(
                 "Il canale équipe non è impostato: nel file .env manca la riga TELEGRAM_CHAT_EQUIPE= con l'id del "
@@ -169,8 +171,9 @@ class Bot:
                 self.tg.equipe(testo)
             presentati.write_text("sì", encoding="utf-8")
 
-    def prova_collegamento(self) -> None:
-        """A ogni avvio: MT5 accetterebbe un ordine su ogni strumento? Lo dice sul canale operativo."""
+    def prova_collegamento(self, solo_se_non_va: bool = False) -> None:
+        """A ogni avvio: MT5 accetterebbe un ordine su ogni strumento? Lo dice sul
+        canale operativo; dopo un aggiornamento, solo se qualcosa non va."""
         prove = []
         for strumento in PUNTO:
             try:
@@ -182,7 +185,8 @@ class Bot:
             aperte = len(self.terminale.aperte(MAGIC))
         except ErroreMT5:
             aperte = 0
-        self.tg.operativo(messaggi.collegamento(prove, aperte))
+        if not solo_se_non_va or not all(ok for _, ok, _ in prove):
+            self.tg.operativo(messaggi.collegamento(prove, aperte))
         registra(CARTELLA, "collegamento", prove=prove, aperte=aperte)
 
     # --- il giro di ogni minuto ---
@@ -200,19 +204,26 @@ class Bot:
         if ora > self.stato.ultimo_giro and adesso - ora >= RITARDO_GIRO:
             self.giro(ora)
             self.stato.salva(CARTELLA)
-            try:
-                titolo = _versione_nuova(self.versione)
-            except Exception as errore:
-                titolo = ""
-                self.allarme(f"non riesco a controllare se c'è una versione nuova: {type(errore).__name__}")
-            if titolo:
-                (CARTELLA / "riavvio").write_text(titolo, encoding="utf-8")
-                sys.exit(AGGIORNATO)
         oggi = datetime.fromtimestamp(adesso, tz=timezone.utc)
         settimana = f"{oggi.isocalendar().year}-S{oggi.isocalendar().week:02d}"
         if oggi.weekday() == 5 and oggi.hour >= 8 and self.stato.ultima_riunione != settimana:
             self.riunione(settimana, int(adesso))
         self.stato.salva(CARTELLA)
+        if adesso - self._ultimo_controllo >= CONTROLLO_VERSIONE:
+            self._ultimo_controllo = adesso
+            self.aggiorna_se_serve()
+
+    def aggiorna_se_serve(self) -> None:
+        """Se su GitHub c'e' codice nuovo, lo prende ed esce per farsi riavviare
+        da `avvia.bat`. Lo stato e' gia' salvato: il bot riparte da dov'era."""
+        try:
+            titolo = _versione_nuova(self.versione)
+        except Exception as errore:
+            titolo = ""
+            self.allarme(f"non riesco a controllare se c'è una versione nuova: {type(errore).__name__}")
+        if titolo:
+            (CARTELLA / "riavvio").write_text(titolo, encoding="utf-8")
+            sys.exit(AGGIORNATO)
 
     def giro_veloce(self, quarto: int) -> None:
         """La coppia 4 ore -> 15 minuti, ogni quarto d'ora."""

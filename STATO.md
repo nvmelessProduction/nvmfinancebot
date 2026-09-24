@@ -198,7 +198,7 @@ bloccano.
   il sabato la riunione: pagelle, consigli fra agenti, riaddestramento di
   Capo (i casi recenti pesano di più) e Rischio.
 - Si aggiorna da solo da questo branch: quello che si aggiunge qui arriva al
-  bot entro un'ora.
+  bot entro due minuti (dal 24/09; prima una volta l'ora).
 
 ## Numeri validi
 

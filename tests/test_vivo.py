@@ -296,3 +296,19 @@ def test_il_diario_parla_come_una_persona():
     assert firma("Key level", x) == "FVG"
     assert firma("Livelli", x) == "primo target fra 2 e 3 R"
     assert firma("Grilletto", x) == "primo colpo"
+
+
+def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch):
+    import pytest
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    bot = object.__new__(vivo.Bot)
+    bot.versione, bot._allarmi = "abc", {}
+    monkeypatch.setattr(vivo, "_versione_nuova", lambda partito_da: "")
+    bot.aggiorna_se_serve()                      # niente di nuovo: continua
+    monkeypatch.setattr(vivo, "_versione_nuova", lambda partito_da: "Romeo nell'equipe")
+    with pytest.raises(SystemExit) as uscita:
+        bot.aggiorna_se_serve()
+    assert uscita.value.code == vivo.AGGIORNATO
+    assert (tmp_path / "riavvio").read_text(encoding="utf-8") == "Romeo nell'equipe"
+    assert vivo.CONTROLLO_VERSIONE <= 120
