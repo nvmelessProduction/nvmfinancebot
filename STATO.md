@@ -5,7 +5,7 @@ _Aggiornato il 24/09/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
-## Fasi attuali: A — Specifica, B — Dati, E — Gli altri agenti
+## Fasi attuali: A — Specifica, B — Dati, E — Gli altri agenti (dopo la prima prova del Capo)
 
 **A.** Il CRT di RomeoTPT si riscrive dalle fonti, partendo dal
 **Cacciatore** (l'agente che risponde a "c'è un CRT qui?").
@@ -54,7 +54,14 @@ file. Il piano completo è in `PIANO.md`.
 **E.** Le prime conferme sono scritte, provate e misurate
 (`spec/conferme.md`, `nvm/agenti/conferme.py`): key level, orario, bias.
 Nessuna, da sola, separa le operazioni buone dalle cattive in modo stabile.
-Il loro peso lo deciderà il Capo nella Fase F.
+
+**F, prima prova (24/09).** Il Capo (`spec/capo.md`, `nvm/agenti/capo.py`,
+`capo.py`) ha pesato le conferme anno per anno, senza guardare avanti, in
+quattro configurazioni. **Nessuna passa il cancello**, e il Capo non si
+fida delle conferme: guarda quasi solo quanto sono lontani target e stop.
+Come dice la scheda, la Fase F non è chiusa e si torna agli agenti. Il
+prossimo agente da provare è l'ingresso sul timeframe basso, come fa
+Romeo: servono i minuti.
 
 ### Cosa serve da te
 
@@ -111,13 +118,15 @@ strumenti, orarie Dukascopy con **bid e ask veri** e commissioni. Il
 
 | Coppia | Operazioni | R medio | IC95 |
 |---|---:|---:|---|
-| mensile → giornaliero | 1.884 | −0,011 | [−0,110; +0,088] |
-| settimanale → 4 ore | 9.314 | −0,049 | [−0,101; +0,005] |
-| giornaliero → 1 ora | 38.609 | −0,072 | [−0,094; −0,049] |
-| **tutto** | **49.807** | **−0,065** | **[−0,087; −0,043]** |
+| mensile → giornaliero | 1.884 | −0,013 | [−0,112; +0,086] |
+| settimanale → 4 ore | 9.314 | −0,053 | [−0,105; +0,002] |
+| giornaliero → 1 ora | 38.608 | −0,078 | [−0,100; −0,055] |
+| **tutto** | **49.806** | **−0,071** | **[−0,093; −0,048]** |
 
-Rifatta lo stesso giorno con i cinque mesi che mancavano: il totale non
-cambia. Uscita completa in `registro/misure/2026-09-24-base-e-conferme.txt`.
+Rifatta lo stesso giorno dopo due correzioni: i cinque mesi che mancavano,
+e il campo di prova che ora, quando una candela apre oltre lo stop, esce
+all'apertura e non allo stop. Uscita completa in
+`registro/misure/2026-09-24-base-e-conferme-2.txt`.
 
 È il numero da battere. Per passare, la Fase F deve fare almeno +0,10 R
 meglio di questo, con i criteri del `PIANO.md` §2.
@@ -140,14 +149,14 @@ chiede l'80%).
 
 | Agente | Lettura | Quante col sì | Differenza | IC95 | Anni concordi |
 |---|---|---:|---:|---|---:|
-| Conferma key level | massimo preso | 3% | −0,066 | [−0,180; +0,054] | 56% |
-| | arriva al massimo | 2% | −0,053 | [−0,199; +0,092] | 67% |
-| | rejection block | 14% | −0,059 | [−0,117; −0,002] | 67% |
-| | FVG | 12% | +0,074 | [+0,008; +0,147] | 78% |
+| Conferma key level | massimo preso | 3% | −0,067 | [−0,180; +0,053] | 56% |
+| | arriva al massimo | 2% | −0,048 | [−0,193; +0,096] | 61% |
+| | rejection block | 14% | −0,060 | [−0,118; −0,002] | 67% |
+| | FVG | 12% | +0,076 | [+0,009; +0,148] | 78% |
 | | almeno uno | 25% | −0,001 | [−0,048; +0,047] | 44% |
-| Conferma orario | Golden candle time 9–13 NY | 22% | +0,033 | [−0,014; +0,080] | 67% |
-| Contesto: bias | candela del range a favore | 24% | −0,025 | [−0,058; +0,010] | 61% |
-| | timeframe sopra a favore | 40% | −0,015 | [−0,057; +0,026] | 50% |
+| Conferma orario | Golden candle time 9–13 NY | 22% | +0,032 | [−0,014; +0,079] | 67% |
+| Contesto: bias | candela del range a favore | 24% | −0,026 | [−0,060; +0,009] | 61% |
+| | timeframe sopra a favore | 40% | −0,018 | [−0,060; +0,023] | 50% |
 
 **Candidati provati finora nella Fase E: 11.** Con 11 tentativi il
 cancello chiede un intervallo al 99,5% invece che al 95% (`PIANO.md` §2,
@@ -160,6 +169,32 @@ preso da solo lo raddrizza. Nei casi verificati Romeo entra più tardi e
 più in alto, sul timeframe basso, con stop di pochi pip: la differenza
 vera sembra lì, nel **come** si entra, più che nel **quando**.
 
+### Il Capo (Fase F), prima prova, 24/09/2026
+
+Per ogni anno dal 2008 al 2023 il Capo impara solo dalle operazioni chiuse
+prima del 1° gennaio, e sceglie quelle dell'anno. Le scelte si confrontano
+con tutta la base negli stessi anni (44.312 operazioni, −0,068 R). Quattro
+configurazioni dichiarate prima, quindi intervallo al 98,75%.
+
+| # | Cacciatore, stop | Scelte | R medio delle scelte | Differenza | IC98,75 | Anni concordi | Con spread ×1,5 |
+|---|---|---:|---:|---:|---|---:|---:|
+| 1 | manuale, all'estremo | 15.779 | −0,022 | +0,046 | [+0,015; +0,077] | 75% | +0,068 |
+| 2 | manuale, stretto | 5.927 | −0,065 | +0,003 | [−0,073; +0,081] | 38% | +0,020 |
+| 3 | chiusura dentro, all'estremo | 3.432 | +0,027 | +0,095 | [+0,038; +0,154] | 81% | +0,088 |
+| 4 | chiusura dentro, stretto | 2.175 | −0,004 | +0,065 | [−0,037; +0,168] | 62% | +0,071 |
+
+**Nessuna passa.** Il cancello chiede almeno +0,10. La 3 ci arriva vicino
+(+0,095), ma le operazioni che sceglie guadagnano appena +0,03 R l'una, e
+con lo spread ×1,5 scendono sotto zero (−0,007). Il Capo pesa quasi solo
+la geometria (quanto sono lontani i target, quanto è largo lo stop);
+key level, orario e bias hanno pesi vicini a zero. Uscita completa in
+`registro/misure/2026-09-24-capo.txt`.
+
+Una prima versione di questa prova dava la configurazione 4 a +0,47 R, con
+il 100% degli anni concordi. Era un errore: con la "chiusura dentro" il
+bot entrava prima che la candela 2 chiudesse, cioè sapendo già come
+sarebbe finita. Trovato, corretto e provato (`registro/tentativi.md`).
+
 ## Fasi
 
 | Fase | Stato |
@@ -169,7 +204,7 @@ vera sembra lì, nel **come** si entra, più che nel **quando**.
 | C. Cacciatore | — |
 | D. La base | fatta per tre coppie su quattro (24/09) |
 | E. Gli altri agenti | in corso: key level, orario e bias misurati (24/09) |
-| F. Capo e apprendimento | — |
+| F. Capo e apprendimento | prima prova fatta (24/09): nessuna configurazione passa, si torna agli agenti |
 | G. Verifica finale | — |
 | H. Dal vivo, in demo | — |
 
