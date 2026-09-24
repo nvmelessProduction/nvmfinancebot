@@ -838,8 +838,10 @@ class TestISottoSogliaNonHaLimitiDiPerdita:
         assert sorgente.count("equity_corrente=foto.equity") == 1
         agente = inspect.getsource(motore.blocchi_indipendenti)
         assert "equity_corrente=foto.equity" in agente
-        # E tutte e due le strade ci passano.
-        assert inspect.getsource(motore.valuta).count("blocchi_indipendenti(") == 1
+        # E tutte e due le strade ci passano: la diretta attraverso
+        # `preludio`, che e' il suo primo agente.
+        assert inspect.getsource(motore.preludio).count("blocchi_indipendenti(") == 1
+        assert "preludio(foto, tf_trigger)" in inspect.getsource(motore.valuta)
         assert inspect.getsource(
             motore.valuta_ingresso_armato).count("blocchi_indipendenti(") == 1
 

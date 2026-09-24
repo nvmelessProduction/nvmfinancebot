@@ -171,14 +171,18 @@ class TestLeConfermeSiValutanoSuOgniCoppia:
         """
         import inspect
         from core import motore
-        corpo = inspect.getsource(motore.valuta)
-        chiamata = corpo[corpo.index("stp.conferme_di_romeo("):]
-        chiamata = chiamata[:chiamata.index("crt_per_tf=")]
-        assert "tf_ingresso" not in chiamata, (
+        # La chiamata vive nell'agente: riceve le barre di esecuzione e non
+        # sa nulla del timeframe dell'armamento.
+        agente = inspect.getsource(motore.interroga_conferme)
+        assert "tf_ingresso" not in agente, (
             "le conferme sono tornate a dipendere dal timeframe dell'armamento")
-        assert "basse" in chiamata, "vanno lette sulle barre di esecuzione"
+        assert "candele_ingresso=basse[-12:]" in agente, (
+            "vanno lette sulle barre di esecuzione")
+        parametri = inspect.signature(motore.interroga_conferme).parameters
+        assert "tf_ingresso" not in parametri and "tf_trigger" not in parametri
         # E l'armamento continua a usare il timeframe sotto.
-        assert "tf_ingresso = COPPIE_CRT.get(tf_trigger)" in corpo
+        assert "tf_ingresso = COPPIE_CRT.get(tf_trigger)" in inspect.getsource(
+            motore.valuta)
 
     def test_un_cisd_che_non_si_puo_cercare_non_e_un_cisd_che_manca(self):
         """`False` su CRT-11 fa ARMARE il setup; `None` lo lascia proseguire.

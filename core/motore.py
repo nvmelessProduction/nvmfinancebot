@@ -581,6 +581,177 @@ def _non_operare(
 
 
 @dataclass(frozen=True)
+class Preludio:
+    """Cosa si sa prima ancora di cercare un CRT."""
+
+    contesto: Any = None
+    comando: Any = None
+    tf_comando: Any = None
+    # L'astensione gia' costruita, quando uno dei cancelli chiude. Chi chiama
+    # la restituisce e basta: qui non c'e' orchestrazione da fare, il cancello
+    # E' la decisione.
+    astensione: Optional[Decisione] = None
+
+
+def preludio(foto: "Fotografia", tf_trigger: TF) -> Preludio:
+    """ESCL-05, PA-55, SETUP-06 — i tre cancelli che precedono il CRT.
+
+    1. **Lo strumento e' nell'universo** (ESCL-05, PRIN-08). Fuori da quei sei
+       non si opera, e non c'e' niente da valutare.
+    2. **Il calendario news e' utilizzabile** (PA-55). Assente o troppo
+       vecchio: astensione dichiarata, non silenziosa.
+    3. **C'e' una bias di comando** (SETUP-06). Senza, non esiste la direzione
+       rispetto a cui un CRT sarebbe a favore o contro.
+
+    Porta con se' anche i divieti di contesto, che vanno calcolati comunque:
+    altrimenti la statistica "quante volte ciascun filtro ha impedito
+    un'operazione" vedrebbe sempre e solo il primo blocco, e non direbbe mai
+    se un filtro non scatta.
+
+    Sui primi due cancelli i divieti di contesto non sono ancora calcolati, e
+    l'astensione non li nomina: dichiararli sarebbe dire che sono stati
+    valutati quando non lo sono stati.
+    """
+    if foto.strumento not in UNIVERSO:
+        return Preludio(astensione=_non_operare(
+            foto.strumento, ["ESCL-05"], "strumento fuori da PRIN-08"))
+
+    if ctx.calendario_impone_astensione(foto.eventi_news, foto.eta_calendario_ore):
+        return Preludio(astensione=_non_operare(
+            foto.strumento, ["PRIN-99"],
+            "calendario news assente o troppo vecchio: PA-55 impone astensione"))
+
+    contesto = blocchi_indipendenti(foto, tf_trigger)
+    comando, tf_comando = stp.bias_comando(
+        foto.bias_per_tf, foto.target_raggiunto_per_tf)
+    if comando is Bias.NESSUNA:
+        return Preludio(contesto=contesto, astensione=_non_operare(
+            foto.strumento, ["SETUP-06"] + contesto.blocchi,
+            "nessuna bias di comando", ["SETUP-06"]))
+    return Preludio(contesto=contesto, comando=comando, tf_comando=tf_comando)
+
+
+def arma_il_setup(foto: "Fotografia", crt, tf_ingresso: Optional[TF]) -> bool:
+    """CRT-13 — mette il setup in attesa del ritorno nell'FVG. Armato?
+
+    Romeo non entra alla chiusura della candela di range: entra sul timeframe
+    basso, sul ritorno nell'FVG dopo il CISD. Sono due momenti separati nel
+    tempo, e il secondo puo' non arrivare mai. L'ordine partira' da
+    `ingresso_ltf.controlla` alla chiusura di una candela del timeframe di
+    ingresso, se e quando il prezzo torna nel vuoto.
+
+    Misurato su `4h -> 15m`: winrate da 30,8% a 62,4%, da -0,0782 a +0,3613 R.
+    Non e' una regolazione, e' un'altra operazione.
+
+    **Si arma solo se i dati del timeframe di ingresso ci sono davvero**:
+    senza quelli il ritorno nell'FVG non si puo' vedere, e un setup armato che
+    nessuno potra' mai far scattare e' peggio di un ingresso mediocre.
+    """
+    if not INGRESSO_ROMEO or tf_ingresso is None:
+        return False
+    if not foto.candele_per_tf.get(tf_ingresso):
+        return False
+
+    from core import ingresso_ltf
+
+    corta = crt.direzione is Bias.SHORT
+    ingresso_ltf.arma(
+        strumento=foto.strumento,
+        direzione=crt.direzione,
+        tf_crt=crt.tf,
+        tf_ingresso=tf_ingresso,
+        estremo_sweep=crt.n2.massimo if corta else crt.n2.minimo,
+        eq_range=(crt.n1.massimo + crt.n1.minimo) / 2,
+        lato_opposto=crt.n1.minimo if corta else crt.n1.massimo,
+    )
+    return True
+
+
+def componi_ordine(
+    foto: "Fotografia", crt, tf_trigger: TF, verso_cfd, livelli, obiettivo_1,
+    esito_size, applicate: list, responso_romeo: dict,
+    rapporto_kl_gap: Optional[float],
+) -> Decisione:
+    """SETUP-03, SETUP-04, DEF-33 — l'ordine, quando tutto ha retto.
+
+    `verso_cfd` e' gia' convertito (DEF-33): `direzione` resta quella letta
+    sulle candele del future, perche' e' con quel segno che il CRT e' stato
+    riconosciuto e con quel segno vanno interpretate le regole di setup. Al
+    broker parte `azione`.
+
+    `regole_applicate` passa da `dict.fromkeys` e non da `set`: l'ordine in
+    cui le regole sono state valutate e' informazione, e un insieme lo
+    butterebbe via.
+    """
+    return Decisione(
+        azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
+        strumento=foto.strumento,
+        direzione=crt.direzione,
+        volume=esito_size.lotti,
+        livello_stop=livelli.stop,
+        tp1=obiettivo_1,
+        # Esteso poi da GEST-08 alla chiusura dei timeframe superiori.
+        target_finale=livelli.bersaglio,
+        tf_crt=crt.tf,
+        doppio_ingresso=livelli.da_gap,
+        spread=foto.spread,
+        rischio=esito_size.rischio_percentuale,
+        regole_applicate=tuple(dict.fromkeys(applicate)),
+        motivo="tutte le condizioni soddisfatte",
+        rapporto_su_tp1=livelli.rapporto,
+        rapporto_giud01=rapporto_kl_gap,
+        responso_romeo=responso_romeo,
+        lettura_crt=_lettura_del_crt(crt, tf_trigger),
+    )
+
+
+@dataclass(frozen=True)
+class RespondoConferme:
+    """Cosa hanno detto le otto conferme, e se fermano."""
+
+    responso: dict
+    blocchi: tuple = ()
+    motivo: Optional[str] = None
+
+
+def interroga_conferme(
+    foto: "Fotografia", crt, basse: list, diagnostico: bool,
+) -> RespondoConferme:
+    """CRT-06/10/11/12/15/17/18/20 — le otto conferme di Romeo.
+
+    Si valutano sulle barre di ESECUZIONE: dopo la riscrittura secondo
+    SETUP-02 il Power of Three si svolge dentro la candela di riferimento
+    successiva, e li' si legge. Sul timeframe del range non c'e' ancora nulla
+    da vedere.
+
+    Il responso esiste SEMPRE, anche quando qualcuna ferma: e' cio' che il
+    trader discrezionale legge, ed e' il dato su cui si potra' pesare ciascuna
+    conferma (CRT-14). Col modo `diagnostico` nessuna ferma, ma il responso si
+    calcola lo stesso -- altrimenti si perderebbe proprio il dato che quel
+    modo esiste per raccogliere.
+    """
+    ok, blocchi, responso = stp.conferme_di_romeo(
+        n1=crt.n1,
+        n2=crt.n2,
+        candele_ingresso=basse[-12:],
+        direzione=crt.direzione,
+        istante=foto.istante,
+        tf_crt=crt.tf,
+        candele_compagne=foto.candele_compagne,
+        candele_strumento=basse,
+        strumento=foto.strumento,
+        crt_per_tf=foto.crt_per_tf,
+    )
+    if ok or diagnostico:
+        return RespondoConferme(responso=responso)
+    return RespondoConferme(
+        responso=responso, blocchi=tuple(blocchi),
+        motivo=("conferme di Romeo non soddisfatte: "
+                + ", ".join(SPIEGAZIONE_CRT.get(x, x) for x in blocchi)),
+    )
+
+
+@dataclass(frozen=True)
 class RicercaCrt:
     """Il CRT trovato, oppure la regola per cui non c'e'."""
 
@@ -1296,33 +1467,13 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     """
     applicate: list[str] = []
 
-    # --- 0. Lo strumento e' nell'universo? (ESCL-05, PRIN-08) -------------
-    if foto.strumento not in UNIVERSO:
-        return _non_operare(foto.strumento, ["ESCL-05"], "strumento fuori da PRIN-08")
-
-    # --- 1. Il calendario news e' utilizzabile? (PA-55) -------------------
-    if ctx.calendario_impone_astensione(foto.eventi_news, foto.eta_calendario_ore):
-        return _non_operare(
-            foto.strumento, ["PRIN-99"],
-            "calendario news assente o troppo vecchio: PA-55 impone astensione",
-        )
-
-    # --- 2. Filtri che non dipendono dal CRT ------------------------------
-    # La regola vive in `blocchi_indipendenti`, condivisa con l'ingresso
-    # armato: due elenchi scritti a mano in due punti erano gia' divergenti.
-    contesto = blocchi_indipendenti(foto, tf_trigger)
+    # --- 0-3. I cancelli che precedono il CRT (ESCL-05, PA-55, SETUP-06) --
+    prima = preludio(foto, tf_trigger)
+    if prima.astensione is not None:
+        return prima.astensione
+    contesto, comando, tf_comando = prima.contesto, prima.comando, prima.tf_comando
     indipendenti = contesto.blocchi
-    limiti = contesto.limiti
-    evento_news = contesto.evento_news
-    posizioni_qui = contesto.posizioni_qui
-
-    # --- 3. Bias di comando (SETUP-06) ------------------------------------
-    comando, tf_comando = stp.bias_comando(foto.bias_per_tf, foto.target_raggiunto_per_tf)
     applicate.append("SETUP-06")
-    if comando is Bias.NESSUNA:
-        return _non_operare(
-            foto.strumento, ["SETUP-06"] + indipendenti, "nessuna bias di comando", applicate
-        )
 
     # --- 4. Il CRT (SETUP-00, SETUP-02, CRT-04) ---------------------------
     # La ricerca vive in `trova_crt`, che sa anche perche' un CRT non c'e'.
@@ -1359,36 +1510,21 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     #
     # `tf_ingresso` resta quello che era e serve ad altro: l'ARMAMENTO di
     # CRT-13, che aspetta il ritorno nell'FVG sul timeframe sotto.
+    # `tf_ingresso` serve all'ARMAMENTO di CRT-13, che aspetta il ritorno
+    # nell'FVG un gradino SOTTO l'esecuzione. Le conferme no: quelle si
+    # leggono sull'esecuzione stessa. Legarle a questa variabile e' il guasto
+    # del 2026-09-23, per cui su M5 e M1min non venivano valutate affatto.
     tf_ingresso = COPPIE_CRT.get(tf_trigger)
 
-    # Il responso esiste SEMPRE: e' cio' che il trader discrezionale legge, ed
-    # e' il dato su cui si potra' pesare ciascuna conferma (CRT-14).
     applicate.extend(sorted(CONFERME_ROMEO))
-    ok_romeo, blocchi_romeo, responso_romeo = stp.conferme_di_romeo(
-        n1=crt.n1,
-        n2=crt.n2,
-        # Le barre dell'esecuzione, che sono gia' in mano: e' su queste
-        # che il CISD si vede (SETUP-02, il Power of Three sta dentro la
-        # candela di riferimento successiva, letto sull'esecuzione).
-        candele_ingresso=basse[-12:],
-        direzione=crt.direzione,
-        istante=foto.istante,
-        tf_crt=crt.tf,
-        candele_compagne=foto.candele_compagne,
-        candele_strumento=basse,
-        strumento=foto.strumento,
-        crt_per_tf=foto.crt_per_tf,
-    )
-    if not ok_romeo and _apri_ogni_crt():
-        ok_romeo, blocchi_romeo = True, ()
-    if not ok_romeo:
-        motivo_romeo = ("conferme di Romeo non soddisfatte: "
-                        + ", ".join(SPIEGAZIONE_CRT.get(x, x) for x in blocchi_romeo))
-        blocchi_qui = list(blocchi_romeo) + indipendenti
+    conferme = interroga_conferme(foto, crt, basse, _apri_ogni_crt())
+    responso_romeo = conferme.responso
+    if conferme.blocchi:
+        blocchi_qui = list(conferme.blocchi) + indipendenti
         if not _giudizio_lascia_cadere(
-                foto, crt, tf_trigger, blocchi_qui, motivo_romeo):
+                foto, crt, tf_trigger, blocchi_qui, conferme.motivo):
             fermata = _non_operare(
-                foto.strumento, blocchi_qui, motivo_romeo,
+                foto.strumento, blocchi_qui, conferme.motivo or "",
                 applicate, direzione=crt.direzione, tf_crt=crt.tf,
             )
             return replace(fermata, responso_romeo=responso_romeo)
@@ -1537,7 +1673,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # --- 7. Ultima riga di difesa: i divieti permanenti (PREC-05) ---------
     divieti = divieti_permanenti(
         foto, crt, comando, tf_comando, stop, prezzo_ingresso,
-        posizioni_qui, _apri_ogni_crt(),
+        contesto.posizioni_qui, _apri_ogni_crt(),
     )
     if divieti:
         return _non_operare(
@@ -1563,30 +1699,19 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # Si arma solo se i dati del timeframe di ingresso ci sono davvero:
     # senza quelli il ritorno nell'FVG non si puo' vedere, e un setup armato
     # che nessuno potra' mai far scattare e' peggio di un ingresso mediocre.
-    ha_ltf = bool(foto.candele_per_tf.get(tf_ingresso)) if tf_ingresso else False
-    if INGRESSO_ROMEO and tf_ingresso is not None and ha_ltf:
-        from core import ingresso_ltf
-
+    if arma_il_setup(foto, crt, tf_ingresso):
         applicate.append("CRT-13")
-        ingresso_ltf.arma(
-            strumento=foto.strumento,
-            direzione=crt.direzione,
-            tf_crt=crt.tf,
-            tf_ingresso=tf_ingresso,
-            estremo_sweep=crt.n2.massimo if crt.direzione is Bias.SHORT else crt.n2.minimo,
-            eq_range=(crt.n1.massimo + crt.n1.minimo) / 2,
-            lato_opposto=crt.n1.minimo if crt.direzione is Bias.SHORT else crt.n1.massimo,
-        )
         # CRT-13 e' la regola che impedisce l'ordine IMMEDIATO, e va
-        # dichiarata: una decisione NONE senza regola che la imponga
-        # sarebbe un errore del motore.
+        # dichiarata: una decisione NONE senza regola che la imponga sarebbe
+        # un'astensione muta.
         armata = _non_operare(
             foto.strumento, ["CRT-13"],
             "CRT-13: setup armato, attendo il ritorno nell'FVG sul "
             f"{tf_ingresso.value}",
             applicate,
             direzione=crt.direzione, tf_crt=crt.tf,
-            livello_stop=stop, tp1=obiettivo_1, rapporto_su_tp1=rapporto,
+            livello_stop=livelli.stop, tp1=obiettivo_1,
+            rapporto_su_tp1=livelli.rapporto,
         )
         return replace(armata, responso_romeo=responso_romeo)
 
@@ -1625,40 +1750,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
 
     # --- 8. Ordine ---------------------------------------------------------
     applicate.extend(["SETUP-03", "SETUP-04", "DEF-33"])
-
-    # DEF-33 — quando il CRT e' rilevato sul FUTURE l'ordine va al CFD, e per
-    # `6J` e `6S` i due hanno segno opposto: quei future quotano yen e franco
-    # contro dollaro, i CFD quotano il dollaro contro quelle valute, quindi un
-    # CRT short su `6J` e' un BUY su `USDJPY`.
-    #
-    # Quando invece si analizzano gia' le candele del CFD -- Dukascopy e MT5
-    # leggono il book del broker -- non c'e' niente da ribaltare: un CRT short
-    # su `USDJPY` e' un SELL su `USDJPY`. Decide `_verso_sul_cfd`, al punto
-    # 4bis, in base a `foto.analisi_in_scala_cfd`.
-    #
-    # `direzione` resta comunque quella letta sulle candele, perche' e' con
-    # quel segno che il CRT e' stato riconosciuto e con quel segno vanno
-    # interpretate le regole di setup. Verso il broker parte `azione`, e i tre
-    # livelli sono gia' passati dal punto 4bis.
-    verso_cfd = verso_del_setup      # gia' convertito al punto 4bis
-    return Decisione(
-        azione="SELL" if verso_cfd is Bias.SHORT else "BUY",
-        strumento=foto.strumento,
-        direzione=crt.direzione,
-        volume=esito_size.lotti,
-        livello_stop=stop,
-        tp1=obiettivo_1,
-        target_finale=bersaglio,     # esteso poi da GEST-08 alla chiusura dei TF superiori
-        tf_crt=crt.tf,
-        doppio_ingresso=da_gap,
-        spread=foto.spread,
-        rischio=esito_size.rischio_percentuale,
-        regole_applicate=tuple(dict.fromkeys(applicate)),
-        motivo="tutte le condizioni soddisfatte",
-        rapporto_su_tp1=rapporto,
-        rapporto_giud01=rapporto_kl_gap,
-        # Le conferme di Romeo viaggiano fino al giudice anche qui: senza,
-        # meta' dei setup gli arriverebbe senza il quadro su cui decidere.
-        responso_romeo=responso_romeo,
-        lettura_crt=_lettura_del_crt(crt, tf_trigger),
+    return componi_ordine(
+        foto, crt, tf_trigger, verso_del_setup, livelli, obiettivo_1,
+        esito_size, applicate, responso_romeo, rapporto_kl_gap,
     )
