@@ -68,14 +68,23 @@ def _parte() -> float:
     return float(json.loads(p.read_text(encoding="utf-8"))["parte"])
 
 
+# I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
+# registro, casi) si aggiorna in silenzio.
+DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
+
+
 def _versione_nuova() -> str:
-    """Se su GitHub c'e' una versione nuova, la scarica e ne restituisce il titolo."""
+    """Se su GitHub c'e' una versione nuova la scarica. Se cambia il bot ne
+    restituisce il titolo (e il bot si riavvia); se cambiano solo documenti, ''."""
     def git(*a: str) -> str:
         return subprocess.run(["git", *a], cwd=RADICE, capture_output=True, text=True, timeout=120, check=True).stdout.strip()
     git("fetch", "-q", "origin", RAMO)
     if git("rev-parse", "HEAD") == git("rev-parse", "FETCH_HEAD"):
         return ""
+    cambiati = git("diff", "--name-only", "HEAD", "FETCH_HEAD").splitlines()
     git("merge", "-q", "--ff-only", "FETCH_HEAD")
+    if not any(c.endswith(DA_RIAVVIO) for c in cambiati):
+        return ""
     return git("log", "-1", "--format=%s")
 
 
@@ -114,7 +123,12 @@ class Bot:
         if self.stato.ultimo_giro is None:
             self.stato.ultimo_giro = _ora(time.time())
         self.stato.salva(CARTELLA)
-        self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(PUNTO), self.terminale.scarto))
+        riavvio = CARTELLA / "riavvio"
+        if riavvio.exists():
+            self.tg.operativo(f"🔄 Aggiornato e ripartito: {riavvio.read_text(encoding='utf-8')}")
+            riavvio.unlink()
+        else:
+            self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(PUNTO), self.terminale.scarto))
 
     def minuto(self) -> None:
         self.stato.vive, fatti = self.esecutore.sorveglia(self.stato.vive)
@@ -132,8 +146,8 @@ class Bot:
                 titolo = ""
                 self.allarme(f"non riesco a controllare se c'è una versione nuova: {type(errore).__name__}")
             if titolo:
-                self.tg.operativo(f"🔄 Aggiornato: {titolo}. Mi riavvio.")
                 self.stato.salva(CARTELLA)
+                (CARTELLA / "riavvio").write_text(titolo, encoding="utf-8")
                 sys.exit(AGGIORNATO)
         oggi = datetime.fromtimestamp(adesso, tz=timezone.utc)
         settimana = f"{oggi.isocalendar().year}-S{oggi.isocalendar().week:02d}"
