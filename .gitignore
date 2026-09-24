@@ -1,0 +1,16 @@
+# Segreti: mai nel repository
+.env
+.env.*
+!.env.example
+
+# Dati pesanti e archivi locali: si rigenerano
+*.db
+*.sqlite
+dati/grezzi/
+*.csv.gz
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
