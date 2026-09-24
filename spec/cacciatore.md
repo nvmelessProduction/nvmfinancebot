@@ -65,9 +65,10 @@ errori. Il Cacciatore trova il CRT e basta:
 
 5. **Il rientro: si entra senza aspettare la chiusura della candela alta**
    **[R]**. Romeo scrive "Frame a HTF bias (CRT), look for a LTF entry
-   (Model#1)" e "Monthly CRT → Daily model#1". Il suo schema del Model#1
-   mostra l'ingresso mentre la candela alta è ancora aperta. Il rientro lo
-   giudica il Grilletto sul timeframe basso, non il Cacciatore.
+   (Model#1)" e "Monthly CRT → Daily model#1". Nel canale lo dice ancora più
+   chiaro (msg 6615): "When I'm bearish, this is the ideal reaction: 1- Candle
+   opens. 2- Stabs into an old CRTH. 3- Dumps." Il rientro lo giudica il
+   Grilletto sul timeframe basso, non il Cacciatore.
 
 6. **Quando il CRT decade.** Vale la prima di queste che succede:
    - **rottura:** la candela 2 chiude oltre il range, cioè sopra `CRT high`

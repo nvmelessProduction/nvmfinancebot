@@ -17,8 +17,11 @@ a pagamento (CRT University).
 - **Gli studenti:** Sham (@SpeculatorFL) e FlameseN (@TraderFlameseN) hanno
   scritto i riassunti più completi. Romeo ha risposto al thread di Sham con
   *"Not everything; but excellent thread"*: buono, ma non tutto giusto.
-- **Il suo vecchio canale Telegram** (`t.me/Romeospeculatess`, citato nel
-  2023) oggi è di un venditore di segnali: non è più una fonte.
+- **Il suo canale Telegram ufficiale**, [`t.me/officialRomeotpt`](https://t.me/s/officialRomeotpt):
+  pubblico, **5.551 messaggi** dal marzo 2023 a oggi, scaricati e letti
+  il 24/09/2026. È la fonte più ricca dopo i video. Il vecchio canale
+  (`t.me/Romeospeculatess`, citato nel 2023) oggi è di un venditore di
+  segnali: non è più una fonte.
 
 Online si trovano anche critiche dure nei confronti di Romeo. Non cambiano
 il piano: la strategia si misura, non si prende sulla fiducia.
@@ -46,6 +49,35 @@ Livelli di affidabilità usati nella specifica:
 | 12/06/2024 | [La frequenza](https://x.com/Romeotpt/status/1800862855333658764) | *"Turtle soup of a CRT. You only need 1-2 of these a week."* |
 | 28/11/2024 | [Key level](https://x.com/Romeotpt/status/1862086126275568005) | *"When I'm bullish.. I LOVE seeing 'bearish orderblocks' into my bullish key levels."* |
 | 06/12/2023 | [Kiss of death](https://x.com/Romeotpt/status/1732416937173684517) | il suo modello "kiss of death turtle soup", spiegato nel canale Telegram (oggi non più suo) |
+
+### Dal canale Telegram ufficiale (numero del messaggio)
+
+| Data | Msg | Cosa dice |
+|---|---|---|
+| 20/03/2023 | 163 | *"Turtle soup high has to be the ceiling otherwise I'm not interested anymore."* |
+| 16/11/2023 | 3672 | *"1- Entry (least important). 2- Stoploss (invalidation of thesis). 3- Target (draw on liquidity, potential reversal)."* |
+| 19/03/2024 | 4838 | *"Model #1. Orderblock = turtle soup."* Con due schemi (sotto) |
+| 29/03/2024 | 4971–4972 | *"Model #1 in action"*: GBPUSD a 15 minuti, 29/03/2024, con la sua vendita su MT5 |
+| 29/03/2024 | 4973 | *"Every HTF key level will give you three LTF entries: 1- Turtle soup. 2- Orderblock/fvg. 3- OTE/brk."* |
+| 13/05/2024 | 5101 | *"A turtle soup will always happen, followed by model #1 and an OTE for a second leg."* |
+| 26/05/2024 | 5121 | *"There is always a micro CRT within the macro CRT. Both are two unique, tradeable opportunities."* |
+| 06/06/2024 | 5133 | *"A turtle soup happens at the CRT high or low."* |
+| 13/06/2024 | 5147 | *"Everything I trade is a turtle soup of a CRT."* |
+| 23/08/2024 | 5390 | *"Step 1: Know where price is going - CRT. Step 2: Entry pattern - model#1, FVG, ob..etc"* |
+| 01/09/2024 | 5489 | *"Step 1- What candle am I looking to trade? Step 2- Where is that candle likely to go? Step 3- How can I find my entry, stoploss and target..."* |
+| 10/12/2024 | 5730 | *"EURUSD CRT. Entry in the wick."*: giornaliero, dicembre 2024 |
+| 06/04/2025 | 6110 | **Terminologia**: CRTH, CRTL, ±Ts (turtle soup), ±KOD Ts, ±Fs, ±FMSS, WOP/DOP, WOT/WCT/DOT/DCT, ±Model#1, ±RTM1 (*"retrade to model#1"*), *"50% = halfway point of price range"*, *"GCT: Golden candle time (9am-1pm NY time)"* |
+| 25/06/2025 | 6180 | *"Most of you should be trading exclusively model#1 and OTEs for a long, long time."* |
+| 09/09/2025 | 6332 | *"Entire trading careers can be built on taking price from the CRTH/L to the 50%."* |
+| 29/10/2025 | 6561 | *"The 50% is almost always guaranteed folks."* |
+| 04/11/2025 | 6615 | *"When I'm bearish, this is the ideal reaction: 1- Candle opens. 2- Stabs into an old CRTH. 3- Dumps."* |
+| 29/05/2026 | 6744 | *"MOB, the make or break level. If this level is broken through, the target will be hit. If respected, it will block the target… scratch the trade idea."* |
+
+**Il Model#1, disegnato da lui (msg 4836):** *"Thick up-close candle that
+liquidated an old high (turtle soup) = Bearish orderblock"*. La linea "-Ob"
+sta all'**apertura** di quella candela: *"confirmed with close below"*. Per il
+long: *"Thick downclose candle that liquidated an old low = bullish
+orderblock"*, *"+ob, confirms with close above"*.
 
 ### I suoi schemi
 
@@ -116,13 +148,13 @@ Esempio: "4H CRT all'1 di notte, manipolazione alle 5, espansione alle 9"
 
 Sono le domande in fondo a `spec/cacciatore.md`. Le più importanti:
 
-1. **Serve la chiusura della candela alta dentro il range, o basta il
-   Model#1 sul timeframe basso?** Lo schema a tre candele mostra la chiusura
-   dentro; lo schema del Model#1 mostra un ingresso che avviene **mentre** la
-   candela alta è ancora aperta.
+1. ~~Serve la chiusura della candela alta dentro il range?~~ **Risolta**:
+   si entra dentro la candela 2 (msg 6615: "candle opens, stabs into an old
+   CRTH, dumps"). La chiusura dentro resta come variante dichiarata.
 2. **Lo stop "al 25% del range":** 25% della distanza dal punto di
    ingresso, oppure oltre l'estremo della manipolazione?
 3. **Quanto si chiude al 50%** e quanto si lascia andare fino al lato
    opposto.
-4. **Gli orari:** fanno parte del metodo di Romeo, o sono un'aggiunta degli
-   studenti?
+4. **Gli orari:** Romeo nomina la "Golden candle time", 9–13 di New York
+   (msg 6110), e nel 2023 "3-5am, 930, 1330" (msg 772). Gli altri orari
+   (1, 5, 9) restano degli studenti.

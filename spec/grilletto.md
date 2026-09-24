@@ -1,8 +1,8 @@
 # Scheda agente: Grilletto (il Model#1)
 
-> **Stato: bozza**, costruita sulle fonti in `spec/FONTI-ROMEO.md`. Da
-> rifinire con i messaggi del canale Telegram ufficiale di Romeo, in
-> scaricamento.
+> **Stato:** regole decise sulle fonti il 24/09/2026. La definizione del
+> Model#1 viene da uno schema disegnato da Romeo nel suo canale Telegram
+> ufficiale (msg 4836). Manca la prova sui casi.
 >
 > Segni: **[R]** l'ha detto o disegnato Romeo, **[S]** lo dicono i suoi
 > studenti, **[D]** deciso qui, perché le fonti non lo dicono.
@@ -14,30 +14,32 @@ momento di entrare?
 
 ## Cosa guarda
 
-- I CRT armati dal Cacciatore: verso, `CRT high`, `CRT low`, estremo della
-  manipolazione.
+- I CRT armati dal Cacciatore: verso, `CRT high`, `CRT low`.
 - Le candele **chiuse** del timeframe basso della coppia, sui prezzi BID.
 
 Non guarda key level, orari o SMT: sono Conferme e Contesto.
 
 ## La regola del manuale (short; il long è lo specchio)
 
-1. **Quando cerca** **[R]**. Solo mentre il CRT è armato: "Frame a HTF bias
-   (CRT), look for a LTF entry (Model#1)".
+1. **Quando cerca** **[R]**. Solo mentre il CRT è armato. "Step 1: Know where
+   price is going - CRT. Step 2: Entry pattern - model#1" (msg 5390).
 
-2. **La spinta** **[R] [S]**. È la serie di candele basse **rialziste**
-   (chiusura sopra l'apertura) consecutive che ha portato il prezzo
-   all'estremo della manipolazione, cioè al turtle soup sopra `CRT high`. Nello
-   schema di Romeo la linea "Model#1" parte da lì; Minato la chiama "strong
-   upclose candle that liquidated previous swing high".
+2. **La candela del turtle soup** **[R]**. Una candela bassa **rialzista**
+   (chiusura sopra l'apertura) con il massimo **sopra** `CRT high`: "Thick
+   up-close candle that liquidated an old high (turtle soup) = Bearish
+   orderblock" (msg 4836). Il massimo liquidato è il `CRT high`, perché "a
+   turtle soup happens at the CRT high or low" (msg 5133).
 
-3. **Il livello CISD** **[S]**. È l'**apertura** della prima candela della
-   spinta. Se l'estremo si sposta più in alto con una spinta nuova, il livello
-   si ricalcola su quella **[D]**.
+   "Thick" Romeo non lo misura: nel manuale basta una candela rialzista **[D]**.
+   Quanto debba essere spessa è il numero che il Grilletto può imparare.
 
-4. **Lo scatto** **[R] [S]**. Una candela bassa **chiude** sotto il livello
-   CISD: conta il corpo, non l'ombra. Si entra alla chiusura di quella
-   candela.
+3. **Il livello** **[R]**. È l'**apertura** di quella candela (la linea "-Ob"
+   dello schema). Se più avanti un'altra candela rialzista fa un turtle soup
+   sopra `CRT high`, il livello passa alla sua apertura **[D]**.
+
+4. **Lo scatto** **[R]**. Una candela bassa **chiude sotto il livello**:
+   "confirmed with close below". Conta il corpo, non l'ombra. Si entra alla
+   chiusura di quella candela.
 
 5. **Una volta sola** **[D]**. Un CRT, un ingresso: dopo lo scatto il
    Grilletto non spara più su quel CRT.
@@ -45,45 +47,27 @@ Non guarda key level, orari o SMT: sono Conferme e Contesto.
 ## Cosa risponde
 
 - **Nessuno scatto**, oppure **scatto**: l'istante, il prezzo di chiusura
-  della candela che ha rotto, il livello CISD, e la spinta che l'ha
-  definito.
-
-## La variante possibile
-
-| Nome | Cosa cambia |
-|---|---|
-| **Manuale** | il livello è l'apertura della **prima** candela della spinta, come nella definizione di CISD |
-| **Ultima candela** | il livello è l'apertura dell'**ultima** candela rialzista prima dell'estremo, come nello schema di Minato |
-
-Da dichiarare nella Fase E solo se i messaggi di Romeo non la risolvono. Il
-piano permette al massimo 3 varianti, e una è già del Cacciatore.
+  della candela che ha rotto, il livello, e la candela del turtle soup che
+  l'ha definito.
 
 ## Da passare agli altri agenti
 
-| Cosa | Chi | Punto di partenza |
-|---|---|---|
-| Stop | Livelli | appena oltre l'estremo della manipolazione; variante: a un quarto del range **[R]** |
-| Primo target | Livelli | `CRT 50%` **[R]** |
-| Target finale | Livelli | il lato opposto del range **[R]** |
-| Ingresso già oltre il 50% | Livelli | niente operazione: il primo target starebbe alle spalle **[D]**. Nel vecchio bot era la causa di "12 posizioni su 17 morte in 6 secondi" |
+| Cosa | Chi | Punto di partenza | Fonte |
+|---|---|---|---|
+| Stop | Livelli | appena oltre l'estremo del turtle soup | **[R]** msg 163: "turtle soup high has to be the ceiling" |
+| Stop, variante | Livelli | più stretto, dentro l'ombra | l'operazione vera di Romeo su GBPUSD del 29/03/2024 sembra avere lo stop sotto il massimo dell'ombra: **da verificare sui dati** (`casi/`) |
+| Primo target | Livelli | `CRT 50%` | **[R]** "the 50% is almost always guaranteed" (msg 6561) |
+| Target finale | Livelli | il lato opposto del range | **[R]** "take profit at 50% and then CRTH/L" |
+| Ingresso già oltre il 50% | Livelli | niente operazione: il primo target starebbe alle spalle | **[D]**, nel vecchio bot "12 posizioni su 17 morte in 6 secondi" |
+| Rientro sul livello (RTM1) | più avanti | "retrade to model#1": un secondo ingresso quando il prezzo torna sul livello | **[R]** terminologia, msg 6110 |
 
-## Fonti
+## Cosa può imparare
 
-- **[R]** Post del 05/04/2025: *"1- Frame a HTF bias (CRT) 2- Look for a LTF
-  entry (Model#1) 3- Take profit at 50% and then CRTH/L."*
-- **[R]** Schema del Model#1 nel post del 06/01/2025.
-- **[R]** Risposta del 13/01/2025, sul rifare il turtle soup su un range
-  giornaliero: *"The Downclose candle is the main focus for a close or a
-  wick, the upclose candle to calibrate an entry."*
-- **[S]** [Minato](https://threadreaderapp.com/thread/1773984151831757025.html),
-  "Romeo's Turtle soup Model-1 CISD": key level del timeframe alto, candela
-  rialzista forte che prende il massimo di swing, livello CISD alla sua
-  apertura.
-- **[S]** [FlameseN](https://threadreaderapp.com/thread/1795039865383334384.html):
-  il Model #1 è *"Key Level, Turtle Soup above/below highs/lows, Time, CISD"*;
-  *"CISD and iFVG are PD Arrays I use to confirm TS"*, senza bisogno di MSS.
+Lo spessore minimo della candela del turtle soup, in frazione del suo
+intervallo (oggi: basta che sia rialzista). Si misura se migliora il
+risultato delle operazioni, con il cancello del `PIANO.md` §2.
 
 ## Approvazione
 
-- [ ] Regole rifinite sui messaggi di Romeo
-- [ ] Prova sui casi
+- [x] Regole decise sulle fonti, su delega dell'utente, il 24/09/2026
+- [ ] Prova sui casi presi dai grafici di Romeo
