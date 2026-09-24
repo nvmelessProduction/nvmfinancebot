@@ -33,6 +33,17 @@ COLONNE = (
 )
 # Penalita' L2, fissata nella scheda.
 PENALITA = 1.0
+# Dal vivo il Capo si riaddestra pesando di piu' i casi recenti: il peso di un
+# caso si dimezza ogni EMIVITA_ANNI. Scelta addestrando sullo storico anno per
+# anno (registro/tentativi.md, 24/09/2026): 1 anno ha fatto meglio di 2, 4, 8
+# e di nessun peso.
+EMIVITA_ANNI = 1.0
+
+
+def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI) -> np.ndarray:
+    eta = np.maximum(adesso - np.asarray(quando, np.float64), 0) / (365.25 * 86400)
+    w = 0.5 ** (eta / emivita)
+    return w / w.mean()
 
 
 def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contesto]) -> np.ndarray:
@@ -72,15 +83,16 @@ class Logistica:
         self.penalita = penalita
         self.pesi = np.zeros(0)
 
-    def allena(self, x: np.ndarray, y: np.ndarray, giri: int = 50) -> "Logistica":
+    def allena(self, x: np.ndarray, y: np.ndarray, giri: int = 50, pesi: Optional[np.ndarray] = None) -> "Logistica":
         a = np.c_[np.ones(len(x)), x]
+        c = np.ones(len(x)) if pesi is None else np.asarray(pesi, np.float64)
         w = np.zeros(a.shape[1])
         freno = np.full(a.shape[1], self.penalita)
         freno[0] = 0.0
         for _ in range(giri):
             p = 1 / (1 + np.exp(-(a @ w)))
-            gradiente = a.T @ (p - y) + freno * w
-            hessiana = (a * (p * (1 - p))[:, None]).T @ a + np.diag(freno) + 1e-9 * np.eye(len(w))
+            gradiente = a.T @ (c * (p - y)) + freno * w
+            hessiana = (a * (c * p * (1 - p))[:, None]).T @ a + np.diag(freno) + 1e-9 * np.eye(len(w))
             passo = np.linalg.solve(hessiana, gradiente)
             w -= passo
             if np.abs(passo).max() < 1e-8:
@@ -107,14 +119,15 @@ class Capo:
 
     @classmethod
     def allena(cls, x: np.ndarray, tp1: np.ndarray, tp2: np.ndarray,
-               interazioni: tuple[tuple[int, int], ...] = ()) -> "Capo":
+               interazioni: tuple[tuple[int, int], ...] = (), pesi: Optional[np.ndarray] = None) -> "Capo":
         xp = _con_interazioni(x, interazioni)
-        media = xp.mean(axis=0)
-        scala = xp.std(axis=0)
+        w = np.ones(len(x)) if pesi is None else np.asarray(pesi, np.float64)
+        media = np.average(xp, axis=0, weights=w)
+        scala = np.sqrt(np.average((xp - media) ** 2, axis=0, weights=w))
         scala[scala == 0] = 1.0
         z = (xp - media) / scala
-        primo = Logistica().allena(z, tp1.astype(float))
-        secondo = Logistica().allena(z[tp1], tp2[tp1].astype(float))
+        primo = Logistica().allena(z, tp1.astype(float), pesi=None if pesi is None else w)
+        secondo = Logistica().allena(z[tp1], tp2[tp1].astype(float), pesi=None if pesi is None else w[tp1])
         return cls(media, scala, primo, secondo, tuple(tuple(c) for c in interazioni))
 
     def _z(self, x: np.ndarray) -> np.ndarray:

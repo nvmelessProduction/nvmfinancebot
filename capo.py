@@ -20,7 +20,8 @@ from pathlib import Path
 import numpy as np
 
 from nvm.agenti.cacciatore import Variante
-from nvm.agenti.capo import COLONNE, Capo
+from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
+from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.agenti.conferme import SOPRA, contesto, key_level, orario
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO
@@ -121,12 +122,39 @@ def main() -> None:
 
 
 def salva_per_il_vivo(t: Tabella) -> None:
-    """Il Capo di partenza del bot dal vivo, e lo storico su cui si riaddestra ogni fine settimana."""
+    """Il Capo e il Rischio di partenza del bot dal vivo, e lo storico su cui si
+    riaddestrano ogni fine settimana.
+
+    Il Capo si allena su tutto il 2006-2023, pesando di piu' i casi recenti.
+    Il Rischio impara quanta parte del Kelly usare dal cammino anno per anno:
+    il Capo di ogni anno allenato solo sugli anni prima, le sue puntate e i
+    risultati veri.
+    """
     cartella = RADICE / "nvm" / "vivo"
-    capo = Capo.allena(t.x, t.tp1, t.tp2)
+    fine = int(t.chiusa.max())
+    capo = Capo.allena(t.x, t.tp1, t.tp2, pesi=pesi_per_eta(t.chiusa, fine))
     (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
-    np.savez_compressed(cartella / "storico.npz", x=t.x, tp1=t.tp1, tp2=t.tp2, erre=t.erre, quando=t.quando)
-    print(f"Capo allenato su {len(t)} operazioni, salvato in {cartella}")
+    anni = t.anno
+    f_tutte, r_tutte, q_tutte = [], [], []
+    for a in range(PRIMO_GIUDICATO, AL + 1):
+        oggi = anni == a
+        passato = t.chiusa < _istante(a)
+        c = Capo.allena(t.x[passato], t.tp1[passato], t.tp2[passato], pesi=pesi_per_eta(t.chiusa[passato], _istante(a)))
+        p1, q = c.probabilita(t.x[oggi])
+        e = c.valore_atteso(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
+        for k in np.flatnonzero(e > 0):
+            i = np.flatnonzero(oggi)[k]
+            f_tutte.append(kelly(esiti(p1[k], q[k], t.rr1[i], t.rr2[i], t.costi[i])))
+            r_tutte.append(t.erre[i])
+            q_tutte.append(t.quando[i])
+    ordine = np.argsort(q_tutte)
+    kelly_f, kelly_r = np.array(f_tutte)[ordine], np.array(r_tutte)[ordine]
+    parte = impara_parte(kelly_f, kelly_r)
+    (cartella / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
+    np.savez_compressed(cartella / "storico.npz", x=t.x, tp1=t.tp1, tp2=t.tp2, erre=t.erre, quando=t.chiusa,
+                        kelly_f=kelly_f, kelly_r=kelly_r)
+    print(f"Capo allenato su {len(t)} operazioni; il Rischio usa {parte:.2f} del Kelly "
+          f"(imparato su {len(kelly_f)} puntate 2008-2023). Salvati in {cartella}")
 
 
 def _giudicati(t: Tabella) -> np.ndarray:

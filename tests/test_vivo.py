@@ -224,6 +224,15 @@ def test_la_riunione_riaddestra_il_capo_con_i_dati_dal_vivo():
                 esito={"uscita": "stop", "erre": -1.0, "quando": 200 + i, "tp1": False, "tp2": False})
         for i in range(30)
     ]
-    testo, nuovo = riunione(seguite, capo, storico, 0, "2026-S39")
+    testo, nuovo, parte = riunione(seguite, capo, storico, 0, "2026-S39")
     assert "Riunione" in testo and "30 dal vivo" in testo
     assert not np.allclose(nuovo.primo.pesi, capo.primo.pesi)
+    assert 0 < parte <= 1
+
+
+def test_il_rischio_impara_a_fidarsi_meno_se_il_capo_sbaglia():
+    from nvm.agenti.rischio import impara_parte
+    f = np.full(200, 0.3)
+    buone = np.tile([2.0, -1.0], 100)       # vince davvero: si fida molto
+    cattive = np.tile([1.2, -1.0], 100)     # vince poco: si fida meno
+    assert impara_parte(f, buone) > impara_parte(f, cattive)

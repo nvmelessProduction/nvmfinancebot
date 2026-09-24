@@ -58,3 +58,24 @@ def kelly(e: Esiti) -> float:
     f = np.linspace(0, tetto * 0.999, 4000)
     valori = (p[None, :] * np.log1p(f[:, None] * x[None, :])).sum(axis=1)
     return float(f[int(np.argmax(valori))])
+
+
+# Le parti del Kelly che il Rischio prova quando si addestra.
+PARTI = np.round(np.arange(0.02, 1.0001, 0.02), 2)
+
+
+def impara_parte(f: np.ndarray, r: np.ndarray) -> float:
+    """Quanta parte del Kelly usare: quella che, sulle operazioni passate
+    (puntata di Kelly `f` e risultato `r` in R, in ordine di tempo), ha fatto
+    crescere di piu' il conto. Se il Capo sopravvaluta le sue stime, il
+    Rischio impara a fidarsene meno; se le azzecca, a fidarsene di piu'."""
+    f, r = np.asarray(f, float), np.asarray(r, float)
+    if not len(f):
+        return 1.0
+    migliore, parte = -np.inf, PARTI[0]
+    for p in PARTI:
+        x = 1 + p * f * r
+        g = -np.inf if np.any(x <= 0) else float(np.log(x).sum())
+        if g > migliore:
+            migliore, parte = g, p
+    return float(parte)

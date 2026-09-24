@@ -62,8 +62,10 @@ def _giu(x: float, passo: float) -> float:
 
 
 class Esecutore:
-    def __init__(self, terminale: Terminale):
+    def __init__(self, terminale: Terminale, parte: float = 1.0):
         self.t = terminale
+        # Quanta parte del Kelly usa il Rischio: la impara, sullo storico e dal vivo.
+        self.parte = parte
 
     def apri(self, d: Decisione, conto: Conto) -> tuple[Optional[Viva], Fatto]:
         k, op, verso = d.r.strumento, d.op, d.r.verso
@@ -89,7 +91,8 @@ class Esecutore:
         costi = d.r.costo_erre
         per_lotto = self.t.perdita_per_lotto(k, verso, prezzo, op.stop)
         minimo, passo, massimo = self.t.lotti(k)
-        f = kelly(esiti(d.p1, d.q, rr1, rr2, costi))
+        pieno = kelly(esiti(d.p1, d.q, rr1, rr2, costi))
+        f = pieno * self.parte
         volume = min(_giu(conto.saldo * f / per_lotto, passo), massimo)
         if volume >= 2 * minimo:
             meta = _giu(volume / 2, passo)
@@ -123,7 +126,8 @@ class Esecutore:
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
                     tickets, messi, rischio, conto.valuta)
         testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0])
-        testo += f"\nIl Rischio: Kelly {f:.1%} del conto" + (" (sotto il lotto minimo: ne apro il minimo)." if volume < minimo else ".")
+        testo += (f"\nIl Rischio: Kelly {pieno:.1%} del conto; ne uso la parte che ho imparato ({self.parte:.2f}), "
+                  f"cioè {f:.2%}" + (" (sotto il lotto minimo: apro il minimo)." if volume < minimo else "."))
         return viva, Fatto(testo)
 
     def sorveglia(self, vive: list[Viva]) -> tuple[list[Viva], list[Fatto]]:

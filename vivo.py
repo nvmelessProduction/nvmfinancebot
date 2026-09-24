@@ -61,6 +61,13 @@ def _capo() -> Capo:
     return Capo.da_dati(json.loads(p.read_text(encoding="utf-8")))
 
 
+def _parte() -> float:
+    p = CARTELLA / "rischio.json"
+    if not p.exists():
+        p = RADICE / "nvm" / "vivo" / "rischio.json"
+    return float(json.loads(p.read_text(encoding="utf-8"))["parte"])
+
+
 def _versione_nuova() -> str:
     """Se su GitHub c'e' una versione nuova, la scarica e ne restituisce il titolo."""
     def git(*a: str) -> str:
@@ -79,7 +86,7 @@ class Bot:
         self.stato = Stato.carica(CARTELLA)
         self.capo = _capo()
         self.terminale = Terminale(self.imp.suffisso)
-        self.esecutore = Esecutore(self.terminale)
+        self.esecutore = Esecutore(self.terminale, _parte())
         self.basi: dict[str, Minuti] = {}
         self._allarmi: dict[str, float] = {}
 
@@ -173,11 +180,13 @@ class Bot:
 
     def riunione(self, settimana: str, adesso: int) -> None:
         storico = Storico.carica(RADICE / "nvm" / "vivo" / "storico.npz")
-        testo, nuovo = riunione(self.stato.seguite, self.capo, storico, adesso - 7 * 86400, settimana, self.stato.pagelle)
+        testo, nuovo, parte = riunione(self.stato.seguite, self.capo, storico, adesso - 7 * 86400, settimana,
+                                       self.stato.pagelle, self.esecutore.parte)
         self.tg.equipe(testo)
-        self.capo = nuovo
+        self.capo, self.esecutore.parte = nuovo, parte
         CARTELLA.mkdir(parents=True, exist_ok=True)
         (CARTELLA / "capo.json").write_text(json.dumps(nuovo.come_dati()), encoding="utf-8")
+        (CARTELLA / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
         registra(CARTELLA, "riunione", settimana=settimana, testo=testo)
         self.stato.ultima_riunione = settimana
 

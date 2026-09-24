@@ -118,6 +118,25 @@ Si decidono durante la Fase A.
   era stato portato a 1.000.000 €, con operazioni da 50 lotti d'oro: in 7
   ore −13.915 €. Il demo deve avere la cifra che useresti davvero.
 
+## Il bot dal vivo (dal 24/09/2026)
+
+Pronto per la VPS: istruzioni in `AVVIO.md`, codice in `vivo.py` e
+`nvm/vivo/`. Decisioni dell'utente: il bot apre posizioni sul **conto demo
+da 1.000 €**, **decide il bot**, e gli agenti si addestrano ma non si
+bloccano.
+
+- Ogni ora, la stessa catena delle prove sullo storico (una prova lo
+  controlla ora per ora); il Capo decide, il Rischio sceglie la puntata
+  (Kelly, con la parte che ha imparato: 0,08), l'Esecutore apre due metà con
+  stop e target sul broker e sposta a pareggio.
+- Canale **operativo**: avvio, aperture col perché, primo target, chiusure,
+  allarmi. Canale **équipe**: dopo ogni decisione ogni agente dice quanto
+  spinge o frena; quando finisce, chi aveva ragione (pagelle e carriere);
+  il sabato la riunione: pagelle, consigli fra agenti, riaddestramento di
+  Capo (i casi recenti pesano di più) e Rischio.
+- Si aggiorna da solo da questo branch: quello che si aggiunge qui arriva al
+  bot entro un'ora.
+
 ## Numeri validi
 
 ### La base (Fase D), misurata il 24/09/2026
