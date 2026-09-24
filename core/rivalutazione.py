@@ -107,6 +107,105 @@ def _piu_lontano(direzione_cfd_posizione: Bias, nuovo: float, attuale: float) ->
     return nuovo < attuale
 
 
+def azione_setup17(
+    riga: Mapping[str, Any], foto, comando, verso, tf_trigger,
+) -> Optional[tuple[float, str]]:
+    """SETUP-17 — la bias di comando si e' invertita: si protegge, non si chiude.
+
+    Restituisce `(nuovo_stop, perche)` quando c'e' da spostare, `None`
+    altrimenti. Chi chiama decide se e come applicarlo.
+
+    Il pareggio si applica una volta sola, come quello di GEST-04:
+    `tp1_raggiunto` e' il flag che segna "lo stop e' gia' stato spostato" e
+    GEST-05 vieta di rifarlo.
+
+    **Il confronto e' fra due versi sulla stessa scala.** `comando` nasce
+    dall'analisi, che puo' essere sul future; `verso` e' la direzione con cui
+    la posizione sta sul broker. Su `6J` e `6S`, che quotano il reciproco,
+    saltare `direzione_di_esecuzione` farebbe risultare invertita ogni bias --
+    e SETUP-17 scatterebbe su ogni posizione di quelle due coppie.
+
+    ## Il limite noto, misurato il 2026-09-24
+
+    Quando il pareggio non e' piazzabile il broker lo rifiuta con `10016`, e
+    da quando l'archivio non registra piu' uno stop rifiutato (correzione del
+    23/09) `tp1_raggiunto` resta 0: questa regola lo ripropone al giro dopo,
+    all'infinito. 164 rifiuti in sette ore sugli stessi pochi ticket. Non fa
+    danno -- la posizione resta protetta al livello vero -- ma riempie il log
+    di ERROR, che e' il modo migliore per insegnare a ignorarli.
+    """
+    if comando is Bias.NESSUNA or riga.get("tp1_raggiunto"):
+        return None
+    prezzo_ingresso = riga.get("prezzo_ingresso")
+    if not prezzo_ingresso:
+        return None
+
+    comando_cfd = direzione_di_esecuzione(
+        comando, foto.strumento, foto.analisi_in_scala_cfd)
+    if comando_cfd is verso:
+        return None
+
+    prima = gest.Posizione(
+        strumento=foto.strumento, direzione=verso,
+        prezzo_ingresso=float(prezzo_ingresso),
+        tf_crt=tf_trigger,
+        livello_stop=float(riga.get("sl") or 0.0),
+        tp1=float(riga.get("tp1") or 0.0),
+        target_finale=float(riga.get("tp") or 0.0),
+    )
+    # La regola vive in `gestione`, con la sua nota sul conflitto con GEST-03:
+    # il pareggio non allarga mai lo stop, e i due sono compatibili.
+    dopo, perche = gest.cambio_bias_su_posizione_aperta(
+        prima, comando_cfd, float(riga.get("spread_ingresso") or foto.spread))
+    if dopo.livello_stop == prima.livello_stop:
+        return None
+    return dopo.livello_stop, perche
+
+
+def azione_gest09(
+    riga: Mapping[str, Any], foto, crt, verso, tf_trigger, candele,
+    id_posizione: int, ticket,
+) -> "AzioneGestione":
+    """GEST-09 e PA-48 — il bersaglio e' stato consumato prima di TP1.
+
+    Il livello che la posizione inseguiva non c'e' piu': o si sposta sul key
+    level successivo dello stesso timeframe, o -- se non ce n'e' uno -- la
+    posizione non ha piu' un bersaglio e si chiude. Un'operazione senza
+    bersaglio non e' un'operazione paziente: e' un'operazione che nessuno sa
+    piu' dove stia andando.
+
+    Restituisce sempre un'azione: chi chiama ha gia' verificato che il
+    bersaglio sia stato consumato.
+    """
+    base_g9 = gest.Posizione(
+        strumento=foto.strumento, direzione=verso,
+        prezzo_ingresso=float(riga.get("prezzo_ingresso") or 0.0),
+        tf_crt=TF(str(riga["tf_crt"])),
+        livello_stop=float(riga.get("sl") or 0.0),
+        tp1=float(riga.get("tp1") or 0.0),
+        target_finale=float(riga["tp"]),
+    )
+    successivo = _key_level_del_tf(
+        foto.key_level_correnti, tf_trigger, crt.direzione
+    )
+    nuovo_g9 = None
+    if successivo is not None:
+        try:
+            nuovo_g9 = livello_di_esecuzione(
+                successivo.valore, candele[-1].chiusura,
+                foto.prezzo_cfd, foto.strumento,
+                foto.analisi_in_scala_cfd,
+            )
+        except ValueError:
+            nuovo_g9 = None
+    _, perche_g9 = gest.target_consumato_prima_di_tp1(base_g9, nuovo_g9)
+    if nuovo_g9 is None:
+        return AzioneGestione(
+            id_posizione, ticket, "chiudi", None, "GEST-09", perche_g9)
+    return AzioneGestione(
+        id_posizione, ticket, "estendi_target", nuovo_g9, "GEST-09", perche_g9)
+
+
 def rivaluta(
     foto: Fotografia,
     tf_trigger: TF,
@@ -207,36 +306,14 @@ def rivaluta(
                 continue
 
         # --- SETUP-17 — bias_comando invertita ----------------------------
-        #
-        # Non si chiude: si protegge. E il break even si applica una volta
-        # sola, come quello di GEST-04: `tp1_raggiunto` e' il flag che segna
-        # "lo stop e' gia' stato spostato" e GEST-05 vieta di rifarlo.
-        if comando is not Bias.NESSUNA and not riga.get("tp1_raggiunto"):
-            comando_cfd = direzione_di_esecuzione(
-                comando, foto.strumento, foto.analisi_in_scala_cfd)
-            prezzo_ingresso = riga.get("prezzo_ingresso")
-            if comando_cfd is not verso and prezzo_ingresso:
-                # SETUP-17 in persona, con la sua nota sul conflitto con
-                # GEST-03: il break even non allarga mai lo stop, e i due sono
-                # compatibili. La regola vive li', non qui.
-                prima = gest.Posizione(
-                    strumento=foto.strumento, direzione=verso,
-                    prezzo_ingresso=float(prezzo_ingresso),
-                    tf_crt=tf_trigger,
-                    livello_stop=float(riga.get("sl") or 0.0),
-                    tp1=float(riga.get("tp1") or 0.0),
-                    target_finale=float(riga.get("tp") or 0.0),
-                )
-                dopo, perche = gest.cambio_bias_su_posizione_aperta(
-                    prima, comando_cfd,
-                    float(riga.get("spread_ingresso") or foto.spread),
-                )
-                if dopo.livello_stop != prima.livello_stop:
-                    azioni.append(AzioneGestione(
-                        id_posizione, ticket, "break_even", dopo.livello_stop,
-                        "SETUP-17", perche,
-                    ))
-                    continue
+        spostamento = azione_setup17(riga, foto, comando, verso, tf_trigger)
+        if spostamento is not None:
+            nuovo_stop, perche = spostamento
+            azioni.append(AzioneGestione(
+                id_posizione, ticket, "break_even", nuovo_stop,
+                "SETUP-17", perche,
+            ))
+            continue
 
         # --- GEST-08 — estensione del target ------------------------------
         if crt is None or riga.get("tf_crt") is None or riga.get("tp") is None:
@@ -256,37 +333,9 @@ def rivaluta(
         # chiudere, perche' una posizione senza bersaglio non ha ragione di
         # restare aperta.
         if not _bersaglio_ancora_disponibile(riga, foto, verso):
-            base_g9 = gest.Posizione(
-                strumento=foto.strumento, direzione=verso,
-                prezzo_ingresso=float(riga.get("prezzo_ingresso") or 0.0),
-                tf_crt=TF(str(riga["tf_crt"])),
-                livello_stop=float(riga.get("sl") or 0.0),
-                tp1=float(riga.get("tp1") or 0.0),
-                target_finale=float(riga["tp"]),
-            )
-            successivo = _key_level_del_tf(
-                foto.key_level_correnti, tf_trigger, crt.direzione
-            )
-            nuovo_g9 = None
-            if successivo is not None:
-                try:
-                    nuovo_g9 = livello_di_esecuzione(
-                        successivo.valore, candele[-1].chiusura,
-                        foto.prezzo_cfd, foto.strumento,
-                        foto.analisi_in_scala_cfd,
-                    )
-                except ValueError:
-                    nuovo_g9 = None
-            _, perche_g9 = gest.target_consumato_prima_di_tp1(base_g9, nuovo_g9)
-            if nuovo_g9 is None:
-                azioni.append(AzioneGestione(
-                    id_posizione, ticket, "chiudi", None, "GEST-09", perche_g9,
-                ))
-            else:
-                azioni.append(AzioneGestione(
-                    id_posizione, ticket, "estendi_target", nuovo_g9,
-                    "GEST-09", perche_g9,
-                ))
+            azioni.append(azione_gest09(
+                riga, foto, crt, verso, tf_trigger, candele,
+                id_posizione, ticket))
             continue
 
         livello = _key_level_del_tf(foto.key_level_correnti, tf_trigger, crt.direzione)
