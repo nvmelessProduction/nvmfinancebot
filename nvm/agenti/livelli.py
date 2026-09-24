@@ -11,9 +11,11 @@ Il manuale (`spec/grilletto.md`, "Da passare agli altri agenti"):
 - **niente operazione** se l'ingresso e' gia' oltre il 50%: il primo target
   starebbe alle spalle.
 
-L'operazione dura fino alla fine della candela alta in cui si entra: "where
-is that candle likely to go... the journey till the candle's final
-destination" (msg 5489). Deciso qui, perche' la durata Romeo non la scrive.
+L'operazione dura fino alla fine della **candela 3** del CRT: "you only need
+3 candles", e nel suo CRT mensile di EURUSD (msg 5623, ottobre 2024) si entra
+a settembre, nella candela 2, e il target 2 arriva a ottobre, nella candela
+3. Una prima versione chiudeva alla fine della candela d'ingresso: quel caso
+l'ha smentita.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.cacciatore import Verso
+from nvm.agenti.cacciatore import MAI, Verso
 from nvm.agenti.grilletto import Scatto
 from nvm.dati.candele import Candele
 from nvm.dati.minuti import CHIUSURA
@@ -51,6 +53,10 @@ def piano(s: Scatto, basse: Candele, parziale: float = 0.5, pareggio: bool = Tru
 
 
 def scadenza(s: Scatto) -> int:
-    """La fine della candela alta in cui si entra."""
+    """La fine della candela 3 del CRT. Se non e' ancora nota (la candela 3
+    non e' iniziata), la fine della candela in cui si entra piu' una."""
+    if s.crt.fine_candela_3 < MAI:
+        return s.crt.fine_candela_3
     inizio = int(inizio_candela(np.array([s.quando]), s.crt.alto_tf)[0])
-    return fine_candela(inizio, s.crt.alto_tf)
+    fine = fine_candela(inizio, s.crt.alto_tf)
+    return fine_candela(int(inizio_candela(np.array([fine]), s.crt.alto_tf)[0]), s.crt.alto_tf)

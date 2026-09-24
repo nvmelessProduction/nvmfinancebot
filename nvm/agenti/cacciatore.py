@@ -82,6 +82,9 @@ class CRT:
     decaduto_quando: int
     motivo: Motivo
     manipolazione_inizio: int
+    # La fine della candela 3: la vita naturale del CRT. MAI se la candela 3
+    # non e' ancora iniziata.
+    fine_candela_3: int
     # La storia dell'estremo della manipolazione: a ogni istante (chiusura di
     # una candela bassa) il punto piu' lontano toccato fino a li'.
     estremo_istanti: np.ndarray = field(repr=False)
@@ -236,6 +239,7 @@ def _un_range(
         decaduto_quando=decaduto_quando,
         motivo=motivo,
         manipolazione_inizio=manipolazione_inizio,
+        fine_candela_3=fine_3,
         estremo_istanti=storia_fini[tenuti].astype(np.int64),
         estremo_valori=storia_estremi[tenuti].astype(np.float64),
     )

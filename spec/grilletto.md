@@ -59,6 +59,8 @@ Non guarda key level, orari o SMT: sono Conferme e Contesto.
 | Primo target | Livelli | `CRT 50%` | **[R]** "the 50% is almost always guaranteed" (msg 6561) |
 | Target finale | Livelli | il lato opposto del range | **[R]** "take profit at 50% and then CRTH/L" |
 | Ingresso già oltre il 50% | Livelli | niente operazione: il primo target starebbe alle spalle | **[D]**, nel vecchio bot "12 posizioni su 17 morte in 6 secondi" |
+| Quanto dura l'operazione | Livelli | fino alla fine della candela 3 del CRT | **[R]** il CRT mensile di EURUSD (msg 5623): entrata a settembre, target 2 a ottobre. Una prima versione chiudeva alla fine della candela d'ingresso, e questo caso l'ha smentita |
+| Quanto si chiude al primo target | Sentinella | metà | **[R]** "CRT 50%, target 1 (partial)" (msg 5623); la quantità non la dice |
 | Rientro sul livello (RTM1) | più avanti | "retrade to model#1": un secondo ingresso quando il prezzo torna sul livello | **[R]** terminologia, msg 6110 |
 
 ## Cosa può imparare
