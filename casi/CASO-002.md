@@ -19,8 +19,20 @@ perché:        la candela 2 spazza il CRT high e chiude dentro; l'obiettivo è 
                CRT low. È lo schema "candle opens, stabs into an old CRTH, dumps".
 ```
 
-## Da verificare sui dati
+## Verifica sui dati (24/09/2026)
 
-- Le date esatte delle candele e i livelli, sulle giornaliere che chiudono
-  alle 17:00 di New York (`spec/dati.md`).
-- Dove sta lo stop rispetto all'estremo dell'ombra.
+Orarie Dukascopy, giornaliere che chiudono alle 17:00 di New York.
+
+| | Romeo | Il bot | |
+|---|---|---|---|
+| Range | la candela verde grande | la giornaliera del 5/12/2024 (apre il 4/12 alle 17 NY): H 1.05896, L 1.05077 | ✅ |
+| Manipolazione | l'ombra cerchiata sopra la verde | armato il 6/12 alle 04:00 NY, massimo 1.06298 | ✅ |
+| Ingresso | "entry in the wick", vendita intorno a 1.0580 | Model#1 sulle orarie, scatto il 6/12 alle 10:00 NY a **1.05788** | ✅ |
+| Target | la linea nera a 1.05064 | CRT low 1.05077 | ✅ (1,3 pip) |
+| Esito | il target arriva il 10/12 | 50% preso il 9/12, target 2 il 10/12, cioè nella **candela 4** | ⚠️ |
+
+**Cosa ha cambiato:** la durata dell'operazione. La regola "fino alla fine
+della candela 3" avrebbe chiuso il resto lunedì 9 sera, prima del target.
+Ora non c'è uscita a tempo (`spec/grilletto.md`).
+
+Lo stop dello screenshot non si legge bene: resta da capire.

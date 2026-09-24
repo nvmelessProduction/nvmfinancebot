@@ -78,7 +78,8 @@ def test_livelli_del_manuale():
     assert op.ingresso == pytest.approx(1.1085)
     assert op.stop == pytest.approx(1.1130)  # il tetto del turtle soup
     assert (op.tp1, op.tp2) == (pytest.approx(1.1050), pytest.approx(1.1000))
-    assert scadenza(scatto(crt, b)) == ny(2026, 9, 10, 13)  # fine della candela 3
+    s = scatto(crt, b)
+    assert scadenza(s) == s.quando + 3 * 86400  # solo un tetto di sicurezza
 
 
 def test_niente_operazione_se_il_primo_target_e_alle_spalle():

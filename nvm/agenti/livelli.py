@@ -11,25 +11,25 @@ Il manuale (`spec/grilletto.md`, "Da passare agli altri agenti"):
 - **niente operazione** se l'ingresso e' gia' oltre il 50%: il primo target
   starebbe alle spalle.
 
-L'operazione dura fino alla fine della **candela 3** del CRT: "you only need
-3 candles", e nel suo CRT mensile di EURUSD (msg 5623, ottobre 2024) si entra
-a settembre, nella candela 2, e il target 2 arriva a ottobre, nella candela
-3. Una prima versione chiudeva alla fine della candela d'ingresso: quel caso
-l'ha smentita.
+L'operazione non ha un'uscita a tempo: esce con lo stop o col target, e dopo
+il primo target il pareggio protegge il resto. Romeo non parla mai di
+chiudere per tempo, e due suoi casi hanno smentito le durate provate prima:
+nel CRT mensile di EURUSD (msg 5623) il target 2 arriva nella candela 3,
+nel giornaliero di dicembre 2024 (msg 5730) nella candela 4. Per la
+simulazione resta solo un tetto di sicurezza, largo (`TETTO`), e chi misura
+conta quante operazioni ci arrivano.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-import numpy as np
-
-from nvm.agenti.cacciatore import MAI, Verso
+from nvm.agenti.cacciatore import Verso
 from nvm.agenti.grilletto import Scatto
 from nvm.dati.candele import Candele
 from nvm.dati.minuti import CHIUSURA
 from nvm.prova.campo import Operazione
-from nvm.tempo import fine_candela, inizio_candela
+from nvm.tempo import TF
 
 
 def piano(s: Scatto, basse: Candele, parziale: float = 0.5, pareggio: bool = True) -> Optional[Operazione]:
@@ -52,11 +52,11 @@ def piano(s: Scatto, basse: Candele, parziale: float = 0.5, pareggio: bool = Tru
     )
 
 
+# Il tetto di sicurezza della simulazione, per timeframe del range: circa
+# dieci candele alte.
+TETTO = {TF.MN: 300 * 86400, TF.W1: 70 * 86400, TF.D1: 14 * 86400, TF.H4: 3 * 86400}
+
+
 def scadenza(s: Scatto) -> int:
-    """La fine della candela 3 del CRT. Se non e' ancora nota (la candela 3
-    non e' iniziata), la fine della candela in cui si entra piu' una."""
-    if s.crt.fine_candela_3 < MAI:
-        return s.crt.fine_candela_3
-    inizio = int(inizio_candela(np.array([s.quando]), s.crt.alto_tf)[0])
-    fine = fine_candela(inizio, s.crt.alto_tf)
-    return fine_candela(int(inizio_candela(np.array([fine]), s.crt.alto_tf)[0]), s.crt.alto_tf)
+    """Il tetto di sicurezza: dopo, l'operazione si chiude al prezzo del momento."""
+    return s.quando + TETTO[s.crt.alto_tf]
