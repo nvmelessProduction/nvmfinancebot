@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--dal", default="2006-01", help="primo mese, AAAA-MM")
     parser.add_argument("--al", default=f"{oggi:%Y-%m}", help="ultimo mese, AAAA-MM")
     parser.add_argument("--ore", action="store_true", help="scarica le ore invece dei minuti")
+    parser.add_argument("--pausa", type=float, default=0.5, help="secondi fra una richiesta e l'altra")
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
     parser.add_argument("--rapporto", default=str(RADICE / "dati" / "rapporto-dati.txt"))
     argomenti = parser.parse_args()
@@ -42,7 +43,7 @@ def main() -> None:
 
     radice = Path(argomenti.cartella)
     unita = "ore" if argomenti.ore else "minuti"
-    scarica(strumenti, argomenti.dal, argomenti.al, radice / unita, radice / "cache", ore=argomenti.ore)
+    scarica(strumenti, argomenti.dal, argomenti.al, radice / unita, radice / "cache", ore=argomenti.ore, pausa=argomenti.pausa)
 
     righe = []
     for strumento in strumenti:

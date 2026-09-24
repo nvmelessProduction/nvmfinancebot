@@ -228,10 +228,10 @@ def mesi(dal: str, al: str) -> list[tuple[int, int]]:
 
 def scarica(
     strumenti: list[str], dal: str, al: str, radice: Path, cache: Path,
-    ore: bool = False, scrivi: Callable[[str], None] = print,
+    ore: bool = False, pausa: float = 0.5, scrivi: Callable[..., None] = print,
 ) -> None:
     """Scarica minuti (o ore) per ogni strumento e ogni mese, riprendendo da dove era."""
-    scaricatore = Scaricatore(cache)
+    scaricatore = Scaricatore(cache, pausa=pausa)
     oggi = datetime.now(timezone.utc).date()
     for strumento in strumenti:
         for anno, mese in mesi(dal, al):
@@ -244,7 +244,7 @@ def scarica(
                 percorso = scarica_mese(scaricatore, radice, strumento, anno, mese, oggi)
             n = len(Minuti.carica(percorso))
             unita = "ore" if ore else "minuti"
-            scrivi(f"{strumento} {anno}-{mese:02d}: {n} {unita} ({time.monotonic() - inizio:.0f} s)")
+            scrivi(f"{strumento} {anno}-{mese:02d}: {n} {unita} ({time.monotonic() - inizio:.0f} s)", flush=True)
     scrivi(f"fatto: {scaricatore.richieste} richieste a Dukascopy")
 
 
