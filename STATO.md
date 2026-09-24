@@ -25,8 +25,10 @@ file. Il piano completo è in `PIANO.md`.
 - **Fatto:** scaricatore, candele, controlli (`nvm/dati/`, `scarica.py`).
   Verificato il pacchetto del vecchio branch: minuti e orarie giusti, 4 ore
   e giornaliere su confini sbagliati (`registro/verifica-dati-vecchi.md`).
-- **Manca:** lo scaricamento dei vent'anni, che gira sulla VPS perché
-  Dukascopy blocca i server condivisi.
+- **In corso:** lo scaricamento orario dei vent'anni da questa macchina.
+  Dukascopy qui lascia passare circa un mese ogni 3 minuti: ci vogliono
+  decine di ore, riprende da solo. I minuti per la coppia 4 ore → 15
+  minuti vengono dopo.
 
 ### Cosa serve da te
 
@@ -35,8 +37,8 @@ file. Il piano completo è in `PIANO.md`.
       nella storia del vecchio branch, e con lui il token. Su Telegram:
       @BotFather → `/revoke` → scegli il bot. Il token nuovo va solo nel
       `.env` sul computer.
-- [ ] **Più avanti:** lanciare lo scaricamento dei dati sulla VPS, con un
-      comando solo che preparo io.
+- Niente altro: l'utente ha chiesto di fare tutto da qui (24/09). La VPS
+  resta ferma; `VPS.md` e `scarica.bat` restano pronti se un giorno servono.
 
 Le domande sulla strategia non le fai tu: le risposte si cercano nelle
 fonti, e dove le fonti non bastano si provano le letture possibili.
