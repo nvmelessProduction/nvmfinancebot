@@ -145,6 +145,9 @@ def _un_range(
 ) -> Optional[CRT]:
     crt_high = float(alte.bid[k, MASSIMO])
     crt_low = float(alte.bid[k, MINIMO])
+    # Una candela piatta (un giorno di festa con un'ora sola di dati) non e' un range.
+    if crt_high <= crt_low:
+        return None
 
     # La candela 2 e la 3: le prime due candele alte dopo il range.
     dopo = int(np.searchsorted(inizi_alti, alte.inizio[k], side="right"))

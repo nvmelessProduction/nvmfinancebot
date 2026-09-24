@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from nvm.dati.candele import Candele
 from nvm.dati.minuti import CHIUSURA, Minuti
 
 
@@ -65,3 +66,13 @@ class ModelloSpread:
             solo_bid.strumento, solo_bid.t, solo_bid.bid, solo_bid.bid + spread[:, None],
             solo_bid.volume_bid, solo_bid.volume_ask, solo_bid.passo,
         )
+
+
+def allarga(candele: Candele, fattore: float) -> Candele:
+    """Le stesse candele con lo spread moltiplicato: l'ask si allontana dal bid.
+
+    Serve alla prova di robustezza della Fase F (`PIANO.md` §3): una
+    strategia che vive solo di spread stretto non regge dal vivo.
+    """
+    ask = candele.bid + fattore * (candele.ask - candele.bid)
+    return Candele(candele.strumento, candele.tf, candele.inizio, candele.fine, candele.bid, ask, candele.volume)

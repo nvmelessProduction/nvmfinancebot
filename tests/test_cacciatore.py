@@ -75,6 +75,13 @@ def test_nessuna_uscita_dal_range_nessun_crt():
     assert _solo(caccia(alte, basse), Verso.SHORT) is None
 
 
+def test_una_candela_piatta_non_e_un_range():
+    alte, basse = _schema_short()
+    alte.bid[0] = alte.ask[0] = [1.1100, 1.1100, 1.1100, 1.1100]
+    assert _solo(caccia(alte, basse), Verso.SHORT) is None
+    assert _solo(caccia(alte, basse), Verso.LONG) is None
+
+
 def test_se_la_candela_2_chiude_fuori_e_una_rottura():
     alte, basse = _schema_short(chiusura_2=1.1120)
     crt = _solo(caccia(alte, basse), Verso.SHORT)

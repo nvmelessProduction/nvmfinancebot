@@ -41,6 +41,13 @@ class Risultato:
     rischio: float
     # Lo scatto da cui e' nata: le Conferme rispondono su questo.
     scatto: Optional[Scatto] = field(default=None, repr=False, compare=False)
+    # Per il Capo: quale colpo sul CRT (1, 2, 3), i target in R, lo stop in
+    # proporzione all'ampiezza del CRT, e quando l'operazione si e' chiusa.
+    colpo: int = 1
+    rr1: float = 0.0
+    rr2: float = 0.0
+    stop_su_ampiezza: float = 0.0
+    chiusa_quando: int = 0
 
 
 # Quante volte il Grilletto puo' sparare sullo stesso CRT: dopo la prima,
@@ -58,7 +65,7 @@ def opera(
     risultati = []
     for crt in caccia(alte, basse, variante):
         dopo = None
-        for _ in range(COLPI_PER_CRT):
+        for colpo in range(1, COLPI_PER_CRT + 1):
             s = scatto(crt, basse, dopo)
             if s is None:
                 break
@@ -70,6 +77,11 @@ def opera(
                 risultati.append(Risultato(
                     op.strumento, alte.tf, basse.tf, op.verso, op.quando, esito.erre,
                     esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio, s,
+                    colpo=colpo,
+                    rr1=abs(op.tp1 - op.ingresso) / op.rischio,
+                    rr2=abs(op.tp2 - op.ingresso) / op.rischio,
+                    stop_su_ampiezza=op.rischio / (crt.crt_high - crt.crt_low),
+                    chiusa_quando=esito.quando,
                 ))
             if esito.uscita is not Uscita.STOP:
                 break
