@@ -253,7 +253,46 @@ def alla_romeo(s: Scatto, basse: Candele, settimane: Candele, grandi: Grandi) ->
     return AllaRomeo(londra, new_york, annidato, sconto)
 
 
+@dataclass(frozen=True)
+class Liquidita:
+    """La terza gamba del manuale di Romeo: *"Mark a pre-manipulation swing
+    high/low"* (msg 6718), *"pre-manipulation liquidity pool"* (msg 3860).
+    La risposta del Grilletto, che guarda il timeframe basso (`spec/conferme.md`)."""
+
+    # La manipolazione supera un massimo di swing del timeframe basso, nato
+    # dopo l'inizio del range e non ancora preso prima del turtle soup.
+    presa: bool
+    # ...e quel massimo stava sopra il CRT high: il prezzo era gia' uscito dal
+    # range, e' tornato giu', e la manipolazione torna a prenderlo.
+    sopra_il_crt: bool
+
+
+def liquidita(s: Scatto, basse: Candele) -> Liquidita:
+    """La manipolazione di questo scatto ha preso la liquidita' lasciata prima di lei?"""
+    crt = s.crt
+    short = crt.verso is Verso.SHORT
+    # Tutto si scrive per lo short; il long e' lo specchio.
+    segno = 1.0 if short else -1.0
+    estremo = crt.estremo_a(s.quando)
+    if estremo is None:
+        return Liquidita(False, False)
+    estremo *= segno
+    lato = crt.crt_high if short else -crt.crt_low
+    a, t = np.searchsorted(basse.inizio, [crt.range_inizio, s.turtle_soup_inizio])
+    h = (basse.bid[a:t, MASSIMO] if short else -basse.bid[a:t, MINIMO])
+    presa = sopra = False
+    if len(h) >= 2 * LATO_SWING + 1:
+        # Il punto piu' alto da ogni candela fino al turtle soup escluso.
+        dopo = np.maximum.accumulate(h[::-1])[::-1]
+        for i in range(LATO_SWING, len(h) - LATO_SWING):
+            vicini = np.r_[h[i - LATO_SWING:i], h[i + 1:i + 1 + LATO_SWING]]
+            if h[i] > vicini.max() and dopo[i + 1] < h[i] and estremo > h[i]:
+                presa = True
+                sopra |= bool(h[i] > lato)
+    return Liquidita(presa, sopra)
+
+
 def tutti_i_pareri(s: Scatto, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, grandi: Grandi):
     """Le risposte di tutte le conferme a uno scatto, nell'ordine che vuole il Capo."""
     return (key_level(s, sopra, basse), orario(s, basse), contesto(s, alte, sopra),
-            alla_romeo(s, basse, settimane, grandi))
+            alla_romeo(s, basse, settimane, grandi), liquidita(s, basse))

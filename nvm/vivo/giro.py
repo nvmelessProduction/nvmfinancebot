@@ -15,7 +15,7 @@ import numpy as np
 
 from nvm.agenti.cacciatore import CRT, caccia
 from nvm.agenti.capo import Capo, riga
-from nvm.agenti.conferme import SOPRA, AllaRomeo, Contesto, KeyLevel, Orario, tutti_i_pareri
+from nvm.agenti.conferme import SOPRA, AllaRomeo, Contesto, KeyLevel, Liquidita, Orario, tutti_i_pareri
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
@@ -49,6 +49,8 @@ class Decisione:
     romeo: Optional[float] = None
     # La somiglianza di un candidato medio, per dire se questa e' sopra o sotto.
     romeo_medio: Optional[float] = None
+    # La risposta del Grilletto sulla liquidita' presa dalla manipolazione.
+    liquidita: Optional[Liquidita] = None
 
     @property
     def entra(self) -> bool:
@@ -81,14 +83,14 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
             sopra = costruisci(ore, SOPRA[alto]).chiuse_entro(adesso)
             for r in opera(alte, basse, dal, adesso + 1):
                 op = piano(r.scatto, basse)
-                kl, ora, ctx, ar = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
-                x = riga(r, kl, ora, ctx, ar)[None]
+                kl, ora, ctx, ar, liq = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
+                x = riga(r, kl, ora, ctx, ar, liq)[None]
                 p1, q = capo.probabilita(x)
                 atteso = capo.valore_atteso(x, np.array([r.rr1]), np.array([r.rr2]), np.array([r.costo_erre]))
                 decisioni.append(Decisione(
                     r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0],
                     ar, float(capo.somiglianza(x)[0]) if capo.romeo is not None else None,
-                    float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None))
+                    float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

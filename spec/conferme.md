@@ -155,3 +155,46 @@ Le ore toccate sono quelle di New York coperte dalla candela dello scatto:
 una candela di un'ora o di un quarto d'ora ne tocca una, una di quattro
 ore quattro, una giornaliera tutte. L'ordine delle coppie per "più grande"
 è quello del range: mensile, settimanale, giornaliero, 4 ore.
+
+## La liquidità presa: la terza gamba (25/09/2026) **[D]**
+
+### La domanda
+
+La manipolazione ha preso la liquidità lasciata prima di lei? La chiede il
+**Grilletto**, che guarda il timeframe basso.
+
+### Perché
+
+È la terza gamba del suo sgabello *"Elements of a high probability trade
+setup"*: *manipulation time*, *higher timeframe key level* e
+*pre-manipulation liquidity pool* (msg 3860, 2023). Nel manuale del 2026:
+*"3. Mark a pre-manipulation swing high/low"* (msg 6718), e nel disegno il
+prezzo supera il massimo lasciato prima della manipolazione, arriva al key
+level e crolla **[R]**. Le altre due gambe hanno già un agente (Orario e Key
+level); questa non l'aveva nessuno.
+
+### Cosa conta (short; il long è lo specchio)
+
+Sulle candele del Grilletto, dall'inizio del range fino alla candela del
+turtle soup esclusa:
+
+| Risposta | Definizione |
+|---|---|
+| **Liquidità presa prima** | c'è un massimo di swing (più alto delle due candele prima e delle due dopo, tutte prima del turtle soup) che nessuna candela ha superato fino al turtle soup, e l'estremo della manipolazione, noto allo scatto, lo supera |
+| **Liquidità ripresa fuori dal CRT** | come sopra, e quel massimo sta sopra il CRT high: il prezzo era già uscito dal range, è tornato giù, e la manipolazione torna a prenderlo |
+
+### Cosa si è misurato (`registro/tentativi.md`, 25/09/2026)
+
+- Fra i candidati del 2023, le scelte di Romeo hanno la liquidità presa nel
+  44% dei casi contro il 27% degli altri; ripresa fuori dal CRT nel 33%
+  contro l'11%.
+- Sui 49.806 casi 2006-2023, con la liquidità presa il primo target arriva
+  il 46% delle volte contro il 32%; l'R medio resta simile, perché quel
+  primo target è più vicino.
+- Il Capo, anno per anno, la impara come uno dei pesi più forti sul primo
+  target. La somiglianza a Romeo, fuori campione per trimestre, le
+  riconosce a 0,62 invece di 0,60.
+
+Provate insieme e lasciate fuori, perché cambiavano poco o niente:
+l'estremo del giorno, della settimana e del mese prima presi, la sessione
+asiatica presa, l'ingresso sopra l'apertura del giorno o della settimana.

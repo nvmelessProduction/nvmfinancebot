@@ -152,3 +152,52 @@ def test_il_contesto_non_sbircia_il_futuro():
     for r in risultati:
         q = r.scatto.quando
         assert contesto(r.scatto, alte, sopra) == contesto(r.scatto, alte.chiuse_entro(q), sopra.chiuse_entro(q))
+
+
+# --- La liquidita' presa dalla manipolazione (la terza gamba di Romeo) ---
+
+from nvm.agenti.conferme import Liquidita, liquidita
+
+T0 = ny(2026, 3, 2, 1)
+# I massimi delle candele di un'ora dall'inizio del range; il CRT sta fra 1.0900 e 1.1000.
+# La candela 2 fa un massimo di swing dentro il range, poi il prezzo esce sopra il
+# CRT, fa un massimo di swing a 1.1030 e torna giu'; la 9 e' il turtle soup.
+MASSIMI = [1.0950, 1.0960, 1.0980, 1.0970, 1.0965, 1.1010, 1.1030, 1.1000, 1.0990, 1.1040]
+
+
+def _liquidita(massimi, estremo, long=False):
+    """Lo scatto e le candele basse; il long e' lo specchio dello short attorno a 1.0950."""
+    specchio = (lambda p: 2 * 1.0950 - p) if long else (lambda p: p)
+    righe = []
+    for n, h in enumerate(massimi):
+        a, c, l = h - 0.0010, h - 0.0005, h - 0.0015
+        if long:
+            righe.append((T0 + n * 3600, specchio(a), specchio(l), specchio(h), specchio(c)))
+        else:
+            righe.append((T0 + n * 3600, a, h, l, c))
+    basse = candele("EURUSD", TF.H1, righe)
+    verso = Verso.LONG if long else Verso.SHORT
+    alto, basso = sorted((specchio(1.1000), specchio(1.0900)), reverse=True)
+    ts = T0 + (len(massimi) - 1) * 3600
+    crt = CRT("EURUSD", TF.D1, TF.H1, verso, T0, alto, basso, armato_quando=ts, decaduto_quando=MAI,
+              motivo=Motivo.SCADENZA, manipolazione_inizio=T0, fine_candela_3=MAI,
+              estremo_istanti=np.array([ts + 3600], np.int64), estremo_valori=np.array([specchio(estremo)]))
+    return Scatto(crt, ts + 3600, len(massimi) - 1, 1.1, ts, 0.0, 0.0), basse
+
+
+def test_la_manipolazione_riprende_il_massimo_lasciato_fuori_dal_crt():
+    for long in (False, True):
+        s, basse = _liquidita(MASSIMI, 1.1040, long)
+        assert liquidita(s, basse) == Liquidita(True, True)
+        # Se la manipolazione non arriva al massimo di 1.1030, non ha preso niente:
+        # quello dentro il range era gia' stato preso quando il prezzo e' uscito.
+        s, basse = _liquidita(MASSIMI, 1.1025, long)
+        assert liquidita(s, basse) == Liquidita(False, False)
+
+
+def test_la_liquidita_presa_dentro_il_range():
+    # Il prezzo non esce prima del turtle soup: il massimo di 1.0980 resta li' e la manipolazione lo prende.
+    massimi = [1.0950, 1.0960, 1.0980, 1.0970, 1.0965, 1.0960, 1.0970, 1.0955, 1.0950, 1.1020]
+    for long in (False, True):
+        s, basse = _liquidita(massimi, 1.1020, long)
+        assert liquidita(s, basse) == Liquidita(True, False)

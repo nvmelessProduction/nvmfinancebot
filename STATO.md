@@ -131,6 +131,16 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   Nessuna configurazione vede le 14 sul timeframe basso. **Il prossimo
   passo sono i minuti** (EURUSD e GBPUSD 2023, in scaricamento: circa
   un'ora per mese).
+- **Il Grilletto impara la terza gamba di Romeo (25/09).** Il suo manuale
+  dice tre cose: key level, ora della manipolazione, liquidità presa prima
+  della manipolazione (msg 3860, 6718). Le prime due avevano un agente, la
+  terza no. Ora il Grilletto risponde: "la manipolazione ha preso la
+  liquidità lasciata prima?" e "l'ha ripresa fuori dal CRT?". Le scelte di
+  Romeo del 2023 ce l'hanno molto più spesso (44% contro 27%; fuori dal
+  CRT 33% contro 11%). Il Capo la impara da solo come uno dei segnali più
+  forti; fuori campione riconosce Romeo meglio (0,62 invece di 0,60) e
+  sceglie meglio (+0,055 R invece di +0,041 sul 2023). Provate e lasciate
+  fuori altre sette domande che non aiutavano (`registro/tentativi.md`).
 
 ### Cosa serve da te
 

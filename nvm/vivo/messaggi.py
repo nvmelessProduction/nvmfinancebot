@@ -227,6 +227,19 @@ def _pesi(per: dict[str, float]) -> str:
     return f"Chi ha pesato: {testo}" + (f" · gli altri {deboli} quasi niente" if deboli else "")
 
 
+def _liquidita(d: Decisione) -> str:
+    """La terza gamba di Romeo, detta dal Grilletto."""
+    liq = d.liquidita
+    if liq is None:
+        return ""
+    if liq.sopra_il_crt:
+        estremo = "massimo" if d.r.verso is Verso.SHORT else "minimo"
+        return f"; la manipolazione ha ripreso un {estremo} lasciato fuori dal CRT"
+    if liq.presa:
+        return "; la manipolazione ha preso la liquidità lasciata prima"
+    return "; nessuna liquidità presa prima della manipolazione"
+
+
 def pareri(d: Decisione, per: Optional[dict[str, float]] = None) -> str:
     """La scheda di una decisione per il canale équipe: cosa dice ognuno, cosa decide il Capo."""
     k, op, r = d.r.strumento, d.op, d.r
@@ -235,7 +248,8 @@ def pareri(d: Decisione, per: Optional[dict[str, float]] = None) -> str:
     righe = [
         f"🧠 {k} · {direzione(r.verso)} · {coppia(d)} · {quando(r.quando)}",
         f"Cacciatore — CRT {prezzo(k, crt.crt_low)}–{prezzo(k, crt.crt_high)}{grande}",
-        f"Grilletto — Model#1 a {prezzo(k, r.scatto.livello)}" + (f", colpo n. {r.colpo}" if r.colpo > 1 else ""),
+        f"Grilletto — Model#1 a {prezzo(k, r.scatto.livello)}" + (f", colpo n. {r.colpo}" if r.colpo > 1 else "")
+        + _liquidita(d),
         f"Livelli — stop {prezzo(k, op.stop)} · obiettivi {prezzo(k, op.tp1)} e {prezzo(k, op.tp2)} "
         f"({_it(r.rr1, 1)} R e {_it(r.rr2, 1)} R)",
         f"Key level — {_key_level(d)}",

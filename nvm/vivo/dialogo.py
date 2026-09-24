@@ -22,7 +22,7 @@ from nvm.vivo.messaggi import erre, quando
 # Quali colonne del Capo vengono da quale agente.
 AGENTI: dict[str, tuple[int, ...]] = {
     "Cacciatore": (16, 17, 21, 24),
-    "Grilletto": (14, 15),
+    "Grilletto": (14, 15, 26, 27),
     "Livelli": (18, 19, 20),
     "Key level": (0, 1, 2, 3, 4),
     "Orario": (5, 6, 7, 8, 9, 22, 23),
@@ -48,6 +48,8 @@ SEGNALI: dict[str, tuple[str, int]] = {
     "ora di New York di Romeo": ("Orario", COLONNE.index("ora di Romeo: New York")),
     "dentro un CRT più grande": ("Cacciatore", COLONNE.index("dentro un CRT più grande")),
     "a sconto sulla settimana": ("Bias", COLONNE.index("a sconto sulla settimana")),
+    "liquidità presa prima": ("Grilletto", COLONNE.index("liquidità presa prima")),
+    "liquidità ripresa fuori dal CRT": ("Grilletto", COLONNE.index("liquidità presa sopra il CRT")),
 }
 
 
@@ -168,7 +170,8 @@ LAVORO: dict[str, str] = {
                   "Guardo mensile → giornaliero, settimanale → 4 ore, giornaliero → 1 ora, 4 ore → 15 minuti, "
                   "e dico se il CRT sta dentro uno più grande.",
     "Grilletto": "Aspetto il Model#1 di Romeo: dopo il turtle soup, la chiusura oltre la sua apertura. "
-                 "Se lo stop viene preso posso riprovare, fino a tre volte sullo stesso CRT.",
+                 "Se lo stop viene preso posso riprovare, fino a tre volte sullo stesso CRT. "
+                 "E dico se la manipolazione ha preso la liquidità lasciata prima: la terza gamba del suo manuale.",
     "Livelli": "Metto lo stop oltre l'estremo, il primo obiettivo a metà del range, il secondo dall'altra parte.",
     "Key level": "Dico se il prezzo è arrivato su una zona del timeframe sopra: un massimo, un rejection block, un FVG.",
     "Orario": "Dico a che ora di New York scatta l'ingresso. Le ore di Romeo sono 1–5 (Londra) e 8–11 (New York).",
@@ -232,7 +235,7 @@ def _virgola(x: float, segno: bool = False) -> str:
 # --- Il diario dal vivo ---
 
 BINARIE: dict[str, tuple[int, ...]] = {
-    "Cacciatore": (16, 17, 21, 24), "Grilletto": (14, 15), "Key level": (0, 1, 2, 3, 4),
+    "Cacciatore": (16, 17, 21, 24), "Grilletto": (14, 15, 26, 27), "Key level": (0, 1, 2, 3, 4),
     "Orario": (5, 6, 7, 8, 9, 22, 23), "Bias": (10, 11, 12, 13, 25),
 }
 
@@ -252,7 +255,10 @@ def firma(nome: str, x) -> str:
         return ("4 ore → 15 minuti" if si(21) else "giornaliero → 1 ora" if si(17)
                 else "settimanale → 4 ore" if si(16) else "mensile → giornaliero")
     if nome == "Grilletto":
-        return "terzo colpo" if si(15) else ("secondo colpo" if si(14) else "primo colpo")
+        colpo = "terzo colpo" if si(15) else ("secondo colpo" if si(14) else "primo colpo")
+        liquidita = ("liquidità ripresa fuori dal CRT" if si(27) else "liquidità presa prima" if si(26)
+                     else "senza liquidità presa")
+        return f"{colpo}, {liquidita}"
     if nome == "Key level":
         return ", ".join(v for c, v in _KEY.items() if si(c)) or "nessuna zona"
     if nome == "Orario":

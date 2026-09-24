@@ -41,7 +41,7 @@ agenti o numeri del piano, **mai lo strumento** (il Capo non deve imparare
 | Conferma key level | massimo preso, arriva al massimo, rejection block, FVG (0/1), e "non so" |
 | Conferma orario | la fascia di 4 ore di New York dello scatto (17, 21, 1, 5, 9, 13), come 5 colonne 0/1 |
 | Contesto: bias | candela del range a favore / contro; timeframe sopra a favore / contro |
-| Grilletto | secondo o terzo colpo sullo stesso CRT |
+| Grilletto | secondo o terzo colpo sullo stesso CRT; liquidità presa prima della manipolazione, e ripresa fuori dal CRT (dal 25/09/2026) |
 | Cacciatore | la coppia di timeframe (settimanale → 4 ore, giornaliero → 1 ora) |
 | Livelli | RR1, RR2, e lo stop in proporzione all'ampiezza del CRT |
 
@@ -109,10 +109,11 @@ come prima.
   sono i minuti). Per ogni entrata di Romeo, il candidato dello stesso
   strumento e verso, con l'ingresso nella sua finestra e il prezzo più
   vicino al suo (`nvm/prova/romeo.confronta`), vale 1; tutti gli altri 0.
-- **Cosa guarda.** Solo le quattro risposte alla Romeo
-  (`spec/conferme.md`). Con tutte le colonne del Capo, provata fuori
-  campione per trimestre, riconosceva le sue scelte come il caso (AUC
-  0,51); con le quattro risposte 0,59 (`registro/tentativi.md`).
+- **Cosa guarda.** Solo le quattro risposte alla Romeo e le due del
+  Grilletto sulla liquidità presa (`spec/conferme.md`). Con tutte le
+  colonne del Capo, provata fuori campione per trimestre, riconosceva le
+  sue scelte come il caso (AUC 0,51); con le quattro risposte 0,59–0,60, con
+  la liquidità 0,62 (`registro/tentativi.md`).
 - **Penalità L2: 10**, scelta fra 1, 10 e 100 allenando su tre trimestri
   del 2023 e provando sul quarto.
 - **Come arriva Romeo nelle decisioni: la fiducia in Romeo.** L'utente,

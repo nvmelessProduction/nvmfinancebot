@@ -17,7 +17,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.conferme import AllaRomeo, Contesto, KeyLevel, Orario
+from nvm.agenti.conferme import AllaRomeo, Contesto, KeyLevel, Liquidita, Orario
 from nvm.prova.base import Risultato
 from nvm.prova.campo import Uscita
 from nvm.tempo import TF
@@ -35,6 +35,8 @@ COLONNE = (
     "coppia H4-M15",
     # Le risposte alla Romeo (`spec/conferme.md`), aggiunte il 24/09/2026.
     "ora di Romeo: Londra", "ora di Romeo: New York", "dentro un CRT più grande", "a sconto sulla settimana",
+    # La liquidita' presa dalla manipolazione (la terza gamba di Romeo), aggiunta il 25/09/2026.
+    "liquidità presa prima", "liquidità presa sopra il CRT",
 )
 # Penalita' L2, fissata nella scheda.
 PENALITA = 1.0
@@ -45,10 +47,11 @@ PENALITA = 1.0
 EMIVITA_ANNI = 1.0
 # La somiglianza a Romeo (`spec/capo.md`): la penalita' della sua regressione.
 PENALITA_ROMEO = 10.0
-# Le colonne che guarda la somiglianza a Romeo: solo le risposte alla Romeo.
-# Con tutte le colonne, fuori campione, riconosceva le sue scelte come il caso
-# (registro/tentativi.md, 24/09/2026).
-COLONNE_ROMEO = tuple(range(22, 26))
+# Le colonne che guarda la somiglianza a Romeo: solo le risposte alla Romeo e
+# la liquidita' presa. Con tutte le colonne, fuori campione, riconosceva le sue
+# scelte come il caso (registro/tentativi.md, 24/09/2026); con la liquidita'
+# le riconosce meglio (25/09/2026).
+COLONNE_ROMEO = tuple(range(22, 28))
 
 
 def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI) -> np.ndarray:
@@ -58,7 +61,7 @@ def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI)
 
 
 def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contesto],
-         ar: Optional[AllaRomeo] = None) -> np.ndarray:
+         ar: Optional[AllaRomeo] = None, liq: Optional[Liquidita] = None) -> np.ndarray:
     """Le colonne del Capo per un'operazione, nell'ordine di `COLONNE`."""
     x = np.zeros(len(COLONNE))
     if kl is None:
@@ -81,6 +84,8 @@ def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contes
     x[21] = r.alto_tf is TF.H4
     if ar is not None:
         x[22:26] = ar.londra, ar.new_york, ar.annidato, bool(ar.sconto)
+    if liq is not None:
+        x[26:28] = liq.presa, liq.sopra_il_crt
     return x
 
 

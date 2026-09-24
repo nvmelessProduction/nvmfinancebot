@@ -297,7 +297,7 @@ def test_il_diario_parla_come_una_persona():
     assert firma("Orario", x) == "09–13 NY"
     assert firma("Key level", x) == "FVG"
     assert firma("Livelli", x) == "primo target fra 2 e 3 R"
-    assert firma("Grilletto", x) == "primo colpo"
+    assert firma("Grilletto", x) == "primo colpo, senza liquidità presa"
 
 
 def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch):
