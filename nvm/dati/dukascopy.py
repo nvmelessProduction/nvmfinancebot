@@ -215,6 +215,41 @@ def scarica_ore_mese(
     return percorso
 
 
+def completa_con_ask(scaricatore: Scaricatore, radice: Path, strumento: str, anno: int, mese: int) -> Optional[Path]:
+    """Un mese col solo bid (`ore_bid`) diventa esatto (`ore`) scaricando solo l'ask.
+
+    Il bid del vecchio archivio e' il BID di Dukascopy (verificato), quindi
+    basta meta' delle richieste. Se all'ask manca anche una sola ora del bid,
+    il mese non si salva: meglio stimato che sbagliato.
+    """
+    esatto = file_del_mese(radice / "ore", strumento, anno, mese)
+    if esatto.exists():
+        return esatto
+    solo_bid = file_del_mese(radice / "ore_bid", strumento, anno, mese)
+    if not solo_bid.exists():
+        return None
+    bid = Minuti.carica(solo_bid)
+    tabella = leggi_bi5(scaricatore.file_ore(strumento, anno, mese, "ASK"))
+    inizio = int(datetime(anno, mese, 1, tzinfo=timezone.utc).timestamp())
+    istanti = inizio + tabella[:, 0].astype(np.int64)
+    posizioni = np.searchsorted(istanti, bid.t)
+    if not len(istanti) or np.any(posizioni >= len(istanti)) or np.any(istanti[np.minimum(posizioni, len(istanti) - 1)] != bid.t):
+        return None
+    ask = tabella[posizioni]
+    Minuti(
+        strumento, bid.t, bid.bid, ask[:, 1:5].astype(np.int32),
+        bid.volume_bid, ask[:, 5].astype(np.float32), 3600,
+    ).salva(esatto)
+    return esatto
+
+
+def mesi_a_campione(dal: str, al: str) -> list[tuple[int, int]]:
+    """I mesi in un ordine che copre subito tutti gli anni: prima ogni gennaio,
+    poi ogni luglio, poi aprile e ottobre, poi il resto."""
+    priorita = {1: 0, 7: 1, 4: 2, 10: 2}
+    return sorted(mesi(dal, al), key=lambda am: (priorita.get(am[1], 3), am[1], am[0]))
+
+
 def mesi(dal: str, al: str) -> list[tuple[int, int]]:
     """I mesi da 'AAAA-MM' a 'AAAA-MM' compresi."""
     a0, m0 = map(int, dal.split("-"))

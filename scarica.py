@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from nvm.dati.controlli import controlla
-from nvm.dati.dukascopy import mesi, scarica
+from nvm.dati.dukascopy import Scaricatore, completa_con_ask, mesi, mesi_a_campione, scarica
 from nvm.dati.minuti import PUNTO, Minuti, file_del_mese
 
 RADICE = Path(__file__).resolve().parent
@@ -32,6 +32,8 @@ def main() -> None:
     parser.add_argument("--al", default=f"{oggi:%Y-%m}", help="ultimo mese, AAAA-MM")
     parser.add_argument("--ore", action="store_true", help="scarica le ore invece dei minuti")
     parser.add_argument("--pausa", type=float, default=0.5, help="secondi fra una richiesta e l'altra")
+    parser.add_argument("--solo-ask", action="store_true",
+                        help="completa con l'ask i mesi che hanno gia' il bid in ore_bid (meta' delle richieste)")
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
     parser.add_argument("--rapporto", default=str(RADICE / "dati" / "rapporto-dati.txt"))
     argomenti = parser.parse_args()
@@ -42,6 +44,14 @@ def main() -> None:
         parser.error(f"strumenti sconosciuti: {', '.join(sconosciuti)}")
 
     radice = Path(argomenti.cartella)
+    if argomenti.solo_ask:
+        scaricatore = Scaricatore(radice / "cache", pausa=argomenti.pausa)
+        for anno, mese in mesi_a_campione(argomenti.dal, argomenti.al):
+            for strumento in strumenti:
+                fatto = completa_con_ask(scaricatore, radice, strumento, anno, mese)
+                print(f"{strumento} {anno}-{mese:02d}: {'esatto' if fatto else 'resta stimato'}", flush=True)
+        print(f"fatto: {scaricatore.richieste} richieste a Dukascopy")
+        return
     unita = "ore" if argomenti.ore else "minuti"
     scarica(strumenti, argomenti.dal, argomenti.al, radice / unita, radice / "cache", ore=argomenti.ore, pausa=argomenti.pausa)
 

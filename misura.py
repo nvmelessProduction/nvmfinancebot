@@ -18,6 +18,7 @@ from pathlib import Path
 from nvm.agenti.cacciatore import Variante
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, carica_periodo
+from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import opera, riassumi
 from nvm.tempo import TF
 
@@ -58,14 +59,18 @@ def main() -> None:
         unita = "minuti" if basso is TF.M15 else "ore"
         risultati = []
         for strumento in a.strumenti.split(","):
-            base = carica_periodo(radice / unita, strumento, dal - MARGINE, al + MARGINE)
+            if unita == "ore":
+                base, conti = carica_ore(radice, strumento, dal - MARGINE, al + MARGINE)
+                nota = f" [mesi con ask vero {conti.esatti}, stimato {conti.stimati}, mancanti {conti.mancanti}]"
+            else:
+                base, nota = carica_periodo(radice / unita, strumento, dal - MARGINE, al + MARGINE), ""
             if not len(base):
                 print(f"{nome} {strumento}: niente dati in {radice / unita}")
                 continue
             alte = costruisci(base, alto).chiuse_entro(int(base.t[-1]) + base.passo)
             basse = costruisci(base, basso).chiuse_entro(int(base.t[-1]) + base.passo)
             r = opera(alte, basse, dal, al, variante)
-            print(f"{nome} {strumento}: {riassumi(r).testo()}")
+            print(f"{nome} {strumento}{nota}: {riassumi(r).testo()}")
             risultati += r
         print(f"== {nome}, tutti gli strumenti: {riassumi(risultati).testo()}\n")
         tutti += risultati
