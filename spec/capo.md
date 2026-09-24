@@ -122,3 +122,12 @@ allenamento.
 - **Come si giudica.** Sul periodo di studio solo fuori campione (tre
   trimestri per allenare, il quarto per provare); il giudizio vero è una
   volta sola sul 2024–2026, nella Fase G.
+
+**Correzione del 24/09/2026 (tentativo nuovo, `registro/tentativi.md`).**
+Provata fuori campione per trimestre, la somiglianza su tutte le colonne
+del Capo riconosceva le scelte di Romeo come il caso (AUC 0,51): con 35
+esempi, 26 colonne sono troppe. Sulle sole quattro risposte alla Romeo
+arriva a 0,59. Da qui la somiglianza guarda **solo le risposte alla
+Romeo**. Con quattro risposte sì/no molte operazioni hanno la stessa
+somiglianza: la soglia diventa la più bassa che ne fa prendere **al
+massimo** 3 per ognuna di Romeo. Tutto il resto della regola resta com'era.

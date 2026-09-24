@@ -104,8 +104,9 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   ha ora una terza regressione, la **somiglianza a Romeo**, allenata sulle
   sue entrate del 2023: entra solo se il guadagno atteso è sopra zero e la
   somiglianza supera una soglia che dà 3 operazioni per ognuna di Romeo
-  (`spec/capo.md`). Fuori campione: 2 operazioni per ognuna di Romeo
-  (prima 8,4), ma ne ritrova 1 su 11 (prima 4). **Ha imparato quanto è
+  (`spec/capo.md`). Guarda solo le risposte alla Romeo: con tutte le
+  colonne, fuori campione, era come tirare a sorte. Fuori campione: 1,7
+  operazioni per ognuna di Romeo (prima 8,4), ma ne ritrova 1 su 11 (prima 4). **Ha imparato quanto è
   selettivo, non ancora cosa sceglie.** Nel bot dal vivo dal 24/09: si
   riallena ogni sabato e ogni volta che arrivano esempi nuovi (minuti,
   catalogo); l'équipe dice per ogni decisione quanto somiglia a Romeo.

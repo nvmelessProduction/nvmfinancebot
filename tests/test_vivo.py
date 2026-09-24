@@ -57,6 +57,9 @@ class CapoFinto:
     def somiglianza(self, x):
         return np.ones(len(np.atleast_2d(x)))
 
+    def entra(self, x, rr1, rr2, costi):
+        return self.valore_atteso(x, rr1, rr2, costi) > 0
+
 
 # --- impostazioni e Telegram ---
 
