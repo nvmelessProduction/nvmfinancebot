@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Mapping, Optional, Sequence
+from typing import Collection, Mapping, Optional, Sequence
 
 from core.definizioni import (
     Bias,
@@ -177,7 +177,10 @@ def bias_comando_dxy(storico_dxy: Storico, istante: datetime) -> Bias:
 # ===========================================================================
 
 
-def key_level_correnti(storico: Storico, istante: datetime) -> list[KeyLevel]:
+def key_level_correnti(
+    storico: Storico, istante: datetime,
+    solo_tf: Optional[Collection[TF]] = None,
+) -> list[KeyLevel]:
     """DEF-36 e DEF-37 — I key level attivi, con l'assorbimento applicato.
 
     Calcolati su `C1` di ciascun timeframe. Quando due timeframe diversi
@@ -189,9 +192,25 @@ def key_level_correnti(storico: Storico, istante: datetime) -> list[KeyLevel]:
     `TF_H4` (REV-48): senza key level su `TF_H4` la riga `TF_H1` di SETUP-05
     non e' soddisfabile e `TF_H1` non puo' essere il timeframe di trigger che
     PRIN-10 dice che e'.
+
+    ## `solo_tf`, e perche' restringere non cambia il risultato
+
+    Chi cerca un CRT su un timeframe preciso sa gia' che i key level dei
+    timeframe non superiori non possono produrne alcuno (`SETUP-02`, via
+    `timeframe_crt_ammesso`): calcolarli e' lavoro buttato. Sull'archivio di
+    vent'anni non e' un dettaglio -- `TF_H1` sono 129.000 candele, e tagliarle
+    ad ogni barra costava piu' di tutto il resto messo insieme.
+
+    Restringere e' **sicuro** perche' l'assorbimento tiene sempre il
+    timeframe piu' ALTO: un livello alto non puo' essere tolto da uno basso,
+    quindi il risultato ristretto e' esattamente il risultato pieno
+    limitato a quei timeframe. Chi chiama non riscrive la regola: la ricava
+    da `timeframe_crt_ammesso` con `tf_key_level_utili`.
     """
+    scelti = TF_KEY_LEVEL if solo_tf is None else [
+        tf for tf in TF_KEY_LEVEL if tf in solo_tf]
     grezzi: list[KeyLevel] = []
-    for tf in TF_KEY_LEVEL:
+    for tf in scelti:
         visibili = candele_visibili(storico.get(tf, ()), istante)
         if len(visibili) < 2:
             continue                              # serve C1
@@ -199,15 +218,20 @@ def key_level_correnti(storico: Storico, istante: datetime) -> list[KeyLevel]:
     return assorbi_key_level(grezzi)
 
 
-def key_level_presi(storico: Storico, istante: datetime) -> list[KeyLevel]:
+def key_level_presi(
+    storico: Storico, istante: datetime,
+    solo_tf: Optional[Collection[TF]] = None,
+) -> list[KeyLevel]:
     """DEF-38 — I key level presi dall'ultima candela chiusa del loro timeframe.
 
     La presa si conferma a candela chiusa, mai sul prezzo scambiato (DEF-45):
     uno sfioramento intraday rientrato prima della chiusura non abilita alcun
     setup.
+
+    `solo_tf` restringe i timeframe da guardare: vedi `key_level_correnti`.
     """
     presi: list[KeyLevel] = []
-    for livello in key_level_correnti(storico, istante):
+    for livello in key_level_correnti(storico, istante, solo_tf):
         visibili = candele_visibili(storico.get(livello.tf, ()), istante)
         if not visibili:
             continue

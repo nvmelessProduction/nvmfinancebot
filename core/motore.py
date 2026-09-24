@@ -166,13 +166,45 @@ def _ordinata(candele: Sequence[Candela]) -> bool:
     `sorted`. Serve perche' la barriera non puo' dipendere da una promessa:
     se un giorno arrivasse una serie disordinata, il percorso vecchio la
     gestisce comunque.
+
+    ## Perche' la risposta si ricorda
+
+    `candele_visibili` svuota la sua memoria ad ogni cambio di istante, e
+    questa scansione ripartiva da capo: misurata con `cProfile` su cento
+    valutazioni, **1,39 secondi su 2,10** -- due terzi del tempo di
+    `key_level_presi` -- spesi a riscoprire che l'archivio e' ordinato come
+    lo era un millisecondo prima.
+
+    L'ordine di una serie non dipende dall'istante: dipende dalla serie. La
+    memoria e' quindi su `(id, lunghezza)` e sopravvive al cambio di istante.
+    La lunghezza sta nella chiave perche' l'archivio cresce in coda: una
+    serie allungata e' una serie nuova, e va riesaminata. Il riferimento alla
+    serie va tenuto, o l'oggetto potrebbe essere liberato e un altro riusare
+    lo stesso `id()`.
     """
+    chiave = (id(candele), len(candele))
+    ricordo = _MEMORIA_ORDINE.get(chiave)
+    if ricordo is not None:
+        return ricordo[1]
+
     precedente = None
+    esito = True
     for c in candele:
         if precedente is not None and c.orario < precedente:
-            return False
+            esito = False
+            break
         precedente = c.orario
-    return True
+    if len(_MEMORIA_ORDINE) > _MEMORIA_ORDINE_MASSIMA:
+        _MEMORIA_ORDINE.clear()
+    _MEMORIA_ORDINE[chiave] = (candele, esito)
+    return esito
+
+
+# Le serie di cui si sa gia' se sono ordinate. Non si svuota al cambio di
+# istante -- l'ordine non dipende dall'istante -- ma ha un tetto, perche'
+# ogni voce tiene in vita la serie a cui si riferisce.
+_MEMORIA_ORDINE: dict = {}
+_MEMORIA_ORDINE_MASSIMA: int = 512
 
 
 @dataclass(frozen=True)

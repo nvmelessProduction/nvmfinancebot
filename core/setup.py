@@ -39,6 +39,7 @@ from core.parametri import (
     DIREZIONE_DA_BIAS_DXY,
     MAX_POSIZIONI_PER_STRUMENTO,
     TF,
+    TF_KEY_LEVEL,
     TF_SOLO_GAP,
     UNIVERSO,
     gerarchia,
@@ -137,6 +138,23 @@ def timeframe_crt_ammesso(
     if tf_gap is not None and _piu_alto(tf_crt, tf_gap):
         return False
     return True
+
+
+def tf_key_level_utili(tf_crt: TF) -> tuple[TF, ...]:
+    """Quali key level possono produrre un CRT su questo timeframe.
+
+    Non e' una seconda tabella: e' `timeframe_crt_ammesso` interrogata su
+    tutti i timeframe di key level. Le due non possono divergere perche' sono
+    la stessa funzione.
+
+    Serve a chi cerca CRT su una coppia sola -- il campo di prova della
+    Fase 1 -- per non far calcolare a `key_level_presi` livelli che
+    `cerca_crt` scartera' comunque. Su vent'anni di archivio quel lavoro
+    buttato costava piu' di tutto il resto: `TF_H1` sono 129.000 candele da
+    ritagliare ad ogni barra.
+    """
+    return tuple(tf for tf in TF_KEY_LEVEL
+                 if timeframe_crt_ammesso(tf_crt, tf))
 
 
 # ===========================================================================
