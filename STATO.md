@@ -28,8 +28,10 @@ file. Il piano completo è in `PIANO.md`.
   Romeo, "Elements of a high probability trade setup": key level del
   timeframe alto, ora della manipolazione, massimo prima della
   manipolazione; *"ignore the fvgs, obs, brks"*.
-- **Varianti dichiarate:** 2 su 3. "Chiusura dentro" per il Cacciatore,
-  "stop stretto" per Livelli.
+- **Varianti dichiarate:** 3 su 3, e non se ne aggiungono altre. "Chiusura
+  dentro" per il Cacciatore, "stop stretto" per Livelli, "un gradino sotto"
+  per il Grilletto (scritta il 24/09 prima di misurarla,
+  `spec/grilletto.md`).
 - **Già pronto per la Fase C:** il codice del Cacciatore
   (`nvm/agenti/cacciatore.py`), con la variante dichiarata e le prove sugli
   schemi di Romeo, compresa quella che controlla che non sbirci il futuro.

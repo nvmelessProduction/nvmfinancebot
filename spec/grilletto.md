@@ -48,6 +48,50 @@ Non guarda key level, orari o SMT: sono Conferme e Contesto.
    "kiss of death" di Romeo ("there's always one last turtle soup"). Nel
    CASO-004 l'operazione di Romeo è proprio il secondo Model#1.
 
+## La variante dichiarata "un gradino sotto" **[D]**
+
+Scritta il 24/09/2026, **prima** di misurarla, dopo che la prima prova del
+Capo non è passata (`registro/tentativi.md`). È la **terza e ultima**
+variante permessa dal piano (`PIANO.md`, Fase F): dopo questa non se ne
+aggiungono altre.
+
+**La regola.** Il Model#1 si cerca sul timeframe d'ingresso della coppia
+di Romeo di un gradino più in basso, e da lì fa tutto il resto della
+catena: il Cacciatore si arma sulla prima candela di quel timeframe oltre
+il range, il Grilletto cerca lì turtle soup e scatto, e l'operazione si
+simula su quelle candele.
+
+| Coppia del manuale | Un gradino sotto |
+|---|---|
+| mensile → giornaliero | mensile → 4 ore |
+| settimanale → 4 ore | settimanale → 1 ora |
+| giornaliero → 1 ora | giornaliero → 15 minuti |
+
+Range, candela 2 e 3, rottura, target e stop restano quelli del manuale:
+cambia solo il timeframe su cui si guarda l'ingresso.
+
+**Perché.** Nei casi verificati (CASO-004…008) Romeo entra più in alto del
+bot e con stop di pochi pip, cioè su un timeframe più basso di quello della
+coppia. Le fonti: "the secret is to look at how the lower timeframe reacts
+at higher time frame pd arrays" (msg 689); "every HTF key level will give
+you three LTF entries: 1- Turtle soup…" (msg 4973); "if you're a beginner,
+stick to the higher timeframe… then play with the lower timeframes"
+(msg 3826).
+
+**Cosa ci si aspetta, scritto prima.** Ingresso più vicino all'estremo,
+quindi stop più corto in prezzo, RR più alti, e meno operazioni vincenti.
+Se il vantaggio di Romeo sta nel *come* si entra, la base con questa
+variante deve andare meglio della base del manuale sulle stesse coppie.
+
+**Come si misura.**
+
+1. Prima la base, coppia per coppia, contro la base del manuale sulle
+   stesse coppie e negli stessi anni (2006–2023). Mensile e settimanale si
+   misurano con le ore; il giornaliero aspetta i minuti.
+2. Poi il Capo, con quattro configurazioni nuove (le 1–4 di `spec/capo.md`
+   con l'ingresso un gradino sotto). I tentativi della Fase F diventano
+   **K = 8**: intervallo al 99,375%.
+
 ## Cosa risponde
 
 - **Nessuno scatto**, oppure **scatto**: l'istante, il prezzo di chiusura
