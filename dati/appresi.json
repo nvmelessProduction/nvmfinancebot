@@ -1,0 +1,57 @@
+{
+  "scritto": "2026-09-24T16:28:28.653339+00:00",
+  "appresi": {
+    "sentinella.pareggio": {
+      "competenza": "sentinella.pareggio",
+      "valore": 0.5,
+      "campioni": 12713,
+      "guadagno": 0.001105278061826477,
+      "intervallo": [
+        -0.006617422107968267,
+        0.009873523935669471
+      ],
+      "stabilita": 0.8571428571428571,
+      "quando": "2026-09-24T18:28:20+02:00",
+      "note": "scelte per anno: 0.5, 0.75, 0.75, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5"
+    },
+    "sentinella.parziale": {
+      "competenza": "sentinella.parziale",
+      "valore": 0.0,
+      "campioni": 12713,
+      "guadagno": 0.0011010147093526317,
+      "intervallo": [
+        -0.012434712192256435,
+        0.014526904836922958
+      ],
+      "stabilita": 0.8571428571428571,
+      "quando": "2026-09-24T18:28:23+02:00",
+      "note": "scelte per anno: 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0"
+    },
+    "livelli.stop": {
+      "competenza": "livelli.stop",
+      "valore": 1.0,
+      "campioni": 12713,
+      "guadagno": -0.002306402894674741,
+      "intervallo": [
+        -0.017906300625662497,
+        0.01335363660596008
+      ],
+      "stabilita": 0.0,
+      "quando": "2026-09-24T18:28:26+02:00",
+      "note": "scelte per anno: 2, 2, 2, 1.25, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1"
+    },
+    "livelli.tp1": {
+      "competenza": "livelli.tp1",
+      "valore": 0.25,
+      "campioni": 11573,
+      "guadagno": -0.0020343558282208594,
+      "intervallo": [
+        -0.02176662814872898,
+        0.015818905057809488
+      ],
+      "stabilita": 1.0,
+      "quando": "2026-09-24T18:28:28+02:00",
+      "note": "scelte per anno: 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25"
+    }
+  }
+}
