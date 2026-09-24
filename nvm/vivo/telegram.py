@@ -8,6 +8,7 @@ parte non ferma mai il bot: si riprova qualche volta, poi si va avanti.
 from __future__ import annotations
 
 import json
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -16,6 +17,19 @@ from typing import Callable, Optional
 from nvm.vivo.ambiente import Impostazioni
 
 URL = "https://api.telegram.org/bot{token}/sendMessage"
+
+
+def contesto() -> ssl.SSLContext:
+    """Il controllo dei certificati, sempre acceso, con l'elenco di Windows piu'
+    quello di `certifi`: su una VPS appena installata a Windows puo' mancare il
+    certificato radice di Telegram (e' successo il 24/09/2026)."""
+    c = ssl.create_default_context()
+    try:
+        import certifi
+        c.load_verify_locations(certifi.where())
+    except ImportError:
+        pass
+    return c
 LUNGHEZZA = 4000  # Telegram ne accetta 4096
 
 
@@ -68,7 +82,7 @@ class Telegram:
             URL.format(token=self._imp.token), data=dati, headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(richiesta, timeout=20) as r:
+            with urllib.request.urlopen(richiesta, timeout=20, context=contesto()) as r:
                 r.read()
         except urllib.error.HTTPError as errore:
             # Il messaggio d'errore di urllib contiene l'indirizzo, e l'indirizzo il token.

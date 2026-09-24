@@ -77,6 +77,13 @@ def test_con_token_ogni_canale_va_alle_sue_chat():
     assert mandati == [("op", "a"), ("eq1", "b"), ("eq2", "b")]
 
 
+def test_i_certificati_si_controllano_sempre():
+    import ssl
+    from nvm.vivo.telegram import contesto
+    c = contesto()
+    assert c.verify_mode == ssl.CERT_REQUIRED and c.check_hostname
+
+
 # --- MT5: l'ora del server e le orarie ---
 
 def _terminale_con_barre(adesso, scarto=3):
