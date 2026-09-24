@@ -192,6 +192,45 @@ controllare che il bot dal vivo si comporti come aveva previsto lo storico.
 
 ---
 
+## Il cambio del 24/09/2026: il metro è Romeo
+
+Decisione dell'utente, dopo che otto configurazioni del CRT scritto in
+regole non hanno battuto la base (`registro/tentativi.md`):
+
+> "Se lui la usa come strategia e per il suo conto personale funziona,
+> ritengo che questa strategia funzioni. Bisogna capire quando entra e
+> perché. Essendo una strategia al 70% discrezionale entra molto in gioco
+> il fattore umano, ed è per questo che ho avuto l'idea degli agenti che
+> imparano [...]. Il test migliore per validare il bot è se fa le stesse
+> entrate che farebbe Romeo."
+
+Cosa cambia:
+
+1. **Il metro diventa Romeo.** Le entrate che Romeo ha pubblicato (canale
+   Telegram, X) si raccolgono in un catalogo (`casi/entrate-romeo.csv`):
+   strumento, istante, verso, ingresso, stop, target, e da dove viene.
+   Gli agenti e il Capo imparano a **fare le sue scelte**, non solo a
+   indovinare quali operazioni vanno a target.
+2. **Il cancello della Fase F diventa la somiglianza con Romeo.** Sulle
+   entrate che non ha visto durante l'allenamento, il bot deve:
+   - ritrovarne almeno **7 su 10**: stesso strumento, stesso verso, stesso
+     CRT, e ingresso entro metà del rischio di Romeo dal suo prezzo;
+   - non aprire più di **3 operazioni per ognuna di Romeo** nelle stesse
+     settimane (Romeo dice di prenderne 1–2 a settimana).
+   Soglie decise qui **[D]**, prima di misurare.
+3. **I soldi restano sul tavolo.** Il guadagno delle operazioni del bot
+   si misura sempre e si scrive in `STATO.md`, anche quando non decide
+   niente: se il bot copia bene Romeo, deve vedersi anche lì.
+4. **Il periodo chiuso resta chiuso.** Le entrate di Romeo fino al 2023
+   servono per imparare; quelle del 2024–2026 si guardano una volta sola,
+   nella Fase G. Le otto già usate per le definizioni (CASO-001…008) non
+   contano nella verifica.
+5. **Dal vivo solo in demo**, come prima. Il conto reale resta una
+   decisione esplicita dell'utente, dopo la Fase H.
+
+Il piano qui sotto resta valido per tutto il resto (dati, niente
+sbirciate, registro dei tentativi, varianti già dichiarate).
+
 ## 3. Le fasi
 
 Si passa alla fase successiva solo quando `STATO.md` dice che quella attuale
@@ -204,7 +243,7 @@ Si passa alla fase successiva solo quando `STATO.md` dice che quella attuale
 | **C. Cacciatore** | Il codice del Cacciatore, provato sui casi annotati. | trova il 100% dei casi CRT, esattamente lì, e scarta il 100% dei casi "non è un CRT" |
 | **D. La base** | Si prendono tutti i CRT 2006–2023, con i costi veri. È il numero da battere. | il numero è scritto in `STATO.md` |
 | **E. Gli altri agenti** | Uno alla volta: scheda → casi → codice → misura contro la base. | ogni agente ha la sua riga nella tabella di `STATO.md` |
-| **F. Capo e apprendimento** | Il Capo impara di chi fidarsi, gli agenti imparano sullo storico, tutto dietro il cancello. Al massimo 3 varianti, dichiarate prima. La riunione gira sullo storico, e le carriere si vedono già nel canale équipe. | sì o no: la strategia batte la base di almeno 0,10 R per operazione, con i criteri del §2, e regge anche con lo spread × 1,5 |
+| **F. Capo e apprendimento** | Il Capo impara di chi fidarsi, gli agenti imparano sullo storico, tutto dietro il cancello. Al massimo 3 varianti, dichiarate prima. La riunione gira sullo storico, e le carriere si vedono già nel canale équipe. | dal 24/09/2026: il bot ritrova almeno 7 entrate di Romeo su 10 che non ha visto, con al massimo 3 operazioni per ognuna delle sue (vedi "Il cambio del 24/09/2026"). Il confronto con la base si misura e si scrive, ma non decide |
 | **G. Verifica finale** | Si apre il periodo 2024–2026, una volta sola. | conferma o smentita |
 | **H. Dal vivo, in demo** | Esecutore, Sentinella dal vivo, apprendimento dal vivo, canale operativo. Conto demo con la **cifra che useresti davvero**. | almeno 8 settimane con risultati coerenti con la Fase G |
 
