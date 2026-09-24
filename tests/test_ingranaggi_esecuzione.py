@@ -506,7 +506,7 @@ class TestIlBersaglioDeveStareDavanti:
         """
         import inspect
         from core import motore
-        corpo = inspect.getsource(motore.valuta)
+        corpo = inspect.getsource(motore._decidi_sul_candidato)
         assert "verso_ordine = _verso_sul_cfd(" in corpo
         # E l'agente che decide riceve QUEL verso, non `crt.direzione`.
         pezzo = corpo.split("verso_ordine = _verso_sul_cfd(")[1][:400]

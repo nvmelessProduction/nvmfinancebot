@@ -144,7 +144,7 @@ class TestIlModoNonScavalcaIFiltriUniti:
     def test_i_filtri_uniti_passano_solo_dal_giudizio(self):
         import inspect
         from core import motore
-        corpo = inspect.getsource(motore.valuta)
+        corpo = inspect.getsource(motore._decidi_sul_candidato)
         pezzo = corpo[corpo.index("if blocchi and"):]
         pezzo = pezzo[:pezzo.index("blocchi = []")]
         assert "_giudizio_lascia_cadere(" in pezzo
@@ -155,6 +155,10 @@ class TestIlModoNonScavalcaIFiltriUniti:
         """Dove invece il modo basta: bias DXY e conferme di Romeo."""
         import inspect
         from core import motore
-        corpo = inspect.getsource(motore.valuta)
-        assert corpo.count("giudizio_salva(") >= 3      # def + due usi
-        assert "_apri_ogni_crt() or _giudizio_lascia_cadere(" in corpo
+        # `giudizio_salva` nasce in `valuta` e viene passato alla seconda
+        # meta': duplicarlo darebbe due formulazioni della stessa uscita.
+        prima = inspect.getsource(motore.valuta)
+        dopo = inspect.getsource(motore._decidi_sul_candidato)
+        assert "_apri_ogni_crt() or _giudizio_lascia_cadere(" in prima
+        assert (prima + dopo).count("giudizio_salva(") >= 3   # def + due usi
+        assert "giudizio_salva(blocchi_dxy" in dopo

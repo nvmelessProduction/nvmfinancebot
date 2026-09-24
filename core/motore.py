@@ -580,6 +580,33 @@ def _non_operare(
 # ===========================================================================
 
 
+def chiedi_la_size(foto: "Fotografia", crt, livelli):
+    """RISK-01, RISK-02, RISK-03, DEF-47 — quanti lotti.
+
+    Il calcolo lavora sulla scala del FUTURE, dove la distanza e' gia'
+    adimensionale: convertirla sarebbe un giro a vuoto con un arrotondamento
+    in piu'. `_coppia_per_la_size` sceglie la coppia ancora/stop coerente con
+    l'archivio da cui i livelli vengono, perche' quando le candele sono del
+    CFD anche l'ancora deve esserlo.
+
+    `doppio_ingresso` dimezza la size (RISK-04): due ingressi sulla stessa
+    idea non possono rischiare come due idee diverse.
+    """
+    ancora, stop_scala = _coppia_per_la_size(
+        foto, crt.n2.chiusura, livelli.stop_future, livelli.stop)
+    return risk.calcola_size(
+        equity=foto.equity,
+        strumento=foto.strumento,
+        chiusura_n2_future=ancora,
+        stop_future=stop_scala,
+        prezzo_cfd=foto.prezzo_cfd,
+        valore_punto=foto.valore_punto,
+        passo_broker=foto.passo_broker,
+        posizioni_aperte_per_strumento=foto.posizioni_aperte_per_strumento,
+        doppio_ingresso=livelli.da_gap,
+    )
+
+
 @dataclass(frozen=True)
 class Preludio:
     """Cosa si sa prima ancora di cercare un CRT."""
@@ -1553,14 +1580,11 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
             foto.strumento, ["PRIN-99", "ESCL-12"], errore_livelli or "",
             applicate, direzione=crt.direzione, tf_crt=crt.tf)
     applicate.extend(["GEST-02", "GEST-07", "SETUP-14"])
-    da_gap = livelli.da_gap
-    prezzo_ingresso = livelli.prezzo_ingresso
-    stop = livelli.stop
+    # `obiettivo_1` e' l'unico che resta una variabile a se': viene
+    # RIASSEGNATO a None quando il parziale sta alle spalle del prezzo. Gli
+    # altri si leggono da `livelli`, cosi' non esistono due copie dello stesso
+    # numero che possono divergere.
     obiettivo_1 = livelli.obiettivo_1
-    bersaglio = livelli.bersaglio
-    stop_future = livelli.stop_future
-    bersaglio_future = livelli.bersaglio_future
-    rapporto = livelli.rapporto
 
 
     # Da qui in poi ogni astensione dichiara gli stessi cinque campi: verso,
@@ -1581,11 +1605,11 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # l'altra meta' di CRT-13 questo controllo ce l'ha gia', in
     # `ingresso_ltf.controlla`, dove il bersaglio superato scala al lato
     # opposto (CRT-16).
-    if rapporto is None and tp1_alle_spalle(
-            obiettivo_1, prezzo_ingresso, _verso_sul_cfd(foto, crt.direzione)):
+    if livelli.rapporto is None and tp1_alle_spalle(
+            obiettivo_1, livelli.prezzo_ingresso, _verso_sul_cfd(foto, crt.direzione)):
         log.info("%s: TP1 %.5f gia' superato dal prezzo %.5f, nessun "
                  "parziale (GEST-04 non si applica)",
-                 foto.strumento, obiettivo_1, prezzo_ingresso)
+                 foto.strumento, obiettivo_1, livelli.prezzo_ingresso)
         obiettivo_1 = None
 
     # --- 4quater. Lo stop deve stare FUORI dal costo (RISK-03) -----------
@@ -1593,11 +1617,38 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # La stessa regola dell'ingresso armato, sulla strada diretta. Quando
     # stava scritta solo la', questa apriva lo stesso: e' da qui che passano
     # gli ordini senza CRT-13, cioe' la maggioranza.
-    troppo_caro = _spread_troppo_caro(foto.spread, prezzo_ingresso, stop,
+    troppo_caro = _spread_troppo_caro(foto.spread, livelli.prezzo_ingresso, livelli.stop,
                                        foto.costo_commissione)
     if troppo_caro:
         return ferma(["RISK-03"], troppo_caro)
 
+    # Il candidato e' pronto: CRT riconosciuto, conferme interrogate, livelli
+    # calcolati e passati dalle guardie che non dipendono dal contesto. Da qui
+    # in poi si decide SE e QUANTO operarci, ed e' un discorso diverso --
+    # abbastanza da stare in una funzione sua.
+    return _decidi_sul_candidato(
+        foto, crt, tf_trigger, tf_ingresso, contesto, comando, tf_comando,
+        livelli, obiettivo_1, responso_romeo, indipendenti, applicate,
+        ferma, giudizio_salva,
+    )
+
+
+def _decidi_sul_candidato(
+    foto: Fotografia, crt, tf_trigger: TF, tf_ingresso, contesto, comando,
+    tf_comando, livelli, obiettivo_1, responso_romeo: dict,
+    indipendenti: list, applicate: list, ferma, giudizio_salva,
+) -> Decisione:
+    """La seconda meta' di `valuta`: si opera, e con quanto?
+
+    Riceve un candidato gia' costruito -- CRT riconosciuto, conferme
+    interrogate, livelli calcolati e passati dalle guardie che non dipendono
+    dal contesto -- e decide se mandarlo al broker, armarlo per dopo, o
+    lasciarlo cadere.
+
+    `ferma` e `giudizio_salva` arrivano da chi chiama: sono i due modi di
+    dichiarare un'astensione, e duplicarli qui vorrebbe dire due formulazioni
+    della stessa uscita.
+    """
     # --- 4ter. Il filtro DXY, DOPO i livelli (SETUP-19, RISK-05) ---------
     #
     # Sta qui e non prima perche' sotto le quattro ore questa obiezione
@@ -1642,7 +1693,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # La regola vive in `filtri_e_esclusioni`: l'unione dei tre elenchi, dove
     # nessuno dei tre e' normativo da solo.
     blocchi, motivo_filtri = filtri_e_esclusioni(
-        foto, crt, tf_trigger, comando, contesto, rapporto, da_gap,
+        foto, crt, tf_trigger, comando, contesto, livelli.rapporto, livelli.da_gap,
         _apri_ogni_crt())
 
     # Qui NON si passa da `giudizio_salva`: quell'aiutante fa cadere
@@ -1660,26 +1711,14 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
         return ferma(blocchi, motivo_filtri)
 
     # --- 6. Size (RISK-01, RISK-02, RISK-03, DEF-47) ----------------------
-    n2_future = crt.n2.chiusura
-    ancora_size, stop_size = _coppia_per_la_size(foto, n2_future, stop_future, stop)
-    esito_size = risk.calcola_size(
-        equity=foto.equity,
-        strumento=foto.strumento,
-        chiusura_n2_future=ancora_size,
-        stop_future=stop_size,
-        prezzo_cfd=foto.prezzo_cfd,
-        valore_punto=foto.valore_punto,
-        passo_broker=foto.passo_broker,
-        posizioni_aperte_per_strumento=foto.posizioni_aperte_per_strumento,
-        doppio_ingresso=da_gap,
-    )
+    esito_size = chiedi_la_size(foto, crt, livelli)
     applicate.extend(["RISK-01", "RISK-02", "RISK-03", "DEF-47"])
     if esito_size.lotti is None:
         return ferma(["RISK-03"], esito_size.motivo)
 
     # --- 7. Ultima riga di difesa: i divieti permanenti (PREC-05) ---------
     divieti = divieti_permanenti(
-        foto, crt, comando, tf_comando, stop, prezzo_ingresso,
+        foto, crt, comando, tf_comando, livelli.stop, livelli.prezzo_ingresso,
         contesto.posizioni_qui, _apri_ogni_crt(),
     )
     if divieti:
@@ -1728,7 +1767,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # prova da solo. Qui restano solo il verso e la consegna.
     verso_ordine = _verso_sul_cfd(foto, crt.direzione)
     guasto = guardie_sui_livelli(
-        bersaglio, stop, prezzo_ingresso, verso_ordine, crt.tf)
+        livelli.bersaglio, livelli.stop, livelli.prezzo_ingresso, verso_ordine, crt.tf)
     if guasto is not None:
         blocchi_livelli, motivo_livelli = guasto
         return ferma(blocchi_livelli, motivo_livelli)
@@ -1744,7 +1783,7 @@ def valuta(foto: Fotografia, tf_trigger: TF) -> Decisione:
     # ammesso qui e solo qui (ESCL-15 b), come unita' di misura e mai come
     # generatore di segnali. Senza questo campo PA-44 non potrebbe chiudersi
     # coi numeri: resterebbe un punto aperto per sempre, che e' dove stava.
-    rapporto_kl_gap = _rapporto_giud01(foto, crt, bersaglio_future)
+    rapporto_kl_gap = _rapporto_giud01(foto, crt, livelli.bersaglio_future)
     applicate.append("GIUD-01")
 
     # --- 8. Ordine ---------------------------------------------------------
