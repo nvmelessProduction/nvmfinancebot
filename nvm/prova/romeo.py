@@ -51,7 +51,7 @@ TOLLERANZA = {
 ORIZZONTE = 45 * 86400
 # Il bot entra alla chiusura della candela che scatta: la sua entrata conta
 # anche se cade fino a una candela bassa dopo la finestra di Romeo.
-PASSO_BASSO = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400}
+PASSO_BASSO = {TF.M1: 60, TF.M5: 300, TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400}
 # Meta' del rischio di Romeo: la soglia del PIANO.md.
 META_RISCHIO = 0.5
 # Le coppie del bot dal vivo: tre sulle ore, e il 4 ore -> 15 minuti dove ci sono i minuti.
