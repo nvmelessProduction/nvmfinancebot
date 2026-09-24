@@ -22,6 +22,7 @@ Le salvaguardie, qui, possono solo dire di no: nessuna di loro apre niente.
 import hmac
 import threading
 from math import isclose
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
 
@@ -257,6 +258,56 @@ def simbolo_da_eseguire(alert: AlertIn, decisione: Decision) -> Optional[str]:
     if not decisione.simbolo:
         return None
     return simbolo_esecuzione(decisione.simbolo, impostazioni().MT5_SUFFISSO_SIMBOLI)
+
+
+def _manda_il_verbale(
+    alert: AlertIn,
+    decisione: Decision,
+    esito: str,
+    dettaglio: str,
+    id_decisione: Optional[int],
+) -> None:
+    """Il verbale dell'equipe, su Telegram, sul canale suo.
+
+    Va su `TELEGRAM_CHAT_EQUIPE` e non sul canale operativo: li' ci vanno
+    "aperta", "chiusa", "stop colpito", e un verbale da venti righe farebbe
+    perdere proprio l'avviso che richiede di fare qualcosa. Se quel canale non
+    e' configurato non parte niente, e non si ripiega sull'altro.
+
+    Non solleva mai e non fa aspettare nessuno: raccontare una decisione non
+    deve poterla rovinare, ne' rallentare chi sta decidendo su una candela
+    appena chiusa.
+    """
+    try:
+        from core import equipe as eq
+        from core.apprendimento import carica as carica_appresi
+
+        nome = decisione.simbolo or alert.simbolo
+        if decisione.azione == "BUY":
+            titolo = f"🟢 <b>{nome} LONG</b>"
+        elif decisione.azione == "SELL":
+            titolo = f"🔴 <b>{nome} SHORT</b>"
+        else:
+            titolo = f"⬜ <b>{nome}</b> — nessuna operazione"
+        if id_decisione:
+            titolo += f"  ·  #{id_decisione}"
+
+        testo = eq.verbale(
+            titolo=titolo,
+            lettura=decisione.lettura_crt or {"coppia": decisione.tf_crt or alert.tf},
+            responso=decisione.responso_romeo,
+            ingresso=alert.chiusura,
+            stop=decisione.sl,
+            tp1=decisione.tp1,
+            target=decisione.tp,
+            volume=decisione.volume,
+            rischio=decisione.rischio,
+            appresi=carica_appresi(Path("dati/appresi.json")),
+            conclusione=f"{esito} — {dettaglio or decisione.motivo}",
+        )
+        notifier.verbale_appena_possibile(testo)
+    except Exception:
+        log.exception("verbale dell'equipe non composto")
 
 
 def _esegui_decisione(
@@ -865,6 +916,10 @@ def processa_alert(alert: AlertIn) -> dict[str, Any]:
                     f"in archivio: {errore!r}\n"
                     "Stop e target NON sono sorvegliati. Intervieni a mano su MT5."
                 )
+
+        # 6bis. Il verbale dell'equipe, sul SUO canale. Ultimo, e dentro un
+        #       try: raccontare una decisione non deve poterla rovinare.
+        _manda_il_verbale(alert, decisione, esito, dettaglio, id_decisione)
 
     return {
         "ricevuto": True,
