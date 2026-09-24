@@ -20,7 +20,7 @@ di proteggere quello che e' gia' aperto sarebbe un interruttore pericoloso.
 """
 
 import threading
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from core import broker, notifier, storage
 from core.config import impostazioni
@@ -110,6 +110,53 @@ def tp1_toccato(
 
 def _bias(direzione: str) -> Bias:
     return Bias.LONG if direzione.upper() == "BUY" else Bias.SHORT
+
+
+def pareggio_piazzabile(
+    dopo, posizione: Mapping[str, Any], tick: Mapping[str, float],
+    direzione: str,
+) -> tuple[float, Optional[str]]:
+    """Il pareggio di GEST-04 si puo' mettere davvero?
+
+    Restituisce `(stop_da_usare, motivo_del_ripiego)`. Con `motivo` a `None`
+    il pareggio e' piazzabile; altrimenti `stop_da_usare` e' quello VECCHIO,
+    che e' piu' lontano e quindi sempre valido -- e GEST-05 resta soddisfatta
+    perche' lo spostamento semplicemente non avviene.
+
+    Due controlli, e nessuno dei due e' teorico.
+
+    **ESCL-07/08/09**: lo stop si muove una volta sola, a pareggio, e solo
+    dopo TP1. In funzionamento normale passa sempre; se non passasse
+    vorrebbe dire che `applica_tp1` ha prodotto uno stop che le esclusioni
+    vietano.
+
+    **Il pareggio non puo' finire OLTRE il prezzo corrente.**
+    `livello_break_even` e' l'ingresso piu' o meno un buffer, calcolato
+    sull'ingresso e mai confrontato col prezzo di adesso. Se a TP1 il prezzo
+    si e' mosso meno del buffer, quel livello cade dalla parte gia' superata:
+    e' uno stop gia' toccato. Misurato il 2026-09-22 sul ticket 327995073,
+    AUDUSD SELL: prezzo 0,71113, pareggio calcolato 0,71107, cioe' SOTTO. MT5
+    rifiutava con `10016` ma l'archivio se lo scriveva lo stesso, e al giro
+    dopo la sentinella lo trovava toccato e chiudeva il residuo. Nove volte in
+    un'ora e mezza.
+
+    Chi chiama decide cosa farne: senza parziale incassato si puo' rinunciare
+    del tutto, dopo un parziale bisogna comunque registrare qualcosa.
+    """
+    nuovo_stop = dopo.livello_stop
+    vecchio = float(posizione["sl"])
+
+    ammesso, perche = gestione.spostamento_stop_ammesso(dopo, nuovo_stop)
+    if not ammesso:
+        return vecchio, perche
+
+    uscita = prezzo_di_uscita(direzione, tick["bid"], tick["ask"])
+    davanti = (nuovo_stop > uscita if _bias(direzione) is Bias.SHORT
+               else nuovo_stop < uscita)
+    if not davanti:
+        return vecchio, (f"il pareggio a {nuovo_stop} sarebbe gia' oltre il "
+                         f"prezzo {uscita}")
+    return nuovo_stop, None
 
 
 def volume_del_parziale(
@@ -410,70 +457,29 @@ class Sentinella:
         quota = volume_del_parziale(
             volume_iniziale, volume_attuale, float(specifiche["volume_step"]), frazione
         )
+        # Size minima: un quarto di 0,01 lotti non esiste. Il parziale non si
+        # puo' incassare, ma il pareggio si.
         if quota is None:
-            # Size minima: un quarto di 0,01 lotti non esiste, quindi il
-            # parziale non si puo' incassare. Il pareggio pero' SI'.
-            #
-            # Prima qui non si spostava nulla, con la motivazione che "un
-            # break even senza parziale incassato e' un'operazione che le
-            # regole non descrivono". Era un argomento dall'assenza di una
-            # regola, e sceglieva da solo il lato piu' rischioso: la
-            # posizione proseguiva intera con lo stop iniziale, cioe' poteva
-            # ancora perdere tutto dopo aver toccato il bersaglio.
-            #
-            # GEST-04 esiste perche' dopo TP1 non si perda piu'. Quell'intento
-            # lo serve il pareggio, non il parziale: il parziale incassa, il
-            # pareggio protegge. E le esclusioni ESCL-07/08/09 chiedono che lo
-            # stop si muova una volta sola, a pareggio, e solo dopo TP1 — e
-            # TP1 e' stato raggiunto, quindi la precondizione c'e'.
-            #
-            # Le due guardie sono le stesse del ramo col parziale, e per le
-            # stesse ragioni: le esclusioni sullo spostamento, e il divieto di
-            # mettere il pareggio oltre il prezzo corrente (retcode 10016).
-            nuovo_stop = dopo.livello_stop
-            ammesso, perche = gestione.spostamento_stop_ammesso(dopo, nuovo_stop)
-            uscita = prezzo_di_uscita(direzione, tick["bid"], tick["ask"])
-            ancora_davanti = (nuovo_stop > uscita if _bias(direzione) is Bias.SHORT
-                              else nuovo_stop < uscita)
-            if not ammesso or not ancora_davanti:
-                motivo = perche if not ammesso else (
-                    f"il pareggio a {nuovo_stop} sarebbe gia' oltre il prezzo "
-                    f"{uscita}")
-                log.warning(
-                    "TP1 su %s (ticket %s): parziale non eseguibile e nemmeno "
-                    "il pareggio si puo' mettere (%s), lo stop resta a %s",
-                    simbolo, ticket, motivo, posizione["sl"])
-                storage.applica_parziale_tp1(
-                    id_posizione, volume_attuale, float(posizione["sl"])
-                )
-                notifier.invia(
-                    f"TP1 raggiunto su {simbolo} (ticket {ticket}). Il parziale "
-                    f"del 25% non e' eseguibile alla size minima e il pareggio "
-                    f"non si puo' spostare: {motivo}. La posizione resta intera "
-                    f"con lo stop iniziale."
-                )
-                return False
+            return self._solo_pareggio(
+                posizione, tick, dopo, id_posizione, ticket, simbolo,
+                direzione, volume_attuale, volume_iniziale, specifiche)
 
-            storage.applica_parziale_tp1(id_posizione, volume_attuale, nuovo_stop)
-            esito_livelli = broker.modifica_livelli(ticket, stop=nuovo_stop)
-            if not esito_livelli.ok:
-                log.warning("pareggio su %s scritto in archivio ma il broker "
-                            "non ha accettato lo stop nuovo: %s",
-                            ticket, esito_livelli.messaggio)
-            log.info(
-                "TP1 su %s (ticket %s): il 25%% di %s non e' eseguibile al passo "
-                "%s, la posizione prosegue intera ma lo stop va a pareggio %s",
-                simbolo, ticket, volume_iniziale, specifiche["volume_step"],
-                nuovo_stop,
-            )
-            notifier.invia(
-                f"TP1 su {simbolo} {direzione} (ticket {ticket})\n"
-                f"il 25% non e' incassabile alla size minima, la posizione "
-                f"resta intera\n"
-                f"stop portato a pareggio {nuovo_stop}: da qui non si perde piu'"
-            )
-            return True
+        return self._parziale_e_pareggio(
+            posizione, tick, dopo, quota, id_posizione, ticket,
+            simbolo, direzione, volume_attuale)
 
+
+    def _parziale_e_pareggio(
+        self, posizione, tick, dopo, quota: float, id_posizione: int,
+        ticket: int, simbolo: str, direzione: str, volume_attuale: float,
+    ) -> bool:
+        """Incassa il 25% e porta il residuo a pareggio (GEST-04, GEST-07).
+
+        Il pareggio va al BROKER e non solo in archivio: sono due reti, e
+        quella del broker e' l'unica che sopravvive alla morte del bot.
+        Lasciarla allo stop vecchio dopo un parziale vuol dire che, se il
+        processo cade, il residuo e' protetto al livello sbagliato.
+        """
         esito = broker.chiudi_posizione(ticket, volume=quota)
         if not esito.ok:
             log.error("parziale su %s fallito: %s", ticket, esito.messaggio)
@@ -550,6 +556,77 @@ class Sentinella:
             f"restano {residuo} lotti, stop a pareggio {nuovo_stop}"
         )
         return True
+
+    def _solo_pareggio(
+        self, posizione, tick, dopo, id_posizione: int, ticket: int,
+        simbolo: str, direzione: str, volume_attuale: float,
+        volume_iniziale: float, specifiche,
+    ) -> bool:
+        """TP1 raggiunto ma il parziale non e' eseguibile: resta il pareggio.
+
+        Alla size minima un quarto di 0,01 lotti non esiste. Fino al
+        2026-09-23 qui non si toccava nulla e la posizione proseguiva intera
+        con lo stop iniziale -- cioe' poteva ancora perdere tutto DOPO aver
+        raggiunto il bersaglio. Il parziale incassa, il pareggio protegge:
+        sono due cose, e GEST-04 esiste per la seconda.
+        """
+        # Size minima: un quarto di 0,01 lotti non esiste, quindi il
+        # parziale non si puo' incassare. Il pareggio pero' SI'.
+        #
+        # Prima qui non si spostava nulla, con la motivazione che "un
+        # break even senza parziale incassato e' un'operazione che le
+        # regole non descrivono". Era un argomento dall'assenza di una
+        # regola, e sceglieva da solo il lato piu' rischioso: la
+        # posizione proseguiva intera con lo stop iniziale, cioe' poteva
+        # ancora perdere tutto dopo aver toccato il bersaglio.
+        #
+        # GEST-04 esiste perche' dopo TP1 non si perda piu'. Quell'intento
+        # lo serve il pareggio, non il parziale: il parziale incassa, il
+        # pareggio protegge. E le esclusioni ESCL-07/08/09 chiedono che lo
+        # stop si muova una volta sola, a pareggio, e solo dopo TP1 — e
+        # TP1 e' stato raggiunto, quindi la precondizione c'e'.
+        #
+        # Le due guardie sono le stesse del ramo col parziale, e per le
+        # stesse ragioni: le esclusioni sullo spostamento, e il divieto di
+        # mettere il pareggio oltre il prezzo corrente (retcode 10016).
+        nuovo_stop, motivo = pareggio_piazzabile(
+            dopo, posizione, tick, direzione)
+        if motivo is not None:
+            log.warning(
+                "TP1 su %s (ticket %s): parziale non eseguibile e nemmeno "
+                "il pareggio si puo' mettere (%s), lo stop resta a %s",
+                simbolo, ticket, motivo, posizione["sl"])
+            storage.applica_parziale_tp1(
+                id_posizione, volume_attuale, float(posizione["sl"])
+            )
+            notifier.invia(
+                f"TP1 raggiunto su {simbolo} (ticket {ticket}). Il parziale "
+                f"del 25% non e' eseguibile alla size minima e il pareggio "
+                f"non si puo' spostare: {motivo}. La posizione resta intera "
+                f"con lo stop iniziale."
+            )
+            return False
+
+        storage.applica_parziale_tp1(id_posizione, volume_attuale, nuovo_stop)
+        esito_livelli = broker.modifica_livelli(ticket, stop=nuovo_stop)
+        if not esito_livelli.ok:
+            log.warning("pareggio su %s scritto in archivio ma il broker "
+                        "non ha accettato lo stop nuovo: %s",
+                        ticket, esito_livelli.messaggio)
+        log.info(
+            "TP1 su %s (ticket %s): il 25%% di %s non e' eseguibile al passo "
+            "%s, la posizione prosegue intera ma lo stop va a pareggio %s",
+            simbolo, ticket, volume_iniziale, specifiche["volume_step"],
+            nuovo_stop,
+        )
+        notifier.invia(
+            f"TP1 su {simbolo} {direzione} (ticket {ticket})\n"
+            f"il 25% non e' incassabile alla size minima, la posizione "
+            f"resta intera\n"
+            f"stop portato a pareggio {nuovo_stop}: da qui non si perde piu'"
+        )
+        return True
+
 
     def _segnala_orfane(
         self,

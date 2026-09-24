@@ -712,10 +712,10 @@ class TestIlPareggioNonDipendeDalParziale:
     def test_il_ramo_senza_parziale_porta_a_pareggio(self):
         import inspect
         from core import sentinella
-        corpo = inspect.getsource(sentinella)
-        ramo = corpo[corpo.index("if quota is None:"):]
-        ramo = ramo[:ramo.index("esito = broker.chiudi_posizione")]
-        assert "nuovo_stop = dopo.livello_stop" in ramo, (
+        # Il ramo e' un metodo suo da quando `_parziale_a_tp1` e' stata
+        # spezzata: si legge li', non piu' cercando due ancore nel sorgente.
+        ramo = inspect.getsource(sentinella.Sentinella._solo_pareggio)
+        assert "pareggio_piazzabile(" in ramo, (
             "il ramo senza parziale non calcola piu' il pareggio")
         assert "broker.modifica_livelli(ticket, stop=nuovo_stop)" in ramo, (
             "il pareggio non arriva al broker: se il bot muore, il residuo "
@@ -725,14 +725,20 @@ class TestIlPareggioNonDipendeDalParziale:
         """Spostare a pareggio non puo' saltare i controlli del ramo buono."""
         import inspect
         from core import sentinella
-        corpo = inspect.getsource(sentinella)
-        ramo = corpo[corpo.index("if quota is None:"):]
-        ramo = ramo[:ramo.index("esito = broker.chiudi_posizione")]
+        # Il ramo e' un metodo suo da quando `_parziale_a_tp1` e' stata
+        # spezzata: si legge li', non piu' cercando due ancore nel sorgente.
+        ramo = inspect.getsource(sentinella.Sentinella._solo_pareggio)
         # ESCL-07/08/09, e il divieto di mettere il pareggio oltre il prezzo
-        # (retcode 10016, nove rifiuti misurati il 2026-09-22).
-        assert "spostamento_stop_ammesso" in ramo
-        assert "ancora_davanti" in ramo
-        assert "prezzo_di_uscita(direzione, tick" in ramo
+        # (retcode 10016, nove rifiuti misurati il 2026-09-22). Da quando le
+        # due strade condividono il calcolo, le guardie vivono nell'agente.
+        assert "pareggio_piazzabile(" in ramo
+        import inspect
+        from core import sentinella
+        agente = inspect.getsource(sentinella.pareggio_piazzabile)
+        assert "spostamento_stop_ammesso" in agente
+        assert "prezzo_di_uscita(direzione, tick" in agente
+        # E il ripiego e' sullo stop VECCHIO, che e' piu' lontano e valido.
+        assert 'vecchio = float(posizione["sl"])' in agente
 
 
 class TestIlPareggioRecuperaLeCommissioni:
@@ -1286,3 +1292,36 @@ class TestLaValutazioneDeveEssereUnLampo:
         import inspect
         from core import storage
         assert "impostazioni().DB_PATH, strumento" in inspect.getsource(storage.impronta_candele)
+
+
+class TestIDueRamiDiTp1RestanoDue:
+    """Il parziale e il solo-pareggio sono due strade, non una.
+
+    Spezzando `_parziale_a_tp1` ho inghiottito la riga `if quota is None:`, e
+    il ramo senza parziale veniva chiamato SEMPRE: il parziale del 25% non
+    avveniva piu' su nessuna posizione. Due test dell'impianto l'hanno presa
+    (volume 0.4 invece di 0.3 dopo TP1).
+
+    Un'estrazione che sposta un blocco deve portarsi dietro la condizione che
+    lo governa, o il blocco smette di essere un ramo e diventa il percorso.
+    """
+
+    def test_il_solo_pareggio_e_sotto_condizione(self):
+        import inspect
+        from core import sentinella
+        corpo = inspect.getsource(sentinella.Sentinella._parziale_a_tp1)
+        i = corpo.index("self._solo_pareggio(")
+        assert "if quota is None:" in corpo[:i][-260:], (
+            "il ramo senza parziale non e' piu' sotto la sua condizione")
+
+    def test_il_parziale_normale_resta_raggiungibile(self):
+        """Dopo il `return` del ramo condizionato deve restare l'altra strada:
+        se sparisse, il 25% non si incasserebbe mai."""
+        import inspect
+        from core import sentinella
+        corpo = inspect.getsource(sentinella.Sentinella._parziale_a_tp1)
+        i = corpo.index("self._solo_pareggio(")
+        assert "self._parziale_e_pareggio(" in corpo[i:]
+        # E quella strada chiude davvero il quarto sul broker.
+        altra = inspect.getsource(sentinella.Sentinella._parziale_e_pareggio)
+        assert "broker.chiudi_posizione(ticket, volume=quota)" in altra
