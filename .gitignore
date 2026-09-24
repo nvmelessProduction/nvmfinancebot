@@ -60,3 +60,10 @@ dukascopy_ore
 # Gli esiti delle misure: si rifanno, non si versionano.
 misura_*.txt
 giornaliere-rimosse.json
+
+# Il campo di prova della Fase 1: due megabyte rigenerati da
+# `backtest/campo_prova.py` in undici minuti. Versionarlo sarebbe versionare
+# un risultato invece del modo di ottenerlo -- e il modo e' il punto: se il
+# file fosse in git, una riga cambiata nel motore non si vedrebbe piu' nei
+# numeri finche' qualcuno non si ricorda di rifarlo.
+dati/campo_prova.csv

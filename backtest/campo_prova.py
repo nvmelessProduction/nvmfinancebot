@@ -285,8 +285,13 @@ def main() -> int:
     print()
     print(f"scritte {scritte:,} righe in {uscita}")
     if senza_esito:
-        print(f"scartati {senza_esito:,} CRT senza barre successive "
-              f"(in fondo all'archivio): l'esito non si inventa")
+        print(f"scartati {senza_esito:,} CRT senza esito misurabile "
+              f"({100 * senza_esito / (scritte + senza_esito):.1f}%)")
+        print("  quasi tutti hanno TP1 GIA' ALLE SPALLE: il rientro ha chiuso "
+              "oltre il 50% del range, quindi il bersaglio sta dalla parte "
+              "sbagliata dell'ingresso. E' lo stesso caso che dal vivo il bot "
+              "rifiuta con `tp1_alle_spalle`; un'etichetta inventata su "
+              "livelli incoerenti sarebbe peggio di un'etichetta assente.")
     print(f"tempo: {time.time() - inizio:.0f}s")
     return 0
 

@@ -233,6 +233,12 @@ attivo 24 ore su 24 e non ha fasce escluse. Resta **valutata** e nel responso.
 il che dice che sono pensate per timeframe d'ingresso più bassi di quelli che
 il bot può usare. `PRIN-12` non va toccata.
 
+**Nel campo di prova della Fase 1 è una costante: `None` su tutte e 16.463 le
+righe.** `FINESTRE_CRT_NY` dà finestre solo ai CRT di range `H1` e `H4`, e le
+due coppie con vent'anni di storia hanno range `W1` e `D1`. Non è un difetto
+da correggere: è la conferma che CRT-15 vive sulle coppie intraday, cioè
+esattamente dove la Fase 1bis deve portare i dati.
+
 ---
 
 ## 6. I bersagli
@@ -255,6 +261,19 @@ meno di 30 campioni in ogni coppia.
 
 È il quinto falso positivo di questo progetto, e tutti e cinque avevano lo
 stesso aspetto: un numero troppo bello.
+
+**E il 24/09 si è capito perché sparisce.** Su 16.463 CRT del campo di prova
+ha risposto `True` **una volta sola**. Non è debolezza statistica, è
+struttura: un CRT *è* lo sweep di un estremo del range, quindi al momento del
+rientro le chiusure recenti stanno per forza dalla parte opposta a quella in
+cui si entra, e `meta_tenuta` risponde sempre al contrario della direzione.
+Come è cablata, CRT-17 può dire solo «no» o «non lo so».
+
+Delle due l'una, e nessuna delle due si può decidere inventando: o CRT-17 non
+è una conferma d'ingresso — è una lettura di contesto su un range **già
+risolto** — oppure va letta su barre diverse da quelle d'ingresso. Le fonti
+non lo dicono, quindi resta misurata e dichiarata così, non riscritta a
+intuito.
 
 ---
 
@@ -352,6 +371,58 @@ Prima di dire qualunque altra cosa sul CRT vanno misurate le quattro lacune
 qui sopra. In ordine: la divergenza SMT, perché è dichiarata indispensabile ed
 è la più facile; poi le ombre nei due versi, perché un segno invertito
 spiegherebbe molto.
+
+### 10.1 Il campo di prova della Fase 1 — 2026-09-24
+
+`backtest/campo_prova.py`, 16.463 CRT dal 2006-01-16 al 2023-12-29 su
+`W → 4h` e `D → 1h`, holdout 2024–2026 **chiuso**, costi misurati dentro
+(spread al 90° percentile per strumento e ora, più la commissione misurata di
+4,06 EUR/lotto). Un CRT per candela di riferimento, preso **alla barra in cui
+si forma**.
+
+**B0 — prendere tutti i CRT: −0,0509 R ± 0,0162.** È la linea che la Fase 2
+deve battere di ≥0,10 R. Target 35,9%, stop 63,3%, scaduti 0,8%. Rapporto
+mediano 2,21 R, che è dentro l'intervallo «da 1,85 a 3,92 R» delle fonti
+(SETUP-02C).
+
+Per coppia: `W → 4h` +0,0086 ± 0,0438 (indistinguibile da zero), `D → 1h`
+−0,0623 ± 0,0173 (negativo).
+
+**Tre conferme su otto non portano informazione su queste coppie:**
+
+| regola | risposte | nota |
+|---|---|---|
+| CRT-15 | `None` 16.463 su 16.463 | **costante.** `FINESTRE_CRT_NY` definisce finestre solo per CRT a `H1` e `H4`; qui il range è `W1`/`D1`. Non è un difetto: è che CRT-15 vive sulle coppie intraday, cioè nella Fase 1bis. |
+| CRT-17 | `True` **1** su 16.463 | **costante di fatto.** Strutturale: un CRT È uno sweep dell'estremo del range, quindi le chiusure recenti stanno per forza dalla parte opposta alla direzione che si prende, e `meta_tenuta` risponde sempre al contrario. Il documento diceva già che la lettura onesta «sparisce del tutto»; ora si sa perché. |
+| CRT-20 | 50/50 | risponde, ma separa di ±0,0023 R: nessuna informazione. |
+
+**Quelle che separano qualcosa** (nessuna vicina ai +0,10 R richiesti):
+
+| regola | sì | no | non lo so |
+|---|---|---|---|
+| CRT-11 | +0,0366 (1.452) | −0,0338 (9.488) | +0,0485 (5.523) |
+| CRT-18 | +0,0327 (5.685) | +0,0464 (94) | −0,0178 (10.684) |
+| CRT-10 | −0,0729 (47) | **−0,3475** (255) | +0,0057 (16.161) |
+| CRT-06 | −0,0129 (6.709) | +0,0319 (1.843) | +0,0035 (7.911) |
+
+Due letture da non dare per buone senza misurarle meglio:
+
+- **CRT-18 separa quasi solo fra `True` e `None`** (5.685 contro 10.684, con
+  94 soli `False`). `None` significa «dopo la barra che ha spazzato non c'è
+  nessuna barra»: il segnale potrebbe essere la **lunghezza della fase**, non
+  la tenuta del punto medio. Va distinto prima di pesarlo.
+- **CRT-06 va al contrario**: allineato vale meno che non allineato, e il
+  conteggio non è monotono (0 → −0,0190, 1 → −0,0755, 2 → −0,0052). Le fonti
+  dicono «tre modelli allineati danno l'accuratezza massima»; nessun CRT del
+  campione ne ha tre.
+
+Campione efficace (`backtest/campione_efficace.py`): 14.848 blocchi
+indipendenti su 16.463 righe, il 90,2%. Sopra le 300 prove che il protocollo
+chiede, quindi il bootstrap a blocchi della Fase 2 ha di che lavorare.
+
+1.315 CRT (il 7,4%) non hanno etichetta: il rientro ha chiuso oltre il 50%
+del range, quindi TP1 sta già alle spalle dell'ingresso. È lo stesso caso che
+dal vivo il bot rifiuta con `tp1_alle_spalle`.
 
 ---
 
