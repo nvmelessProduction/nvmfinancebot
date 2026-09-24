@@ -168,6 +168,7 @@ def riga_del_crt(
         verso=crt.direzione.name,
         ingresso=ingresso, stop=stop, target=target,
         rapporto=abs(target - ingresso) / rischio if rischio else 0.0,
+        costo_erre=(2.0 * costo / rischio) if rischio else 0.0,
         conferme=conferme, allineati=allineati,
         esito=esito.come, erre=esito.erre, barre=esito.barre)
 
@@ -248,7 +249,7 @@ def main() -> int:
     uscita = Path(a.uscita)
     uscita.parent.mkdir(parents=True, exist_ok=True)
     intestazione = (["strumento", "coppia", "quando", "verso", "ingresso",
-                     "stop", "target", "rapporto"]
+                     "stop", "target", "rapporto", "costo_erre"]
                     + list(LE_OTTO) + ["allineati", "esito", "erre", "barre"])
 
     scritte = 0
@@ -273,7 +274,8 @@ def main() -> int:
                     scrittore.writerow(
                         [riga.strumento, riga.coppia, riga.quando, riga.verso,
                          f"{riga.ingresso:.6f}", f"{riga.stop:.6f}",
-                         f"{riga.target:.6f}", f"{riga.rapporto:.4f}"]
+                         f"{riga.target:.6f}", f"{riga.rapporto:.4f}",
+                         f"{riga.costo_erre:.6f}"]
                         + [_cella(riga.conferme.get(k)) for k in LE_OTTO]
                         + [_cella(riga.allineati), riga.esito,
                            f"{riga.erre:.4f}", riga.barre])

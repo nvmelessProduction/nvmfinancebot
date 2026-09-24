@@ -67,6 +67,11 @@ class Riga:
     stop: float
     target: float
     rapporto: float
+    # Il costo del giro completo, in multipli del rischio. E' gia' dentro
+    # `erre`, e sta anche qui da solo perche' la regola d'ingresso della
+    # Fase 2 -- `p x RR - (1 - p) - costi > 0` -- lo vuole separato. Chi lo
+    # ricalcolasse a valle scriverebbe la seconda copia della stessa regola.
+    costo_erre: float
     # Gli otto punteggi: True / False / None, come il motore li calcola.
     conferme: dict
     # Quanti altri timeframe erano allineati (CRT-06 porta un conteggio, non
