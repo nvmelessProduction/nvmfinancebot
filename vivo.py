@@ -78,19 +78,32 @@ def _leggi(nome: str) -> dict:
     raise FileNotFoundError(nome)
 
 
-def _versione_nuova() -> str:
-    """Se su GitHub c'e' una versione nuova la scarica. Se cambia il bot ne
-    restituisce il titolo (e il bot si riavvia); se cambiano solo documenti, ''."""
-    def git(*a: str) -> str:
-        return subprocess.run(["git", *a], cwd=RADICE, capture_output=True, text=True, timeout=120, check=True).stdout.strip()
-    git("fetch", "-q", "origin", RAMO)
-    if git("rev-parse", "HEAD") == git("rev-parse", "FETCH_HEAD"):
+def _git(*a: str) -> str:
+    return subprocess.run(["git", *a], cwd=RADICE, capture_output=True, text=True, timeout=120, check=True).stdout.strip()
+
+
+def _versione() -> str:
+    try:
+        return _git("rev-parse", "HEAD")
+    except Exception:
         return ""
-    cambiati = git("diff", "--name-only", "HEAD", "FETCH_HEAD").splitlines()
-    git("merge", "-q", "--ff-only", "FETCH_HEAD")
+
+
+def _versione_nuova(partito_da: str) -> str:
+    """Se su GitHub c'e' una versione nuova la scarica. Se il codice su disco e'
+    diverso da quello con cui il bot e' partito (anche per un `git pull` fatto a
+    mano) ne restituisce il titolo, e il bot si riavvia; se cambiano solo
+    documenti, ''."""
+    _git("fetch", "-q", "origin", RAMO)
+    if _git("rev-parse", "HEAD") != _git("rev-parse", "FETCH_HEAD"):
+        _git("merge", "-q", "--ff-only", "FETCH_HEAD")
+    adesso = _git("rev-parse", "HEAD")
+    if not partito_da or adesso == partito_da:
+        return ""
+    cambiati = _git("diff", "--name-only", partito_da, adesso).splitlines()
     if not any(c.endswith(DA_RIAVVIO) for c in cambiati):
         return ""
-    return git("log", "-1", "--format=%s")
+    return _git("log", "-1", "--format=%s")
 
 
 class Bot:
@@ -102,6 +115,7 @@ class Bot:
         self.terminale = Terminale(self.imp.suffisso)
         self.esecutore = Esecutore(self.terminale, float(_leggi("rischio.json")["parte"]))
         self.storico = Storico.carica(RADICE / "nvm" / "vivo" / "storico.npz")
+        self.versione = _versione()
         self.basi: dict[str, Minuti] = {}
         self.fini: dict[str, Minuti] = {}
         self._allarmi: dict[str, float] = {}
@@ -170,7 +184,7 @@ class Bot:
             self.giro(ora)
             self.stato.salva(CARTELLA)
             try:
-                titolo = _versione_nuova()
+                titolo = _versione_nuova(self.versione)
             except Exception as errore:
                 titolo = ""
                 self.allarme(f"non riesco a controllare se c'è una versione nuova: {type(errore).__name__}")
