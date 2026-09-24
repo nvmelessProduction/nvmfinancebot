@@ -29,7 +29,7 @@ from nvm.vivo import messaggi
 from nvm.vivo.ambiente import impostazioni
 from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
-    aggiorna_diario, aggiorna_pagelle, come_migliorare, discussione_con_prove, presentazioni, prove, resoconto, spinte,
+    aggiorna_diario, aggiorna_pagelle, come_migliorare, presentazioni, resoconto, spinte,
 )
 from nvm.vivo.esecutore import MAGIC, Esecutore
 from nvm.vivo.giro import COPPIA_VELOCE, COPPIE, armati
@@ -156,7 +156,7 @@ class Bot:
         presentati = CARTELLA / "presentati"
         da_aggiornamento = riavvio.exists()
         if da_aggiornamento:
-            self.tg.operativo(f"🔄 Aggiornato e ripartito: {riavvio.read_text(encoding='utf-8')}")
+            self.tg.operativo(messaggi.aggiornato(riavvio.read_text(encoding="utf-8")))
             riavvio.unlink()
         else:
             self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(PUNTO), self.terminale.scarto))
@@ -167,7 +167,7 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # Gli agenti si presentano a ogni avvio a mano, e la prima volta dopo un aggiornamento.
         if not da_aggiornamento or not presentati.exists():
-            for testo in presentazioni(self.stato.pagelle, self.capo, self.esecutore.parte):
+            for testo in presentazioni(self.stato.pagelle, self.capo, self.esecutore.parte, self.storico.romeo_x):
                 self.tg.equipe(testo)
             presentati.write_text("sì", encoding="utf-8")
 
@@ -252,9 +252,7 @@ class Bot:
         conto = self.terminale.conto() if decisioni else None
         for d in decisioni:
             per = spinte(self.capo, d.x)
-            argomenti = prove(d.x, self.storico.x, self.storico.erre) if self.storico.erre is not None else {}
-            self.tg.equipe(messaggi.pareri(d) + "\n\n" + discussione_con_prove(per, d.entra, d.atteso, argomenti,
-                                                                              d.romeo))
+            self.tg.equipe(messaggi.pareri(d, per))
             aperta = False
             if d.entra and adesso - d.r.quando <= finestra:
                 viva, fatto = self.esecutore.apri(d, conto)
@@ -269,7 +267,7 @@ class Bot:
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
                         op.ingresso, op.stop, op.tp1, op.tp2, d.scadenza, aperta,
                         [float(v) for v in d.x], d.r.rr1, d.r.rr2, d.r.costo_erre, d.p1, d.q, d.atteso,
-                        spinte=per, leggibile=f"{d.r.strumento} {d.r.verso.value.upper()}, {messaggi.coppia(d)}, {messaggi.quando(d.r.quando)}",
+                        spinte=per, leggibile=f"{d.r.strumento} {messaggi.direzione(d.r.verso)} · {messaggi.coppia(d)} · {messaggi.quando(d.r.quando)}",
                         romeo=1.0 if d.romeo is None else d.romeo)
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,

@@ -19,7 +19,7 @@ import numpy as np
 
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
-from nvm.vivo.dialogo import AGENTI, chi_aveva_ragione, consigli, fiducia_per_agente, grado
+from nvm.vivo.dialogo import AGENTI, ascolto, chi_aveva_ragione, consigli, grado
 from nvm.vivo.messaggi import erre
 from nvm.vivo.stato import Seguita
 
@@ -66,13 +66,13 @@ def _risposta(nome: str, diario: dict) -> str:
     """Cosa risponde un agente al Capo: il suo segnale migliore e il peggiore dal vivo."""
     voci = [(f, v, t) for f, (v, t) in (diario or {}).get(nome, {}).items() if t >= 2]
     if not voci:
-        return f"{nome}: ho ancora troppo pochi casi dal vivo per dire qualcosa di serio. Continuo a raccogliere."
+        return "pochi casi dal vivo, continuo a raccogliere"
     migliore = max(voci, key=lambda a: a[1] / a[2])
     peggiore = min(voci, key=lambda a: a[1] / a[2])
-    testo = f"{nome}: dal vivo il mio segnale migliore è «{migliore[0]}» ({migliore[1]} su {migliore[2]})"
+    testo = f"meglio con «{migliore[0]}» ({migliore[1]}/{migliore[2]})"
     if peggiore[0] != migliore[0]:
-        testo += f", il peggiore «{peggiore[0]}» ({peggiore[1]} su {peggiore[2]}). Propongo di pesare meno il secondo"
-    return testo + "."
+        testo += f", peggio con «{peggiore[0]}» ({peggiore[1]}/{peggiore[2]}): pesatemi meno lì"
+    return testo
 
 
 def riunione(
@@ -85,17 +85,17 @@ def riunione(
     prese = [s.esito["erre"] for s in di_questa if s.entrata]
     scartate = [s.esito["erre"] for s in di_questa if not s.entrata]
     righe = [
-        f"📋 Riunione del sabato col Capo ({settimana})",
+        f"📋 Riunione del sabato · settimana {settimana}",
         "",
-        "Capo: cominciamo. La settimana:",
-        f"  decisioni nuove {len(nuove)}, ne ho prese {sum(s.entrata for s in nuove)};",
-        f"  finite: prese {_media(prese)}, scartate {_media(scartate)} (sulla carta).",
+        "La settimana",
+        f"• {len(nuove)} decisioni, {sum(s.entrata for s in nuove)} prese",
+        f"• Finite: prese {_media(prese)}, sulla carta {_media(scartate)}",
     ]
     if finite:
         stimato = float(np.mean([s.p1 for s in finite]))
         vero = float(np.mean([s.esito["tp1"] for s in finite]))
-        righe.append(f"  Io stimavo il primo target al {stimato:.0%}, dal vivo è arrivato nel {vero:.0%} dei casi"
-                     + (": ero troppo ottimista." if stimato > vero + 0.05 else (": ero troppo prudente." if vero > stimato + 0.05 else ": ci ho preso.")))
+        giudizio = ("ero ottimista" if stimato > vero + 0.05 else ("ero prudente" if vero > stimato + 0.05 else "ci ho preso"))
+        righe.append(f"• Stimavo il primo obiettivo al {stimato:.0%}, dal vivo è arrivato nel {vero:.0%}: {giudizio}")
 
     # Il riaddestramento, fatto subito: il Capo parla a ognuno sapendo gia' quanto lo ascoltera'.
     sx = storico.x if storico.x.shape[1] == len(COLONNE) else np.c_[storico.x, np.zeros((len(storico.x), len(COLONNE) - storico.x.shape[1]))]
@@ -123,7 +123,9 @@ def riunione(
             casi_tp1.append(np.array([bool(s.esito["tp1"]) for s in finite]))
         if casi_x:
             nuovo = nuovo.impara_fiducia(np.vstack(casi_x), np.concatenate(casi_tp1))
-    prima, dopo = fiducia_per_agente(capo), fiducia_per_agente(nuovo)
+    # Quanto il Capo ascolta ognuno, prima e dopo, sugli stessi casi.
+    casi = storico.romeo_x if storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) else sx[-3000:]
+    prima, dopo = ascolto(capo, casi), ascolto(nuovo, casi)
 
     settimanali: dict[str, list[int]] = {}
     for s in di_questa:
@@ -134,31 +136,23 @@ def riunione(
         for n in torto:
             settimanali.setdefault(n, [0, 0])[1] += 1
 
-    righe += ["", "Capo, a ognuno:"]
-    for nome in AGENTI:
+    righe += ["", "Le pagelle"]
+    for nome in list(AGENTI) + (["Romeo"] if "Romeo" in dopo else []):
         g, t = settimanali.get(nome, [0, 0])
-        verso = "di più" if dopo[nome] > prima[nome] * 1.05 else ("di meno" if dopo[nome] < prima[nome] * 0.95 else "come prima")
         tot = (pagelle or {}).get(nome, [0, 0])
-        righe.append(
-            f"  → {nome}: questa settimana avevi ragione {g} volte su {t}"
-            + (f" (in tutto {tot[0]} su {tot[1]}, {grado(*tot)})" if tot[1] else "")
-            + f". Dopo il riaddestramento ti ascolto {verso} ({_peso(prima[nome])} → {_peso(dopo[nome])})."
-        )
-        righe.append(f"     {_risposta(nome, diario)}")
-    if nuovo.romeo is not None:
-        g, t = settimanali.get("Romeo", [0, 0])
-        tot = (pagelle or {}).get("Romeo", [0, 0])
-        righe.append(
-            f"  → Romeo: questa settimana avevi ragione {g} volte su {t}"
-            + (f" (in tutto {tot[0]} su {tot[1]})" if tot[1] else "")
-            + f". Dai risultati, la mia fiducia in te passa da {_peso(capo.fiducia_in_romeo)} a {_peso(nuovo.fiducia_in_romeo)}."
-        )
+        verso = ("di più" if dopo.get(nome, 0) > prima.get(nome, 0) * 1.05 + 1e-4
+                 else ("di meno" if dopo.get(nome, 0) < prima.get(nome, 0) * 0.95 - 1e-4 else "come prima"))
+        riga = (f"• {nome} — questa settimana {g} giuste su {t}"
+                + (f", in tutto {tot[0]} su {tot[1]} ({grado(*tot)})" if tot[1] else "")
+                + f". Lo ascolto {verso}: {erre(prima.get(nome, 0))[1:]} → {erre(dopo.get(nome, 0))[1:]}.")
+        if nome == "Romeo":
+            riga += f" Fiducia {_peso(capo.fiducia_in_romeo)} → {_peso(nuovo.fiducia_in_romeo)}."
+        righe.append(riga)
+        if nome in AGENTI:
+            righe.append(f"  ↳ {_risposta(nome, diario)}")
 
-    righe += ["", "I consigli fra agenti (li provo da oggi come combinazioni):"]
-    righe += [f"  • {testo}" for testo, _ in scelti] or ["  • nessuna coppia che cambi davvero il risultato."]
-    if scelti:
-        pesi_nuovi = {n: a for n, a, _ in nuovo.fiducia()}
-        righe.append("  Capo: il peso che do a ognuna: " + "; ".join(f"{n} {_peso(a)}" for n, a in pesi_nuovi.items() if " × " in n) + ".")
+    righe += ["", "Consigli fra agenti (da oggi li provo)"]
+    righe += [f"• {testo}" for testo, _ in scelti] or ["• nessuna coppia che cambi davvero il risultato"]
 
     # Il Rischio: quanta parte del Kelly, sulle puntate passate e su quelle dal vivo.
     dal_vivo = [s for s in finite if s.atteso > 0]
@@ -168,23 +162,20 @@ def riunione(
     nuova_parte = impara_parte(f, r) if len(f) else parte
     if romeo:
         pesi_romeo = sorted(nuovo.fiducia_romeo(), key=lambda a: -a[1])
+        righe += ["", "Romeo",
+                  f"• Ho ripassato le sue {int(storico.romeo_y.sum())} entrate del 2023: le sue scelte hanno soprattutto "
+                  + ", ".join(n for n, w in pesi_romeo[:3] if w > 0)]
         prese_simili = [s.romeo for s in nuove if s.entrata]
         scartate_simili = [s.romeo for s in nuove if not s.entrata]
-        righe += [
-            "",
-            f"Capo, su Romeo: ho ripassato le sue {int(storico.romeo_y.sum())} entrate del 2023. "
-            f"Le sue scelte hanno soprattutto: {', '.join(n for n, w in pesi_romeo[:3] if w > 0)}.",
-        ]
         if prese_simili and scartate_simili:
-            righe.append(f"  Questa settimana le mie prese gli somigliavano in media al {np.mean(prese_simili):.0%}, "
-                         f"le scartate al {np.mean(scartate_simili):.0%}. Quanto pesano le risposte alla Romeo "
-                         "lo imparo dai risultati, come per tutti.")
+            righe.append(f"• Le mie prese gli somigliavano al {np.mean(prese_simili):.1%}, le scartate al "
+                         f"{np.mean(scartate_simili):.1%}".replace(".", ","))
     righe += [
         "",
-        f"Rischio: rifatti i conti su {len(f)} puntate ({len(dal_vivo)} dal vivo), la parte del Kelly che fa crescere "
-        f"di più il conto è {_peso(nuova_parte)[1:]} (era {_peso(parte)[1:]}).",
+        f"Rischio: uso {_peso(nuova_parte)[1:]} del Kelly (era {_peso(parte)[1:]}), rifatto su {len(f)} puntate, "
+        f"{len(dal_vivo)} dal vivo.",
         "",
-        f"Capo: mi sono riaddestrato su {len(storico.x)} operazioni dello storico e {len(finite)} dal vivo, "
-        "con più peso ai casi recenti. Da adesso lavoro così. Buon fine settimana.",
+        f"Capo: mi sono riaddestrato su {len(storico.x)} operazioni dello storico e {len(finite)} dal vivo. "
+        "Da adesso lavoro così. Buon fine settimana.",
     ]
     return "\n".join(righe), nuovo, nuova_parte

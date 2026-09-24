@@ -47,6 +47,8 @@ class Decisione:
     # entrata: un parere per l'equipe, non un obbligo.
     alla_romeo: Optional[AllaRomeo] = None
     romeo: Optional[float] = None
+    # La somiglianza di un candidato medio, per dire se questa e' sopra o sotto.
+    romeo_medio: Optional[float] = None
 
     @property
     def entra(self) -> bool:
@@ -85,7 +87,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                 atteso = capo.valore_atteso(x, np.array([r.rr1]), np.array([r.rr2]), np.array([r.costo_erre]))
                 decisioni.append(Decisione(
                     r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0],
-                    ar, float(capo.somiglianza(x)[0]) if capo.romeo is not None else None))
+                    ar, float(capo.somiglianza(x)[0]) if capo.romeo is not None else None,
+                    float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

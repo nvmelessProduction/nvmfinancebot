@@ -126,8 +126,8 @@ class Esecutore:
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
                     tickets, messi, rischio, conto.valuta)
         testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0])
-        testo += (f"\nIl Rischio: Kelly {pieno:.1%} del conto; ne uso la parte che ho imparato ({self.parte:.2f}), "
-                  f"cioè {f:.2%}" + (" (sotto il lotto minimo: apro il minimo)." if volume < minimo else "."))
+        testo += (f"\nPuntata del Rischio: {f:.2%} del conto (Kelly {pieno:.1%} × {self.parte:.2f})".replace(".", ",")
+                  + (": è sotto il lotto minimo, apro il minimo." if volume < minimo else "."))
         return viva, Fatto(testo)
 
     def sorveglia(self, vive: list[Viva]) -> tuple[list[Viva], list[Fatto]]:

@@ -10,9 +10,9 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
+from dataclasses import replace
 from itertools import combinations
+from typing import Optional
 
 import numpy as np
 
@@ -51,35 +51,43 @@ SEGNALI: dict[str, tuple[str, int]] = {
 }
 
 
-def spinte(capo: Capo, x: np.ndarray) -> dict[str, float]:
-    """La spinta di ogni agente su questa decisione. Le combinazioni contano meta' per ciascuno."""
-    x = np.asarray(x, float)
-    x = np.r_[x, np.zeros(len(COLONNE) - len(x))]
-    s = capo.spinte(x)
-    per = {nome: float(s[list(c)].sum()) for nome, c in AGENTI.items()}
-    for k, (i, j) in enumerate(capo.interazioni):
-        for nome, c in AGENTI.items():
-            per[nome] += float(s[len(COLONNE) + k]) * ((i in c) + (j in c)) / 2
-    if capo.romeo is not None:
-        per["Romeo"] = float(capo.voce_di_romeo(x)[0])
+def spinte_su_casi(capo: Capo, x: np.ndarray) -> dict[str, np.ndarray]:
+    """Di quanto il parere di ogni agente sposta il guadagno atteso del Capo, caso
+    per caso, in R: il guadagno atteso vero meno quello che il Capo avrebbe
+    stimato se l'agente avesse dato le risposte di un caso medio. Per Romeo:
+    meno quello che avrebbe stimato senza ascoltarlo."""
+    x = np.atleast_2d(np.asarray(x, float))
+    if x.shape[1] < len(COLONNE):
+        x = np.c_[x, np.zeros((len(x), len(COLONNE) - x.shape[1]))]
+    zero = np.zeros(len(x))
+    rr1, rr2 = COLONNE.index("RR1"), COLONNE.index("RR2")
+    tutto = capo.valore_atteso(x, x[:, rr1], x[:, rr2], zero)
+    media = capo.media[:len(COLONNE)]
+    per = {}
+    for nome, col in AGENTI.items():
+        medio = x.copy()
+        medio[:, list(col)] = media[list(col)]
+        per[nome] = tutto - capo.valore_atteso(medio, medio[:, rr1], medio[:, rr2], zero)
+    if capo.romeo is not None and capo.fiducia_in_romeo != 0:
+        senza = replace(capo, fiducia_in_romeo=0.0)
+        per["Romeo"] = tutto - senza.valore_atteso(x, x[:, rr1], x[:, rr2], zero)
     return per
+
+
+def spinte(capo: Capo, x: np.ndarray) -> dict[str, float]:
+    """La spinta di ogni agente su questa decisione, in R di guadagno atteso."""
+    return {nome: float(v[0]) for nome, v in spinte_su_casi(capo, x).items()}
+
+
+def ascolto(capo: Capo, casi: np.ndarray) -> dict[str, float]:
+    """Quanto il Capo ascolta ognuno: di quanto, in media, il suo parere sposta il guadagno atteso."""
+    return {nome: float(np.abs(v).mean()) for nome, v in spinte_su_casi(capo, casi).items()}
 
 
 def _schieramento(per: dict[str, float]) -> tuple[list[str], list[str]]:
     favore = [f"{n} ({v:+.2f})".replace(".", ",") for n, v in sorted(per.items(), key=lambda a: -a[1]) if v >= NEUTRO]
     contro = [f"{n} ({v:+.2f})".replace(".", ",") for n, v in sorted(per.items(), key=lambda a: a[1]) if v <= -NEUTRO]
     return favore, contro
-
-
-def discussione(per: dict[str, float], entra: bool, atteso: float) -> str:
-    favore, contro = _schieramento(per)
-    return "\n".join([
-        "💬 Il confronto:",
-        "  spingono a entrare: " + (", ".join(favore) if favore else "nessuno"),
-        "  frenano: " + (", ".join(contro) if contro else "nessuno"),
-        f"  Capo: {len(favore)} a favore, {len(contro)} contro; tutto pesato il guadagno atteso è {erre(atteso)}: "
-        + ("entro." if entra else "non entro."),
-    ])
 
 
 def chi_aveva_ragione(per: dict[str, float], vinta: bool) -> tuple[list[str], list[str]]:
@@ -92,12 +100,13 @@ def resoconto(chiave_leggibile: str, esito: dict, entrata: bool, per: dict[str, 
     vinta = esito["erre"] > 0
     ragione, torto = chi_aveva_ragione(per, vinta)
     capo_ok = (atteso > 0) == vinta
+    uscita = str(esito["uscita"])
     testo = "\n".join([
-        f"🔎 Com'è finita: {chiave_leggibile} — {esito['uscita']}, {erre(esito['erre'])}"
-        + (" (presa)" if entrata else " (non presa: sulla carta)"),
-        "  Avevano ragione: " + (", ".join(ragione) if ragione else "nessuno"),
-        "  Avevano torto: " + (", ".join(torto) if torto else "nessuno"),
-        "  Capo: " + ("aveva ragione." if capo_ok else "aveva torto."),
+        f"📊 Com'è finita: {chiave_leggibile}",
+        f"{uscita[:1].upper() + uscita[1:]} · {erre(esito['erre'])} · " + ("presa" if entrata else "non presa, seguita sulla carta"),
+        "Avevano visto giusto: " + (", ".join(ragione) if ragione else "nessuno"),
+        "Avevano sbagliato: " + (", ".join(torto) if torto else "nessuno"),
+        "Capo: " + ("decisione giusta." if capo_ok else "decisione sbagliata."),
     ])
     return testo, ragione + (["Capo"] if capo_ok else []), torto + ([] if capo_ok else ["Capo"])
 
@@ -136,9 +145,9 @@ def consigli(x: np.ndarray, r: np.ndarray, minimo: int = 200, quanti: int = 3) -
                 continue
             d = float(r[con].mean() - r[senza].mean())
             forza = abs(d) * np.sqrt(min(con.sum(), senza.sum()))
-            testo = (f"{a2} → {a1}: quando tu dici «{n1}» e io «{n2}», va {erre(float(r[con].mean()))} "
-                     f"({int(con.sum())} casi); senza di me {erre(float(r[senza].mean()))} ({int(senza.sum())}). "
-                     + ("Ascoltami di più." if d > 0 else "Diffida quando ci sono anch'io."))
+            testo = (f"{a2} a {a1}: con «{n1}» e «{n2}» insieme va {erre(float(r[con].mean()))} "
+                     f"({int(con.sum()):,} casi), con «{n1}» da solo {erre(float(r[senza].mean()))}. ".replace(",", ".")
+                     + ("Insieme valiamo di più." if d > 0 else "Quando ci sono anch'io, fidati meno."))
             trovati.append((forza, testo, (min(i1, i2), max(i1, i2))))
     trovati.sort(key=lambda t: -t[0])
     scelti, visti = [], set()
@@ -155,32 +164,29 @@ def consigli(x: np.ndarray, r: np.ndarray, minimo: int = 200, quanti: int = 3) -
 # --- Le presentazioni all'avvio ---
 
 LAVORO: dict[str, str] = {
-    "Cacciatore": "Guardo se c'è un CRT: una candela fa da range e quella dopo ne spazza un lato. "
-                  "Coppie: mensile → giornaliero, settimanale → 4 ore, giornaliero → 1 ora, 4 ore → 15 minuti. "
-                  "E dico se il CRT sta dentro uno più grande, come vuole Romeo.",
-    "Grilletto": "Aspetto il Model#1 di Romeo: la candela del turtle soup e la chiusura oltre la sua apertura. "
-                 "Dopo uno stop posso sparare ancora, fino a tre colpi sullo stesso CRT.",
-    "Livelli": "Metto lo stop oltre l'estremo della manipolazione, il primo target al 50% del range, il secondo al lato opposto.",
-    "Key level": "Guardo se la manipolazione è arrivata su una zona del timeframe sopra: un massimo, un rejection block, un FVG.",
-    "Orario": "Guardo a che ora di New York scatta l'ingresso. Le ore di Romeo: 1–5 (Londra) e 8–11 (New York); "
-              "la sua golden candle è 9–13.",
-    "Bias": "Leggo il bias dalle chiusure: la candela del range e il timeframe sopra, a favore o contro il CRT. "
-            "E guardo se compriamo a sconto e vendiamo a premio sulla settimana.",
-    "Romeo": "Sono la voce di Romeo nell'équipe: dalle sue entrate ho imparato quanto un'operazione gli somiglia, "
-             "e lo dico a ogni decisione. Il Capo mi ascolta quanto i risultati gli dicono di fare, e ogni sabato "
-             "ricalcola quanto fidarsi di me.",
-    "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, e la parte che ho imparato dagli errori.",
-    "Capo": "Ascolto tutti, peso i pareri e decido: entro se il guadagno atteso è sopra zero. "
-            "Imparo dalle entrate di Romeo quanto un'operazione gli somiglia e, ogni sabato, dai risultati "
-            "della settimana quanto fidarmi di ognuno.",
+    "Cacciatore": "Cerco i CRT: una candela fa da range, quella dopo ne prende un lato e rientra. "
+                  "Guardo mensile → giornaliero, settimanale → 4 ore, giornaliero → 1 ora, 4 ore → 15 minuti, "
+                  "e dico se il CRT sta dentro uno più grande.",
+    "Grilletto": "Aspetto il Model#1 di Romeo: dopo il turtle soup, la chiusura oltre la sua apertura. "
+                 "Se lo stop viene preso posso riprovare, fino a tre volte sullo stesso CRT.",
+    "Livelli": "Metto lo stop oltre l'estremo, il primo obiettivo a metà del range, il secondo dall'altra parte.",
+    "Key level": "Dico se il prezzo è arrivato su una zona del timeframe sopra: un massimo, un rejection block, un FVG.",
+    "Orario": "Dico a che ora di New York scatta l'ingresso. Le ore di Romeo sono 1–5 (Londra) e 8–11 (New York).",
+    "Bias": "Leggo la direzione dalle chiusure delle candele, e dico se compriamo a sconto o vendiamo a premio "
+            "rispetto alla settimana prima.",
+    "Romeo": "Sono la voce di Romeo: dalle sue entrate ho imparato quanto un'operazione gli somiglia. "
+             "Il Capo mi ascolta quanto i risultati gli dicono di fare.",
+    "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, nella misura che ho imparato.",
+    "Capo": "Ascolto tutti e decido: entro se il guadagno atteso è sopra zero. "
+            "Ogni sabato imparo dai risultati quanto fidarmi di ognuno.",
 }
 
 
 def _pagella(pagelle: dict, nome: str) -> str:
     giuste, totali = pagelle.get(nome, [0, 0])
     if not totali:
-        return "pagella vuota: non ho ancora casi dal vivo"
-    return f"pagella {giuste} su {totali} ({giuste / totali:.0%})"
+        return "ancora vuota, nessun caso dal vivo"
+    return f"{giuste} giuste su {totali} ({giuste / totali:.0%})"
 
 
 def fiducia_per_agente(capo: Capo) -> dict[str, float]:
@@ -195,74 +201,40 @@ def fiducia_per_agente(capo: Capo) -> dict[str, float]:
     return per
 
 
-def presentazioni(pagelle: dict, capo: Capo, parte: float) -> list[str]:
+def presentazioni(pagelle: dict, capo: Capo, parte: float, casi: Optional[np.ndarray] = None) -> list[str]:
+    """Ogni membro dell'équipe si presenta: cosa fa, com'è andato finora."""
+    quanto = ascolto(capo, casi) if casi is not None and len(casi) else {}
     testi = []
     for nome, lavoro in LAVORO.items():
         g, t = pagelle.get(nome, [0, 0])
-        righe = [f"👋 Sono {nome}." if nome == "Romeo" else (
-                 f"👋 Sono il {nome}." if nome not in ("Key level", "Orario", "Bias", "Rischio") else f"👋 Sono l'agente {nome}."),
-                 lavoro, f"Stato: {grado(g, t)}, {_pagella(pagelle, nome)}."]
+        righe = [f"👋 {nome}", lavoro, f"Pagella: {_pagella(pagelle, nome)} · {grado(g, t)}"]
         if nome == "Romeo":
-            if capo.romeo is None:
-                righe.append("Il Capo non ha ancora imparato niente da me.")
-            else:
-                righe.append(f"Oggi il Capo mi dà una fiducia di {capo.fiducia_in_romeo:+.2f}".replace(".", ",")
-                             + ": l'ha imparata dai risultati delle operazioni che mi somigliano.")
+            righe.append("Il Capo non ha ancora imparato niente da me." if capo.romeo is None else
+                         f"Il Capo mi dà una fiducia di {_virgola(capo.fiducia_in_romeo, segno=True)}, imparata dai risultati.")
         if nome == "Rischio":
-            righe.append(f"Oggi uso {parte:.2f} del Kelly: l'ho imparato su 16 anni di puntate del Capo.".replace(".", ",", 1))
-        if nome == "Capo":
-            f = fiducia_per_agente(capo)
-            ordine = sorted(f.items(), key=lambda a: -a[1])
-            righe.append("Oggi ascolto soprattutto: " + ", ".join(n for n, _ in ordine[:3])
-                         + "; meno: " + ", ".join(n for n, _ in ordine[-2:]) + ".")
-            if capo.romeo is not None:
-                pesi = sorted(capo.fiducia_romeo(), key=lambda a: -a[1])
-                righe.append("Da Romeo ho imparato che le sue entrate hanno soprattutto: "
-                             + ", ".join(n for n, w in pesi[:3] if w > 0)
-                             + ". Lo tengo come parere: decido io, col guadagno atteso che imparo dai risultati.")
-        righe.append(f"— {nome}")
+            righe.append(f"Uso {_virgola(parte)} del Kelly: l'ho imparato su 16 anni di puntate del Capo.")
+        if nome == "Capo" and quanto:
+            ordine = sorted(quanto.items(), key=lambda a: -a[1])
+            forti = [n for n, v in ordine if v >= NEUTRO]
+            deboli = [n for n, v in ordine if v < NEUTRO]
+            righe.append("Ascolto soprattutto: " + (", ".join(forti[:3]) or "nessuno in particolare") + ".")
+            if deboli:
+                righe.append(f"Per ora conta poco: {', '.join(deboli)}. Non sono esclusi: nei dati i loro segnali "
+                             "hanno cambiato poco i risultati. Se dal vivo cambiano, il sabato li ascolto di più.")
         testi.append("\n".join(righe))
     return testi
 
 
-# --- Le prove che ognuno porta, dallo storico ---
+def _virgola(x: float, segno: bool = False) -> str:
+    return (f"{x:+.2f}" if segno else f"{x:.2f}").replace(".", ",")
+
+
+# --- Il diario dal vivo ---
 
 BINARIE: dict[str, tuple[int, ...]] = {
     "Cacciatore": (16, 17, 21, 24), "Grilletto": (14, 15), "Key level": (0, 1, 2, 3, 4),
     "Orario": (5, 6, 7, 8, 9, 22, 23), "Bias": (10, 11, 12, 13, 25),
 }
-
-
-def prove(x: np.ndarray, sx: np.ndarray, sr: np.ndarray) -> dict[str, str]:
-    """Per ogni agente: com'è andata nello storico quando ha dato gli stessi segnali di adesso."""
-    x = np.r_[np.asarray(x, float), np.zeros(len(COLONNE) - len(x))]
-    testi = {}
-    for nome, col in BINARIE.items():
-        col = [c for c in col if c < sx.shape[1]]
-        uguali = np.all(sx[:, col] == x[col], axis=1)
-        if uguali.sum() >= 30:
-            testi[nome] = f"nello storico, con gli stessi miei segnali: {erre(float(sr[uguali].mean()))} su {int(uguali.sum())} casi"
-    rr1 = x[COLONNE.index("RR1")]
-    vicini = np.abs(sx[:, COLONNE.index("RR1")] - rr1) <= 0.2 * max(rr1, 0.5)
-    if vicini.sum() >= 30:
-        testi["Livelli"] = f"con un primo target a {rr1:.1f} R, nello storico: {erre(float(sr[vicini].mean()))} su {int(vicini.sum())} casi".replace(".", ",", 1)
-    return testi
-
-
-def discussione_con_prove(per: dict[str, float], entra: bool, atteso: float, testi: dict[str, str],
-                          romeo: Optional[float] = None) -> str:
-    righe = ["💬 Il confronto:"]
-    for nome, v in sorted(per.items(), key=lambda a: -a[1]):
-        posizione = "spingo a entrare" if v >= NEUTRO else ("freno" if v <= -NEUTRO else "resto neutro")
-        righe.append(f"  {nome}: {posizione} ({v:+.2f})".replace(".", ",") + (f", {testi[nome]}." if nome in testi else "."))
-    favore = sum(v >= NEUTRO for v in per.values())
-    contro = sum(v <= -NEUTRO for v in per.values())
-    capo = f"  Capo: {favore} a favore, {contro} contro; tutto pesato il guadagno atteso è {erre(atteso)}"
-    if romeo is not None:
-        capo += f" (e somiglia alle entrate di Romeo al {romeo:.0%})"
-    capo += ": entro." if entra else ": non entro."
-    righe.append(capo)
-    return "\n".join(righe)
 
 
 # --- Dopo il risultato: come migliorare ---
@@ -307,7 +279,7 @@ def come_migliorare(torto: list[str], diario: dict, x) -> str:
             continue
         f = firma(nome, x)
         v, t = diario.get(nome, {}).get(f, [0, 0])
-        righe.append(f"  {nome}: ho sbagliato. Dal vivo, con «{f}», {v} vinte su {t}"
-                     + (": se continua così, sabato chiedo al Capo di ascoltarmi meno quando lo vedo." if t >= 3 and v / t < 0.4
-                        else ": troppo presto per cambiare idea, lo segno."))
-    return ("🛠 Come miglioriamo:\n" + "\n".join(righe)) if righe else ""
+        consiglio = ("se continua così, sabato chiedo al Capo di ascoltarmi meno in questi casi" if t >= 3 and v / t < 0.4
+                     else "troppo presto per cambiare idea, lo segno")
+        righe.append(f"• {nome}: con «{f}» dal vivo {v} vinte su {t}: {consiglio}.")
+    return ("🛠 Cosa impariamo\n" + "\n".join(righe)) if righe else ""

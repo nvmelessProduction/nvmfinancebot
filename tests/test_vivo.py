@@ -177,7 +177,9 @@ def test_la_prova_del_collegamento_non_manda_ordini_e_spiega_i_rifiuti():
     rifiuto = t.prova_ordine("EURUSD", 1)
     assert not rifiuto.ok and "Algo Trading" in rifiuto.messaggio
     testo = messaggi.collegamento([("EURUSD", True, e.messaggio), ("GBPUSD", False, rifiuto.messaggio)], 2)
-    assert "✅ EURUSD" in testo and "❌ GBPUSD" in testo and "aperte adesso su MT5: 2" in testo
+    assert "✅ EURUSD" in testo and "❌ GBPUSD" in testo and "aperte adesso: 2" in testo
+    tutto_bene = messaggi.collegamento([("EURUSD", True, e.messaggio), ("GBPUSD", True, e.messaggio)], 0)
+    assert "tutti e 2 gli strumenti" in tutto_bene
 
 
 def test_apre_due_meta_sposta_a_pareggio_e_chiude():
@@ -191,17 +193,17 @@ def test_apre_due_meta_sposta_a_pareggio_e_chiude():
     a, b = viva.tickets
     assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
     assert m.posizioni[a].sl == m.posizioni[b].sl == round(d.op.stop, 5)
-    assert "APRO" in fatto.testo and "Perché" in fatto.testo
+    assert ("COMPRO" in fatto.testo or "VENDO" in fatto.testo) and "Perché" in fatto.testo
 
     m.chiudi(a, d.op.tp1)  # il broker incassa il primo target
     vive, fatti = e.sorveglia([viva])
     assert vive and vive[0].pareggio_fatto
     assert m.posizioni[b].sl == round(viva.ingresso, 5)
-    assert "primo target" in fatti[0].testo
+    assert "primo obiettivo" in fatti[0].testo
 
     m.chiudi(b, viva.ingresso)  # il resto torna a pareggio
     vive, fatti = e.sorveglia(vive)
-    assert vive == [] and "Chiusa" in fatti[0].testo
+    assert vive == [] and "chiusa" in fatti[0].testo
 
 
 def test_su_un_conto_reale_non_apre():

@@ -197,6 +197,15 @@ bloccano.
   spinge o frena; quando finisce, chi aveva ragione (pagelle e carriere);
   il sabato la riunione: pagelle, consigli fra agenti, riaddestramento di
   Capo (i casi recenti pesano di più) e Rischio.
+- **Messaggi riscritti (24/09).** Una scheda sola per decisione (cosa dice
+  ogni agente, cosa decide il Capo, chi ha pesato di più), compro/vendo,
+  euro e percentuali. Il peso di ogni agente è **di quanto sposta il
+  guadagno atteso**, in R: prima era lo spostamento della probabilità del
+  primo target, che faceva sembrare i Livelli contrari a tutto. Oggi il
+  Capo, imparato su 50.000 operazioni, ascolta soprattutto i Livelli (in
+  media 0,24 R), poi Orario e Bias (0,05); il resto quasi niente, perché
+  nei dati i loro segnali cambiavano poco i risultati. Non sono esclusi: se
+  dal vivo contano, il sabato li ascolta di più.
 - Si aggiorna da solo da questo branch: quello che si aggiunge qui arriva al
   bot entro due minuti (dal 24/09; prima una volta l'ora).
 
