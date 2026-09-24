@@ -55,6 +55,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import costi_misurati                                          # noqa: E402
+import griglie                                                 # noqa: E402
 from estrazione import LE_OTTO, Riga, etichetta, punteggi_dallo_storico  # noqa: E402
 
 from core import setup as stp                                  # noqa: E402
@@ -160,6 +161,18 @@ def riga_del_crt(
         strumento=strumento, compagne=compagne,
         crt_per_tf=crt_sulle_altre_coppie(storico, istante))
 
+    # Il bersaglio del 75% residuo (SETUP-14). Serve solo al secondo tempo:
+    # l'etichetta del modello centrale resta misurata su TP1, che e' un
+    # momento diverso e non va confuso con questo.
+    finale = stp.target_iniziale(
+        crt, stato.key_level_correnti(storico, istante))
+    cammini: dict = {}
+    if finale is not None:
+        cammini = griglie.tutte_le_simulazioni(
+            n1=crt.n1, ingresso=ingresso, stop=stop, tp1=target,
+            target_finale=finale, verso=crt.direzione, successive=dopo,
+            barre_massime=BARRE_MASSIME, costo_per_lato=costo)
+
     rischio = abs(ingresso - stop)
     return Riga(
         strumento=strumento,
@@ -170,7 +183,8 @@ def riga_del_crt(
         rapporto=abs(target - ingresso) / rischio if rischio else 0.0,
         costo_erre=(2.0 * costo / rischio) if rischio else 0.0,
         conferme=conferme, allineati=allineati,
-        esito=esito.come, erre=esito.erre, barre=esito.barre)
+        esito=esito.come, erre=esito.erre, barre=esito.barre,
+        target_finale=finale, cammini=cammini)
 
 
 def ingresso_stimato(crt) -> float:
@@ -248,9 +262,12 @@ def main() -> int:
 
     uscita = Path(a.uscita)
     uscita.parent.mkdir(parents=True, exist_ok=True)
+    colonne_cammini = griglie.colonne_delle_griglie()
     intestazione = (["strumento", "coppia", "quando", "verso", "ingresso",
                      "stop", "target", "rapporto", "costo_erre"]
-                    + list(LE_OTTO) + ["allineati", "esito", "erre", "barre"])
+                    + list(LE_OTTO) + ["allineati", "esito", "erre", "barre",
+                                       "target_finale"]
+                    + list(colonne_cammini))
 
     scritte = 0
     senza_esito = 0
@@ -278,7 +295,11 @@ def main() -> int:
                          f"{riga.costo_erre:.6f}"]
                         + [_cella(riga.conferme.get(k)) for k in LE_OTTO]
                         + [_cella(riga.allineati), riga.esito,
-                           f"{riga.erre:.4f}", riga.barre])
+                           f"{riga.erre:.4f}", riga.barre,
+                           "" if riga.target_finale is None
+                           else f"{riga.target_finale:.6f}"]
+                        + [_numero(riga.cammini.get(c))
+                           for c in colonne_cammini])
                     quante += 1
                     scritte += 1
                 print(f"  {tf_range.value} -> {tf_ese.value}  {strumento:8} "
@@ -296,6 +317,16 @@ def main() -> int:
               "livelli incoerenti sarebbe peggio di un'etichetta assente.")
     print(f"tempo: {time.time() - inizio:.0f}s")
     return 0
+
+
+def _numero(valore) -> str:
+    """Un R, oppure vuoto quando la simulazione non e' misurabile.
+
+    Vuoto e non zero: uno zero sarebbe un pareggio, e un pareggio non e'
+    "non misurabile". Mettere zero qui gonfierebbe di pareggi finti proprio
+    le griglie che hanno piu' casi incoerenti.
+    """
+    return "" if valore is None else f"{valore:.4f}"
 
 
 def _cella(valore) -> str:

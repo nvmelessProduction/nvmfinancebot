@@ -181,6 +181,53 @@ def invia_appena_possibile(testo: str) -> None:
     threading.Thread(target=_manda, name="telegram", daemon=True).start()
 
 
+def invia_all_equipe(testo: str) -> tuple[bool, str]:
+    """I verbali degli agenti, sul loro canale.
+
+    Canale separato da quello operativo, e separato apposta: li' ci vanno
+    "aperta", "chiusa", "stop colpito", e basta. Un verbale da venti righe
+    mescolato agli avvisi fa perdere l'avviso, che e' l'unica cosa che
+    richiede di fare qualcosa.
+
+    Se il canale non e' configurato non parte niente e **non si ripiega**
+    sull'altro: un ripiego silenzioso riempirebbe di colpo proprio il canale
+    che si voleva tenere pulito.
+    """
+    if in_prova():
+        log.info("[prova, non inviato] equipe: %s",
+                 testo.replace("\n", " | ")[:160])
+        return False, "siamo in una prova: nessun messaggio e' uscito"
+
+    cfg = impostazioni()
+    if not cfg.equipe_configurata:
+        log.info("[equipe spenta] %s", testo.replace("\n", " | ")[:200])
+        return False, "canale equipe non configurato (manca TELEGRAM_CHAT_EQUIPE)"
+
+    esiti = [_invia_a(d, testo) for d in cfg.destinatari_equipe()]
+    riusciti = [d for ok, d in esiti if ok]
+    falliti = [d for ok, d in esiti if not ok]
+    if riusciti:
+        return True, f"verbale inviato a {len(riusciti)} destinatari"
+    return False, "; ".join(falliti)
+
+
+def verbale_appena_possibile(testo: str) -> None:
+    """Come `invia_appena_possibile`, ma sul canale dell'equipe.
+
+    Su un thread suo per la stessa ragione dell'altro: un verbale non puo'
+    costare mezzo minuto a chi sta decidendo su una candela appena chiusa.
+    """
+    def _manda() -> None:
+        try:
+            inviato, dettaglio = invia_all_equipe(testo)
+            if not inviato:
+                log.info("verbale non consegnato: %s", dettaglio)
+        except Exception:                              # pragma: no cover
+            log.exception("verbale non inviato")
+
+    threading.Thread(target=_manda, name="equipe", daemon=True).start()
+
+
 def messaggio_decisione(
     alert: AlertIn,
     decisione: Decision,

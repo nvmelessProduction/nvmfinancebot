@@ -14,9 +14,31 @@ efficace** e il bootstrap **a blocchi**.
 
 ## Come si contano
 
-Per ogni strumento, le finestre `[quando, quando + barre x durata]` si uniscono
-quando si toccano: ogni gruppo di finestre incatenate e' **un blocco**, cioe'
-una prova sola. Il campione efficace e' il numero di blocchi.
+Per ogni **gruppo di correlazione**, le finestre
+`[quando, quando + barre x durata]` si uniscono quando si toccano: ogni gruppo
+di finestre incatenate e' **un blocco**, cioe' una prova sola. Il campione
+efficace e' il numero di blocchi.
+
+## Il gruppo di correlazione, e perche' non lo strumento
+
+La prima versione separava per **strumento**, con un test che diceva "lo
+stesso istante su due strumenti resta due prove". E' sbagliato, e il campione
+efficace che ne usciva -- il 90,2% delle righe -- era gonfiato.
+
+Se `EURUSD` e `GBPUSD` prendono un CRT long nella stessa ora, quella e' **una
+scommessa sul dollaro fatta due volte**: i due strumenti salgono e scendono
+insieme, quindi vincono e perdono insieme. Contarle come due prove e' lo
+stesso errore che il bootstrap a blocchi esiste per evitare, commesso lungo
+l'altro asse.
+
+I gruppi sono quelli di `RISK-02` (`GRUPPI_CORRELAZIONE`), letti dal bot e non
+ricopiati: e' la stessa tabella con cui il rischio decide quante posizioni
+correlate tollerare, ed e' gia' la sua dichiarazione di cosa si muove insieme.
+
+Conta anche per una decisione piu' grande: aggiungere trenta cambi contro
+dollaro moltiplica le righe e quasi non tocca il campione efficace. Il budget
+di dati cresce coi **fattori indipendenti**, non con gli strumenti -- e questo
+numero e' l'unico modo di verificarlo invece di sperarlo.
 
 Il blocco e' anche l'unita' che il bootstrap della Fase 2 dovra' ricampionare:
 ricampionare le righe una per una assumerebbe l'indipendenza che qui si sta
@@ -48,7 +70,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.mercato_duka import DURATA                           # noqa: E402
-from core.parametri import TF                                  # noqa: E402
+from core.parametri import GRUPPI_CORRELAZIONE, TF             # noqa: E402
+
+
+def gruppo_di(strumento: str) -> str:
+    """A quale gruppo di correlazione appartiene uno strumento.
+
+    Si legge da `GRUPPI_CORRELAZIONE`, la stessa tabella con cui `RISK-02`
+    decide quante posizioni correlate tollerare. Una seconda tabella qui
+    finirebbe per divergere da quella, e divergerebbe proprio nel punto in cui
+    si dichiara cosa si muove insieme.
+
+    Uno strumento fuori da ogni gruppo fa gruppo per se': non lo si accorpa a
+    caso, perche' accorpare male **restringe** il campione efficace e quindi
+    allarga l'intervallo -- dalla parte prudente, ma per un motivo inventato.
+    """
+    for nome, membri in GRUPPI_CORRELAZIONE.items():
+        if strumento in membri:
+            return nome
+    return f"solo:{strumento}"
 
 
 def durata_esecuzione(coppia: str) -> timedelta:
@@ -63,15 +103,15 @@ def durata_esecuzione(coppia: str) -> timedelta:
 
 
 def finestre(righe: Iterable[dict]) -> dict[str, list[tuple]]:
-    """Per ogni strumento, le finestre di esito, in ordine di inizio."""
-    per_strumento: dict[str, list[tuple]] = defaultdict(list)
+    """Per ogni gruppo di correlazione, le finestre di esito, in ordine."""
+    per_gruppo: dict[str, list[tuple]] = defaultdict(list)
     for indice, r in enumerate(righe):
         inizio = datetime.fromisoformat(r["quando"])
         fine = inizio + int(r["barre"]) * durata_esecuzione(r["coppia"])
-        per_strumento[r["strumento"]].append((inizio, fine, indice))
-    for serie in per_strumento.values():
+        per_gruppo[gruppo_di(r["strumento"])].append((inizio, fine, indice))
+    for serie in per_gruppo.values():
         serie.sort()
-    return per_strumento
+    return per_gruppo
 
 
 def blocchi(righe: list[dict]) -> list[str]:
@@ -83,7 +123,7 @@ def blocchi(righe: list[dict]) -> list[str]:
     che li attraversa.
     """
     etichette: list[Optional[str]] = [None] * len(righe)
-    for strumento, serie in finestre(righe).items():
+    for gruppo, serie in finestre(righe).items():
         numero = 0
         fine_corrente = None
         for inizio, fine, indice in serie:
@@ -92,7 +132,7 @@ def blocchi(righe: list[dict]) -> list[str]:
                 fine_corrente = fine
             else:
                 fine_corrente = max(fine_corrente, fine)
-            etichette[indice] = f"{strumento}#{numero:05d}"
+            etichette[indice] = f"{gruppo}#{numero:05d}"
     return [e or "?" for e in etichette]
 
 

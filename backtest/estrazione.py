@@ -34,7 +34,7 @@ misurare.
 from __future__ import annotations
 
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Sequence
@@ -81,6 +81,12 @@ class Riga:
     esito: str
     erre: float
     barre: int
+    # Il bersaglio del 75% residuo (SETUP-14). `None` quando non esiste un key
+    # level nella direzione: dal vivo quella e' un'astensione (PRIN-99).
+    target_finale: Optional[float] = None
+    # Gli R della gestione a due tempi, un candidato per agente: e' cio' su
+    # cui gli agenti fanno carriera. Vuoto quando manca il bersaglio.
+    cammini: dict = field(default_factory=dict)
 
 
 def caratteristiche(

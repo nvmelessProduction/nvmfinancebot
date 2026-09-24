@@ -112,6 +112,16 @@ class Impostazioni(BaseSettings):
     # Quante volte ritentare un messaggio prima di rinunciare. Telegram cade
     # di rado ma cade, e una notifica persa in modalita' semi e' un'occasione persa.
     TELEGRAM_TENTATIVI: int = 3
+    # Il canale dell'EQUIPE: i verbali degli agenti, che sono lunghi e
+    # frequenti. Sta separato da `TELEGRAM_CHAT_ID` perche' il canale
+    # operativo deve restare leggibile -- li' ci vanno "aperta", "chiusa",
+    # "stop colpito", e basta. Mescolare un verbale da venti righe con
+    # l'avviso di un ordine significa perdere l'avviso.
+    #
+    # Vuoto: i verbali non partono, e il canale operativo resta com'e'. Non
+    # ripiega sull'altro apposta: un ripiego silenzioso qui riempirebbe di
+    # colpo il canale che si voleva tenere pulito.
+    TELEGRAM_CHAT_EQUIPE: str = ""
 
     # --- MetaTrader 5 (FP Markets) ------------------------------------------
     # Se MT5_LOGIN e' 0 si assume che il terminale sia gia' loggato a mano.
@@ -211,6 +221,20 @@ class Impostazioni(BaseSettings):
     def telegram_configurato(self) -> bool:
         """True solo se abbiamo sia il token sia la chat di destinazione."""
         return bool(self.TELEGRAM_TOKEN.strip() and self.destinatari_telegram)
+
+    def destinatari_equipe(self) -> tuple[str, ...]:
+        """Le chat dei verbali dell'equipe. Vuoto = i verbali non partono.
+
+        **Non ripiega sul canale operativo.** Un ripiego silenzioso
+        riempirebbe di verbali da venti righe proprio il canale che deve
+        restare leggibile, e l'avviso di un ordine ci si perderebbe dentro.
+        """
+        grezzo = self.TELEGRAM_CHAT_EQUIPE.replace(";", ",").replace(" ", ",")
+        return tuple(p.strip() for p in grezzo.split(",") if p.strip())
+
+    @property
+    def equipe_configurata(self) -> bool:
+        return bool(self.TELEGRAM_TOKEN.strip() and self.destinatari_equipe())
 
     @property
     def webhook_configurato(self) -> bool:
