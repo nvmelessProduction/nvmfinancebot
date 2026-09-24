@@ -37,7 +37,7 @@ del manuale (vedi §2).
 | **Livelli** | Dove vanno stop, primo target e target finale? | la regola della sua scheda | le distanze |
 | **Rischio** | Quanto si rischia, e quanto costa entrare? | percentuale fissa, costi misurati | la stima dei costi per ora e per strumento |
 | **Sentinella** | Quando si va a pareggio, quando si prende il parziale? | la regola della sua scheda | i punti di pareggio e parziale, guardando il percorso di ogni operazione |
-| **Capo** | Tutto considerato, conviene entrare? | entra se ci sono tutte le conferme obbligatorie | quanto fidarsi di ogni agente |
+| **Capo** (l'algoritmo che sta sopra tutti) | Tutto considerato, conviene entrare? | entra se ci sono tutte le conferme obbligatorie | quanto fidarsi di ogni agente |
 | **Cronista** | — | racconta ogni decisione su Telegram, agente per agente, in italiano semplice | niente |
 | **Esecutore** | — | manda l'ordine al broker (solo dalla Fase H) e registra **prezzo e motivo di ogni chiusura, letti dal broker** | niente |
 
@@ -53,6 +53,79 @@ quanto pesa, e se ne può discutere.
 L'Esecutore registra le chiusure dal broker perché senza prezzo e motivo di
 uscita l'R non si calcola, e dal vivo non si impara niente. Nel vecchio bot
 25 chiusure su 27 avevano il motivo sbagliato.
+
+### La carriera
+
+Ogni agente entra come un neolaureato in un'azienda: fa il suo lavoro come
+dice il manuale, e sale di grado solo quando l'esperienza dimostra che sa
+fare meglio.
+
+| Grado | Cosa vuol dire | Come ci si arriva |
+|---|---|---|
+| **Neolaureato** | applica la regola di Romeo alla lettera | è il punto di partenza di tutti |
+| **In prova** | ha una versione nuova che gira in ombra: decide, ma senza operare | il riallenamento ha trovato qualcosa che sullo storico batte la versione in uso |
+| **Promosso** | la sua versione nuova opera davvero | la prova in ombra ha superato il cancello (§2) |
+| **Retrocesso** | torna alla versione precedente | dal vivo va peggio di quanto previsto |
+
+Il Capo fa carriera allo stesso modo. All'inizio vuole tutte le conferme
+obbligatorie, come dice Romeo. Con l'esperienza impara di chi fidarsi di
+più e di chi di meno.
+
+### I due tempi
+
+```mermaid
+flowchart LR
+    subgraph veloce["Tempo veloce · in memoria"]
+        C[Candela chiusa] --> A[Agenti] --> K[Capo] --> E[Esecutore] --> B[(Broker)]
+    end
+    subgraph lento["Tempo lento · staccato"]
+        R[(Registro)] --> M[Riunione:<br/>riallenamento, consigli,<br/>promozioni] --> V[Versioni nuove]
+    end
+    E -. dopo l'ordine .-> R
+    V -. fine settimana, mai<br/>a operazione aperta .-> A
+    R -. coda separata .-> T[Gruppo Telegram]
+    M -. coda separata .-> T
+```
+
+- **Il tempo veloce** apre le operazioni. Tutto in memoria, dentro un solo
+  programma: candela → agenti → Capo → Esecutore. Prima dell'ordine non si
+  aspetta niente di lento: niente rete tranne il broker, niente Telegram,
+  niente ragionamenti lunghi. Obiettivo iniziale: meno di mezzo secondo
+  dalla chiusura della candela all'ordine inviato, misurato su ogni ordine.
+- **Il tempo lento** è la riunione. È staccato dall'apertura e gira quando
+  le operazioni si chiudono e ogni fine settimana. Qui gli agenti si
+  riallenano, si scambiano consigli e si decidono le promozioni. Può
+  metterci minuti: nessun ordine lo aspetta.
+
+### I consigli fra agenti
+
+Nel tempo veloce gli agenti non si influenzano: ognuno risponde alla sua
+domanda senza sapere cosa dicono gli altri.
+
+Nella riunione invece si danno consigli, perché ognuno vede cose che gli
+altri non vedono. Esempio: la Sentinella vede il percorso di ogni
+operazione, e nota che in 6 stop su 10 il prezzo è andato di poco oltre lo
+stop e poi è arrivato al target. Lo dice ai Livelli: "forse lo stop è troppo
+stretto".
+
+**Un consiglio non è un ordine: è un'ipotesi.** Va nel registro, e solo
+l'agente responsabile di quel numero può provarla, con i suoi dati e con il
+cancello. Se passa, l'agente entra in prova. Se non passa, il consiglio resta
+scritto insieme al numero che l'ha bocciato. Così nessuno cambia perché "un
+altro l'ha detto", ma solo perché i dati gli danno ragione.
+
+### Il gruppo Telegram
+
+Il gruppo è la finestra sull'équipe: lì si vede lavorare e discutere.
+
+- **Ogni decisione:** il verbale, un agente per riga, in italiano semplice.
+  Parte **dopo** che l'ordine è stato inviato, mai prima.
+- **La riunione:** consigli, prove, promozioni e bocciature, con i numeri.
+
+Su Telegram un bot non può leggere i messaggi degli altri bot in un gruppo.
+Per questo la discussione avviene dentro il programma, e Telegram la
+mostra. I messaggi escono da una coda separata: se Telegram è lento o non
+risponde, nessun ordine aspetta.
 
 ---
 
@@ -127,9 +200,9 @@ Si passa alla fase successiva solo quando `STATO.md` dice che quella attuale
 | **C. Cacciatore** | Il codice del Cacciatore, provato sui casi annotati. | trova il 100% dei casi CRT, esattamente lì, e scarta il 100% dei casi "non è un CRT" |
 | **D. La base** | Si prendono tutti i CRT 2006–2023, con i costi veri. È il numero da battere. | il numero è scritto in `STATO.md` |
 | **E. Gli altri agenti** | Uno alla volta: scheda → casi → codice → misura contro la base. | ogni agente ha la sua riga nella tabella di `STATO.md` |
-| **F. Capo e apprendimento** | Il Capo impara di chi fidarsi, gli agenti imparano sullo storico, tutto dietro il cancello. Al massimo 3 varianti, dichiarate prima. | sì o no: la strategia batte la base di almeno 0,10 R per operazione, con i criteri del §2, e regge anche con lo spread × 1,5 |
+| **F. Capo e apprendimento** | Il Capo impara di chi fidarsi, gli agenti imparano sullo storico, tutto dietro il cancello. Al massimo 3 varianti, dichiarate prima. La riunione gira sullo storico, e le carriere si vedono già nel gruppo Telegram. | sì o no: la strategia batte la base di almeno 0,10 R per operazione, con i criteri del §2, e regge anche con lo spread × 1,5 |
 | **G. Verifica finale** | Si apre il periodo 2024–2026, una volta sola. | conferma o smentita |
-| **H. Dal vivo, in demo** | Esecutore, Sentinella dal vivo, Cronista, apprendimento dal vivo. Conto demo con la **cifra che useresti davvero**. | almeno 8 settimane con risultati coerenti con la Fase G |
+| **H. Dal vivo, in demo** | Esecutore, Sentinella dal vivo, apprendimento dal vivo, verbale di ogni decisione nel gruppo Telegram. Conto demo con la **cifra che useresti davvero**. | almeno 8 settimane con risultati coerenti con la Fase G |
 
 Il conto reale si considera solo dopo la Fase H, e solo con una tua
 decisione esplicita.

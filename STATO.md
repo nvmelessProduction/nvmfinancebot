@@ -45,6 +45,9 @@ Si riscrive insieme il **CRT di RomeoTPT**, partendo dal **Cacciatore**
 | 24/09/2026 | La specifica si riscrive: i vecchi documenti non valgono più come riferimento. |
 | 24/09/2026 | Il vecchio bot sulla VPS si ferma. |
 | 24/09/2026 | Architettura ad agenti. Gli agenti imparano sia sullo storico sia dal vivo, sempre dietro il cancello del `PIANO.md` §2. |
+| 24/09/2026 | Ogni agente fa carriera (neolaureato → in prova → promosso), e sopra tutti c'è il Capo, che impara anche lui. |
+| 24/09/2026 | Due tempi: l'apertura delle operazioni avviene tutta in memoria; la riunione (riallenamento, consigli, promozioni) è staccata e non la rallenta mai. |
+| 24/09/2026 | Gli agenti si danno consigli nella riunione senza influenzarsi: un consiglio è un'ipotesi che solo l'agente responsabile può provare, con il cancello. Tutto si vede nel gruppo Telegram dell'équipe, già collegato. |
 
 ## Domande aperte
 
@@ -60,6 +63,12 @@ Si decidono durante la Fase A.
   vecchi documenti si contraddicevano.
 - **Fonte dei prezzi:** una sola per tutti i timeframe. Il vecchio progetto
   mescolava future, CFD, Dukascopy e MT5, e molti errori venivano da lì.
+- **Telegram: un bot o uno per agente?** Un solo bot che scrive col nome di
+  ogni agente è più semplice. Un bot per agente, ognuno con il suo nome e la
+  sua foto, rende l'équipe più viva, ma vuol dire crearne una decina con
+  @BotFather. Si decide prima della Fase F.
+- **Avvisi urgenti** (stop colpito, freno d'emergenza): nello stesso gruppo o
+  in una chat a parte, per non perderli in mezzo ai verbali?
 - **Rischio per operazione, e cifra del conto demo.** Il vecchio conto demo
   era stato portato a 1.000.000 €, con operazioni da 50 lotti d'oro: in 7
   ore −13.915 €. Il demo deve avere la cifra che useresti davvero.
