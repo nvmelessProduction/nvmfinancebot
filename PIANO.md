@@ -199,7 +199,7 @@ Si passa alla fase successiva solo quando `STATO.md` dice che quella attuale
 
 | Fase | Cosa | Si chiude quando |
 |---|---|---|
-| **A. Specifica** | Si riscrive il CRT di Romeo **insieme**, una scheda per agente, partendo dal Cacciatore. Si raccolgono i casi annotati, il più possibile dai grafici che Romeo stesso ha mostrato. | la scheda del Cacciatore è approvata, ci sono almeno 20 casi CRT e 10 casi "sembra un CRT ma non lo è" |
+| **A. Specifica** | Si riscrive il CRT di Romeo **dalle sue fonti**, una scheda per agente, partendo dal Cacciatore. Dove le fonti non bastano, si dichiarano varianti. I casi si prendono dai grafici che Romeo ha pubblicato. | le regole del Cacciatore sono decise sulle fonti e ci sono i casi: obiettivo 20 CRT e 10 "sembra un CRT ma non lo è"; se non se ne trovano abbastanza, si scrive quanti sono |
 | **B. Dati** | **Una sola fonte di prezzi** per tutti i timeframe, con lo stesso orario del broker. Storico con bid e ask, anche al minuto per le coppie veloci. Controlli: niente buchi, niente prezzi assurdi. | i dati passano i controlli, e sui mesi in comune i CRT trovati coincidono con quelli del broker almeno al 95% |
 | **C. Cacciatore** | Il codice del Cacciatore, provato sui casi annotati. | trova il 100% dei casi CRT, esattamente lì, e scarta il 100% dei casi "non è un CRT" |
 | **D. La base** | Si prendono tutti i CRT 2006–2023, con i costi veri. È il numero da battere. | il numero è scritto in `STATO.md` |
@@ -232,9 +232,10 @@ deludono.
 Queste regole esistono perché ognuna corrisponde a un errore che il progetto
 precedente ha fatto più volte.
 
-1. **Una fase alla volta.** Niente codice prima che la scheda sia approvata e
-   i casi ci siano. *(Prima: il codice leggeva il CRT in modo diverso dalla
-   specifica, e ce ne si è accorti dopo tre settimane.)*
+1. **Prima le regole, poi il codice, poi i casi.** Niente codice prima che le
+   regole della scheda siano decise, e il codice non si considera buono
+   finché non passa i casi. *(Prima: il codice leggeva il CRT in modo diverso
+   dalla specifica, e ce ne si è accorti dopo tre settimane.)*
 2. **I casi annotati sono il metro.** I test controllano che il codice
    ritrovi i casi presi dai grafici, non che il codice faccia quello che fa
    già. Ogni correzione deve continuare a passare **tutti** i casi, non solo
