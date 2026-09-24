@@ -5,7 +5,7 @@ _Aggiornato il 24/09/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
-## Fasi attuali: A — Specifica, B — Dati, E — Gli altri agenti (dopo la prima prova del Capo)
+## Dove siamo: il piano si ferma alla Fase F
 
 **A.** Il CRT di RomeoTPT si riscrive dalle fonti, partendo dal
 **Cacciatore** (l'agente che risponde a "c'è un CRT qui?").
@@ -57,13 +57,20 @@ file. Il piano completo è in `PIANO.md`.
 (`spec/conferme.md`, `nvm/agenti/conferme.py`): key level, orario, bias.
 Nessuna, da sola, separa le operazioni buone dalle cattive in modo stabile.
 
-**F, prima prova (24/09).** Il Capo (`spec/capo.md`, `nvm/agenti/capo.py`,
-`capo.py`) ha pesato le conferme anno per anno, senza guardare avanti, in
-quattro configurazioni. **Nessuna passa il cancello**, e il Capo non si
-fida delle conferme: guarda quasi solo quanto sono lontani target e stop.
-Come dice la scheda, la Fase F non è chiusa e si torna agli agenti. Il
-prossimo agente da provare è l'ingresso sul timeframe basso, come fa
-Romeo: servono i minuti.
+**F (24/09).** Il Capo (`spec/capo.md`, `nvm/agenti/capo.py`, `capo.py`)
+ha pesato le conferme anno per anno, senza guardare avanti, in otto
+configurazioni: le quattro di partenza e le stesse con l'ingresso "un
+gradino sotto", la terza e ultima variante. **Nessuna passa il cancello.**
+Il Capo non si fida delle conferme: guarda quasi solo quanto sono lontani
+target e stop. E l'ingresso un gradino sotto, che doveva avvicinarci a come
+entra Romeo, va peggio del manuale.
+
+È il caso scritto nel `PIANO.md` §3, "Dove ci si ferma": **il CRT di
+Romeo, così come è scritto, non guadagna dopo i costi. Non si aggiungono
+regole per farlo passare: si decide cosa fare con quel numero davanti.**
+Resta da misurare solo il giornaliero → 15 minuti della terza variante,
+che aspetta vent'anni di minuti (da qui Dukascopy ne dà uno ogni 30–75
+secondi: un anno di uno strumento richiede circa 11 ore).
 
 ### Cosa serve da te
 
@@ -192,6 +199,22 @@ la geometria (quanto sono lontani i target, quanto è largo lo stop);
 key level, orario e bias hanno pesi vicini a zero. Uscita completa in
 `registro/misure/2026-09-24-capo.txt`.
 
+**Con l'ingresso un gradino sotto** (configurazioni 5–8, solo mensile e
+settimanale, contro la base del manuale sulle stesse coppie: 9.974
+operazioni, −0,045 R; K = 8, intervallo al 99,375%):
+
+| # | Cacciatore, stop | Scelte | R medio delle scelte | Differenza | IC99,375 | Con spread ×1,5 |
+|---|---|---:|---:|---:|---|---:|
+| 5 | manuale, all'estremo | 5.699 | −0,047 | −0,001 | [−0,101; +0,092] | +0,008 |
+| 6 | manuale, stretto | 2.103 | +0,015 | +0,061 | [−0,151; +0,287] | +0,044 |
+| 7 | chiusura dentro, all'estremo | 974 | −0,086 | −0,040 | [−0,180; +0,103] | −0,038 |
+| 8 | chiusura dentro, stretto | 830 | −0,200 | −0,154 | [−0,387; +0,104] | −0,287 |
+
+La base della variante, senza Capo, va peggio di quella del manuale:
+mensile → 4 ore −0,052 (manuale −0,013), settimanale → 1 ora −0,115
+(manuale −0,053). Stop più corti e target più lontani, come previsto, ma lo
+stop si prende nell'81% dei casi.
+
 Una prima versione di questa prova dava la configurazione 4 a +0,47 R, con
 il 100% degli anni concordi. Era un errore: con la "chiusura dentro" il
 bot entrava prima che la candela 2 chiudesse, cioè sapendo già come
@@ -206,7 +229,7 @@ sarebbe finita. Trovato, corretto e provato (`registro/tentativi.md`).
 | C. Cacciatore | — |
 | D. La base | fatta per tre coppie su quattro (24/09) |
 | E. Gli altri agenti | in corso: key level, orario e bias misurati (24/09) |
-| F. Capo e apprendimento | prima prova fatta (24/09): nessuna configurazione passa, si torna agli agenti |
+| F. Capo e apprendimento | **ferma** (24/09): 8 configurazioni su 8 non passano, varianti esaurite. Manca solo il giornaliero → 15 minuti, che aspetta i minuti |
 | G. Verifica finale | — |
 | H. Dal vivo, in demo | — |
 

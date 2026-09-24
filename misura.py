@@ -29,6 +29,8 @@ from nvm.tempo import TF
 
 RADICE = Path(__file__).resolve().parent
 COPPIE = {"MN-D1": (TF.MN, TF.D1), "W1-H4": (TF.W1, TF.H4), "D1-H1": (TF.D1, TF.H1), "H4-M15": (TF.H4, TF.M15)}
+# La variante "un gradino sotto" (spec/grilletto.md): stesso range, ingresso sul timeframe della coppia sotto.
+COPPIE |= {"MN-H4": (TF.MN, TF.H4), "W1-H1": (TF.W1, TF.H1), "D1-M15": (TF.D1, TF.M15)}
 FINE_HOLDOUT_CHIUSO = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp())
 # Il range serve prima del periodo: un mese mensile piu' un margine.
 MARGINE = 70 * 86400
