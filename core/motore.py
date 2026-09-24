@@ -1368,6 +1368,28 @@ def _spread_troppo_caro(spread: float, prezzo: float, stop: float,
             f"{1 / COSTO_SPREAD_MASSIMO_IN_R:.0f}")
 
 
+def _livelli_dell_ingresso_armato(
+    foto: "Fotografia", ingresso
+) -> tuple[Optional[tuple[float, float, float]], Optional[str]]:
+    """I tre livelli di un ingresso armato, sulla scala del CFD (REV-52).
+
+    Nascono sul FUTURE e devono passare di scala come per l'ingresso
+    ordinario. Restituisce `((stop, bersaglio, finale), None)` oppure
+    `(None, motivo)`: PRIN-99 vieta di mandare un ordine con livelli che non
+    si sanno leggere.
+    """
+    ancora = ingresso.prezzo
+    try:
+        return (
+            (_sulla_scala_del_cfd(foto, ingresso.stop, ancora),
+             _sulla_scala_del_cfd(foto, ingresso.bersaglio_1, ancora),
+             _sulla_scala_del_cfd(foto, ingresso.bersaglio_2, ancora)),
+            None,
+        )
+    except ValueError as errore:
+        return None, f"livelli non convertibili: {errore}"
+
+
 def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisione]:
     """CRT-13, secondo tempo: il ritorno nell'FVG fa partire l'ordine.
 
@@ -1427,16 +1449,12 @@ def valuta_ingresso_armato(foto: Fotografia, tf_trigger: TF) -> Optional[Decisio
 
     # I livelli nascono sul FUTURE e devono passare sulla scala del CFD
     # (REV-52), come per l'ingresso ordinario -- a meno che non ci siano gia'.
-    ancora_prezzo = ingresso.prezzo
-    try:
-        stop = _sulla_scala_del_cfd(foto, ingresso.stop, ancora_prezzo)
-        bersaglio = _sulla_scala_del_cfd(foto, ingresso.bersaglio_1, ancora_prezzo)
-        finale = _sulla_scala_del_cfd(foto, ingresso.bersaglio_2, ancora_prezzo)
-    except ValueError as errore:
+    tre, errore = _livelli_dell_ingresso_armato(foto, ingresso)
+    if tre is None:
         return _non_operare(
-            foto.strumento, ["PRIN-99", "ESCL-12"],
-            f"livelli non convertibili: {errore}", applicate,
+            foto.strumento, ["PRIN-99", "ESCL-12"], errore or "", applicate,
             direzione=ingresso.direzione, tf_crt=tf_trigger)
+    stop, bersaglio, finale = tre
 
     ancora_size, stop_size = _coppia_per_la_size(foto, ingresso.prezzo, ingresso.stop, stop)
     esito_size = risk.calcola_size(
