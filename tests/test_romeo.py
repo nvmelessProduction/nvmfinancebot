@@ -172,3 +172,11 @@ def test_la_fiducia_in_romeo_si_impara_dai_risultati():
     assert p_con[londra].mean() > p_senza[londra].mean()
     di_nuovo = Capo.da_dati(fidato.come_dati())
     assert np.allclose(di_nuovo.probabilita(x)[0], p_con)
+
+
+def test_l_auc_del_banco_di_prova_conta_i_pari_merito_a_meta():
+    from banco import auc
+    y = np.array([True, False, True, False])
+    assert auc(np.array([0.9, 0.1, 0.8, 0.2]), y) == 1.0
+    assert auc(np.array([0.1, 0.9, 0.2, 0.8]), y) == 0.0
+    assert auc(np.array([0.5, 0.5, 0.5, 0.5]), y) == 0.5
