@@ -1,7 +1,9 @@
-"""I minuti con bid e ask: la materia prima di tutte le candele.
+"""Le candele di base con bid e ask: la materia prima di tutte le altre.
 
-I prezzi stanno in punti interi, come li da' Dukascopy, cosi' non si perde
-precisione: si convertono in prezzi solo quando servono.
+Di solito sono minuti; per lo storico lungo delle coppie lente bastano le
+ore (`passo` = 3600). I prezzi stanno in punti interi, come li da'
+Dukascopy, cosi' non si perde precisione: si convertono in prezzi solo
+quando servono.
 """
 
 from __future__ import annotations
@@ -26,10 +28,11 @@ APERTURA, MASSIMO, MINIMO, CHIUSURA = range(4)
 
 @dataclass
 class Minuti:
-    """Candele da un minuto di uno strumento, ordinate nel tempo.
+    """Candele di base di uno strumento, ordinate nel tempo.
 
-    `t` e' l'istante UTC (secondi) in cui apre ogni minuto. `bid` e `ask`
-    hanno quattro colonne: apertura, massimo, minimo, chiusura, in punti.
+    `t` e' l'istante UTC (secondi) in cui apre ogni candela, lunga `passo`
+    secondi. `bid` e `ask` hanno quattro colonne: apertura, massimo, minimo,
+    chiusura, in punti.
     """
 
     strumento: str
@@ -38,6 +41,7 @@ class Minuti:
     ask: np.ndarray
     volume_bid: np.ndarray
     volume_ask: np.ndarray
+    passo: int = 60
 
     def __post_init__(self) -> None:
         n = len(self.t)
@@ -55,7 +59,7 @@ class Minuti:
         return PUNTO[self.strumento]
 
     @classmethod
-    def vuoti(cls, strumento: str) -> "Minuti":
+    def vuoti(cls, strumento: str, passo: int = 60) -> "Minuti":
         return cls(
             strumento,
             np.empty(0, np.int64),
@@ -63,6 +67,7 @@ class Minuti:
             np.empty((0, 4), np.int32),
             np.empty(0, np.float32),
             np.empty(0, np.float32),
+            passo,
         )
 
     @classmethod
@@ -70,7 +75,9 @@ class Minuti:
         pezzi = [p for p in pezzi if len(p)]
         if not pezzi:
             raise ValueError("niente da unire")
-        strumento = pezzi[0].strumento
+        strumento, passo = pezzi[0].strumento, pezzi[0].passo
+        if any(p.passo != passo for p in pezzi):
+            raise ValueError("non si uniscono candele di passo diverso")
         return cls(
             strumento,
             np.concatenate([p.t for p in pezzi]),
@@ -78,6 +85,7 @@ class Minuti:
             np.concatenate([p.ask for p in pezzi]),
             np.concatenate([p.volume_bid for p in pezzi]),
             np.concatenate([p.volume_ask for p in pezzi]),
+            passo,
         )
 
     def fra(self, dal: int, al: int) -> "Minuti":
@@ -85,7 +93,7 @@ class Minuti:
         i, j = np.searchsorted(self.t, [dal, al])
         return Minuti(
             self.strumento, self.t[i:j], self.bid[i:j], self.ask[i:j],
-            self.volume_bid[i:j], self.volume_ask[i:j],
+            self.volume_bid[i:j], self.volume_ask[i:j], self.passo,
         )
 
     def salva(self, percorso: Path) -> None:
@@ -93,14 +101,16 @@ class Minuti:
         np.savez_compressed(
             percorso, strumento=np.array(self.strumento), t=self.t, bid=self.bid,
             ask=self.ask, volume_bid=self.volume_bid, volume_ask=self.volume_ask,
+            passo=np.array(self.passo),
         )
 
     @classmethod
     def carica(cls, percorso: Path) -> "Minuti":
         with np.load(percorso) as f:
+            passo = int(f["passo"]) if "passo" in f else 60
             return cls(
                 str(f["strumento"]), f["t"], f["bid"], f["ask"],
-                f["volume_bid"], f["volume_ask"],
+                f["volume_bid"], f["volume_ask"], passo,
             )
 
 

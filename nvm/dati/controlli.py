@@ -100,8 +100,12 @@ def controlla(minuti: Minuti) -> Rapporto:
     if pausa:
         mezzanotti = np.diff(sessione // 86400) - 2 * fine_settimana
         aperti = aperti - mezzanotti * pausa
-    for i in np.flatnonzero(aperti > BUCO_MINUTI * 60):
-        aggiungi(Anomalia("buco", int(minuti.t[i]), f"{aperti[i] // 60} minuti di mercato aperto senza dati"))
+    # Fra due candele consecutive passa un `passo`: il buco e' quello che manca
+    # oltre, se supera la soglia ed e' almeno una candela intera.
+    mancanti = aperti - minuti.passo
+    buchi = (mancanti > BUCO_MINUTI * 60) & (mancanti >= minuti.passo)
+    for i in np.flatnonzero(buchi):
+        aggiungi(Anomalia("buco", int(minuti.t[i]), f"{mancanti[i] // 60} minuti di mercato aperto senza dati"))
 
     rapporto.anomalie.sort(key=lambda a: a.istante)
     return rapporto

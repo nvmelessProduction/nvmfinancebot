@@ -193,3 +193,27 @@ def test_un_giorno_vero_di_dukascopy():
     # 4 ore completa e' quella delle 21:00.
     assert ny(2026, 9, 9, 21) in h4.inizio.tolist()
     assert ny(2026, 9, 10, 5) in h4.inizio.tolist()
+
+
+# --- Le ore ------------------------------------------------------------------
+
+def test_ore_del_mese_contano_dall_inizio_del_mese():
+    from nvm.dati.dukascopy import indirizzo_ore, ore_del_mese
+
+    assert indirizzo_ore("EURUSD", 2024, 1, "BID").endswith("/EURUSD/2024/00/BID_candles_hour_1.bi5")
+    bid = bi5([(0, 100, 100, 100, 100, 0.0), (3600 * 30, 100, 110, 95, 105, 3.0)])
+    ask = bi5([(0, 102, 102, 102, 102, 0.0), (3600 * 30, 102, 112, 97, 107, 3.0)])
+    ore = ore_del_mese("EURUSD", 2024, 1, bid, ask)
+    assert ore.passo == 3600
+    assert ore.t.tolist() == [utc(2024, 1, 2, 6)]
+
+
+def test_dalle_ore_si_costruiscono_4_ore_e_giornaliere_ma_non_i_quarti():
+    ore = minuti_piatti("EURUSD", ny(2026, 9, 9, 17), ny(2026, 9, 10, 17))
+    ore = Minuti(ore.strumento, ore.t[::60], ore.bid[::60], ore.ask[::60], ore.volume_bid[::60], ore.volume_ask[::60], 3600)
+    assert len(costruisci(ore, TF.H4)) == 6
+    assert len(costruisci(ore, TF.D1)) == 1
+    with pytest.raises(ValueError):
+        costruisci(ore, TF.M15)
+    # Un'ora dopo l'altra non e' un buco.
+    assert controlla(ore).pulito()

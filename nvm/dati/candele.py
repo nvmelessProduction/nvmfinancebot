@@ -54,7 +54,9 @@ class Candele:
 
 
 def costruisci(minuti: Minuti, tf: TF) -> Candele:
-    """Raggruppa i minuti nelle candele di `tf`."""
+    """Raggruppa le candele di base (minuti, o ore) nelle candele di `tf`."""
+    if tf in PASSO and PASSO[tf] < minuti.passo:
+        raise ValueError(f"non si costruisce {tf.value} da candele di {minuti.passo} secondi")
     if not len(minuti):
         vuoto = np.empty(0, np.int64)
         return Candele(minuti.strumento, tf, vuoto, vuoto, np.empty((0, 4)), np.empty((0, 4)), np.empty(0))

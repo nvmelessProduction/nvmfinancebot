@@ -33,6 +33,8 @@ import numpy as np
 from nvm.dati.minuti import Minuti, file_del_mese
 
 INDIRIZZO = "https://datafeed.dukascopy.com/datafeed/{strumento}/{anno:04d}/{mese0:02d}/{giorno:02d}/{lato}_candles_min_1.bi5"
+# Le ore: un file per mese, con i secondi contati dall'inizio del mese.
+INDIRIZZO_ORE = "https://datafeed.dukascopy.com/datafeed/{strumento}/{anno:04d}/{mese0:02d}/{lato}_candles_hour_1.bi5"
 RECORD = struct.Struct(">iiiiif")
 LATI = ("BID", "ASK")
 
@@ -43,6 +45,10 @@ def indirizzo(strumento: str, giorno: date, lato: str) -> str:
         strumento=strumento, anno=giorno.year, mese0=giorno.month - 1,
         giorno=giorno.day, lato=lato,
     )
+
+
+def indirizzo_ore(strumento: str, anno: int, mese: int, lato: str) -> str:
+    return INDIRIZZO_ORE.format(strumento=strumento, anno=anno, mese0=mese - 1, lato=lato)
 
 
 def leggi_bi5(grezzo: bytes) -> np.ndarray:
@@ -58,24 +64,35 @@ def leggi_bi5(grezzo: bytes) -> np.ndarray:
     return tabella[:, [0, 1, 4, 3, 2, 5]]
 
 
-def minuti_del_giorno(strumento: str, giorno: date, bid: bytes, ask: bytes) -> Minuti:
-    """I minuti con scambi di un giorno UTC, dai due file bi5."""
+def _da_bi5(strumento: str, origine: int, bid: bytes, ask: bytes, passo: int, cosa: str) -> Minuti:
     b, a = leggi_bi5(bid), leggi_bi5(ask)
     if not len(b) or not len(a):
-        return Minuti.vuoti(strumento)
+        return Minuti.vuoti(strumento, passo)
     if len(b) != len(a) or np.any(b[:, 0] != a[:, 0]):
-        raise ValueError(f"{strumento} {giorno}: bid e ask non hanno gli stessi minuti")
+        raise ValueError(f"{strumento} {cosa}: bid e ask non hanno le stesse candele")
     con_scambi = (b[:, 5] > 0) | (a[:, 5] > 0)
     b, a = b[con_scambi], a[con_scambi]
-    mezzanotte = int(datetime(giorno.year, giorno.month, giorno.day, tzinfo=timezone.utc).timestamp())
     return Minuti(
         strumento,
-        mezzanotte + b[:, 0].astype(np.int64),
+        origine + b[:, 0].astype(np.int64),
         b[:, 1:5].astype(np.int32),
         a[:, 1:5].astype(np.int32),
         b[:, 5].astype(np.float32),
         a[:, 5].astype(np.float32),
+        passo,
     )
+
+
+def minuti_del_giorno(strumento: str, giorno: date, bid: bytes, ask: bytes) -> Minuti:
+    """I minuti con scambi di un giorno UTC, dai due file bi5."""
+    mezzanotte = int(datetime(giorno.year, giorno.month, giorno.day, tzinfo=timezone.utc).timestamp())
+    return _da_bi5(strumento, mezzanotte, bid, ask, 60, str(giorno))
+
+
+def ore_del_mese(strumento: str, anno: int, mese: int, bid: bytes, ask: bytes) -> Minuti:
+    """Le ore con scambi di un mese UTC, dai due file bi5 orari."""
+    inizio = int(datetime(anno, mese, 1, tzinfo=timezone.utc).timestamp())
+    return _da_bi5(strumento, inizio, bid, ask, 3600, f"{anno}-{mese:02d}")
 
 
 class TroppeRichieste(RuntimeError):
@@ -108,9 +125,16 @@ class Scaricatore:
         riscaricherebbe piu'.
         """
         percorso = self.cache / strumento / f"{giorno:%Y}" / f"{giorno:%m}" / f"{giorno:%d}_{lato}.bi5"
+        return self._file(percorso, indirizzo(strumento, giorno, lato), recente)
+
+    def file_ore(self, strumento: str, anno: int, mese: int, lato: str, recente: bool = False) -> bytes:
+        """Il file orario di un mese e di un lato."""
+        percorso = self.cache / strumento / "ore" / f"{anno:04d}-{mese:02d}_{lato}.bi5"
+        return self._file(percorso, indirizzo_ore(strumento, anno, mese, lato), recente)
+
+    def _file(self, percorso: Path, url: str, recente: bool) -> bytes:
         if percorso.exists():
             return percorso.read_bytes()
-        url = indirizzo(strumento, giorno, lato)
         for attesa in (*self.attese, None):
             try:
                 self.richieste += 1
@@ -171,6 +195,26 @@ def scarica_mese(
     return percorso
 
 
+def scarica_ore_mese(
+    scaricatore: Scaricatore, radice: Path, strumento: str, anno: int, mese: int,
+    oggi: Optional[date] = None,
+) -> Path:
+    """Le ore di un mese, in un file solo. Dukascopy pubblica il file orario
+    solo a mese finito: per il mese in corso servono i minuti."""
+    oggi = oggi or datetime.now(timezone.utc).date()
+    percorso = file_del_mese(radice, strumento, anno, mese)
+    fine_mese = (date(anno, mese, 28) + timedelta(days=4)).replace(day=1)
+    if percorso.exists():
+        return percorso
+    if fine_mese > oggi:
+        raise ValueError(f"{anno}-{mese:02d} non e' ancora finito: il file orario non esiste")
+    recente = fine_mese >= oggi - timedelta(days=7)
+    bid = scaricatore.file_ore(strumento, anno, mese, "BID", recente)
+    ask = scaricatore.file_ore(strumento, anno, mese, "ASK", recente)
+    ore_del_mese(strumento, anno, mese, bid, ask).salva(percorso)
+    return percorso
+
+
 def mesi(dal: str, al: str) -> list[tuple[int, int]]:
     """I mesi da 'AAAA-MM' a 'AAAA-MM' compresi."""
     a0, m0 = map(int, dal.split("-"))
@@ -184,15 +228,23 @@ def mesi(dal: str, al: str) -> list[tuple[int, int]]:
 
 def scarica(
     strumenti: list[str], dal: str, al: str, radice: Path, cache: Path,
-    scrivi: Callable[[str], None] = print,
+    ore: bool = False, scrivi: Callable[[str], None] = print,
 ) -> None:
+    """Scarica minuti (o ore) per ogni strumento e ogni mese, riprendendo da dove era."""
     scaricatore = Scaricatore(cache)
+    oggi = datetime.now(timezone.utc).date()
     for strumento in strumenti:
         for anno, mese in mesi(dal, al):
             inizio = time.monotonic()
-            percorso = scarica_mese(scaricatore, radice, strumento, anno, mese)
+            if ore:
+                if (date(anno, mese, 28) + timedelta(days=4)).replace(day=1) > oggi:
+                    continue  # il mese in corso non ha ancora il file orario
+                percorso = scarica_ore_mese(scaricatore, radice, strumento, anno, mese, oggi)
+            else:
+                percorso = scarica_mese(scaricatore, radice, strumento, anno, mese, oggi)
             n = len(Minuti.carica(percorso))
-            scrivi(f"{strumento} {anno}-{mese:02d}: {n} minuti ({time.monotonic() - inizio:.0f} s)")
+            unita = "ore" if ore else "minuti"
+            scrivi(f"{strumento} {anno}-{mese:02d}: {n} {unita} ({time.monotonic() - inizio:.0f} s)")
     scrivi(f"fatto: {scaricatore.richieste} richieste a Dukascopy")
 
 

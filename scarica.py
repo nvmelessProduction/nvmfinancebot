@@ -1,7 +1,11 @@
 """Scarica lo storico al minuto da Dukascopy, con bid e ask. Gira sulla VPS.
 
-    python scarica.py                          # sei strumenti, dal 2006 a oggi
+    python scarica.py                          # minuti, sei strumenti, dal 2006 a oggi
+    python scarica.py --ore                    # solo le ore: 50 volte meno richieste
     python scarica.py --strumenti EURUSD --dal 2024-01 --al 2024-03
+
+Le ore bastano per le coppie mensile -> giornaliero, settimanale -> 4 ore e
+giornaliero -> 1 ora. La coppia 4 ore -> 15 minuti ha bisogno dei minuti.
 
 Riprende da dove si era fermato: si puo' interrompere e rilanciare quando si
 vuole. Alla fine controlla i dati e scrive il rapporto.
@@ -26,6 +30,7 @@ def main() -> None:
     parser.add_argument("--strumenti", default=",".join(PUNTO), help="separati da virgola")
     parser.add_argument("--dal", default="2006-01", help="primo mese, AAAA-MM")
     parser.add_argument("--al", default=f"{oggi:%Y-%m}", help="ultimo mese, AAAA-MM")
+    parser.add_argument("--ore", action="store_true", help="scarica le ore invece dei minuti")
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
     parser.add_argument("--rapporto", default=str(RADICE / "dati" / "rapporto-dati.txt"))
     argomenti = parser.parse_args()
@@ -36,13 +41,14 @@ def main() -> None:
         parser.error(f"strumenti sconosciuti: {', '.join(sconosciuti)}")
 
     radice = Path(argomenti.cartella)
-    scarica(strumenti, argomenti.dal, argomenti.al, radice / "minuti", radice / "cache")
+    unita = "ore" if argomenti.ore else "minuti"
+    scarica(strumenti, argomenti.dal, argomenti.al, radice / unita, radice / "cache", ore=argomenti.ore)
 
     righe = []
     for strumento in strumenti:
         pezzi = []
         for anno, mese in mesi(argomenti.dal, argomenti.al):
-            percorso = file_del_mese(radice / "minuti", strumento, anno, mese)
+            percorso = file_del_mese(radice / unita, strumento, anno, mese)
             if percorso.exists():
                 pezzi.append(Minuti.carica(percorso))
         pezzi = [p for p in pezzi if len(p)]
