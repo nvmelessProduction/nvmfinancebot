@@ -303,21 +303,3 @@ def romeo_ricevuta(e, s) -> str:
 def romeo_non_letta(motivo: str) -> str:
     return f"📥 Romeo: non ho capito il messaggio, {motivo}."
 
-
-
-# --- Gli errori segnalati (`nvm/vivo/errori.py`) ---
-
-def errore_segnato(e, spinte: dict) -> str:
-    righe = [f"📝 Errore segnato: {e.leggibile} ({'presa' if e.entrata else 'non presa'}) — «{e.nota}»"]
-    pro = sorted(((n, v) for n, v in (spinte or {}).items() if v >= 0.02), key=lambda a: -a[1])
-    contro = sorted(((n, v) for n, v in (spinte or {}).items() if v <= -0.02), key=lambda a: a[1])
-    if pro:
-        righe.append("Chi spingeva per entrare: " + " · ".join(f"👍 {n} {erre(v)}" for n, v in pro))
-    if contro:
-        righe.append("Chi frenava: " + " · ".join(f"👎 {n} {erre(v)}" for n, v in contro))
-    righe.append("Sabato, riaddestrandomi, questa decisione pesa il doppio. Grazie: è esperienza.")
-    return "\n".join(righe)
-
-
-def errore_non_trovato(motivo: str) -> str:
-    return f"📝 Errore: {motivo}."

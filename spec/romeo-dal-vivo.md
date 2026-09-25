@@ -52,14 +52,3 @@ Messaggi da chat che non sono i canali del bot non contano.
   messaggio, non quella scritta da Romeo.
 - Il periodo sigillato (2024-2026, `casi/entrate-romeo.csv`) resta fuori:
   qui entrano solo le entrate nuove, dal 25/09/2026 in poi.
-
-## Gli errori **[D]**
-
-Quando l'utente vede una decisione sbagliata, lo dice al bot su uno dei suoi
-canali: rispondendo alla scheda della decisione con `/errore` e il perché,
-oppure scrivendo lo strumento, per esempio `/errore USDJPY comprato contro
-una spinta forte` (la decisione più recente su quello strumento nelle
-ultime 48 ore). Il bot la conserva, dice in équipe chi aveva spinto per
-entrare e chi frenava, e il sabato, riaddestrando il Capo, le dà il doppio
-del peso (`nvm/vivo/errori.py`). Le correzioni più profonde (manopole o
-domande nuove) nascono dagli screenshot che l'utente manda a Claude.

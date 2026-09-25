@@ -222,11 +222,6 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
       `/romeo EURUSD compra 1.0765 stop 1.0760 target 1.0800`
       Il bot risponde in équipe se l'aveva vista anche lui, e il sabato
       impara da quella. Non la copia mai (`spec/romeo-dal-vivo.md`).
-- [ ] **Facoltativo, quando vedi un errore del bot:** rispondi alla sua
-      scheda con `/errore` e il perché, oppure scrivi
-      `/errore USDJPY comprato contro una spinta forte`. Il sabato quella
-      decisione pesa il doppio. Per le correzioni più profonde, manda qui
-      lo screenshot.
 - Niente altro: l'utente ha chiesto di fare tutto da qui (24/09). La VPS
   resta ferma; `VPS.md` e `scarica.bat` restano pronti se un giorno servono.
 
