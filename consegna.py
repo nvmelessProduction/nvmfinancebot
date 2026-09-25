@@ -1,12 +1,12 @@
 """Manda alla palestra i dati che nascono sulla VPS. Gira sulla VPS.
 
-    python consegna.py              # i quarti d'ora dei vent'anni e le settimane dal vivo
+    python consegna.py              # quarti d'ora, ore delle coppie nuove e settimane dal vivo
     python consegna.py --solo-vivo  # solo le settimane dal vivo (lo fa il bot ogni sabato)
 
 La palestra (`allena.py`) gira da Claude, e da li' Dukascopy blocca i download:
 i minuti si scaricano sulla VPS (`scarica.bat`, `VPS.md`). Questo script ne fa
 candele da 15 minuti, un file per strumento e anno (quindici volte piu'
-leggere), ci aggiunge lo stato del bot dal vivo (decisioni, risultati,
+leggere), ci aggiunge le ore scaricate (le coppie nuove), lo stato del bot dal vivo (decisioni, risultati,
 diario degli agenti) e spedisce tutto su GitHub, nel ramo `dati-vps`: un ramo
 a parte, che il bot non legge e che non tocca il codice.
 
@@ -53,24 +53,33 @@ def a_quarti(m: Minuti, passo: int = QUARTO) -> Minuti:
                   np.add.reduceat(m.volume_bid, inizi), np.add.reduceat(m.volume_ask, inizi), passo)
 
 
-def quarti(grezzi: Path, uscita: Path) -> int:
-    """Un file di quarti d'ora per strumento e anno; si rifanno solo gli anni con minuti nuovi."""
+def _per_anno(sorgente: Path, destinazione: Path, trasforma) -> int:
+    """Un file per strumento e anno dai file mensili; si rifanno solo gli anni con mesi nuovi."""
     fatti = 0
     for strumento in PUNTO:
         per_anno: dict[int, list[Path]] = defaultdict(list)
-        for f in sorted(cartella_strumento(grezzi / "minuti", strumento).glob(f"{strumento}-*.npz")):
+        for f in sorted(cartella_strumento(sorgente, strumento).glob(f"{strumento}-*.npz")):
             per_anno[int(f.stem.split("-")[1])].append(f)
         for anno, mesi in per_anno.items():
-            destinazione = uscita / "quarti" / strumento / f"{strumento}-{anno}.npz"
-            if destinazione.exists() and destinazione.stat().st_mtime >= max(f.stat().st_mtime for f in mesi):
+            finale = destinazione / strumento / f"{strumento}-{anno}.npz"
+            if finale.exists() and finale.stat().st_mtime >= max(f.stat().st_mtime for f in mesi):
                 continue
-            pezzi = [a_quarti(Minuti.carica(f)) for f in mesi]
-            a_quarti_anno = Minuti.unisci([p for p in pezzi if len(p)]) if any(len(p) for p in pezzi) else None
-            if a_quarti_anno is None:
+            pezzi = [p for p in (trasforma(Minuti.carica(f)) for f in mesi) if len(p)]
+            if not pezzi:
                 continue
-            a_quarti_anno.salva(destinazione)
+            Minuti.unisci(pezzi).salva(finale)
             fatti += 1
     return fatti
+
+
+def quarti(grezzi: Path, uscita: Path) -> int:
+    """I quarti d'ora dai minuti scaricati: un file per strumento e anno."""
+    return _per_anno(grezzi / "minuti", uscita / "quarti", a_quarti)
+
+
+def ore(grezzi: Path, uscita: Path) -> int:
+    """Le ore scaricate (`scarica.py --ore`, per le coppie nuove): un file per strumento e anno."""
+    return _per_anno(grezzi / "ore", uscita / "ore", lambda m: m)
 
 
 def segreti(env: dict[str, str]) -> list[str]:
@@ -154,6 +163,8 @@ def main() -> None:
     if not a.solo_vivo:
         print("Preparo i quarti d'ora dai minuti scaricati...", flush=True)
         print(f"  {quarti(Path(a.grezzi), uscita)} anni nuovi o aggiornati", flush=True)
+        print("Preparo le ore scaricate...", flush=True)
+        print(f"  {ore(Path(a.grezzi), uscita)} anni nuovi o aggiornati", flush=True)
     env = leggi_env(RADICE / ".env")
     copiati = vivo(Path(a.vivo), uscita, segreti(env))
     print(f"Stato del bot dal vivo: {', '.join(copiati) or 'niente (il bot non ha ancora girato qui)'}", flush=True)

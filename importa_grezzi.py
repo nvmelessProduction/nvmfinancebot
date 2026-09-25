@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from nvm.dati.minuti import PUNTO
+from nvm.dati.strumenti import BASE
 from nvm.dati.vecchio import leggi_grezzi, salva_per_mese
 
 RADICE = Path(__file__).resolve().parent
@@ -24,7 +24,7 @@ def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     cartella = Path(sys.argv[1])
-    for strumento in PUNTO:
+    for strumento in BASE:
         bid, ask = cartella / f"{strumento}_BID_H1.csv.gz", cartella / f"{strumento}_ASK_H1.csv.gz"
         if not (bid.exists() and ask.exists()):
             print(f"{strumento}: mancano i file")

@@ -28,17 +28,11 @@ import numpy as np
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import Candele
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
+from nvm.dati.strumenti import STRUMENTI
 
 # Commissione di un giro (apertura e chiusura), in prezzo per unita' di
 # strumento. Circa 7 dollari per lotto standard, come un conto RAW.
-COMMISSIONE = {
-    "EURUSD": 0.00007,
-    "GBPUSD": 0.00007,
-    "AUDUSD": 0.00007,
-    "USDCHF": 0.00007,
-    "USDJPY": 0.007,
-    "XAUUSD": 0.07,
-}
+COMMISSIONE = {n: s.commissione for n, s in STRUMENTI.items()}
 
 
 class Uscita(str, Enum):

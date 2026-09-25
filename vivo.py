@@ -27,7 +27,8 @@ from pathlib import Path
 from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.dati.candele import costruisci
-from nvm.dati.minuti import PUNTO, Minuti
+from nvm.dati.minuti import Minuti
+from nvm.dati.strumenti import BASE
 from nvm.tempo import TF
 from nvm.vivo import autoanalisi, messaggi
 from nvm.vivo.ambiente import impostazioni, leggi_env
@@ -47,6 +48,9 @@ from nvm.vivo.telegram import Telegram
 from nvm.vivo.terminale import ErroreMT5, Terminale
 
 RADICE = Path(__file__).resolve().parent
+# Gli strumenti su cui il bot opera dal vivo. Il bot ne conosce di piu' (`nvm/dati/strumenti.py`)
+# e impara da tutti quelli di cui ci sono i dati; dal vivo, per ora, i sei di partenza.
+STRUMENTI_VIVO = BASE
 CARTELLA = RADICE / "dati" / "vivo"
 RAMO = "claude/zealous-albattani-394cd9"
 ORARIE = 13000          # circa due anni: servono al key level del mensile
@@ -154,7 +158,7 @@ class Bot:
             self.allarme("Non so ancora l'ora del server del broker: aspetto che il mercato si muova.")
             time.sleep(60)
         self.stato.scarto = self.terminale.scarto
-        for strumento in PUNTO:
+        for strumento in STRUMENTI_VIVO:
             self.basi[strumento] = self.terminale.orarie(strumento, ORARIE)
             self.fini[strumento] = self.terminale.barre(strumento, QUARTI, 900)
         adesso = time.time()
@@ -170,7 +174,7 @@ class Bot:
             self.tg.operativo(messaggi.aggiornato(riavvio.read_text(encoding="utf-8")))
             riavvio.unlink()
         else:
-            self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(PUNTO), self.terminale.scarto))
+            self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(STRUMENTI_VIVO), self.terminale.scarto))
         self.prova_collegamento(solo_se_non_va=da_aggiornamento)
         if not self.imp.chat_equipe:
             self.tg.operativo(messaggi.allarme(
@@ -197,7 +201,7 @@ class Bot:
         """A ogni avvio: MT5 accetterebbe un ordine su ogni strumento? Lo dice sul
         canale operativo; dopo un aggiornamento, solo se qualcosa non va."""
         prove = []
-        for strumento in PUNTO:
+        for strumento in STRUMENTI_VIVO:
             try:
                 e = self.terminale.prova_ordine(strumento, MAGIC)
                 prove.append((strumento, e.ok, e.messaggio))
@@ -270,7 +274,7 @@ class Bot:
 
     def giro_veloce(self, quarto: int) -> None:
         """La coppia 4 ore -> 15 minuti, ogni quarto d'ora."""
-        for strumento in PUNTO:
+        for strumento in STRUMENTI_VIVO:
             self.fini[strumento] = _unisci(self.fini[strumento], self.terminale.barre(strumento, 20, 900), QUARTI)
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
         self._decidi(giro_orario(self.fini, dal, quarto, self.capo, (COPPIA_VELOCE,), self.basi), quarto, 900)
@@ -278,7 +282,7 @@ class Bot:
         self.stato.ultimo_quarto = quarto
 
     def giro(self, ora: int) -> None:
-        for strumento in PUNTO:
+        for strumento in STRUMENTI_VIVO:
             self.basi[strumento] = _unisci(self.basi[strumento], self.terminale.orarie(strumento, 50), ORARIE)
         self.stato.scarto = self.terminale.scarto
         dal = max(self.stato.ultimo_giro + 1, ora - 86400)

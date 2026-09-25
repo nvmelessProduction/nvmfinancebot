@@ -107,3 +107,23 @@ def test_il_bot_spedisce_le_settimane_solo_se_c_e_il_token(tmp_path, monkeypatch
     (tmp_path / ".env").write_text("TELEGRAM_TOKEN=x\nGITHUB_TOKEN=abc\n")
     vivo.Bot.consegna(NS())
     assert len(partiti) == 1 and partiti[0][-1] == "--solo-vivo" and "abc" not in " ".join(partiti[0])
+
+
+def test_le_ore_delle_coppie_nuove_vanno_e_tornano_un_mese_per_file(tmp_path):
+    from importa_vps import salva_mesi_nuovi
+    grezzi = tmp_path / "grezzi"
+    for mese in (1, 2):
+        ore = consegna.a_quarti(passeggiata("EURGBP", utc(2020, mese, 1), utc(2020, mese, 3), seme=mese), 3600)
+        ore.salva(file_del_mese(grezzi / "ore", "EURGBP", 2020, mese))
+    uscita = tmp_path / "uscita"
+    assert consegna.ore(grezzi, uscita) == 1
+    anno = Minuti.carica(uscita / "ore" / "EURGBP" / "EURGBP-2020.npz")
+    assert anno.passo == 3600 and len(anno) == 2 * 48
+    arrivo = tmp_path / "arrivo"
+    file_del_mese(arrivo, "EURGBP", 2020, 1).parent.mkdir(parents=True)
+    gia = Minuti.vuoti("EURGBP", 3600)
+    gia.salva(file_del_mese(arrivo, "EURGBP", 2020, 1))
+    # Il mese che c'era gia' non si tocca; quello che mancava arriva.
+    assert salva_mesi_nuovi(anno, arrivo) == 1
+    assert len(Minuti.carica(file_del_mese(arrivo, "EURGBP", 2020, 1))) == 0
+    assert len(Minuti.carica(file_del_mese(arrivo, "EURGBP", 2020, 2))) == 48

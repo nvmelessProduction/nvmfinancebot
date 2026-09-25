@@ -24,6 +24,7 @@ from nvm.agenti.cacciatore import Variante
 from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
+from nvm.dati.strumenti import BASE
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.cammino import Tabella, cammino, costruisci_tabella, giudica
 from nvm.prova.campo import Uscita
@@ -77,7 +78,12 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
 def ore_storiche(radice: Path) -> dict:
     """Le ore di ogni strumento per il periodo della tabella, con il margine per i CRT a cavallo."""
     dal, al = _istante(DAL), _istante(AL + 1)
-    return {s: carica_ore(radice, s, dal - 70 * 86400, al + 70 * 86400)[0] for s in PUNTO}
+    fuori = {}
+    for s in PUNTO:
+        ore = carica_ore(radice, s, dal - 70 * 86400, al + 70 * 86400)[0]
+        if len(ore):
+            fuori[s] = ore
+    return fuori
 
 
 def quarti_storici(radice: Path) -> dict:
@@ -190,9 +196,9 @@ def candidati_di_romeo(radice: Path = RADICE / "dati" / "grezzi") -> dict[str, n
     """I candidati del periodo di studio per la somiglianza a Romeo (`spec/capo.md`):
     le operazioni del 2023 delle coppie del bot dal vivo, e quali sono le sue scelte."""
     entrate = [e for e in leggi(RADICE / "casi" / "entrate-romeo.csv")
-               if e.periodo == "studio" and e.strumento in PUNTO]
+               if e.periodo == "studio" and e.strumento in BASE]
     xs, ys, tp1 = [], [], []
-    for strumento in PUNTO:
+    for strumento in BASE:
         ore, _ = carica_ore(radice, strumento, _istante(2021), _istante(2024) + 60 * 86400)
         minuti = carica_periodo(radice / "minuti", strumento, _istante(2023), _istante(2024))
         ops, x = candidati(ore, minuti, _istante(2023), _istante(2024))

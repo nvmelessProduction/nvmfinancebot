@@ -13,15 +13,10 @@ from pathlib import Path
 
 import numpy as np
 
-# Quanto vale un punto, per strumento. Sono i divisori di Dukascopy.
-PUNTO = {
-    "EURUSD": 1e-5,
-    "GBPUSD": 1e-5,
-    "AUDUSD": 1e-5,
-    "USDCHF": 1e-5,
-    "USDJPY": 1e-3,
-    "XAUUSD": 1e-3,
-}
+from nvm.dati.strumenti import STRUMENTI
+
+# Quanto vale un punto, per strumento. Sono i divisori di Dukascopy (`nvm/dati/strumenti.py`).
+PUNTO = {n: s.punto for n, s in STRUMENTI.items()}
 
 APERTURA, MASSIMO, MINIMO, CHIUSURA = range(4)
 

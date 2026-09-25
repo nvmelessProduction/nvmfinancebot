@@ -29,7 +29,8 @@ from capo import AL, COPPIE, DAL, RADICE, _istante, tabella
 from nvm.agenti import capo as il_capo, manopole
 from nvm.agenti.capo import COLONNE_ROMEO, Capo, Logistica
 from nvm.dati.candele import costruisci
-from nvm.dati.minuti import PUNTO, carica_periodo
+from nvm.dati.minuti import carica_periodo
+from nvm.dati.strumenti import BASE
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import opera
 from nvm.prova.cammino import _inizio_anno
@@ -71,7 +72,7 @@ def riconosce(a: np.ndarray, y: np.ndarray, seme: int = 0) -> float:
 
 def romeo(domande) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     radice = RADICE / "dati" / "grezzi"
-    entrate = [e for e in leggi(RADICE / "casi" / "entrate-romeo.csv") if e.periodo == "studio" and e.strumento in PUNTO]
+    entrate = [e for e in leggi(RADICE / "casi" / "entrate-romeo.csv") if e.periodo == "studio" and e.strumento in BASE]
     xs, ys, ds, tp = [], [], [], []
     for s in sorted({e.strumento for e in entrate}):
         ore, _ = carica_ore(radice, s, _istante(2021), _istante(2024) + 60 * 86400)
@@ -95,7 +96,7 @@ def vent_anni(domande) -> np.ndarray:
     t = tabella(1, 1.0, radice)
     dal, al = _istante(DAL), _istante(AL + 1)
     risposte, quando = [], []
-    for s in PUNTO:
+    for s in BASE:
         base, _ = carica_ore(radice, s, dal - 70 * 86400, al + 70 * 86400)
         fine = int(base.t[-1]) + base.passo
         c = contesto(base, fine)

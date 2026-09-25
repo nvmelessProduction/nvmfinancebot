@@ -3,15 +3,21 @@
     python importa_vps.py
 
 I quarti d'ora dei vent'anni vanno in `dati/grezzi/quarti/`, un file per
-strumento e anno; lo stato del bot dal vivo in `dati/vps/vivo/`. Se il ramo
-non c'e' ancora, lo dice e non fa niente.
+strumento e anno; le ore delle coppie nuove in `dati/grezzi/ore/`, un file
+per mese come le altre; lo stato del bot dal vivo in `dati/vps/vivo/`. Se il
+ramo non c'e' ancora, lo dice e non fa niente.
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+import numpy as np
+
+from nvm.dati.minuti import Minuti, file_del_mese
 
 RADICE = Path(__file__).resolve().parent
 RAMO = "dati-vps"
@@ -24,8 +30,18 @@ def main() -> None:
         sys.exit(f"Il ramo {RAMO} non c'e' ancora: la VPS non ha spedito niente (VPS.md).")
     elenco = subprocess.run(["git", "ls-tree", "-r", "--name-only", f"origin/{RAMO}"], cwd=RADICE,
                             capture_output=True, text=True, check=True).stdout.split()
-    quarti = vivi = 0
+    quarti = vivi = mesi = 0
     for nome in elenco:
+        contenuto = lambda: subprocess.run(["git", "show", f"origin/{RAMO}:{nome}"], cwd=RADICE, capture_output=True,
+                                           check=True).stdout
+        if nome.startswith("ore/"):
+            # Le ore delle coppie nuove, un file per anno: si rimettono un file per mese, come le altre.
+            # I mesi che ci sono gia' (l'archivio dei sei di partenza) non si toccano.
+            with tempfile.TemporaryDirectory() as cartella:
+                f = Path(cartella) / "anno.npz"
+                f.write_bytes(contenuto())
+                mesi += salva_mesi_nuovi(Minuti.carica(f), RADICE / "dati" / "grezzi" / "ore")
+            continue
         if nome.startswith("quarti/"):
             destinazione = RADICE / "dati" / "grezzi" / nome
             quarti += 1
@@ -34,11 +50,25 @@ def main() -> None:
             vivi += 1
         else:
             continue
-        contenuto = subprocess.run(["git", "show", f"origin/{RAMO}:{nome}"], cwd=RADICE, capture_output=True,
-                                   check=True).stdout
         destinazione.parent.mkdir(parents=True, exist_ok=True)
-        destinazione.write_bytes(contenuto)
-    print(f"Dalla VPS: {quarti} file di quarti d'ora, {vivi} file del bot dal vivo.")
+        destinazione.write_bytes(contenuto())
+    print(f"Dalla VPS: {quarti} file di quarti d'ora, {mesi} mesi di ore nuovi, {vivi} file del bot dal vivo.")
+
+
+def salva_mesi_nuovi(ore: Minuti, cartella: Path) -> int:
+    """Un file per mese UTC, solo per i mesi che mancano. Restituisce quanti file nuovi."""
+    mesi = ore.t.astype("datetime64[s]").astype("datetime64[M]")
+    n = 0
+    for mese in np.unique(mesi):
+        anno, m = int(str(mese)[:4]), int(str(mese)[5:7])
+        percorso = file_del_mese(cartella, ore.strumento, anno, m)
+        if percorso.exists():
+            continue
+        dentro = mesi == mese
+        Minuti(ore.strumento, ore.t[dentro], ore.bid[dentro], ore.ask[dentro],
+               ore.volume_bid[dentro], ore.volume_ask[dentro], ore.passo).salva(percorso)
+        n += 1
+    return n
 
 
 if __name__ == "__main__":

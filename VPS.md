@@ -63,6 +63,18 @@ Quando `scarica.bat` ha finito, **doppio clic su `consegna.bat`**.
 - Da lì in poi il bot spedisce da solo le settimane dal vivo, ogni sabato
   dopo la riunione.
 
+## 4. Le altre coppie
+
+Il bot impara anche dalle altre 23 coppie forex fra le otto valute
+principali (EURGBP, GBPJPY, AUDNZD, …; l'elenco è in
+`nvm/dati/strumenti.py`). Quando `scarica.bat` ha finito:
+
+1. **Doppio clic su `scarica_coppie.bat`.** Prima scarica le ore (un paio
+   d'ore), poi i minuti (qualche giorno: puoi chiudere e riprendere quando
+   vuoi).
+2. Quando le ore sono finite, e poi di nuovo quando sono finiti i minuti,
+   **doppio clic su `consegna.bat`**: spedisce quello che c'è di nuovo.
+
 ## Se qualcosa va storto
 
 | Cosa vedi | Cosa vuol dire |

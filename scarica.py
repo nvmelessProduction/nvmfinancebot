@@ -1,6 +1,7 @@
 """Scarica lo storico al minuto da Dukascopy, con bid e ask. Gira sulla VPS.
 
-    python scarica.py                          # minuti, sei strumenti, dal 2006 a oggi
+    python scarica.py                          # minuti, i sei strumenti di partenza, dal 2006 a oggi
+    python scarica.py --strumenti nuovi --ore  # le ore delle altre coppie (nvm/dati/strumenti.py)
     python scarica.py --ore                    # solo le ore: 50 volte meno richieste
     python scarica.py --strumenti EURUSD --dal 2024-01 --al 2024-03
 
@@ -20,6 +21,7 @@ from pathlib import Path
 from nvm.dati.controlli import controlla
 from nvm.dati.dukascopy import Scaricatore, completa_con_ask, mesi, mesi_a_campione, scarica
 from nvm.dati.minuti import PUNTO, Minuti, file_del_mese
+from nvm.dati.strumenti import BASE, NUOVI
 
 RADICE = Path(__file__).resolve().parent
 
@@ -27,7 +29,8 @@ RADICE = Path(__file__).resolve().parent
 def main() -> None:
     oggi = datetime.now(timezone.utc)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--strumenti", default=",".join(PUNTO), help="separati da virgola")
+    parser.add_argument("--strumenti", default="base",
+                        help="separati da virgola, oppure: base (i sei di partenza), nuovi (le altre coppie), tutti")
     parser.add_argument("--dal", default="2006-01", help="primo mese, AAAA-MM")
     parser.add_argument("--al", default=f"{oggi:%Y-%m}", help="ultimo mese, AAAA-MM")
     parser.add_argument("--ore", action="store_true", help="scarica le ore invece dei minuti")
@@ -38,7 +41,8 @@ def main() -> None:
     parser.add_argument("--rapporto", default=str(RADICE / "dati" / "rapporto-dati.txt"))
     argomenti = parser.parse_args()
 
-    strumenti = [s.strip().upper() for s in argomenti.strumenti.split(",") if s.strip()]
+    gruppi = {"BASE": list(BASE), "NUOVI": list(NUOVI), "TUTTI": list(PUNTO)}
+    strumenti = [x for s in argomenti.strumenti.split(",") if s.strip() for x in gruppi.get(s.strip().upper(), [s.strip().upper()])]
     sconosciuti = [s for s in strumenti if s not in PUNTO]
     if sconosciuti:
         parser.error(f"strumenti sconosciuti: {', '.join(sconosciuti)}")

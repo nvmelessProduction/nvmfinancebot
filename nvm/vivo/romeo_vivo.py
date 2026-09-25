@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Optional
 import numpy as np
 
 from nvm.dati.minuti import PUNTO
+from nvm.dati.strumenti import STRUMENTI
 
 if TYPE_CHECKING:
     from nvm.vivo.stato import Seguita
@@ -30,7 +31,7 @@ PRIMA = 24 * 3600
 DOPO = 3600
 # Ritrovata: ingresso entro meta' del rischio di Romeo, la soglia del PIANO.md.
 META_RISCHIO = 0.5
-PIP = {"EURUSD": 1e-4, "GBPUSD": 1e-4, "AUDUSD": 1e-4, "USDCHF": 1e-4, "USDJPY": 1e-2, "XAUUSD": 1.0}
+PIP = {n: s.pip for n, s in STRUMENTI.items()}
 NOMI = {"ORO": "XAUUSD", "GOLD": "XAUUSD"}
 COMPRA = {"compra", "compro", "acquisto", "buy", "long"}
 VENDE = {"vende", "vendo", "vendita", "sell", "short"}

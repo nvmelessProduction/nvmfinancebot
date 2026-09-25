@@ -36,12 +36,13 @@ from nvm.prova.base import SETTIMANA, Risultato, opera
 from nvm.prova.cammino import Tabella
 from nvm.prova.campo import Uscita
 from nvm.prova.romeo import Entrata, al_prezzo, armati, candidati, confronta, esito, etichette, grandi, leggi
+from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import TF, come_testo
 
 RADICE = Path(__file__).resolve().parent
 # Un pip, per dividere le entrate di Romeo: sotto i 15 pip di stop entra sul
 # timeframe basso (1-15 minuti), che senza i minuti il bot non vede.
-PIP = {"EURUSD": 1e-4, "GBPUSD": 1e-4, "AUDUSD": 1e-4, "USDCHF": 1e-4, "USDJPY": 1e-2, "XAUUSD": 1.0}
+PIP = {n: s.pip for n, s in STRUMENTI.items()}
 STOP_ALTO = 15
 # Le coppie che scendono ai 15 minuti, dove ci sono i minuti: quella del
 # manuale e quella un gradino sotto (`spec/grilletto.md`).

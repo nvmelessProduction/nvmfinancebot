@@ -13,11 +13,12 @@ from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
 from nvm.agenti.conferme import Bias, Contesto
+from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import NEW_YORK, TF
 from nvm.vivo.giro import Decisione
 from nvm.vivo.romeo_vivo import PIP as PIP_ROMEO
 
-CIFRE = {"EURUSD": 5, "GBPUSD": 5, "AUDUSD": 5, "USDCHF": 5, "USDJPY": 3, "XAUUSD": 2}
+CIFRE = {n: s.cifre for n, s in STRUMENTI.items()}
 NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: "4 ore", TF.H1: "1 ora",
            TF.M15: "15 minuti", TF.M5: "5 minuti", TF.M1: "1 minuto"}
 MESI = ("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
