@@ -13,57 +13,64 @@ capendo dai propri errori, confrontandosi con i colleghi, crescerà"*.
 Fino a qui imparavano da soli solo il Capo, la voce di Romeo e il Rischio;
 i sei specialisti erano regole ferme, cambiate a mano.
 
-## Il mansionario **[D]**
+## Le manopole, senza recinti **[D]**
 
-Ogni specialista ha delle manopole, e per ognuna i valori ammessi: i limiti
-vengono dalle fonti di Romeo, e fuori da lì non si va, anche se i numeri
-tentano. L'esempio che li ha fatti scrivere: uno stop sempre più largo
-avvicina il risultato a zero, ma solo perché le operazioni non si fermano
-più e scadono (17% scadute con lo stop a 4 volte il range, contro l'1%),
-cioè soldi fermi e rischio nascosto (`registro/tentativi.md`, 25/09/2026).
+Ogni specialista ha le sue manopole: i numeri e le scelte che prima erano
+scritti a mano. L'utente, 25/09/2026: *"non dobbiamo limitarli né dargli
+regole fisse, vanno addestrati"*. Ogni settimana ognuna si sposta di un
+passo, in su o in giù, senza un recinto; i soli confini sono quelli della
+definizione (un'ora fra 0 e 24, una frazione fra 0 e 1, almeno una candela).
 
-| Agente | Manopola | Valori ammessi | In uso all'inizio |
+| Agente | Manopola | Passo | All'inizio |
 |---|---|---|---|
-| Cacciatore | variante | manuale, chiusura dentro | manuale |
-| Grilletto | colpi sullo stesso CRT | 1, 2, 3 | 3 |
-| Grilletto | lato della liquidità (candele per lato) | 1, 2, 3 | 2 |
-| Livelli | secondo obiettivo oltre il lato (ampiezze) | 0, 0,25, 0,5, 0,75, 1 | 0,5 |
-| Livelli | stop minimo (frazione del range) | 0,15, 0,2, 0,25, 0,33, 0,5 | 0,25 |
-| Key level | candele guardate | 12, 24, 48 | 24 |
-| Key level | vicinanza | 0,05, 0,1, 0,2 | 0,1 |
-| Key level | lato dello swing | 1, 2, 3 | 2 |
-| Orario | ora di Londra (NY) | 0–4, 1–4, 1–5, 2–5, 2–6 | 1–5 |
-| Orario | ora di New York (NY) | 7–10, 8–11, 8–12, 9–12, 9–13 | 8–11 |
-| Bias | sconto | 0,3, 0,4, 0,5 | 0,5 |
+| Cacciatore | variante | manuale / chiusura dentro | manuale |
+| Grilletto | colpi sullo stesso CRT | 1 | 3 |
+| Grilletto | lato della liquidità (candele per lato) | 1 | 2 |
+| Livelli | secondo obiettivo oltre il lato (ampiezze del CRT) | 0,25 | 0,5 |
+| Livelli | pareggio (frazione del cammino verso il primo obiettivo) | 0,25 | 1 = al primo obiettivo |
+| Livelli | stop minimo (frazione del range) | 0,05 | 0,25 |
+| Key level | candele guardate | 6 | 24 |
+| Key level | vicinanza | 0,05 | 0,1 |
+| Key level | lato dello swing | 1 | 2 |
+| Orario | ora di Londra (NY) | un'ora, per lato | 1–5 |
+| Orario | ora di New York (NY) | un'ora, per lato | 8–11 |
+| Bias | sconto | 0,1 | 0,5 |
 
 ## La settimana in palestra **[D]**
 
 1. **Esperienza.** Ogni agente rilegge le scelte del Capo dei vent'anni e
    dice con quali suoi segnali va meglio e con quali peggio.
-2. **Ipotesi.** Prova da solo a girare di un passo ognuna delle sue
-   manopole (i valori vicini a quello in uso): si cresce piano.
+2. **Ipotesi.** Prova da solo a spostare di un passo ognuna delle sue
+   manopole.
 3. **Prova.** Con la modifica si rifà la tabella dei vent'anni (2006–2023)
-   e il Capo si riallena anno per anno, come nel cammino di `capo.py`. Si
-   confronta il guadagno delle scelte del Capo **settimana per settimana**
-   con quello di oggi: stesso mercato, stesse settimane.
-4. **Esame.** La modifica passa se il guadagno in più a settimana è sopra
-   zero con certezza: intervallo ricampionato a blocchi di un trimestre, al
-   livello 10% diviso per il numero di prove della settimana (più prove,
-   asticella più alta); e se fa meglio in almeno il 70% degli anni.
-5. **Paletti.** Non passa comunque se: le operazioni scadute crescono di
-   più di un punto; la durata mediana cresce più di una volta e mezza; il
-   drawdown cresce più del 10%; il Capo ritrova più di una entrata di Romeo
-   del 2023 in meno (lo stesso conto di `romeo.py`).
-6. **I colleghi.** Se più agenti hanno una modifica che passa, si prova la
-   squadra con tutte insieme: se insieme non passa, resta solo la migliore.
+   e il Capo si riallena anno per anno, come nel cammino di `capo.py`.
+4. **Esame: le prestazioni, non il guadagno.** L'utente: *"una modifica
+   resta se migliora le prestazioni del bot"*, non se fa guadagnare di più
+   (si guadagna di più anche puntando di più o aprendo di più). La misura
+   è la **qualità** delle operazioni scelte dal Capo: il rendimento medio
+   diviso per quanto oscilla. Non cambia con la puntata né col numero di
+   operazioni; uno stop enorme la porta verso zero da solo (le operazioni
+   non rendono più niente). La modifica resta se la qualità sale con
+   certezza (le stesse settimane ricampionate a blocchi di un trimestre,
+   livello 10% diviso per il numero di prove della settimana) e in almeno
+   il 70% degli anni.
+5. **Nessun divieto.** Operazioni scadute, durata, drawdown, numero di
+   operazioni, guadagno ed entrate di Romeo ritrovate si scrivono nel
+   rapporto, ma non decidono.
+6. **I colleghi.** Se più agenti migliorano, si prova la squadra con tutte
+   le modifiche insieme: se insieme non migliora, resta solo la migliore.
    Per ogni modifica tenuta il rapporto dice chi, fra i colleghi, ci
    guadagna e chi ci perde.
 7. **Memoria.** Ogni prova, tenuta o scartata, resta in
    `nvm/vivo/allenamento.json`. Una prova scartata non si ripete per 8
    settimane.
-8. **Il bot.** Se qualcosa cambia, `agenti.json` si riscrive, la tabella si
-   rifà e il Capo del bot si riaddestra. Il bot sulla VPS si aggiorna da
-   solo e, al primo avvio, manda il rapporto sul canale équipe.
+8. **Il bot.** `agenti.json` si riscrive, il Capo del bot si riaddestra
+   sulle manopole in uso. Il bot sulla VPS si aggiorna da solo e manda il
+   rapporto sul canale équipe (ogni allenamento ha il suo numero).
+
+Anche il Rischio, che sceglie quanto puntare, non ha tetti fissi: impara
+dai risultati la parte del Kelly che fa crescere di più il conto nel lungo
+periodo, cioè quella che non lo espone a perdite che lo rovinano.
 
 ## Chi la fa girare
 

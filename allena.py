@@ -46,13 +46,14 @@ def main() -> None:
     print(esito.rapporto, flush=True)
     settimana = datetime.fromtimestamp(adesso, tz=timezone.utc).strftime("%G-S%V")
     memoria["prove"] += esito.prove
-    memoria["ultimo"] = {"settimana": settimana, "rapporto": esito.rapporto, "cambiato": esito.cambiato}
+    memoria["ultimo"] = {"settimana": settimana, "id": adesso, "rapporto": esito.rapporto, "cambiato": esito.cambiato}
     allenamento.salva_memoria(memoria)
     manopole.applica(esito.valori)
     manopole.salva(manopole.attuali())
-    if esito.cambiato:
-        print("Rifaccio la tabella dei vent'anni e riaddestro il Capo del bot.", flush=True)
-        capo.salva_per_il_vivo(capo.tabella(1, 1.0, radice))
+    # Il Capo del bot si riallena sempre sulla tabella delle manopole in uso: se nessuno e' cambiato,
+    # la tabella c'e' gia' e ci vuole poco.
+    print("Riaddestro il Capo del bot sulle manopole in uso.", flush=True)
+    capo.salva_per_il_vivo(capo.tabella(1, 1.0, radice))
 
 
 if __name__ == "__main__":

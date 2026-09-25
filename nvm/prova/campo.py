@@ -62,6 +62,10 @@ class Operazione:
     # Quanta parte si chiude al primo target, e se il resto va a pareggio.
     parziale: float = 0.5
     pareggio: bool = True
+    # Quando lo stop va a pareggio: arrivati a questa frazione del cammino fra
+    # l'ingresso e il primo target (1 = al primo target, prima meno di 1, dopo
+    # piu' di 1). La impara Livelli (`nvm/agenti/manopole.py`).
+    pareggio_a: float = 1.0
 
     def __post_init__(self) -> None:
         segno = 1 if self.verso is Verso.LONG else -1
@@ -103,12 +107,13 @@ def simula(op: Operazione, basse: Candele, scadenza: Optional[int] = None) -> Es
         erre = incassato + aperta * segno * (prezzo - op.ingresso) / op.rischio
         return Esito(erre - commissione, uscita, quando, tp1_preso, commissione)
 
+    livello_pareggio = op.ingresso + op.pareggio_a * (op.tp1 - op.ingresso)
     for n in range(i, j):
         alto, basso = float(lato[n, MASSIMO]), float(lato[n, MINIMO])
         contro, favore = (basso, alto) if long else (alto, basso)
         stop_toccato = contro <= stop if long else contro >= stop
         if stop_toccato:
-            uscita = Uscita.PAREGGIO if tp1_preso and stop == op.ingresso else Uscita.STOP
+            uscita = Uscita.PAREGGIO if stop == op.ingresso else Uscita.STOP
             apertura = float(lato[n, APERTURA])
             prezzo = min(stop, apertura) if long else max(stop, apertura)
             return risultato(prezzo, uscita, int(basse.fine[n]))
@@ -118,8 +123,9 @@ def simula(op: Operazione, basse: Candele, scadenza: Optional[int] = None) -> Es
             tp1_preso = True
             incassato += op.parziale * segno * (op.tp1 - op.ingresso) / op.rischio
             aperta -= op.parziale
-            if op.pareggio:
-                stop = op.ingresso  # vale dalla candela dopo
+        # Lo stop va a pareggio quando il prezzo arriva al livello scelto: vale dalla candela dopo.
+        if op.pareggio and stop != op.ingresso and segno * (favore - livello_pareggio) >= 0:
+            stop = op.ingresso
     ultima = j - 1
     if ultima < i:
         return risultato(op.ingresso, Uscita.SCADUTA, op.quando)

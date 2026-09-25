@@ -43,6 +43,10 @@ class Viva:
     pareggio_fatto: bool = False
     incassato: float = 0.0
     chiusi: list[int] = field(default_factory=list)
+    # Dove lo stop va a pareggio, in frazione del cammino fra ingresso e primo
+    # target, com'era la manopola dei Livelli all'apertura (1 = al primo target).
+    pareggio_a: float = 1.0
+    primo_detto: bool = False
 
     @property
     def short(self) -> bool:
@@ -124,7 +128,7 @@ class Esecutore:
         ingresso = sum(prezzi) / len(prezzi)
         rischio = messi * per_lotto
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
-                    tickets, messi, rischio, conto.valuta)
+                    tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a)
         testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0])
         testo += (f"\nPuntata del Rischio: {f:.2%} del conto (Kelly {pieno:.1%} × {self.parte:.2f})".replace(".", ",")
                   + (": è sotto il lotto minimo, apro il minimo." if volume < minimo else "."))
@@ -148,20 +152,28 @@ class Esecutore:
                     motivo = "primo target e poi " + ("secondo target" if r > 0.5 * abs(v.tp1 - v.ingresso) / abs(v.ingresso - v.stop) + 0.1 else "pareggio")
                 fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo)))
                 continue
-            if not v.pareggio_fatto:
-                primo_preso = False
-                if v.uscita == USCITE[0] and v.tickets[0] in v.chiusi and v.incassato > 0:
-                    primo_preso = True
-                elif v.uscita == USCITE[2]:
-                    bid, ask = self.t.prezzo(v.strumento)
-                    primo_preso = (ask <= v.tp1) if v.short else (bid >= v.tp1)
-                if primo_preso:
-                    for ticket in ancora:
-                        e = self.t.sposta_stop(v.strumento, ticket, v.ingresso, v.tp2)
-                        if not e.ok:
-                            fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}")))
-                    v.pareggio_fatto = True
-                    fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso)))
+            bid, ask = self.t.prezzo(v.strumento)
+            # Il primo target: la meta' al primo target e' stata incassata, o il prezzo ci e' arrivato.
+            primo_preso = (v.uscita == USCITE[0] and v.tickets[0] in v.chiusi and v.incassato > 0) or (
+                (ask <= v.tp1) if v.short else (bid >= v.tp1))
+            # Il pareggio: al livello che i Livelli avevano scelto all'apertura.
+            livello = v.ingresso + v.pareggio_a * (v.tp1 - v.ingresso)
+            oltre = (ask <= livello) if v.short else (bid >= livello)
+            sposta = not v.pareggio_fatto and (oltre or (primo_preso and v.pareggio_a <= 1))
+            if sposta:
+                for ticket in ancora:
+                    # Ogni posizione tiene il suo target: la prima meta' il primo, la seconda il secondo.
+                    primo = v.uscita == USCITE[1] or (v.uscita == USCITE[0] and ticket == v.tickets[0])
+                    e = self.t.sposta_stop(v.strumento, ticket, v.ingresso, v.tp1 if primo else v.tp2)
+                    if not e.ok:
+                        fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}")))
+                v.pareggio_fatto = True
+            if primo_preso and not v.primo_detto and v.uscita != USCITE[1]:
+                v.primo_detto = True
+                fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
+                                                         None if v.pareggio_fatto else livello)))
+            elif sposta:
+                fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
             restano.append(v)
         return restano, fatti
 

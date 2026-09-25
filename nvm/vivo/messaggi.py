@@ -129,8 +129,15 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
     ])
 
 
-def primo_target(k: str, verso: Verso, ingresso: float) -> str:
-    return f"🎯 {k}: primo obiettivo preso, chiusa metà. Il resto è a pareggio (stop a {prezzo(k, ingresso)})."
+def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None) -> str:
+    testa = f"🎯 {k}: primo obiettivo preso, chiusa metà."
+    if a_pareggio:
+        return f"{testa} Il resto è a pareggio (stop a {prezzo(k, ingresso)})."
+    return f"{testa} Il resto tiene lo stop: va a pareggio quando il prezzo arriva a {prezzo(k, livello)}."
+
+
+def pareggio(k: str, verso: Verso, ingresso: float) -> str:
+    return f"🛡 {k}: stop spostato a pareggio ({prezzo(k, ingresso)}). Da qui l'operazione non può più perdere."
 
 
 def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: str) -> str:

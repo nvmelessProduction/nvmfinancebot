@@ -434,3 +434,25 @@ def test_il_bot_racconta_l_allenamento_una_volta_sola(tmp_path, monkeypatch):
     bot.racconta_allenamento()
     bot.racconta_allenamento()
     assert mandati == ["🏋️ Allenamento"] and Stato.carica(tmp_path).ultimo_allenamento == "2026-S40"
+    # Un secondo allenamento nella stessa settimana si racconta anche lui.
+    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S40", "id": 99, "rapporto": "🏋️ Di nuovo"}})
+    bot.racconta_allenamento()
+    assert mandati[-1] == "🏋️ Di nuovo"
+
+
+def test_il_pareggio_prima_del_primo_obiettivo_tiene_i_due_target():
+    from nvm.vivo.esecutore import Viva
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    viva.pareggio_a = 0.5                         # i Livelli hanno imparato: pareggio a meta' strada
+    a, b = viva.tickets
+    meta = viva.ingresso + 0.6 * (viva.tp1 - viva.ingresso)
+    m.tick["EURUSD"] = NS(time=0, bid=meta, ask=meta + 0.00001) if not viva.short else NS(time=0, bid=meta - 0.00001, ask=meta)
+    vive, fatti = e.sorveglia([viva])
+    assert vive[0].pareggio_fatto and "pareggio" in fatti[0].testo
+    assert m.posizioni[a].sl == m.posizioni[b].sl == round(viva.ingresso, 5)
+    assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)

@@ -42,6 +42,10 @@ from nvm.tempo import TF
 # sua ampiezza. Fino al 25/09/2026 era sul lato (0): provati 0,27, 0,5 e 1 sui
 # vent'anni, 0,5 e' quello che somiglia ai target di Romeo (registro).
 OLTRE = 0.5
+# Lo stop va a pareggio arrivati a questa frazione del cammino fra ingresso e
+# primo target: 1 = al primo target, come fino al 25/09/2026. La manopola la
+# gira l'allenamento (`spec/allenamento.md`).
+PAREGGIO = 1.0
 # Lo stop sta almeno a questa frazione dell'ampiezza del CRT dall'ingresso.
 # Fino al 25/09/2026 non c'era: sui vent'anni, col Capo, le scelte passano da
 # -0,011 a +0,009 R e battono la base in tutti gli anni (registro).
@@ -85,7 +89,7 @@ def piano(
     return Operazione(
         strumento=crt.strumento, verso=crt.verso, quando=s.quando,
         ingresso=ingresso, stop=stop, tp1=tp1, tp2=tp2,
-        parziale=parziale, pareggio=pareggio,
+        parziale=parziale, pareggio=pareggio, pareggio_a=PAREGGIO,
     )
 
 

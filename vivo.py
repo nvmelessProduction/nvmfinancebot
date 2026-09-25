@@ -182,9 +182,11 @@ class Bot:
     def racconta_allenamento(self) -> None:
         """Il rapporto dell'ultimo allenamento degli agenti, una volta sola, sul canale equipe."""
         ultimo = leggi_memoria().get("ultimo", {})
-        if ultimo.get("settimana") and ultimo["settimana"] != self.stato.ultimo_allenamento:
+        # Ogni allenamento ha il suo numero: due nella stessa settimana si raccontano tutti e due.
+        chi = str(ultimo.get("id", ultimo.get("settimana", "")))
+        if chi and ultimo.get("rapporto") and chi != self.stato.ultimo_allenamento:
             self.tg.equipe(ultimo["rapporto"])
-            self.stato.ultimo_allenamento = ultimo["settimana"]
+            self.stato.ultimo_allenamento = chi
             self.stato.salva(CARTELLA)
 
     def prova_collegamento(self, solo_se_non_va: bool = False) -> None:

@@ -4,20 +4,21 @@ Ogni settimana, per ogni specialista:
 
 1. **esperienza**: rilegge le sue operazioni dei vent'anni e dice dove va
    meglio e dove peggio (`diagnosi`);
-2. **ipotesi**: prova da solo a girare di un passo ognuna delle sue manopole,
-   dentro il mansionario (`nvm/agenti/manopole.py`);
-3. **prova**: il Capo si riallena anno per anno con la modifica, e si guarda
-   il guadagno settimana per settimana contro quello di oggi (`esame`);
-4. **paletti**: la modifica non vale se fa scadere piu' operazioni, se le
-   allunga troppo, se allarga il drawdown o se ci allontana da Romeo;
-5. **decisione**: la tiene solo se vince con un margine che cresce col numero
-   di prove fatte quella settimana. Se piu' agenti vincono, si riprova la
-   squadra insieme: le modifiche devono andare d'accordo;
+2. **ipotesi**: prova da solo a spostare di un passo ognuna delle sue
+   manopole, in su o in giu', senza recinti (`nvm/agenti/manopole.py`);
+3. **prova**: il Capo si riallena anno per anno con la modifica;
+4. **esame**: la modifica resta se migliora le **prestazioni**, non il
+   guadagno (l'utente, 25/09/2026): la qualita' di ogni operazione scelta
+   dal Capo, cioe' il rendimento medio diviso per quanto oscilla. Non cambia
+   con quanto si punta ne' con quante operazioni si aprono; uno stop enorme
+   la porta verso zero. Deve migliorare con certezza (un margine che cresce
+   col numero di prove della settimana) e nella maggior parte degli anni.
+   Nessun divieto: scadute, durata, drawdown, operazioni, entrate di Romeo
+   ritrovate e guadagno si scrivono nel rapporto, ma non decidono;
+5. **i colleghi**: se piu' agenti migliorano, si riprova la squadra insieme;
+   di ogni modifica si vede chi ci guadagna e chi ci perde fra i colleghi;
 6. **memoria**: ogni prova resta in `nvm/vivo/allenamento.json`; una prova
    scartata non si ripete per `RIPOSO` settimane.
-
-I colleghi si parlano: di ogni prova si vede anche chi ci guadagna e chi ci
-perde fra gli altri agenti (`effetti`), e lo dice il rapporto.
 """
 
 from __future__ import annotations
@@ -45,11 +46,6 @@ RICAMPIONI = 2000
 ALFA = 0.10
 # In quale parte degli anni la modifica deve fare meglio.
 ANNI = 0.7
-# I paletti.
-PIU_SCADUTE = 0.01          # operazioni chiuse dal tetto di sicurezza: al massimo un punto in piu'
-PIU_LUNGHE = 1.5            # durata mediana: al massimo una volta e mezza
-PIU_DRAWDOWN = 1.1          # drawdown: al massimo il 10% in piu'
-MENO_ROMEO = 1              # entrate di Romeo ritrovate dal Capo nel 2023: al massimo una in meno
 # Settimane prima di riprovare una modifica scartata.
 RIPOSO = 8
 
@@ -110,6 +106,8 @@ class Prova:
     valori: dict
     serie: np.ndarray               # R delle scelte del Capo per settimana, dalla prima giudicata all'ultima
     prima_settimana: int
+    quadrati: np.ndarray            # somma dei quadrati degli R, per settimana
+    conteggi: np.ndarray            # operazioni scelte, per settimana
     n: int
     r_medio: float
     scadute: float
@@ -123,18 +121,31 @@ class Prova:
     def per_settimana(self) -> float:
         return float(self.serie.mean())
 
+    @property
+    def qualita(self) -> float:
+        return _qualita(self.serie.sum(), self.quadrati.sum(), self.conteggi.sum())
+
+
+def _qualita(somma, quadrati, n):
+    """Il rendimento medio di un'operazione diviso per quanto oscilla (in R)."""
+    n = np.maximum(n, 1)
+    media = somma / n
+    varianza = np.maximum(quadrati / n - media ** 2, 1e-12)
+    return media / np.sqrt(varianza)
+
 
 @dataclass
 class Esame:
-    media: float                    # R in piu' a settimana
+    media: float                    # qualita' in piu'
     basso: float
     alto: float
     anni: float                     # quota di anni in cui fa meglio
-    paletti: list[str]
+    # Quello che cambia, scritto nel rapporto ma non decide.
+    note: list[str] = field(default_factory=list)
 
     @property
     def passa(self) -> bool:
-        return self.basso > 0 and self.anni >= ANNI and not self.paletti
+        return self.basso > 0 and self.anni >= ANNI
 
 
 # --- La prova di un insieme di valori -------------------------------------------------
@@ -152,40 +163,52 @@ def misura(t: Tabella, valori: dict, primo: int, ultimo: int) -> Prova:
     w0, w1 = _settimane(primo, ultimo)
     settimane = t.quando[s] // SETTIMANA - w0
     serie = np.bincount(settimane, weights=t.erre[s], minlength=w1 - w0)[: w1 - w0]
+    quadrati = np.bincount(settimane, weights=t.erre[s] ** 2, minlength=w1 - w0)[: w1 - w0]
+    conteggi = np.bincount(settimane, minlength=w1 - w0)[: w1 - w0].astype(float)
     cumulata = np.cumsum(serie)
     drawdown = float((np.maximum.accumulate(cumulata) - cumulata).max()) if len(cumulata) else 0.0
     x = t.x[s]
     segnali = {agente: {nome: [int(m.sum()), float(t.erre[s][m].sum())] for nome, f in g.items() for m in [f(x)]}
                for agente, g in GRUPPI.items()}
     scadute = float(t.scaduta[s].mean()) if t.scaduta is not None and s.any() else 0.0
-    return Prova(valori, serie, w0, int(s.sum()), float(t.erre[s].mean()) if s.any() else 0.0, scadute,
+    return Prova(valori, serie, w0, quadrati, conteggi, int(s.sum()), float(t.erre[s].mean()) if s.any() else 0.0, scadute,
                  float(np.median(t.chiusa[s] - t.quando[s]) / 86400) if s.any() else 0.0, drawdown, segnali)
 
 
 def esame(oggi: Prova, nuova: Prova, prove: int, seme: int = 0) -> Esame:
-    """La modifica fa guadagnare di piu', con abbastanza certezza, senza passare i paletti?"""
-    d = nuova.serie - oggi.serie
-    n = len(d)
+    """La modifica migliora la qualita' delle operazioni, con abbastanza certezza?
+
+    Si ricampionano le stesse settimane per tutte e due (a blocchi di un
+    trimestre): la differenza di qualita' e' appaiata, stesso mercato."""
+    n = len(oggi.serie)
     rng = np.random.default_rng(seme)
     blocchi = int(np.ceil(n / BLOCCO))
     inizi = rng.integers(0, n, size=(RICAMPIONI, blocchi))
     indici = (inizi[:, :, None] + np.arange(BLOCCO)[None, None, :]).reshape(RICAMPIONI, -1)[:, :n] % n
-    medie = d[indici].mean(1)
+    q = lambda p: _qualita(p.serie[indici].sum(1), p.quadrati[indici].sum(1), p.conteggi[indici].sum(1))
+    differenze = q(nuova) - q(oggi)
     livello = ALFA / max(prove, 1)
-    basso, alto = np.quantile(medie, [livello / 2, 1 - livello / 2])
+    basso, alto = np.quantile(differenze, [livello / 2, 1 - livello / 2])
     anni = _anno(np.arange(n) * SETTIMANA + oggi.prima_settimana * SETTIMANA)
-    per_anno = {a: d[anni == a].sum() for a in np.unique(anni)}
-    quota = float(np.mean([v > 0 for v in per_anno.values()]))
-    paletti = []
-    if nuova.scadute > oggi.scadute + PIU_SCADUTE:
-        paletti.append(f"più operazioni scadute ({oggi.scadute:.1%} → {nuova.scadute:.1%})")
-    if nuova.durata > oggi.durata * PIU_LUNGHE:
-        paletti.append(f"operazioni troppo lunghe ({oggi.durata:.1f} → {nuova.durata:.1f} giorni)")
-    if nuova.drawdown > oggi.drawdown * PIU_DRAWDOWN:
-        paletti.append(f"drawdown più profondo ({oggi.drawdown:.0f} → {nuova.drawdown:.0f} R)")
-    if oggi.romeo is not None and nuova.romeo is not None and nuova.romeo < oggi.romeo - MENO_ROMEO:
-        paletti.append(f"ci allontana da Romeo ({oggi.romeo} → {nuova.romeo} sue entrate ritrovate)")
-    return Esame(float(d.mean()), float(basso), float(alto), quota, paletti)
+    meglio = []
+    for a in np.unique(anni):
+        m = anni == a
+        if oggi.conteggi[m].sum() and nuova.conteggi[m].sum():
+            meglio.append(_qualita(nuova.serie[m].sum(), nuova.quadrati[m].sum(), nuova.conteggi[m].sum())
+                          > _qualita(oggi.serie[m].sum(), oggi.quadrati[m].sum(), oggi.conteggi[m].sum()))
+    note = []
+    if abs(nuova.scadute - oggi.scadute) >= 0.005:
+        note.append(f"scadute {oggi.scadute:.1%} → {nuova.scadute:.1%}")
+    if abs(nuova.durata - oggi.durata) >= 0.2 * max(oggi.durata, 0.1):
+        note.append(f"durata {oggi.durata:.1f} → {nuova.durata:.1f} giorni")
+    if abs(nuova.drawdown - oggi.drawdown) >= 0.1 * max(oggi.drawdown, 1):
+        note.append(f"drawdown {oggi.drawdown:.0f} → {nuova.drawdown:.0f} R")
+    if abs(nuova.n - oggi.n) >= 0.1 * max(oggi.n, 1):
+        note.append(f"operazioni {oggi.n} → {nuova.n}")
+    if oggi.romeo is not None and nuova.romeo is not None and nuova.romeo != oggi.romeo:
+        note.append(f"entrate di Romeo ritrovate {oggi.romeo} → {nuova.romeo}")
+    return Esame(float(nuova.qualita - oggi.qualita), float(basso), float(alto),
+                 float(np.mean(meglio)) if meglio else 0.0, [x.replace(".", ",") for x in note])
 
 
 def effetti(oggi: Prova, nuova: Prova, escluso: str) -> tuple[Optional[str], Optional[str]]:
@@ -295,7 +318,7 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     k = max(len(elenco), 1)
     esami = [esame(oggi, c, k) for c in candidate]
 
-    # Il migliore di ogni agente fra quelli che passano, poi il controllo su Romeo.
+    # Il migliore di ogni agente fra quelli che passano; poi la squadra insieme.
     vincitori: dict[str, int] = {}
     for i, ((agente, *_), e) in enumerate(zip(elenco, esami)):
         if e.passa and (agente not in vincitori or e.media > esami[vincitori[agente]].media):
@@ -303,7 +326,7 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     scelti = list(vincitori.values())
     finali = valori
     squadra = None
-    finale_romeo = None
+    finale: Optional[Prova] = None
     if scelti:
         insieme = valori
         for i in scelti:
@@ -314,13 +337,13 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
         squadra = esame(oggi, risultati[0], k + len(scelti))
         if squadra.passa:
             finali = insieme
-            finale_romeo = risultati[0].romeo
+            finale = risultati[0]
         else:
-            # Insieme non vanno d'accordo: resta la sola modifica migliore, se passa ancora con Romeo.
+            # Insieme non vanno d'accordo: resta la sola modifica migliore, se passa ancora.
             singoli = risultati[1:] if len(scelti) > 1 else risultati
             migliore = max(range(len(singoli)), key=lambda j: esame(oggi, singoli[j], k).media)
             if esame(oggi, singoli[migliore], k).passa:
-                finale_romeo = singoli[migliore].romeo
+                finale = singoli[migliore]
                 i = scelti[migliore]
                 finali = _con(valori, elenco[i][0], elenco[i][1], elenco[i][3])
                 scelti = [i]
@@ -330,8 +353,9 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     tenute = set(scelti) if finali is not valori else set()
     registro = []
     righe = [f"🏋️ Allenamento della settimana {etichetta}",
-             "Ognuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta "
-             f"solo se fa guadagnare di più con certezza, contro {k} prove fatte insieme.", ""]
+             "Ognuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora "
+             "le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), "
+             f"con certezza contro {k} prove fatte insieme e nella maggior parte degli anni.", ""]
     for agente in manopole.AGENTI:
         righe.append(f"• {agente}: {diagnosi(agente, oggi)}.")
         for i, (a, nome, da, v) in enumerate(elenco):
@@ -341,34 +365,34 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
             tenuta = i in tenute
             if tenuta:
                 giudizio = "✅ la tengo"
-            elif e.basso <= 0 or e.anni < ANNI:
+            elif not e.passa:
                 giudizio = "❌ non basta"
-            elif e.paletti:
-                giudizio = "❌ no: " + "; ".join(e.paletti)
             else:
                 giudizio = "❌ da sola sì, ma non va d'accordo con le modifiche dei colleghi"
             su, giu = effetti(oggi, candidate[i], agente)
             dopo = "".join([f" Ci guadagna {su}." if su and tenuta else "", f" Ci perde {giu}." if giu and tenuta else ""])
-            righe.append(f"  ↳ {nome} {_v(da)} → {_v(v)}: {_r(e.media)} R a settimana "
-                         f"(fra {_r(e.basso)} e {_r(e.alto)}), meglio in {e.anni:.0%} degli anni. {giudizio}.{dopo}")
+            cambia = f" Cambia anche: {'; '.join(e.note)}." if e.note and (tenuta or e.passa) else ""
+            righe.append(f"  ↳ {nome} {_v(da)} → {_v(v)}: qualità {_r(e.media)} "
+                         f"(fra {_r(e.basso)} e {_r(e.alto)}), meglio in {e.anni:.0%} degli anni. {giudizio}.{cambia}{dopo}")
             registro.append({"settimana": etichetta, "numero": settimana, "agente": a, "manopola": nome, "da": da, "a": v,
                              "chiave": _chiave(a, nome, da, v), "esito": "tenuta" if tenuta else "scartata",
-                             "media": e.media, "basso": e.basso, "alto": e.alto, "anni": e.anni, "paletti": e.paletti})
+                             "qualita": e.media, "basso": e.basso, "alto": e.alto, "anni": e.anni, "note": e.note})
     righe.append("")
     if tenute:
         cambi = ", ".join(f"{elenco[i][0]} ({elenco[i][1]} {_v(elenco[i][2])} → {_v(elenco[i][3])})" for i in sorted(tenute))
-        guadagno = squadra.media if squadra is not None and squadra.passa else esami[scelti[0]].media
-        righe.append(f"Capo: da oggi cambiano {cambi}. Mi riaddestro sulle operazioni nuove. "
-                     f"Sui vent'anni la squadra faceva {_r(oggi.per_settimana)} R a settimana; "
-                     f"con le novità {_r(oggi.per_settimana + guadagno)}."
-                     + (f" Le entrate di Romeo del 2023 che ritrovo: {oggi.romeo} → {finale_romeo}." if finale_romeo is not None else ""))
+        righe.append(f"Capo: da oggi cambiano {cambi}. Mi riaddestro sulle operazioni nuove. Sui vent'anni: "
+                     f"qualità {_r(oggi.qualita)} → {_r(finale.qualita)}, R a operazione {_r(oggi.r_medio)} → "
+                     f"{_r(finale.r_medio)}, operazioni {oggi.n} → {finale.n}, drawdown {oggi.drawdown:.0f} → "
+                     f"{finale.drawdown:.0f} R".replace(".", ",")
+                     + (f", entrate di Romeo del 2023 ritrovate {oggi.romeo} → {finale.romeo}" if finale.romeo is not None else "")
+                     + ".")
     else:
-        righe.append(f"Capo: questa settimana nessuna modifica ha battuto la squadra di oggi "
-                     f"({_r(oggi.per_settimana)} R a settimana sui vent'anni). Si resta così, e si riprova con altro.")
+        righe.append(f"Capo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità {_r(oggi.qualita)}, "
+                     f"{_r(oggi.r_medio)} R a operazione sui vent'anni). Si resta così, e si riprova con altro.")
     return Esito("\n".join(righe), finali, bool(tenute), registro)
 
 
-# --- Il paletto di Romeo ----------------------------------------------------------------
+# --- Le entrate di Romeo ritrovate (nel rapporto) ----------------------------------------------------------------
 
 def ritrovate_da_romeo(t: Tabella, radice: Path, catalogo: Path) -> int:
     """Quante entrate di Romeo del 2023 il Capo ritrova (entro meta' del suo rischio), allenato
