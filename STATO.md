@@ -141,6 +141,14 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   forti; fuori campione riconosce Romeo meglio (0,62 invece di 0,60) e
   sceglie meglio (+0,055 R invece di +0,041 sul 2023). Provate e lasciate
   fuori altre sette domande che non aiutavano (`registro/tentativi.md`).
+- **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
+  altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
+  entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna
+  aiuta, e restano scritte nel registro e rifacibili con `banco.py`. Il caso
+  per caso dice dove sta il resto: Romeo entra sul minuto su un turtle
+  soup della liquidità della giornata (il minimo della sessione, il secondo
+  massimo), non solo sul lato del CRT. Si riprova con i minuti di GBPUSD
+  (gennaio–maggio 2023, in scaricamento).
 
 ### Cosa serve da te
 
