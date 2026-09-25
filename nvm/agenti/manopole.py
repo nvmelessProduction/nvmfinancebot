@@ -39,6 +39,8 @@ class Manopola:
     minimo: Optional[float] = None
     massimo: Optional[float] = None
     scelte: tuple = ()
+    # Se cambia le operazioni della tabella dei vent'anni (quasi tutte), o solo come il Capo sceglie.
+    tabella: bool = True
 
     def leggi(self) -> Any:
         v = getattr(importlib.import_module(self.modulo), self.attributo)
@@ -115,6 +117,10 @@ MANOPOLE: tuple[Manopola, ...] = (
     Manopola("Bias", "sconto", "nvm.agenti.conferme", "SCONTO", "passo",
              "sotto quale frazione della settimana prima un acquisto e' 'a sconto'; Romeo: 50% = equilibrio",
              passo=0.1, minimo=0.1, massimo=0.9),
+    Manopola("Capo", "soglia della qualità attesa", "nvm.agenti.capo", "SOGLIA", "passo",
+             "entro quando la qualita' attesa (guadagno atteso diviso per quanto l'operazione puo' oscillare) "
+             "supera questa soglia; l'utente: contano le prestazioni, non il guadagno",
+             passo=0.05, tabella=False),
 )
 
 AGENTI = tuple(dict.fromkeys(m.agente for m in MANOPOLE))
@@ -162,7 +168,12 @@ def carica_e_applica(percorso: Path = FILE) -> dict[str, dict[str, Any]]:
 
 
 def impronta(valori: dict[str, dict[str, Any]] | None = None) -> str:
-    """Un nome corto per un insieme di valori: le tabelle salvate lo portano nel nome."""
+    """Un nome corto per i valori che cambiano la tabella dei vent'anni: le tabelle salvate lo
+    portano nel nome. Le manopole che cambiano solo le scelte del Capo non contano."""
     import hashlib
-    testo = json.dumps(attuali() if valori is None else valori, sort_keys=True, ensure_ascii=False)
+    valori = attuali() if valori is None else valori
+    fuori = {(m.agente, m.nome) for m in MANOPOLE if not m.tabella}
+    valori = {a: {n: v for n, v in per.items() if (a, n) not in fuori} for a, per in valori.items()}
+    valori = {a: per for a, per in valori.items() if per}
+    testo = json.dumps(valori, sort_keys=True, ensure_ascii=False)
     return hashlib.sha1(testo.encode("utf-8")).hexdigest()[:8]

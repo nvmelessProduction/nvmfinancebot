@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 from capo import AL, COPPIE, DAL, RADICE, _istante, tabella
-from nvm.agenti import manopole
+from nvm.agenti import capo as il_capo, manopole
 from nvm.agenti.capo import COLONNE_ROMEO, Capo, Logistica
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, carica_periodo
@@ -112,16 +112,16 @@ def vent_anni(domande) -> np.ndarray:
 def cammino(t, x: np.ndarray) -> tuple[float, int, float, list[float]]:
     anni = t.anno
     p1 = np.full(len(t), np.nan)
-    atteso = np.full(len(t), np.nan)
+    qualita = np.full(len(t), np.nan)
     for a in range(2008, AL + 1):
         oggi = anni == a
         passato = t.chiusa < _inizio_anno(a)
         capo = Capo.allena(x[passato], t.tp1[passato], t.tp2[passato])
         p1[oggi] = capo.probabilita(x[oggi])[0]
-        atteso[oggi] = capo.valore_atteso(x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
+        qualita[oggi] = capo.qualita(x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
     giudicati = anni >= 2008
     y, p = t.tp1[giudicati], np.clip(p1[giudicati], 1e-6, 1 - 1e-6)
-    scelte = giudicati & (atteso > 0)
+    scelte = giudicati & (qualita > il_capo.SOGLIA)
     per_anno = [float(t.erre[scelte & (anni == a)].mean()) for a in range(2008, AL + 1)]
     return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))), int(scelte.sum()), float(t.erre[scelte].sum()), per_anno
 

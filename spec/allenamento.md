@@ -35,6 +35,7 @@ definizione (un'ora fra 0 e 24, una frazione fra 0 e 1, almeno una candela).
 | Orario | ora di Londra (NY) | un'ora, per lato | 1–5 |
 | Orario | ora di New York (NY) | un'ora, per lato | 8–11 |
 | Bias | sconto | 0,1 | 0,5 |
+| Capo | soglia della qualità attesa (`spec/capo.md`) | 0,05 | 0 |
 
 ## La settimana in palestra **[D]**
 
@@ -84,8 +85,11 @@ Ogni specialista ha dei mattoni del suo mestiere (`nvm/agenti/inventate.py`):
 | Allineamento | il bias di Romeo su più timeframe grandi insieme; i CRT più grandi armati su più livelli (`spec/panorama.md`) |
 | Gap | i fair value gap aperti fra l'ingresso e l'obiettivo o alle spalle; il gap del weekend da chiudere (`spec/panorama.md`) |
 
-Ogni settimana ognuno inventa 2 domande a caso fra quelle che non ha mai
-provato. Un agente nuovo, prima, prova le domande del suo mestiere (sei a
+Ogni settimana ognuno inventa 2 domande fra quelle che non ha mai provato.
+Se ha un'idea **quasi riuscita** (scartata, ma aveva migliorato la
+qualità), una delle due è la sua variante vicina: un mattone cambiato di un
+passo. L'altra è a caso. Così impara dai tentativi invece di tirare sempre a
+caso. Un agente nuovo, prima, prova le domande del suo mestiere (sei a
 testa per Allineamento e Gap); per allenare solo lui: `python allena.py
 --agenti Allineamento,Gap`. La palestra le prova come colonna in più del Capo, con lo stesso
 esame delle manopole. Una domanda che passa (la migliore di ogni agente, poi
@@ -137,6 +141,18 @@ imparare il caso.
 Anche il Rischio, che sceglie quanto puntare, non ha tetti fissi: impara
 dai risultati la parte del Kelly che fa crescere di più il conto nel lungo
 periodo, cioè quella che non lo espone a perdite che lo rovinano.
+
+### L'esame è troppo severo? (25/09/2026)
+
+L'utente: *"le invenzioni sono molto selettive"*. Riletto su tutte le 55
+prove fatte fino al 25/09: 14 avevano migliorato la qualità, una sola con
+certezza (il secondo obiettivo a 0,75). Anche senza l'asticella che cresce
+con le prove, e con il 60% degli anni invece del 70%, ne passerebbe una
+sola: la seconda migliore (pareggio a 0,75 del cammino, +0,019) ha il 13%
+di probabilità di essere solo fortuna. Il limite non è l'esame: sono le
+idee, e le informazioni da cui nascono. Per questo le invenzioni ora
+ripartono dalle quasi riuscite, e servono informazioni nuove (i minuti dei
+vent'anni, più entrate di Romeo, le settimane dal vivo).
 
 ## Chi la fa girare
 

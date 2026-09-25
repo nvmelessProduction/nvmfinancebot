@@ -57,6 +57,22 @@ PENALITA_ROMEO = 10.0
 # scelte come il caso (registro/tentativi.md, 24/09/2026); con la liquidita'
 # le riconosce meglio (25/09/2026).
 COLONNE_ROMEO = tuple(range(22, 28))
+# Il Capo entra quando la qualita' attesa dell'operazione supera questa soglia. L'utente,
+# 25/09/2026: conta come lavora il bot, non quanto guadagna ("una modifica resta se migliora
+# le prestazioni"). La qualita' attesa e' il guadagno atteso diviso per quanto l'operazione
+# puo' oscillare; la soglia e' una manopola del Capo, che la palestra allena come le altre.
+SOGLIA = 0.0
+
+
+def qualita_attesa(p1, q, rr1, rr2, costi) -> np.ndarray:
+    """Il guadagno atteso diviso per la sua deviazione standard, dai tre esiti possibili:
+    stop (-1 R), primo obiettivo e poi pareggio, primo e secondo obiettivo."""
+    p1, q, rr1, rr2, costi = (np.asarray(v, float) for v in (p1, q, rr1, rr2, costi))
+    esiti = (-1.0 - costi, 0.5 * rr1 - costi, 0.5 * rr1 + 0.5 * rr2 - costi)
+    prob = (1 - p1, p1 * (1 - q), p1 * q)
+    media = sum(p * e for p, e in zip(prob, esiti))
+    varianza = sum(p * (e - media) ** 2 for p, e in zip(prob, esiti))
+    return media / np.sqrt(np.maximum(varianza, 1e-12))
 
 
 def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI) -> np.ndarray:
@@ -221,9 +237,14 @@ class Capo:
         x = _di_romeo(x)
         return self.romeo.probabilita((x - self.romeo_media) / self.romeo_scala)
 
+    def qualita(self, x: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray) -> np.ndarray:
+        """La qualita' attesa di ogni operazione: guadagno atteso diviso per quanto oscilla."""
+        p1, q = self.probabilita(x)
+        return qualita_attesa(p1, q, rr1, rr2, costi)
+
     def entra(self, x: np.ndarray, rr1: np.ndarray, rr2: np.ndarray, costi: np.ndarray) -> np.ndarray:
-        """La decisione del Capo: entra se il guadagno atteso e' sopra zero."""
-        return self.valore_atteso(x, rr1, rr2, costi) > 0
+        """La decisione del Capo: entra se la qualita' attesa supera la soglia."""
+        return self.qualita(x, rr1, rr2, costi) > SOGLIA
 
     def impara_romeo(self, x: np.ndarray, y: np.ndarray) -> "Capo":
         """Lo stesso Capo, che ha imparato dalle entrate di Romeo quanto

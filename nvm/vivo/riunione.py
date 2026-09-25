@@ -21,7 +21,7 @@ from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.vivo.autoanalisi import riassunto
 from nvm.vivo.dialogo import AGENTI, ascolto, chi_aveva_ragione, consigli, grado
-from nvm.vivo.messaggi import erre
+from nvm.vivo.messaggi import erre, qualita
 from nvm.vivo.romeo_vivo import META_RISCHIO, EntrataDiRomeo, confronta, etichette, presa_vicina
 from nvm.vivo.stato import Seguita
 
@@ -177,7 +177,7 @@ def riunione(
                  else ("di meno" if dopo.get(nome, 0) < prima.get(nome, 0) * 0.95 - 1e-4 else "come prima"))
         riga = (f"• {nome} — questa settimana {g} giuste su {t}"
                 + (f", in tutto {tot[0]} su {tot[1]} ({grado(*tot)})" if tot[1] else "")
-                + f". Lo ascolto {verso}: {erre(prima.get(nome, 0))[1:]} → {erre(dopo.get(nome, 0))[1:]}.")
+                + f". Lo ascolto {verso}: {qualita(prima.get(nome, 0))[1:]} → {qualita(dopo.get(nome, 0))[1:]}.")
         if nome == "Romeo":
             riga += f" Fiducia {_peso(capo.fiducia_in_romeo)} → {_peso(nuovo.fiducia_in_romeo)}."
         righe.append(riga)
@@ -192,7 +192,7 @@ def riunione(
     righe += [f"• {testo}" for testo, _ in scelti] or ["• nessuna coppia che cambi davvero il risultato"]
 
     # Il Rischio: quanta parte del Kelly, sulle puntate passate e su quelle dal vivo.
-    dal_vivo = [s for s in finite if s.atteso > 0]
+    dal_vivo = [s for s in finite if s.presa_dal_capo]
     f = np.r_[storico.kelly_f if storico.kelly_f is not None else [],
               [kelly(esiti(s.p1, s.q, s.rr1, s.rr2, s.costi)) for s in dal_vivo]]
     r = np.r_[storico.kelly_r if storico.kelly_r is not None else [], [s.esito["erre"] for s in dal_vivo]]

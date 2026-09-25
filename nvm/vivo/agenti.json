@@ -31,6 +31,9 @@
   },
   "Bias": {
    "sconto": 0.5
+  },
+  "Capo": {
+   "soglia della qualità attesa": 0.0
   }
  }
 }

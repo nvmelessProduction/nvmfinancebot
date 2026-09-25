@@ -88,3 +88,21 @@ def test_la_palestra_fa_provare_prima_il_mestiere_agli_agenti_nuovi():
     assert len([d for d in idee if d.agente == "Orario"]) == 2
     provate = {d.chiave for d in inventate.PRIME["Gap"]}
     assert len(idee_della_settimana(["Gap"], provate, rng)) == 2      # poi inventa
+
+
+def test_un_idea_quasi_riuscita_si_affina_di_un_passo():
+    from nvm.agenti import inventate
+    from nvm.prova.allenamento import idee_della_settimana
+    quasi = inventate._d("Gap", "fvg", tf="H4", candele=50, dove="verso l'obiettivo", tipo="qualunque")
+    vicine = inventate.vicine(quasi)
+    assert inventate._d("Gap", "fvg", tf="H1", candele=50, dove="verso l'obiettivo", tipo="qualunque") in vicine
+    assert inventate._d("Gap", "fvg", tf="H4", candele=100, dove="verso l'obiettivo", tipo="qualunque") in vicine
+    assert all(sum(a != b for a, b in zip(v.parametri, quasi.parametri)) == 1 for v in vicine)
+    provate = {d.chiave for d in inventate.PRIME["Gap"]}
+    memoria = [{"agente": "Gap", "chiave": quasi.chiave, "esito": "scartata", "qualita": 0.01}]
+    idee = idee_della_settimana(["Gap"], provate, np.random.default_rng(0), memoria)
+    assert len(idee) == 2 and idee[0] in vicine
+    # Un'idea che peggiorava non si affina.
+    from nvm.prova.allenamento import quasi_riuscite
+    memoria[0]["qualita"] = -0.01
+    assert quasi_riuscite(memoria, "Gap") == []

@@ -23,9 +23,24 @@ il guadagno atteso in R è
     E = p1 × (0,5 × RR1 + 0,5 × q × RR2) − (1 − p1) − costi
 
 dove RR1 e RR2 sono le distanze dei due target in R, e i costi (spread e
-commissione, in R) si conoscono prima di entrare. **Si entra solo se
-E > 0.** È la regola del `PIANO.md` §1 (`p × RR − (1 − p) − costi > 0`),
-scritta per un'operazione che chiude in due metà.
+commissione, in R) si conoscono prima di entrare.
+
+**Si decide sulle prestazioni, non sul guadagno (dal 25/09/2026).** L'utente:
+*"una modifica resta se migliora le prestazioni del bot"*, non se fa
+guadagnare di più. Lo stesso vale per la decisione del Capo: si entra se la
+**qualità attesa** supera la soglia del Capo,
+
+    Q = E / σ
+
+dove σ è quanto l'operazione può oscillare: la deviazione standard dei tre
+esiti possibili (stop −1 R; primo target e poi pareggio; primo e secondo
+target), con le probabilità `1 − p1`, `p1 × (1 − q)`, `p1 × q`. Due
+operazioni con lo stesso guadagno atteso non valgono uguale: quella che
+oscilla meno è migliore. La soglia è una manopola del Capo
+(`soglia della qualità attesa`, all'inizio 0), allenata in palestra come le
+altre (`spec/allenamento.md`); con la soglia a 0 le operazioni prese sono le
+stesse della vecchia regola `E > 0` del `PIANO.md` §1. Anche le spinte degli
+agenti in équipe sono misurate sulla qualità attesa.
 
 Una regressione logistica si legge: per ogni risposta degli agenti c'è un
 peso, e si vede quanto il Capo si fida di ognuno.
@@ -99,8 +114,8 @@ metro con cui **noi** giudichiamo il bot, non una regola dentro il bot.
 
 **La somiglianza a Romeo**, `r`: una regressione logistica che stima quanto
 un'operazione somiglia a una che Romeo prenderebbe. È un **parere**:
-l'équipe lo sente, il Capo lo riferisce, ma decide col guadagno atteso,
-come prima.
+l'équipe lo sente, il Capo lo riferisce, ma decide con la qualità attesa,
+come per tutto il resto.
 
 - **Da dove impara.** Dal catalogo `casi/entrate-romeo.csv`, solo il
   periodo di studio (fino al 2023). I candidati sono tutte le operazioni

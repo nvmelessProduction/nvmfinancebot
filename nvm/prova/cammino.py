@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from nvm.agenti import capo as capo_mod
 from nvm.agenti.capo import COLONNE, Capo, esiti, riga
 from nvm.prova.base import SETTIMANA, Risultato
 from nvm.prova.campo import Uscita
@@ -123,11 +124,13 @@ class Cammino:
     atteso: np.ndarray            # il suo guadagno atteso, NaN fuori dagli anni giudicati
     giudicati: np.ndarray         # le operazioni negli anni giudicati
     fiducia: dict[int, list]      # i pesi del Capo, anno per anno
+    qualita: Optional[np.ndarray] = None   # la qualita' attesa, su cui il Capo decide
 
 
 def cammino(t: Tabella, primo: int = 2008, ultimo: int = 2023) -> Cammino:
     anni = t.anno
     atteso = np.full(len(t), np.nan)
+    qualita = np.full(len(t), np.nan)
     fiducia = {}
     for a in range(primo, ultimo + 1):
         oggi = anni == a
@@ -136,9 +139,11 @@ def cammino(t: Tabella, primo: int = 2008, ultimo: int = 2023) -> Cammino:
         passato = t.chiusa < _inizio_anno(a)
         capo = Capo.allena(t.x[passato], t.tp1[passato], t.tp2[passato])
         atteso[oggi] = capo.valore_atteso(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
+        qualita[oggi] = capo.qualita(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
         fiducia[a] = capo.fiducia()
     giudicati = (anni >= primo) & (anni <= ultimo)
-    return Cammino(giudicati & (atteso > 0), atteso, giudicati, fiducia)
+    # Il Capo entra quando la qualita' attesa supera la sua soglia (`nvm/agenti/capo.py`).
+    return Cammino(giudicati & (qualita > capo_mod.SOGLIA), atteso, giudicati, fiducia, qualita)
 
 
 @dataclass

@@ -337,13 +337,13 @@ class Bot:
                         invalida_candele=op.invalida_candele, tempo_candele=op.tempo_candele,
                         crt_alto=None if crt is None else crt.crt_high, crt_basso=None if crt is None else crt.crt_low,
                         estremo=None if crt is None else crt.estremo_a(d.r.quando),
-                        stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE)
+                        stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE, qualita=d.qualita, decisa=d.entra)
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
-                     atteso=d.atteso, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
+                     atteso=d.atteso, qualita=d.qualita, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
 
     def _finita(self, s: Seguita, adesso: int) -> None:
-        testo, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.atteso)
+        testo, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
         aggiorna_pagelle(self.stato.pagelle, ragione, torto)
         aggiorna_diario(self.stato.diario, s.x, s.esito["erre"] > 0)
         # Ognuno si chiede dove ha sbagliato: rifa' l'operazione con le sue scelte vicine, guarda la sua storia.

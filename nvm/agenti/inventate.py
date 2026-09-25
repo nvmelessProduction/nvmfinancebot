@@ -146,6 +146,11 @@ class Domanda:
     def da_dati(cls, d: dict) -> "Domanda":
         return cls(d["agente"], d["famiglia"], tuple(tuple(x) for x in d["parametri"]))
 
+    @classmethod
+    def da_chiave(cls, chiave: str) -> "Domanda":
+        agente, famiglia, parametri = json.loads(chiave)
+        return cls(agente, famiglia, tuple(tuple(x) for x in parametri))
+
 
 # Le prime domande di un agente nuovo: il suo mestiere, prima di inventare a caso.
 def _prime() -> dict[str, list[Domanda]]:
@@ -187,6 +192,25 @@ def inventa(agente: str, rng: np.random.Generator, gia: set[str], quante: int = 
         if valida(d) and d.chiave not in gia and all(d.chiave != x.chiave for x in nuove):
             nuove.append(d)
     return nuove
+
+
+def vicine(d: Domanda) -> list[Domanda]:
+    """Le domande a un passo da questa: un solo mattone cambiato col valore accanto."""
+    mattoni = MATTONI.get(d.agente, {}).get(d.famiglia, {})
+    fuori = []
+    for i, (nome, v) in enumerate(d.parametri):
+        valori = mattoni.get(nome, ())
+        if v not in valori:
+            continue
+        k = valori.index(v)
+        for j in (k - 1, k + 1):
+            if 0 <= j < len(valori):
+                nuovi = list(d.parametri)
+                nuovi[i] = (nome, valori[j])
+                x = Domanda(d.agente, d.famiglia, tuple(nuovi))
+                if valida(x):
+                    fuori.append(x)
+    return fuori
 
 
 # --- Le risposte ------------------------------------------------------------------------

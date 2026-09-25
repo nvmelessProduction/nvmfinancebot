@@ -62,6 +62,13 @@ class Seguita:
     estremo: Optional[float] = None
     stop_minimo: Optional[float] = None
     oltre: Optional[float] = None
+    # La qualita' attesa e la decisione del Capo (entrare o no), anche se poi l'ordine non e' partito.
+    qualita: Optional[float] = None
+    decisa: Optional[bool] = None
+
+    @property
+    def presa_dal_capo(self) -> bool:
+        return self.decisa if self.decisa is not None else self.atteso > 0
 
 
 @dataclass

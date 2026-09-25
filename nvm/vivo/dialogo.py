@@ -32,7 +32,7 @@ AGENTI: dict[str, tuple[int, ...]] = {
 for _i, _d in enumerate(INVENTATE):
     AGENTI[_d.agente] = AGENTI.get(_d.agente, ()) + (len(COLONNE_BASE) + _i,)
 # Sotto questa spinta un agente non si schiera.
-NEUTRO = 0.02
+NEUTRO = 0.015
 
 # I pareri si' o no che possono fare coppia in un consiglio.
 SEGNALI: dict[str, tuple[str, int]] = {
@@ -57,35 +57,35 @@ SEGNALI: dict[str, tuple[str, int]] = {
 
 
 def spinte_su_casi(capo: Capo, x: np.ndarray) -> dict[str, np.ndarray]:
-    """Di quanto il parere di ogni agente sposta il guadagno atteso del Capo, caso
-    per caso, in R: il guadagno atteso vero meno quello che il Capo avrebbe
-    stimato se l'agente avesse dato le risposte di un caso medio. Per Romeo:
-    meno quello che avrebbe stimato senza ascoltarlo."""
+    """Di quanto il parere di ogni agente sposta la qualita' attesa, su cui il Capo decide,
+    caso per caso: la qualita' attesa vera meno quella che il Capo avrebbe stimato se
+    l'agente avesse dato le risposte di un caso medio. Per Romeo: meno quella che avrebbe
+    stimato senza ascoltarlo."""
     x = np.atleast_2d(np.asarray(x, float))
     if x.shape[1] < len(COLONNE):
         x = np.c_[x, np.zeros((len(x), len(COLONNE) - x.shape[1]))]
     zero = np.zeros(len(x))
     rr1, rr2 = COLONNE.index("RR1"), COLONNE.index("RR2")
-    tutto = capo.valore_atteso(x, x[:, rr1], x[:, rr2], zero)
+    tutto = capo.qualita(x, x[:, rr1], x[:, rr2], zero)
     media = capo.media[:len(COLONNE)]
     per = {}
     for nome, col in AGENTI.items():
         medio = x.copy()
         medio[:, list(col)] = media[list(col)]
-        per[nome] = tutto - capo.valore_atteso(medio, medio[:, rr1], medio[:, rr2], zero)
+        per[nome] = tutto - capo.qualita(medio, medio[:, rr1], medio[:, rr2], zero)
     if capo.romeo is not None and capo.fiducia_in_romeo != 0:
         senza = replace(capo, fiducia_in_romeo=0.0)
-        per["Romeo"] = tutto - senza.valore_atteso(x, x[:, rr1], x[:, rr2], zero)
+        per["Romeo"] = tutto - senza.qualita(x, x[:, rr1], x[:, rr2], zero)
     return per
 
 
 def spinte(capo: Capo, x: np.ndarray) -> dict[str, float]:
-    """La spinta di ogni agente su questa decisione, in R di guadagno atteso."""
+    """La spinta di ogni agente su questa decisione, sulla qualita' attesa."""
     return {nome: float(v[0]) for nome, v in spinte_su_casi(capo, x).items()}
 
 
 def ascolto(capo: Capo, casi: np.ndarray) -> dict[str, float]:
-    """Quanto il Capo ascolta ognuno: di quanto, in media, il suo parere sposta il guadagno atteso."""
+    """Quanto il Capo ascolta ognuno: di quanto, in media, il suo parere sposta la qualita' attesa."""
     return {nome: float(np.abs(v).mean()) for nome, v in spinte_su_casi(capo, casi).items()}
 
 
@@ -101,10 +101,11 @@ def chi_aveva_ragione(per: dict[str, float], vinta: bool) -> tuple[list[str], li
     return ragione, torto
 
 
-def resoconto(chiave_leggibile: str, esito: dict, entrata: bool, per: dict[str, float], atteso: float) -> tuple[str, list[str], list[str]]:
+def resoconto(chiave_leggibile: str, esito: dict, entrata: bool, per: dict[str, float], decisa: bool) -> tuple[str, list[str], list[str]]:
+    """`decisa`: se il Capo aveva deciso di entrare (anche se poi l'ordine non e' partito)."""
     vinta = esito["erre"] > 0
     ragione, torto = chi_aveva_ragione(per, vinta)
-    capo_ok = (atteso > 0) == vinta
+    capo_ok = decisa == vinta
     uscita = str(esito["uscita"])
     testo = "\n".join([
         f"📊 Com'è finita: {chiave_leggibile}",
@@ -185,8 +186,9 @@ LAVORO: dict[str, str] = {
              "mandatemela così: /romeo EURUSD compra 1.0765 stop 1.0760. Vi dico se l'avevamo vista, "
              "e il sabato imparo da lei.",
     "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, nella misura che ho imparato.",
-    "Capo": "Ascolto tutti e decido: entro se il guadagno atteso è sopra zero. "
-            "Ogni sabato imparo dai risultati quanto fidarmi di ognuno.",
+    "Capo": "Ascolto tutti e decido sulle prestazioni, non sul guadagno: entro se la qualità attesa "
+            "(quanto rende l'operazione diviso per quanto può oscillare) supera la mia soglia, che alleno "
+            "in palestra come gli altri le loro manopole. Ogni sabato imparo dai risultati quanto fidarmi di ognuno.",
 }
 
 

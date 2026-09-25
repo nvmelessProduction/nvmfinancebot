@@ -250,11 +250,20 @@ _ULTIMA: Optional[Tabella] = None
 _IDEE: tuple = ()
 
 
+_TABELLE: dict = {}
+
+
 def _valuta(valori: dict) -> Prova:
-    """In un processo a parte: mette i valori, rifa' la tabella, misura. Se chiesto, conta Romeo."""
+    """In un processo a parte: mette i valori, rifa' la tabella, misura. Se chiesto, conta Romeo.
+    Se le manopole che cambiano la tabella sono le stesse di una gia' fatta, la riusa."""
     manopole.applica(valori)
     imp = _IMPOSTAZIONI
-    t = costruisci_tabella(_BASI, imp["coppie"], imp["dal"], imp["al"])
+    chiave = manopole.impronta()
+    t = _TABELLE.get(chiave)
+    if t is None:
+        t = costruisci_tabella(_BASI, imp["coppie"], imp["dal"], imp["al"])
+        _TABELLE.clear()
+        _TABELLE[chiave] = t
     global _ULTIMA
     _ULTIMA = t
     p = misura(t, valori, imp["primo"], imp["ultimo"])
@@ -354,13 +363,28 @@ def _v(x: Any) -> str:
     return str(x).replace(".", ",")
 
 
-def idee_della_settimana(agenti, gia: set[str], rng: np.random.Generator) -> list:
-    """Un agente nuovo prova prima le domande del suo mestiere (`inventate.PRIME`); poi inventa
-    ogni settimana IDEE_PER_AGENTE domande a caso fra quelle mai provate."""
+def quasi_riuscite(memoria_idee, agente: str) -> list:
+    """Le idee scartate dell'agente che avevano migliorato la qualita', dalla migliore."""
+    buone = sorted((x for x in memoria_idee if x["agente"] == agente and x["esito"] == "scartata" and x["qualita"] > 0),
+                   key=lambda x: -x["qualita"])
+    return [inventate.Domanda.da_chiave(x["chiave"]) for x in buone]
+
+
+def idee_della_settimana(agenti, gia: set[str], rng: np.random.Generator, memoria_idee=()) -> list:
+    """Un agente nuovo prova prima le domande del suo mestiere (`inventate.PRIME`). Poi ogni
+    settimana: se ha un'idea quasi riuscita (aveva migliorato, ma non abbastanza), ne prova la
+    variante vicina ancora mai provata (un mattone cambiato di un passo); il resto lo inventa a
+    caso fra le domande mai provate. Cosi' impara dai tentativi, come una persona."""
     idee = []
     for agente in agenti:
         prime = [d for d in inventate.PRIME.get(agente, []) if d.chiave not in gia]
-        idee += prime or inventate.inventa(agente, rng, gia, IDEE_PER_AGENTE)
+        if prime:
+            idee += prime
+            continue
+        affinata = next((v for d in quasi_riuscite(memoria_idee, agente) for v in inventate.vicine(d)
+                         if v.chiave not in gia and all(v.chiave != x.chiave for x in idee)), None)
+        mie = [affinata] if affinata is not None else []
+        idee += mie + inventate.inventa(agente, rng, gia | {d.chiave for d in mie}, IDEE_PER_AGENTE - len(mie))
     return idee
 
 
@@ -377,7 +401,7 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     gia = {x["chiave"] for x in memoria_idee} | {d.chiave for d in il_capo.INVENTATE}
     rng = np.random.default_rng(settimana)
     agenti = [a for a in dict.fromkeys(list(manopole.AGENTI) + list(inventate.MATTONI)) if solo is None or a in solo]
-    idee = idee_della_settimana(agenti, gia, rng)
+    idee = idee_della_settimana(agenti, gia, rng, memoria_idee)
     dire(f"{len(elenco)} prove sulle manopole e {len(idee)} idee nuove, più la squadra di oggi")
     senza_romeo = {k: v for k, v in impostazioni.items() if k != "romeo"}
     oggi = prova_tutti([valori], basi, impostazioni, 1)[0]
@@ -454,7 +478,10 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
              f"con una certezza che cresce con le prove fatte da sempre ({k}) e nella maggior parte degli anni.", ""]
     registro_idee = []
     for agente in agenti:
-        if agente in GRUPPI:
+        if agente == "Capo":
+            righe.append(f"• Capo: entro quando la qualità attesa supera {_v(valori['Capo']['soglia della qualità attesa'])}; "
+                         "provo a spostare l'asticella.")
+        elif agente in GRUPPI:
             righe.append(f"• {agente}: {diagnosi(agente, oggi)}.")
         else:
             righe.append(f"• {agente}: sono nuovo, provo le domande del mio mestiere.")
@@ -523,9 +550,9 @@ def ritrovate_da_romeo(t: Tabella, radice: Path, catalogo: Path) -> int:
         ops, x = candidati(_BASI[strumento], minuti, inizio, fine)
         if not ops:
             continue
-        atteso = capo.valore_atteso(x, np.array([o.rr1 for o in ops]), np.array([o.rr2 for o in ops]),
-                                    np.array([o.costo_erre for o in ops]))
-        prese = [o for o, a in zip(ops, atteso) if a > 0]
+        entra = capo.entra(x, np.array([o.rr1 for o in ops]), np.array([o.rr2 for o in ops]),
+                           np.array([o.costo_erre for o in ops]))
+        prese = [o for o, a in zip(ops, entra) if a]
         trovate += sum(1 for e in entrate if e.strumento == strumento and (c := confronta(e, prese)) and c[0].ritrovata)
     return trovate
 

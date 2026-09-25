@@ -54,10 +54,15 @@ class Decisione:
     liquidita: Optional[Liquidita] = None
     # Cosa vedono Allineamento e Gap dai timeframe grandi.
     sguardo: Optional[panorama.Sguardo] = None
+    # La qualita' attesa: il guadagno atteso diviso per quanto l'operazione puo' oscillare.
+    qualita: Optional[float] = None
 
     @property
     def entra(self) -> bool:
-        return self.atteso > 0
+        """Il Capo entra quando la qualita' attesa supera la sua soglia (`nvm/agenti/capo.py`)."""
+        if self.qualita is None:
+            return self.atteso > 0
+        return self.qualita > capo_mod.SOGLIA
 
     @property
     def chiave(self) -> str:
@@ -137,7 +142,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0],
                     ar, float(capo.somiglianza(x)[0]) if capo.romeo is not None else None,
                     float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq,
-                    panorama.sguardo(r, ctx_idee)))
+                    panorama.sguardo(r, ctx_idee),
+                    float(capo_mod.qualita_attesa(p1[0], q[0], r.rr1, r.rr2, r.costo_erre))))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

@@ -554,12 +554,48 @@
    "alto": 0.010696010484602307,
    "anni": 0.47058823529411764,
    "note": []
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Capo",
+   "manopola": "soglia della qualità attesa",
+   "da": 0.0,
+   "a": -0.05,
+   "chiave": "[\"Capo\", \"soglia della qualità attesa\", 0.0, -0.05]",
+   "esito": "scartata",
+   "qualita": -0.030464724731466664,
+   "basso": -0.046252993842730475,
+   "alto": -0.012648166139398545,
+   "anni": 0.11764705882352941,
+   "note": [
+    "drawdown 170 → 571 R",
+    "operazioni 12400 → 21850"
+   ]
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Capo",
+   "manopola": "soglia della qualità attesa",
+   "da": 0.0,
+   "a": 0.05,
+   "chiave": "[\"Capo\", \"soglia della qualità attesa\", 0.0, 0.05]",
+   "esito": "scartata",
+   "qualita": 0.013072211954020974,
+   "basso": -0.014161096893623859,
+   "alto": 0.03952329011175294,
+   "anni": 0.6470588235294118,
+   "note": [
+    "drawdown 170 → 130 R",
+    "operazioni 12400 → 6543"
+   ]
   }
  ],
  "ultimo": {
   "settimana": "2026-S39",
-  "id": 1790335357,
-  "rapporto": "🏋️ Allenamento della settimana 2026-S39\nOgnuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), con una certezza che cresce con le prove fatte da sempre (55) e nella maggior parte degli anni.\n\n• Allineamento: sono nuovo, provo le domande del mio mestiere.\n  💡 ho inventato «almeno 3 timeframe dalle 4 ore in su a favore»: qualità −0,002 (fra −0,007 e +0,004), meglio in 24% degli anni. ❌ non basta.\n  💡 ho inventato «almeno 3 timeframe dalle 4 ore in su contro»: qualità −0,008 (fra −0,017 e +0,001), meglio in 41% degli anni. ❌ non basta.\n  💡 ho inventato «almeno 4 timeframe dalle 4 ore in su a favore»: qualità −0,001 (fra −0,004 e +0,002), meglio in 41% degli anni. ❌ non basta.\n  💡 ho inventato «il giorno e la settimana a favore»: qualità −0,000 (fra −0,006 e +0,006), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «la settimana e il mese a favore»: qualità −0,002 (fra −0,007 e +0,004), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «dentro CRT più grandi su 2 livelli»: qualità −0,004 (fra −0,012 e +0,005), meglio in 41% degli anni. ❌ non basta.\n• Gap: sono nuovo, provo le domande del mio mestiere.\n  💡 ho inventato «FVG delle 4 ore aperto verso l'obiettivo (ultime 50 candele)»: qualità −0,002 (fra −0,008 e +0,002), meglio in 41% degli anni. ❌ non basta.\n  💡 ho inventato «FVG del giorno aperto verso l'obiettivo (ultime 50 candele)»: qualità −0,005 (fra −0,013 e +0,003), meglio in 35% degli anni. ❌ non basta.\n  💡 ho inventato «FVG delle 4 ore aperto alle spalle (ultime 50 candele)»: qualità −0,003 (fra −0,009 e +0,002), meglio in 29% degli anni. ❌ non basta.\n  💡 ho inventato «FVG contro verso del giorno aperto verso l'obiettivo (ultime 20 candele)»: qualità −0,002 (fra −0,008 e +0,004), meglio in 29% degli anni. ❌ non basta.\n  💡 ho inventato «gap del weekend aperto, da chiudere a favore (almeno 0,1 del giorno medio)»: qualità −0,003 (fra −0,017 e +0,011), meglio in 53% degli anni. ❌ non basta.\n  💡 ho inventato «gap del weekend aperto, da chiudere contro (almeno 0,1 del giorno medio)»: qualità −0,002 (fra −0,005 e +0,001), meglio in 29% degli anni. ❌ non basta.\n\nCapo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità +0,017, +0,026 R a operazione sui vent'anni). Si resta così, e si riprova con altro.",
+  "id": 1790337204,
+  "rapporto": "🏋️ Allenamento della settimana 2026-S39\nOgnuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), con una certezza che cresce con le prove fatte da sempre (57) e nella maggior parte degli anni.\n\n• Capo: entro quando la qualità attesa supera 0,0; provo a spostare l'asticella.\n  ↳ soglia della qualità attesa 0,0 → -0,05: qualità −0,030 (fra −0,046 e −0,013), meglio in 12% degli anni. ❌ non basta.\n  ↳ soglia della qualità attesa 0,0 → 0,05: qualità +0,013 (fra −0,014 e +0,040), meglio in 65% degli anni. ❌ non basta.\n\nCapo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità +0,017, +0,026 R a operazione sui vent'anni). Si resta così, e si riprova con altro.",
   "cambiato": false
  },
  "idee": [

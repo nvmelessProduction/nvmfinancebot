@@ -217,6 +217,15 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   ognuno, sui vent'anni; nessuna migliora il Capo (tutte fra −0,008 e 0 di
   qualità), quindi il Capo non li ascolta ancora. Ogni domenica ne
   inventano due nuove, come gli altri.
+- **Il Capo decide sulle prestazioni (25/09, notte).** Su richiesta
+  dell'utente non entra più se "il guadagno atteso è sopra zero", ma se la
+  qualità attesa (guadagno atteso diviso per quanto l'operazione può
+  oscillare) supera la sua soglia, che si allena in palestra. Prima prova:
+  abbassarla peggiora con certezza, alzarla a 0,05 migliora un po' ma non
+  abbastanza; resta 0 (stesse operazioni di prima). Le invenzioni non
+  passavano perché erano deboli, non perché l'esame è severo (anche senza
+  correzione ne passerebbe una sola su 55): ora ripartono dalle quasi
+  riuscite.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna

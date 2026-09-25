@@ -23,7 +23,7 @@ NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: 
 MESI = ("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
         "settembre", "ottobre", "novembre", "dicembre")
 # Sotto questa spinta (in R di guadagno atteso) un agente conta "quasi niente".
-POCO = 0.02
+POCO = 0.015
 
 
 # --- numeri e parole -----------------------------------------------------------
@@ -47,6 +47,20 @@ def quando(t: int) -> str:
 def erre(x: float) -> str:
     """Un risultato in R, cioè in volte il rischio: '+1,50 R'."""
     return ("+" if x >= 0 else "−") + _it(abs(x)) + " R"
+
+
+def qualita(x: float) -> str:
+    """Una qualita' attesa (guadagno diviso per quanto oscilla), senza unita': '+0,31'."""
+    return ("+" if x >= 0 else "−") + _it(abs(x))
+
+
+def _capo(d) -> str:
+    """Come decide il Capo: sulla qualita' attesa, contro la sua soglia."""
+    from nvm.agenti.capo import SOGLIA
+    if d.qualita is None:
+        return f"guadagno atteso {erre(d.atteso)}"
+    return (f"qualità attesa {qualita(d.qualita)} (la mia soglia è {qualita(SOGLIA)}), "
+            f"in media {erre(d.atteso)} a operazione")
 
 
 def euro(x: float, valuta: str) -> str:
@@ -133,7 +147,7 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
         f"Ingresso {prezzo(k, prezzo_vero)} · stop {prezzo(k, op.stop)} · obiettivi {obiettivi}",
         f"{_it(volume, 2)} lotti · rischio {_it(rischio)} {valuta}",
         f"Perché: {_perche(d)}",
-        f"Il Capo: {d.p1:.0%} di arrivare al primo obiettivo, guadagno atteso {erre(d.atteso)}.",
+        f"Il Capo: {d.p1:.0%} di arrivare al primo obiettivo, {_capo(d)}.",
     ])
 
 
@@ -238,11 +252,11 @@ def _romeo_riga(d: Decisione) -> str:
 
 
 def _pesi(per: dict[str, float]) -> str:
-    """Chi ha pesato di piu' sulla decisione, in guadagno atteso."""
+    """Chi ha pesato di piu' sulla decisione, sulla qualita' attesa."""
     forti = sorted(((n, v) for n, v in per.items() if abs(v) >= POCO), key=lambda a: -abs(a[1]))
     if not forti:
         return "Nessuno ha pesato davvero: decide la geometria dell'operazione."
-    testo = " · ".join(f"{'👍' if v > 0 else '👎'} {n} {erre(v)}" for n, v in forti[:4])
+    testo = " · ".join(f"{'👍' if v > 0 else '👎'} {n} {qualita(v)}" for n, v in forti[:4])
     deboli = len(per) - len(forti)
     return f"Chi ha pesato: {testo}" + (f" · gli altri {deboli} quasi niente" if deboli else "")
 
@@ -322,7 +336,7 @@ def pareri(d: Decisione, per: Optional[dict[str, float]] = None) -> str:
         f"Gap — {_gap(d)}",
         f"Romeo — {_romeo_riga(d)}",
         "",
-        f"Capo: {d.p1:.0%} di arrivare al primo obiettivo, guadagno atteso {erre(d.atteso)} → "
+        f"Capo: {d.p1:.0%} di arrivare al primo obiettivo, {_capo(d)} → "
         + ("ENTRO" if d.entra else "NON ENTRO"),
     ]
     if per:
@@ -348,7 +362,9 @@ def romeo_ricevuta(e, s) -> str:
                   else f"a {_it(e.pip, 1)} pip")
         giudizio = " ✅ ritrovata" if e.ritrovata else (" — troppo lontana" if e.distanza is not None else "")
         righe.append(f"La mia più vicina: {s.leggibile or s.chiave}, ingresso {prezzo(k, s.ingresso)}, {quanto}.{giudizio}")
-        righe.append("L'avevo presa." if s.entrata else f"Non l'avevo presa: guadagno atteso {erre(s.atteso)}.")
+        righe.append("L'avevo presa." if s.entrata else
+                     f"Non l'avevo presa: qualità attesa {qualita(s.qualita)}." if s.qualita is not None else
+                     f"Non l'avevo presa: guadagno atteso {erre(s.atteso)}.")
     righe.append("Sabato imparo da questa. Non la copio: Romeo è il mio metro, non un ordine.")
     return "\n".join(righe)
 

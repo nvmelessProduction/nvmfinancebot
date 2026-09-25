@@ -140,8 +140,8 @@ def salva_per_il_vivo(t: Tabella) -> None:
         passato = t.chiusa < _istante(a)
         c = Capo.allena(t.x[passato], t.tp1[passato], t.tp2[passato], pesi=pesi_per_eta(t.chiusa[passato], _istante(a)))
         p1, q = c.probabilita(t.x[oggi])
-        e = c.valore_atteso(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
-        for k in np.flatnonzero(e > 0):
+        prese = c.entra(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
+        for k in np.flatnonzero(prese):
             i = np.flatnonzero(oggi)[k]
             f_tutte.append(kelly(esiti(p1[k], q[k], t.rr1[i], t.rr2[i], t.costi[i])))
             r_tutte.append(t.erre[i])

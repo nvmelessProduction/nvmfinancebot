@@ -103,10 +103,10 @@ def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
             continue
         x = np.array([colonne_del_capo(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g),
                                        inventate.rispondi_tutte(idee, r, ctx)) for r in ops])
-        atteso = capo.valore_atteso(x, np.array([r.rr1 for r in ops]), np.array([r.rr2 for r in ops]),
-                                    np.array([r.costo_erre for r in ops]))
+        prese = capo.entra(x, np.array([r.rr1 for r in ops]), np.array([r.rr2 for r in ops]),
+                           np.array([r.costo_erre for r in ops]))
         bot.tutte += ops
-        bot.scelte += [r for r, a in zip(ops, atteso) if a > 0]
+        bot.scelte += [r for r, a in zip(ops, prese) if a]
     return bot
 
 
@@ -122,7 +122,7 @@ def _auc(p: np.ndarray, y: np.ndarray) -> float:
 def imita(radice: Path, entrate: list[Entrata]) -> None:
     """Quanto il Capo riconosce le scelte di Romeo (`spec/capo.md`), fuori
     campione: per ogni trimestre del 2023 impara la somiglianza sugli altri tre.
-    E cosa sceglie il bot, che decide col guadagno atteso."""
+    E cosa sceglie il bot, che decide con la qualita' attesa."""
     capo = _capo_del_2023(1)
     ops, xs, ys = [], [], []
     for strumento in sorted({e.strumento for e in entrate}):
@@ -147,7 +147,7 @@ def imita(radice: Path, entrate: list[Entrata]) -> None:
         simile[prova] = c.somiglianza(x[prova])
         con_romeo[prova] = c.entra(x[prova], rr1[prova], rr2[prova], costi[prova])
         fiducia.append(f"{c.fiducia_in_romeo:+.3f}")
-    atteso = capo.valore_atteso(x, rr1, rr2, costi) > 0
+    atteso = capo.entra(x, rr1, rr2, costi)
     settimane_romeo = Counter(e.dal // SETTIMANA for e in entrate)
     alte = {e.id for e in entrate if e.rischio and e.rischio / PIP[e.strumento] >= STOP_ALTO}
     print(f"\nLa somiglianza a Romeo, fuori campione per trimestre: {len(ops)} candidati del 2023, "
