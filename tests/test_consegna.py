@@ -23,6 +23,24 @@ def test_i_quarti_d_ora_sono_quelli_dei_minuti():
     assert np.allclose(costruisci(m, TF.H4).bid, costruisci(q, TF.H4).bid)
 
 
+def test_con_i_quarti_la_tabella_ha_anche_la_coppia_4_ore_15_minuti():
+    from nvm.agenti import inventate
+    from nvm.agenti.capo import COLONNE
+    from nvm.prova.allenamento import risposte
+    from nvm.prova.cammino import costruisci_tabella
+    coppie = ((TF.W1, TF.H4), (TF.D1, TF.H1))
+    m = passeggiata("EURUSD", utc(2023, 1, 2), utc(2023, 4, 1), seme=7)
+    basi = {"EURUSD": consegna.a_quarti(m, 3600)}
+    quarti = {"EURUSD": consegna.a_quarti(m)}
+    dal, al = utc(2023, 2, 1), utc(2023, 4, 1)
+    senza = costruisci_tabella(basi, coppie, dal, al)
+    con = costruisci_tabella(basi, coppie, dal, al, quarti=quarti)
+    veloce = con.x[:, COLONNE.index("coppia H4-M15")] == 1
+    assert veloce.sum() > 0 and len(con) == len(senza) + veloce.sum()
+    # Le risposte delle domande inventate restano allineate con le righe della tabella.
+    assert risposte(inventate.PRIME["Gap"][:1], basi, coppie, dal, al, quarti).shape == (len(con), 1)
+
+
 def test_un_file_per_anno_rifatto_solo_se_arrivano_minuti_nuovi(tmp_path):
     grezzi = tmp_path / "grezzi"
     for mese in (1, 2):

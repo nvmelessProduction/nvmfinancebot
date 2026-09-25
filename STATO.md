@@ -226,6 +226,14 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   passavano perché erano deboli, non perché l'esame è severo (anche senza
   correzione ne passerebbe una sola su 55): ora ripartono dalle quasi
   riuscite.
+- **I dati dalla VPS (25/09, pomeriggio).** Le entrate di Romeo l'utente non
+  le ha e non le può trovare: il metro Romeo resta sulle 62 del 2023. Gli
+  altri dati nascono sulla VPS: l'utente ha creato la chiave di GitHub e ha
+  avviato `scarica.bat` (vent'anni di minuti, molte ore). Poi `consegna.bat`
+  li spedisce come quarti d'ora nel ramo `dati-vps`, e il bot rispedisce da
+  solo le settimane dal vivo ogni sabato. La palestra della domenica li
+  prende (`importa_vps.py`) e allena anche la coppia 4 ore → 15 minuti sui
+  vent'anni, che finora il Capo imparava solo dal vivo.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna

@@ -43,6 +43,8 @@ def main() -> None:
     impostazioni = {
         "coppie": capo.COPPIE, "dal": capo._istante(capo.DAL), "al": capo._istante(capo.AL + 1),
         "primo": capo.PRIMO_GIUDICATO, "ultimo": capo.AL,
+        # I quarti d'ora arrivati dalla VPS (`importa_vps.py`): la coppia 4 ore -> 15 minuti.
+        "quarti": capo.quarti_storici(radice),
         "romeo": partial(allenamento.ritrovate_da_romeo, radice=radice, catalogo=RADICE / "casi" / "entrate-romeo.csv"),
     }
     memoria = allenamento.leggi_memoria()

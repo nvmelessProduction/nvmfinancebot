@@ -23,7 +23,7 @@ from nvm.agenti import inventate, manopole
 from nvm.agenti.cacciatore import Variante
 from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
-from nvm.dati.minuti import PUNTO, carica_periodo
+from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.cammino import Tabella, cammino, costruisci_tabella, giudica
 from nvm.prova.campo import Uscita
@@ -56,10 +56,11 @@ def _istante(anno: int) -> int:
 
 
 def tabella(numero: int, spread: float, radice: Path) -> Tabella:
-    # Il nome porta l'impronta delle manopole degli agenti: una tabella fatta
-    # con manopole diverse non si riusa mai per sbaglio.
+    # Il nome porta l'impronta delle manopole degli agenti e dei quarti d'ora usati: una
+    # tabella fatta con manopole o dati diversi non si riusa mai per sbaglio.
+    quarti = quarti_storici(radice) if numero <= 4 else {}
     nome = (f"conf{numero}" + (f"-spread{spread:g}" if spread != 1 else "")
-            + f"-{manopole.impronta()}{inventate.impronta(INVENTATE)}.npz")
+            + f"-{manopole.impronta()}{inventate.impronta(INVENTATE)}{impronta_quarti(quarti)}.npz")
     percorso = RADICE / "dati" / "tabelle" / nome
     if percorso.exists():
         return Tabella.carica(percorso)
@@ -67,7 +68,8 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
     if numero == 1:
         variante = None     # la configurazione del bot: la variante e' quella della manopola del Cacciatore
     t = costruisci_tabella(ore_storiche(radice), GRADINO if numero > 4 else COPPIE, _istante(DAL), _istante(AL + 1),
-                           variante, stretto, spread, dire=lambda testo: print(f"  conf {numero} {testo}", flush=True))
+                           variante, stretto, spread, dire=lambda testo: print(f"  conf {numero} {testo}", flush=True),
+                           quarti=quarti)
     t.salva(percorso)
     return t
 
@@ -76,6 +78,28 @@ def ore_storiche(radice: Path) -> dict:
     """Le ore di ogni strumento per il periodo della tabella, con il margine per i CRT a cavallo."""
     dal, al = _istante(DAL), _istante(AL + 1)
     return {s: carica_ore(radice, s, dal - 70 * 86400, al + 70 * 86400)[0] for s in PUNTO}
+
+
+def quarti_storici(radice: Path) -> dict:
+    """I quarti d'ora di ogni strumento arrivati dalla VPS (`importa_vps.py`), per il periodo
+    della tabella: ci nasce la coppia 4 ore -> 15 minuti. Vuoto finche' non arrivano."""
+    dal, al = _istante(DAL) - 70 * 86400, _istante(AL + 1) + 70 * 86400
+    fuori = {}
+    for s in PUNTO:
+        pezzi = [Minuti.carica(f).fra(dal, al) for f in sorted((radice / "quarti" / s).glob(f"{s}-*.npz"))]
+        pezzi = [p for p in pezzi if len(p)]
+        if pezzi:
+            fuori[s] = Minuti.unisci(pezzi)
+    return fuori
+
+
+def impronta_quarti(quarti: dict) -> str:
+    """Un nome corto per i quarti d'ora usati (quali strumenti, da quando a quando)."""
+    if not quarti:
+        return ""
+    import hashlib
+    testo = "|".join(f"{s}:{int(m.t[0])}:{int(m.t[-1])}:{len(m)}" for s, m in sorted(quarti.items()))
+    return "-q" + hashlib.sha1(testo.encode()).hexdigest()[:6]
 
 
 def main() -> None:

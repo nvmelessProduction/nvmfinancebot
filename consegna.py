@@ -36,11 +36,12 @@ RAMO = "dati-vps"
 QUARTO = 900
 
 
-def a_quarti(m: Minuti) -> Minuti:
-    """Candele da 15 minuti dai minuti: apertura la prima, massimo e minimo, chiusura l'ultima."""
+def a_quarti(m: Minuti, passo: int = QUARTO) -> Minuti:
+    """Candele da 15 minuti (o da `passo` secondi) dai minuti: apertura la prima, massimo e
+    minimo, chiusura l'ultima."""
     if not len(m):
-        return Minuti.vuoti(m.strumento, QUARTO)
-    blocco = m.t // QUARTO * QUARTO
+        return Minuti.vuoti(m.strumento, passo)
+    blocco = m.t // passo * passo
     inizi = np.flatnonzero(np.r_[True, blocco[1:] != blocco[:-1]])
     fini = np.r_[inizi[1:], len(m.t)] - 1
 
@@ -49,7 +50,7 @@ def a_quarti(m: Minuti) -> Minuti:
                                 np.minimum.reduceat(p[:, MINIMO], inizi), p[fini, CHIUSURA]]).astype(p.dtype)
 
     return Minuti(m.strumento, blocco[inizi].astype(np.int64), ohlc(m.bid), ohlc(m.ask),
-                  np.add.reduceat(m.volume_bid, inizi), np.add.reduceat(m.volume_ask, inizi), QUARTO)
+                  np.add.reduceat(m.volume_bid, inizi), np.add.reduceat(m.volume_ask, inizi), passo)
 
 
 def quarti(grezzi: Path, uscita: Path) -> int:

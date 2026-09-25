@@ -261,7 +261,7 @@ def _valuta(valori: dict) -> Prova:
     chiave = manopole.impronta()
     t = _TABELLE.get(chiave)
     if t is None:
-        t = costruisci_tabella(_BASI, imp["coppie"], imp["dal"], imp["al"])
+        t = costruisci_tabella(_BASI, imp["coppie"], imp["dal"], imp["al"], quarti=imp.get("quarti"))
         _TABELLE.clear()
         _TABELLE[chiave] = t
     global _ULTIMA
@@ -281,20 +281,22 @@ def prova_tutti(valori: list[dict], basi: dict, impostazioni: dict, processi: in
         return pool.map(_valuta, valori)
 
 
-def risposte(domande: list, basi: dict, coppie, dal: int, al: int) -> np.ndarray:
+def risposte(domande: list, basi: dict, coppie, dal: int, al: int, quarti: Optional[dict] = None) -> np.ndarray:
     """Le risposte alle domande inventate, per le operazioni della tabella, nello stesso ordine
     di `costruisci_tabella` (con le manopole in uso)."""
     from nvm.dati.candele import costruisci
     from nvm.prova.base import opera
+    from nvm.prova.cammino import coppie_di
     from nvm.prova.romeo import grandi
     righe = []
     if not domande:
         return np.zeros((0, 0))
-    for base in basi.values():
+    for strumento, base in basi.items():
         fine = int(base.t[-1]) + base.passo
         ctx = inventate.Contesto.da(base, fine, grandi(base, fine))
-        for alto, basso in coppie:
-            alte, basse = costruisci(base, alto).chiuse_entro(fine), costruisci(base, basso).chiuse_entro(fine)
+        for alto, basso, dati in coppie_di(base, (quarti or {}).get(strumento), coppie):
+            f = int(dati.t[-1]) + dati.passo
+            alte, basse = costruisci(dati, alto).chiuse_entro(f), costruisci(dati, basso).chiuse_entro(f)
             righe += [inventate.rispondi_tutte(domande, r, ctx) for r in opera(alte, basse, dal, al)]
     return np.array(righe, float).reshape(len(righe), len(domande))
 
@@ -406,7 +408,8 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     senza_romeo = {k: v for k, v in impostazioni.items() if k != "romeo"}
     oggi = prova_tutti([valori], basi, impostazioni, 1)[0]
     tabella_oggi = _ULTIMA
-    risposte_idee = risposte(idee, basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"])
+    risposte_idee = risposte(idee, basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"],
+                             impostazioni.get("quarti"))
     prove_idee = prova_idee(tabella_oggi, risposte_idee, impostazioni["primo"], impostazioni["ultimo"], processi)
     candidate = prova_tutti([_con(valori, a, n, v) for a, n, _, v in elenco], basi, senza_romeo, processi)
     # L'asticella conta tutte le prove fatte da sempre, non solo quelle di questa settimana: la
@@ -459,8 +462,10 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
             base_tab, r_base = tabella_oggi, risposte_idee[:, scelte]
         else:
             manopole.applica(finali)
-            base_tab = costruisci_tabella(basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"])
-            r_base = risposte([idee[j] for j in scelte], basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"])
+            base_tab = costruisci_tabella(basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"],
+                                          quarti=impostazioni.get("quarti"))
+            r_base = risposte([idee[j] for j in scelte], basi, impostazioni["coppie"], impostazioni["dal"],
+                              impostazioni["al"], impostazioni.get("quarti"))
             manopole.applica(valori)
         for quante in ([len(scelte), 1] if len(scelte) > 1 else [1]):
             p = misura(_con_colonne(base_tab, r_base[:, :quante]), finali, impostazioni["primo"], impostazioni["ultimo"])

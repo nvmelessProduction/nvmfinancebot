@@ -157,9 +157,20 @@ vent'anni, più entrate di Romeo, le settimane dal vivo).
 ## Chi la fa girare
 
 Una Routine di Claude Code, ogni domenica mattina (UTC), in questa sessione:
-`python allena.py`, poi le prove automatiche e la pubblicazione. Servono i
-dati dei vent'anni sulla macchina; se il contenitore li perde, si
-reimportano (`importa_grezzi.py` dall'archivio) prima di allenare.
+`python importa_vps.py`, `python allena.py`, poi le prove automatiche e la
+pubblicazione. Servono i dati dei vent'anni sulla macchina; se il
+contenitore li perde, si reimportano (`importa_grezzi.py` dall'archivio)
+prima di allenare.
+
+**I dati della VPS** (`VPS.md`). Da qui Dukascopy blocca i minuti; la VPS
+li scarica (`scarica.bat`) e li spedisce (`consegna.bat`) come quarti d'ora,
+nel ramo `dati-vps`, insieme alle settimane dal vivo (il bot le rispedisce
+ogni sabato dopo la riunione). `importa_vps.py` li porta in `dati/grezzi/quarti`
+e `dati/vps`. Con i quarti d'ora la tabella dei vent'anni ha anche la coppia
+4 ore → 15 minuti (`cammino.coppie_di`), come il bot dal vivo: sul solo
+EURUSD del 2023 le operazioni passano da 452 a 2.026. La tabella porta
+l'impronta dei quarti usati, quindi si rifà da sola quando ne arrivano di
+nuovi.
 
 ## Cosa non fa (ancora)
 

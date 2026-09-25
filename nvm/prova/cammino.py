@@ -18,6 +18,10 @@ from nvm.agenti import capo as capo_mod
 from nvm.agenti.capo import COLONNE, Capo, esiti, riga
 from nvm.prova.base import SETTIMANA, Risultato
 from nvm.prova.campo import Uscita
+from nvm.tempo import TF
+
+# La coppia che nasce dai quarti d'ora, come `COPPIA_VELOCE` del bot dal vivo.
+COPPIA_QUARTI = (TF.H4, TF.M15)
 
 
 def _anno(t: np.ndarray) -> np.ndarray:
@@ -78,14 +82,24 @@ class Tabella:
             return cls(**{k: f[k] for k in f.files})
 
 
+def coppie_di(base, quarti, coppie) -> list:
+    """Le coppie di uno strumento con le candele da cui nascono: le ore per le coppie orarie e,
+    se ci sono i quarti d'ora, anche il 4 ore -> 15 minuti, come fa il bot dal vivo."""
+    fuori = [(alto, basso, base) for alto, basso in coppie]
+    if quarti is not None and len(quarti):
+        fuori.append((*COPPIA_QUARTI, quarti))
+    return fuori
+
+
 def costruisci_tabella(
     basi: dict, coppie, dal: int, al: int, variante=None, stretto: bool = False, spread: float = 1.0,
-    dire: Optional[Callable[[str], None]] = None,
+    dire: Optional[Callable[[str], None]] = None, quarti: Optional[dict] = None,
 ) -> Tabella:
     """Tutte le operazioni delle coppie con ingresso in [dal, al), con le risposte degli agenti.
 
-    `basi` sono le ore di ogni strumento. E' la tabella su cui il Capo si allena
-    (`capo.py`) e su cui gli agenti provano le loro manopole (`nvm/prova/allenamento.py`).
+    `basi` sono le ore di ogni strumento, `quarti` i quarti d'ora (dalla VPS, `consegna.py`)
+    per la coppia 4 ore -> 15 minuti. E' la tabella su cui il Capo si allena (`capo.py`) e su
+    cui gli agenti provano le loro manopole (`nvm/prova/allenamento.py`).
     """
     from nvm.agenti import capo as il_capo, inventate
     from nvm.agenti.conferme import SOPRA, tutti_i_pareri
@@ -103,9 +117,10 @@ def costruisci_tabella(
         # Per le domande inventate dagli agenti e tenute dalla palestra.
         idee = il_capo.INVENTATE
         ctx = inventate.Contesto.da(base, fine, g) if idee else None
-        for alto, basso in coppie:
-            alte = costruisci(base, alto).chiuse_entro(fine)
-            basse = costruisci(base, basso).chiuse_entro(fine)
+        for alto, basso, dati in coppie_di(base, (quarti or {}).get(strumento), coppie):
+            fine_dati = int(dati.t[-1]) + dati.passo
+            alte = costruisci(dati, alto).chiuse_entro(fine_dati)
+            basse = costruisci(dati, basso).chiuse_entro(fine_dati)
             sopra = costruisci(base, SOPRA[alto]).chiuse_entro(fine)
             if spread != 1:
                 basse = allarga(basse, spread)
