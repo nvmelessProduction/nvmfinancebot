@@ -143,6 +143,25 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   e senza); ritrova un'entrata di Romeo in più (7 invece di 6). Provate e
   lasciate fuori altre sette domande che non aiutavano
   (`registro/tentativi.md`).
+- **I Livelli spostano il secondo obiettivo (25/09).** Dove si leggono, i
+  target di Romeo del 2023 stanno oltre il lato opposto del CRT (1,2–1,8
+  volte il range), non sul lato. Sui vent'anni un secondo obiettivo a mezzo
+  range oltre il lato rende di più in 13 anni su 16; col Capo, anno per
+  anno, le operazioni scelte passano da −0,022 a −0,011 R. Dopo il primo
+  obiettivo lo stop è a pareggio, quindi lasciar correre la seconda metà
+  costa poco.
+- **E lo stop non è mai troppo stretto (25/09).** Romeo: *"Your stoploss is
+  25% of the range, if it hits it you're wrong"*. Lo stop resta
+  all'estremo della manipolazione, ma mai più vicino all'ingresso di un
+  quarto del range: gli stop più stretti li mangiano il rumore e i costi.
+  Con le due modifiche dei Livelli, sui vent'anni anno per anno, **le
+  operazioni scelte dal Capo sono in media positive per la prima volta**
+  (+0,009 R, prima −0,022) e battono la base in tutti i 16 anni. Il
+  cancello non passa ancora: +0,054 sulla base, serve +0,10. Capo e
+  Rischio riaddestrati: il Rischio usa 0,18 del Kelly (era 0,08). Sul
+  metro Romeo, le sue entrate ritrovate fra le scelte del Capo nel 2023
+  passano da 6 a 5 su 45 (i Livelli cambiano le uscite, non le entrate:
+  le entrate che il bot vede restano 11).
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna

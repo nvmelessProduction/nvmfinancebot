@@ -102,10 +102,10 @@ variante deve andare meglio della base del manuale sulle stesse coppie.
 
 | Cosa | Chi | Punto di partenza | Fonte |
 |---|---|---|---|
-| Stop | Livelli | appena oltre l'estremo del turtle soup | **[R]** msg 163: "turtle soup high has to be the ceiling" |
+| Stop | Livelli | appena oltre l'estremo del turtle soup, ma mai più vicino all'ingresso di un quarto del range (dal 25/09/2026) | **[R]** msg 163: "turtle soup high has to be the ceiling"; 04/02/2023: "Your stoploss is 25% of the range, if it hits it you're wrong". Sui vent'anni, col Capo, le scelte passano da −0,011 a +0,009 R e battono la base in tutti gli anni (`registro/tentativi.md`) **[D]** |
 | Stop, **variante dichiarata "stop stretto"** | Livelli | oltre il livello del Model#1, più il 10% dell'escursione della candela del turtle soup | è quello che Romeo fa nelle operazioni pubblicate: stop di 1–5 pip su EURUSD e GBPUSD; sull'oro (CASO-004) stop 2474.00 contro 2474.47 del bot. La misura decide fra le due |
 | Primo target | Livelli | `CRT 50%` | **[R]** "the 50% is almost always guaranteed" (msg 6561) |
-| Target finale | Livelli | il lato opposto del range | **[R]** "take profit at 50% and then CRTH/L" |
+| Target finale | Livelli | oltre il lato opposto del range di metà della sua ampiezza (fino al 25/09/2026: sul lato) | **[R]** "take profit at 50% and then CRTH/L"; ma i suoi target letti nel 2023 stanno oltre il lato, fra 1,2 e 1,8 volte il range. Sui vent'anni, col Capo, le scelte passano da −0,022 a −0,011 R (`registro/tentativi.md`, 25/09/2026) **[D]** |
 | Ingresso già oltre il 50% | Livelli | niente operazione: il primo target starebbe alle spalle | **[D]**, nel vecchio bot "12 posizioni su 17 morte in 6 secondi" |
 | Quanto dura l'operazione | Livelli | **nessuna uscita a tempo**: stop, target, o pareggio dopo il primo target. Solo un tetto di sicurezza largo per la simulazione (~10 candele alte) | Romeo non parla mai di uscite a tempo. Due casi hanno smentito le durate provate prima: nel mensile di EURUSD (msg 5623) il target 2 arriva nella candela 3, nel giornaliero di dicembre 2024 (msg 5730) nella candela 4 |
 | Quanto si chiude al primo target | Sentinella | metà | **[R]** "CRT 50%, target 1 (partial)" (msg 5623); la quantità non la dice |

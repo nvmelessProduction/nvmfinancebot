@@ -77,9 +77,23 @@ def test_livelli_del_manuale():
     op = piano(scatto(crt, b), b)
     assert op.ingresso == pytest.approx(1.1085)
     assert op.stop == pytest.approx(1.1130)  # il tetto del turtle soup
-    assert (op.tp1, op.tp2) == (pytest.approx(1.1050), pytest.approx(1.1000))
+    # Il target finale: il lato opposto (1.1000) piu' meta' dell'ampiezza del CRT.
+    assert (op.tp1, op.tp2) == (pytest.approx(1.1050), pytest.approx(1.0950))
     s = scatto(crt, b)
     assert scadenza(s) == s.quando + 3 * 86400  # solo un tetto di sicurezza
+
+
+def test_lo_stop_non_sta_mai_piu_vicino_di_un_quarto_del_range():
+    # Un turtle soup piccolo: l'estremo (1.1104) e' a 11 pip dall'ingresso, meno
+    # di un quarto del range (25 pip). Lo stop va a 1.1093 + 0.0025.
+    piccolo = (1.1095, 1.1104, 1.1094, 1.1102)
+    crt, b = _crt(SALITA + [piccolo, (1.1102, 1.1103, 1.1090, 1.1093)])
+    s = scatto(crt, b)
+    op = piano(s, b)
+    assert op.ingresso == pytest.approx(1.1093)
+    assert op.stop == pytest.approx(1.1093 + 0.25 * 0.0100)
+    # Lo stop stretto, la variante dichiarata, resta com'e'.
+    assert piano(s, b, stop_stretto=True).stop < op.stop
 
 
 def test_niente_operazione_se_il_primo_target_e_alle_spalle():
@@ -99,7 +113,7 @@ def test_il_long_e_lo_specchio():
     assert s.livello == pytest.approx(2.2 - 1.1090)
     assert s.quando == C2 + 4 * Q
     op = piano(s, b)
-    assert op.stop == pytest.approx(2.2 - 1.1130) and op.tp2 == pytest.approx(2.2 - 1.1000)
+    assert op.stop == pytest.approx(2.2 - 1.1130) and op.tp2 == pytest.approx(2.2 - 1.0950)
 
 
 @pytest.mark.parametrize("variante", list(Variante))
@@ -124,7 +138,7 @@ def test_dopo_uno_stop_si_ritenta_con_un_turtle_soup_nuovo():
         TURTLE_SOUP, (1.1120, 1.1125, 1.1095, 1.1085),      # scatto 1
         (1.1085, 1.1150, 1.1084, 1.1145),                    # stop, e turtle soup nuovo
         (1.1145, 1.1146, 1.1060, 1.1070),                    # scatto 2
-        (1.1070, 1.1071, 1.0990, 1.0995),                    # target
+        (1.1070, 1.1071, 1.0940, 1.0945),                    # target, mezzo range oltre il lato
     ]
     crt, b = _crt(quarti)
     a = candele("EURUSD", TF.H4, ALTE)

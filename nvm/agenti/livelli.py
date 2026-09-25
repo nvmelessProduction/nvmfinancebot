@@ -3,11 +3,17 @@
 Il manuale (`spec/grilletto.md`, "Da passare agli altri agenti"):
 
 - **stop** appena oltre l'estremo del turtle soup: "turtle soup high has to
-  be the ceiling" (Romeo, msg 163);
+  be the ceiling" (Romeo, msg 163); ma mai piu' vicino all'ingresso di un
+  quarto del range: "Your stoploss is 25% of the range, if it hits it you're
+  wrong" (04/02/2023). Gli stop piu' stretti li mangiano il rumore e i costi
+  (`STOP_MINIMO`, `registro/tentativi.md`, 25/09/2026);
 - **primo target** al 50% del range: "the 50% is almost always guaranteed"
   (msg 6561);
-- **target finale** al lato opposto del range: "take profit at 50% and then
-  CRTH/L";
+- **target finale** oltre il lato opposto del range, di meta' dell'ampiezza
+  del CRT (`OLTRE`). Il manuale dice "take profit at 50% and then CRTH/L";
+  ma dove si leggono i suoi target del 2023 stanno oltre il lato, fra 1,2 e
+  1,8 volte il range, e sui vent'anni il target oltre il lato rende di piu'
+  (`registro/tentativi.md`, 25/09/2026);
 - **niente operazione** se l'ingresso e' gia' oltre il 50%: il primo target
   starebbe alle spalle.
 
@@ -32,6 +38,14 @@ from nvm.prova.campo import Operazione
 from nvm.tempo import TF
 
 
+# Il target finale sta oltre il lato opposto del CRT di questa frazione della
+# sua ampiezza. Fino al 25/09/2026 era sul lato (0): provati 0,27, 0,5 e 1 sui
+# vent'anni, 0,5 e' quello che somiglia ai target di Romeo (registro).
+OLTRE = 0.5
+# Lo stop sta almeno a questa frazione dell'ampiezza del CRT dall'ingresso.
+# Fino al 25/09/2026 non c'era: sui vent'anni, col Capo, le scelte passano da
+# -0,011 a +0,009 R e battono la base in tutti gli anni (registro).
+STOP_MINIMO = 0.25
 # Lo stop stretto sta oltre il livello del Model#1 di questa frazione
 # dell'escursione della candela del turtle soup.
 MARGINE_STOP_STRETTO = 0.10
@@ -60,7 +74,11 @@ def piano(
         stop = crt.estremo_a(s.quando)
     if stop is None:
         return None
-    tp1, tp2 = crt.crt_50, (crt.crt_low if short else crt.crt_high)
+    ampiezza = crt.crt_high - crt.crt_low
+    if not stop_stretto:
+        stop = max(stop, ingresso + STOP_MINIMO * ampiezza) if short else min(stop, ingresso - STOP_MINIMO * ampiezza)
+    oltre = OLTRE * ampiezza
+    tp1, tp2 = crt.crt_50, (crt.crt_low - oltre if short else crt.crt_high + oltre)
     segno = -1 if short else 1
     if segno * (ingresso - stop) <= 0 or segno * (tp1 - ingresso) <= 0:
         return None
