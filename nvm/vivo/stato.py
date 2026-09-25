@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from nvm.vivo.esecutore import Viva
+from nvm.vivo.romeo_vivo import EntrataDiRomeo
 
 
 @dataclass
@@ -64,6 +65,10 @@ class Stato:
     diario: dict = field(default_factory=dict)
     # L'ultimo quarto d'ora guardato per la coppia 4 ore -> 15 minuti.
     ultimo_quarto: Optional[int] = None
+    # Le entrate di Romeo mandate dall'utente col comando /romeo (`nvm/vivo/romeo_vivo.py`).
+    romeo: list[EntrataDiRomeo] = field(default_factory=list)
+    # Il primo messaggio di Telegram ancora da leggere.
+    telegram_dal: int = 0
 
     @classmethod
     def carica(cls, cartella: Path) -> "Stato":
@@ -77,6 +82,7 @@ class Stato:
             seguite=[Seguita(**s) for s in d.get("seguite", [])],
             ultima_riunione=d.get("ultima_riunione", ""),
             pagelle=d.get("pagelle", {}), diario=d.get("diario", {}), ultimo_quarto=d.get("ultimo_quarto"),
+            romeo=[EntrataDiRomeo(**e) for e in d.get("romeo", [])], telegram_dal=d.get("telegram_dal", 0),
         )
 
     def salva(self, cartella: Path) -> None:

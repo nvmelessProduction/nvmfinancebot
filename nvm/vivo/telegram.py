@@ -12,11 +12,13 @@ import ssl
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from nvm.vivo.ambiente import Impostazioni
 
 URL = "https://api.telegram.org/bot{token}/sendMessage"
+AGGIORNAMENTI = "https://api.telegram.org/bot{token}/getUpdates"
 
 
 def contesto() -> ssl.SSLContext:
@@ -43,16 +45,44 @@ def _pezzi(testo: str) -> list[str]:
     return pezzi + [corrente] if corrente else pezzi
 
 
+@dataclass
+class Ricevuto:
+    """Un messaggio arrivato al bot da uno dei suoi canali."""
+
+    numero: int      # l'update_id di Telegram: il prossimo da chiedere e' numero + 1
+    chat: str
+    testo: str
+    quando: int      # UTC
+
+
 class Telegram:
     def __init__(
         self, imp: Impostazioni,
         invia: Optional[Callable[[str, str], None]] = None,
         stampa: Callable[[str], None] = print, tentativi: int = 3,
+        prendi: Optional[Callable[[int], list[dict]]] = None,
     ):
         self._imp = imp
         self._invia = invia or self._http
+        self._prendi = prendi or self._aggiornamenti
         self._stampa = stampa
         self._tentativi = tentativi
+
+    def ricevi(self, dal: int) -> tuple[list[Ricevuto], int]:
+        """I messaggi arrivati dal numero `dal` in poi, solo dai canali del bot,
+        e il numero da cui ripartire. Chiunque altro scriva al bot non conta.
+        Se Telegram non risponde, lo dice l'errore: chi chiama decide."""
+        if not self._imp.token:
+            return [], dal
+        miei = set(self._imp.chat_operativo) | set(self._imp.chat_equipe)
+        arrivati, prossimo = [], dal
+        for u in self._prendi(dal):
+            prossimo = max(prossimo, int(u["update_id"]) + 1)
+            m = u.get("message") or u.get("channel_post") or {}
+            chat, testo = str(m.get("chat", {}).get("id", "")), m.get("text", "")
+            if chat in miei and testo:
+                arrivati.append(Ricevuto(int(u["update_id"]), chat, testo, int(m.get("date", 0))))
+        return arrivati, prossimo
 
     def operativo(self, testo: str) -> None:
         self._manda("operativo", self._imp.chat_operativo, testo)
@@ -75,6 +105,20 @@ class Telegram:
                             self._stampa(f"[{canale}] messaggio non partito: {errore}")
                         else:
                             time.sleep(2 ** n)
+
+    def _aggiornamenti(self, dal: int) -> list[dict]:
+        dati = json.dumps({"offset": dal, "timeout": 0, "allowed_updates": ["message", "channel_post"]}).encode()
+        richiesta = urllib.request.Request(
+            AGGIORNAMENTI.format(token=self._imp.token), data=dati, headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(richiesta, timeout=20, context=contesto()) as r:
+                risposta = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as errore:
+            raise RuntimeError(f"Telegram ha risposto {errore.code}") from None
+        except urllib.error.URLError as errore:
+            raise RuntimeError(f"Telegram non raggiungibile: {errore.reason}") from None
+        return risposta.get("result", [])
 
     def _http(self, chat: str, testo: str) -> None:
         dati = json.dumps({"chat_id": chat, "text": testo, "disable_web_page_preview": True}).encode()

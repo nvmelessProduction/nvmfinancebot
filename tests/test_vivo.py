@@ -314,3 +314,109 @@ def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch
     assert uscita.value.code == vivo.AGGIORNATO
     assert (tmp_path / "riavvio").read_text(encoding="utf-8") == "Romeo nell'equipe"
     assert vivo.CONTROLLO_VERSIONE <= 120
+
+
+# --- Romeo dal vivo: il comando /romeo ---
+
+from nvm.vivo.romeo_vivo import EntrataDiRomeo, confronta as confronta_romeo, etichette, leggi_comando
+
+
+def test_il_comando_romeo_si_legge_anche_scritto_in_modi_diversi():
+    e = leggi_comando("/romeo EURUSD compra 1.0765 stop 1.0760 target 1.0800", 10)
+    assert (e.strumento, e.verso, e.ingresso, e.stop, e.target, e.quando) == ("EURUSD", "long", 1.0765, 1.076, 1.08, 10)
+    e = leggi_comando("/romeo@nvm_bot gbpusd vendo a 1,2541 sl 1,2546", 10)
+    assert (e.strumento, e.verso, e.ingresso, e.stop, e.target) == ("GBPUSD", "short", 1.2541, 1.2546, None)
+    assert leggi_comando("/romeo oro buy 2450 sl 2445", 0).strumento == "XAUUSD"
+    # Quello che non torna non si indovina: si spiega.
+    assert "sbagliata" in leggi_comando("/romeo EURUSD compra 1.0765 stop 1.0770", 0)
+    assert "compra o vende" in leggi_comando("/romeo EURUSD 1.0765", 0)
+    assert "troppo" in leggi_comando("/romeo EURUSD compra 1.07 1.08", 0)
+    assert "strumento" in leggi_comando("/romeo compra 1.07", 0)
+
+
+def _seguita(chiave, quando, ingresso, verso="long", entrata=False):
+    return Seguita(chiave, "EURUSD", "H4", "M15", verso, quando, ingresso, ingresso - 0.0006, ingresso + 0.001,
+                   ingresso + 0.002, 10**9, entrata, [0.0] * len(COLONNE), 1.0, 2.0, 0.05, 0.4, 0.3, -0.1)
+
+
+def test_romeo_si_confronta_con_la_decisione_piu_vicina_delle_ultime_24_ore():
+    adesso = utc(2026, 9, 25, 12)
+    seguite = [_seguita("vicina", adesso - 3 * ORA, 1.0767), _seguita("lontana", adesso - 2 * ORA, 1.0790),
+               _seguita("opposta", adesso - ORA, 1.0765, verso="short"), _seguita("vecchia", adesso - 30 * ORA, 1.0765)]
+    e = leggi_comando("/romeo EURUSD compra 1.0765 stop 1.0760", adesso)
+    assert confronta_romeo(e, seguite).chiave == "vicina"
+    assert abs(e.distanza - 0.4) < 1e-9 and e.ritrovata and not e.presa
+    casi, y = etichette([e], seguite)
+    assert [s.chiave for s, v in zip(casi, y) if v] == ["vicina"]
+    nessuna = leggi_comando("/romeo EURUSD vendo 1.0900 stop 1.0905", adesso)
+    assert confronta_romeo(nessuna, seguite[:2]) is None and nessuna.vista is None
+
+
+def test_telegram_legge_solo_dai_canali_del_bot():
+    arrivi = [
+        {"update_id": 5, "message": {"chat": {"id": -100}, "text": "/romeo EURUSD compra 1.07", "date": 1000}},
+        {"update_id": 6, "message": {"chat": {"id": 999}, "text": "/romeo EURUSD compra 1.07", "date": 1001}},
+        {"update_id": 7, "channel_post": {"chat": {"id": -200}, "text": "ciao", "date": 1002}},
+    ]
+    chiesti = []
+    imp = Impostazioni(token="x", chat_operativo=("-100",), chat_equipe=("-200",))
+    tg = Telegram(imp, invia=lambda c, t: None, stampa=lambda _: None, prendi=lambda dal: chiesti.append(dal) or arrivi)
+    ricevuti, prossimo = tg.ricevi(5)
+    assert [(r.chat, r.testo) for r in ricevuti] == [("-100", "/romeo EURUSD compra 1.07"), ("-200", "ciao")]
+    assert prossimo == 8 and chiesti == [5]
+    # Senza token non si chiede niente.
+    assert Telegram(Impostazioni(), prendi=lambda dal: 1 / 0).ricevi(3) == ([], 3)
+
+
+def test_il_bot_risponde_a_romeo_in_equipe_e_non_apre_niente(tmp_path, monkeypatch):
+    import vivo
+    from nvm.vivo.stato import Stato
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    adesso = utc(2026, 9, 25, 12)
+    arrivi = [{"update_id": 1, "message": {"chat": {"id": -1}, "text": "/romeo EURUSD compra 1.0765 stop 1.0760", "date": adesso}},
+              {"update_id": 2, "message": {"chat": {"id": -1}, "text": "/romeo EURUSD 1.0765", "date": adesso}},
+              {"update_id": 3, "message": {"chat": {"id": -1}, "text": "buongiorno", "date": adesso}}]
+    mandati = []
+    bot = object.__new__(vivo.Bot)
+    bot._allarmi = {}
+    bot.tg = Telegram(Impostazioni(token="x", chat_operativo=("-1",), chat_equipe=("-2",)),
+                      invia=lambda c, t: mandati.append((c, t)), stampa=lambda _: None, prendi=lambda dal: arrivi[dal - 1:] if dal else arrivi)
+    bot.stato = Stato(seguite=[_seguita("vicina", adesso - 3 * ORA, 1.0767)])
+    bot.ascolta()
+    assert bot.stato.telegram_dal == 4 and len(bot.stato.romeo) == 1
+    assert [c for c, _ in mandati] == ["-2", "-2"]
+    assert "ritrovata" in mandati[0][1] and "Non la copio" in mandati[0][1]
+    assert "non ho capito" in mandati[1][1]
+    assert not bot.stato.vive
+    bot.ascolta()                                # i messaggi gia' letti non tornano
+    assert len(bot.stato.romeo) == 1
+    # Se Telegram non risponde il bot va avanti, con un allarme.
+    bot.tg = Telegram(Impostazioni(token="x", chat_operativo=("-1",)), invia=lambda c, t: mandati.append((c, t)),
+                      stampa=lambda _: None, prendi=lambda dal: (_ for _ in ()).throw(RuntimeError("Telegram ha risposto 409")))
+    bot.ascolta()
+    assert "409" in mandati[-1][1]
+
+
+def test_la_riunione_impara_romeo_anche_dal_vivo_e_da_il_metro():
+    rng = np.random.default_rng(4)
+    n = 600
+    x = rng.integers(0, 2, size=(n, len(COLONNE))).astype(float)
+    storico = Storico(x, rng.random(n) < 0.4, rng.random(n) < 0.15)
+    storico.romeo_x, storico.romeo_y = x, (x[:, COLONNE.index("ora di Romeo: Londra")] == 1) & (rng.random(n) < 0.1)
+    capo = Capo.allena(storico.x, storico.tp1, storico.tp2)
+    adesso = utc(2026, 9, 26, 8)
+    seguite = []
+    for i in range(40):
+        s = _seguita(f"k{i}", adesso - (i + 1) * 3 * ORA, 1.07 + 0.001 * i, entrata=i % 4 == 0)
+        s.x = [0.0] * len(COLONNE)
+        s.x[COLONNE.index("ora di Romeo: New York")] = float(i % 2 == 0)
+        seguite.append(s)
+    # Romeo sceglie le decisioni nell'ora di New York.
+    romeo_vivo = [leggi_comando(f"/romeo EURUSD compra {s.ingresso:.4f} stop {s.ingresso - 0.0010:.4f}", s.quando + ORA)
+                  for s in seguite if s.x[COLONNE.index("ora di Romeo: New York")] == 1][:10]
+    testo, nuovo, _ = riunione(seguite, capo, storico, adesso - 7 * 86400, "2026-S39", romeo_vivo=romeo_vivo)
+    _, solo_2023, _ = riunione(seguite, capo, storico, adesso - 7 * 86400, "2026-S39")
+    assert "Romeo dal vivo" in testo and "ritrovate 10" in testo and "prese. Io ho aperto" in testo
+    ny_ = np.zeros((1, len(COLONNE)))
+    ny_[0, COLONNE.index("ora di Romeo: New York")] = 1
+    assert nuovo.somiglianza(ny_)[0] > solo_2023.somiglianza(ny_)[0]

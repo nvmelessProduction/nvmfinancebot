@@ -15,6 +15,7 @@ from nvm.agenti.cacciatore import Verso
 from nvm.agenti.conferme import Bias, Contesto
 from nvm.tempo import NEW_YORK, TF
 from nvm.vivo.giro import Decisione
+from nvm.vivo.romeo_vivo import PIP as PIP_ROMEO
 
 CIFRE = {"EURUSD": 5, "GBPUSD": 5, "AUDUSD": 5, "USDCHF": 5, "USDJPY": 3, "XAUUSD": 2}
 NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: "4 ore", TF.H1: "1 ora",
@@ -263,3 +264,31 @@ def pareri(d: Decisione, per: Optional[dict[str, float]] = None) -> str:
     if per:
         righe.append(_pesi(per))
     return "\n".join(righe)
+
+
+# --- Romeo dal vivo (`nvm/vivo/romeo_vivo.py`) ---
+
+def romeo_ricevuta(e, s) -> str:
+    """La risposta a un /romeo: com'era la sua entrata e cosa aveva visto il bot."""
+    k, verso = e.strumento, Verso(e.verso)
+    testa = f"📥 Romeo · {k} · {direzione(verso)} a {prezzo(k, e.ingresso)}"
+    if e.stop is not None:
+        testa += f" · stop {prezzo(k, e.stop)} ({_it(e.rischio / PIP_ROMEO[k], 1)} pip)"
+    if e.target is not None:
+        testa += f" · target {prezzo(k, e.target)}"
+    righe = [testa]
+    if s is None:
+        righe.append(f"Non l'avevo vista: nessuna mia decisione su {k} in {direzione(verso)} nelle ultime 24 ore.")
+    else:
+        quanto = (f"a {_it(e.distanza)} del suo rischio ({_it(e.pip, 1)} pip)" if e.distanza is not None
+                  else f"a {_it(e.pip, 1)} pip")
+        giudizio = " ✅ ritrovata" if e.ritrovata else (" — troppo lontana" if e.distanza is not None else "")
+        righe.append(f"La mia più vicina: {s.leggibile or s.chiave}, ingresso {prezzo(k, s.ingresso)}, {quanto}.{giudizio}")
+        righe.append("L'avevo presa." if s.entrata else f"Non l'avevo presa: guadagno atteso {erre(s.atteso)}.")
+    righe.append("Sabato imparo da questa. Non la copio: Romeo è il mio metro, non un ordine.")
+    return "\n".join(righe)
+
+
+def romeo_non_letta(motivo: str) -> str:
+    return f"📥 Romeo: non ho capito il messaggio, {motivo}."
+

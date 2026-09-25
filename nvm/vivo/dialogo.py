@@ -178,7 +178,9 @@ LAVORO: dict[str, str] = {
     "Bias": "Leggo la direzione dalle chiusure delle candele, e dico se compriamo a sconto o vendiamo a premio "
             "rispetto alla settimana prima.",
     "Romeo": "Sono la voce di Romeo: dalle sue entrate ho imparato quanto un'operazione gli somiglia. "
-             "Il Capo mi ascolta quanto i risultati gli dicono di fare.",
+             "Il Capo mi ascolta quanto i risultati gli dicono di fare. Quando vedete una sua entrata nuova, "
+             "mandatemela così: /romeo EURUSD compra 1.0765 stop 1.0760. Vi dico se l'avevamo vista, "
+             "e il sabato imparo da lei.",
     "Rischio": "Scelgo quanto puntare: il criterio di Kelly sulle stime del Capo, nella misura che ho imparato.",
     "Capo": "Ascolto tutti e decido: entro se il guadagno atteso è sopra zero. "
             "Ogni sabato imparo dai risultati quanto fidarmi di ognuno.",

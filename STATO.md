@@ -162,6 +162,11 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
       nella storia del vecchio branch, e con lui il token. Su Telegram:
       @BotFather → `/revoke` → scegli il bot. Il token nuovo va solo nel
       `.env` sul computer.
+- [ ] **Facoltativo, quando vedi un'entrata di Romeo:** mandala al bot, su
+      uno dei suoi due canali, così:
+      `/romeo EURUSD compra 1.0765 stop 1.0760 target 1.0800`
+      Il bot risponde in équipe se l'aveva vista anche lui, e il sabato
+      impara da quella. Non la copia mai (`spec/romeo-dal-vivo.md`).
 - Niente altro: l'utente ha chiesto di fare tutto da qui (24/09). La VPS
   resta ferma; `VPS.md` e `scarica.bat` restano pronti se un giorno servono.
 
@@ -183,6 +188,7 @@ fonti, e dove le fonti non bastano si provano le letture possibili.
 | 24/09/2026 | L'utente non può rispondere alle domande sulla strategia: le risposte si cercano nelle fonti, e dove non bastano si dichiarano varianti. I casi si prendono dai grafici pubblicati da Romeo. |
 | 24/09/2026 | **Il metro diventa Romeo** (`PIANO.md`, "Il cambio del 24/09/2026"). Dopo le otto configurazioni che non passano, l'utente decide che il test che conta è se il bot fa le stesse entrate di Romeo: la strategia è in gran parte discrezionale, e gli agenti devono imparare le sue scelte. Il guadagno si misura sempre, ma non decide. Dal vivo solo in demo. |
 | 24/09/2026 | L'utente chiede di procedere senza fermarsi. Le domande della bozza ancora senza risposta diventano **varianti dichiarate** (al massimo 3, `PIANO.md` §3), da misurare invece che scegliere. La Fase B (dati) parte in parallelo alla A, perché non dipende dalla specifica del CRT. |
+| 25/09/2026 | **Romeo dal vivo.** Il bot legge il comando `/romeo` dai suoi due canali: confronta l'entrata di Romeo con le sue decisioni, lo dice in équipe e il sabato ne impara la somiglianza. Mai operazioni copiate: Romeo resta il metro e un esempio (`spec/romeo-dal-vivo.md`). |
 | 24/09/2026 | Due canali Telegram, già collegati. **Operativo:** avvio del bot, decisioni di apertura, chiusure, avvisi urgenti. **Équipe:** solo la comunicazione fra gli agenti, sempre attivo, con il rendiconto principale nel fine settimana. |
 
 ## Domande aperte

@@ -21,6 +21,7 @@ from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.vivo.dialogo import AGENTI, ascolto, chi_aveva_ragione, consigli, grado
 from nvm.vivo.messaggi import erre
+from nvm.vivo.romeo_vivo import META_RISCHIO, EntrataDiRomeo, confronta, etichette, presa_vicina
 from nvm.vivo.stato import Seguita
 
 
@@ -75,9 +76,34 @@ def _risposta(nome: str, diario: dict) -> str:
     return testo
 
 
+def _romeo_dal_vivo(entrate: list[EntrataDiRomeo], seguite: list[Seguita], dal: int) -> list[str]:
+    """Il metro del PIANO sulle entrate di Romeo mandate dal vivo: quante il bot ne ha ritrovate e prese."""
+    for e in entrate:
+        confronta(e, seguite)   # adesso si conoscono anche le decisioni arrivate dopo il messaggio
+    def conta(gruppo):
+        viste = sum(e.vista is not None for e in gruppo)
+        ritrovate = sum(e.ritrovata for e in gruppo)
+        prese = sum((d := presa_vicina(e, seguite)) is not None and d <= META_RISCHIO for e in gruppo)
+        return viste, ritrovate, prese
+    settimana = [e for e in entrate if e.quando >= dal]
+    righe = []
+    if settimana:
+        v, r, p = conta(settimana)
+        mie = sum(s.entrata for s in seguite if s.quando >= dal)
+        per_ognuna = f"{mie / len(settimana):.1f}".replace(".", ",")
+        righe.append(f"• Questa settimana me ne avete mandate {len(settimana)}: ne avevo viste {v}, ritrovate {r} entro "
+                     f"metà del suo rischio, e {p} le avevo anche prese. Io ho aperto {mie} operazioni: "
+                     f"{per_ognuna} per ognuna delle sue (se me le avete mandate tutte).")
+    v, r, p = conta(entrate)
+    righe.append(f"• Da quando me le mandate: {len(entrate)} sue entrate, ritrovate {r}, prese {p}. "
+                 "Il metro del PIANO: 7 su 10 prese entro metà del suo rischio, e al massimo 3 mie per ognuna delle sue.")
+    return righe
+
+
 def riunione(
     seguite: list[Seguita], capo: Capo, storico: Storico, dal: int, settimana: str,
     pagelle: Optional[dict] = None, parte: float = 1.0, diario: Optional[dict] = None,
+    romeo_vivo: Optional[list[EntrataDiRomeo]] = None,
 ) -> tuple[str, Capo, float]:
     finite = [s for s in seguite if s.esito is not None]
     di_questa = [s for s in finite if s.esito["quando"] >= dal]
@@ -111,8 +137,14 @@ def riunione(
         pesi = pesi_per_eta(quando, int(quando.max()))
     nuovo = Capo.allena(x, tp1, tp2, interazioni=tuple(c for _, c in scelti), pesi=pesi)
     romeo = storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) and storico.romeo_y.any()
+    # Le entrate di Romeo mandate dal vivo si aggiungono a quelle del 2023.
+    casi_vivi, scelte_vive = etichette(romeo_vivo or [], seguite)
     if romeo:
-        nuovo = nuovo.impara_romeo(storico.romeo_x, storico.romeo_y)
+        rx, ry = storico.romeo_x, storico.romeo_y
+        if casi_vivi:
+            rx = np.vstack([rx, np.array([_x(s) for s in casi_vivi])])
+            ry = np.r_[ry, scelte_vive]
+        nuovo = nuovo.impara_romeo(rx, ry)
         # La fiducia in Romeo: dai risultati dei candidati del 2023 e di tutte le decisioni dal vivo.
         casi_x, casi_tp1 = [], []
         if storico.romeo_tp1 is not None:
@@ -165,11 +197,15 @@ def riunione(
         righe += ["", "Romeo",
                   f"• Ho ripassato le sue {int(storico.romeo_y.sum())} entrate del 2023: le sue scelte hanno soprattutto "
                   + ", ".join(n for n, w in pesi_romeo[:3] if w > 0)]
+        if scelte_vive.any():
+            righe.append(f"• E le {int(scelte_vive.sum())} che mi avete mandato dal vivo: le ho imparate insieme.")
         prese_simili = [s.romeo for s in nuove if s.entrata]
         scartate_simili = [s.romeo for s in nuove if not s.entrata]
         if prese_simili and scartate_simili:
             righe.append(f"• Le mie prese gli somigliavano al {np.mean(prese_simili):.1%}, le scartate al "
                          f"{np.mean(scartate_simili):.1%}".replace(".", ","))
+    if romeo_vivo:
+        righe += ["", "Romeo dal vivo"] + _romeo_dal_vivo(romeo_vivo, seguite, dal)
     righe += [
         "",
         f"Rischio: uso {_peso(nuova_parte)[1:]} del Kelly (era {_peso(parte)[1:]}), rifatto su {len(f)} puntate, "

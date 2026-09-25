@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 import traceback
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,8 @@ from nvm.vivo.esecutore import MAGIC, Esecutore
 from nvm.vivo.giro import COPPIA_VELOCE, COPPIE, armati
 from nvm.vivo.giro import giro as giro_orario
 from nvm.vivo.riunione import Storico, riunione
+from nvm.vivo.romeo_vivo import confronta as confronta_con_romeo
+from nvm.vivo.romeo_vivo import leggi_comando
 from nvm.vivo.stato import Seguita, Stato, registra
 from nvm.vivo.telegram import Telegram
 from nvm.vivo.terminale import ErroreMT5, Terminale
@@ -192,6 +195,7 @@ class Bot:
     # --- il giro di ogni minuto ---
 
     def minuto(self) -> None:
+        self.ascolta()
         self.stato.vive, fatti = self.esecutore.sorveglia(self.stato.vive)
         for f in fatti:
             (self.tg.equipe if f.equipe else self.tg.operativo)(f.testo)
@@ -212,6 +216,26 @@ class Bot:
         if adesso - self._ultimo_controllo >= CONTROLLO_VERSIONE:
             self._ultimo_controllo = adesso
             self.aggiorna_se_serve()
+
+    def ascolta(self) -> None:
+        """I comandi arrivati sui canali del bot: per ora solo /romeo, le entrate
+        di Romeo che l'utente vede sul suo canale (`nvm/vivo/romeo_vivo.py`)."""
+        try:
+            arrivati, self.stato.telegram_dal = self.tg.ricevi(self.stato.telegram_dal)
+        except Exception as errore:
+            self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
+            return
+        for m in arrivati:
+            if not m.testo.lower().startswith("/romeo"):
+                continue
+            e = leggi_comando(m.testo, m.quando or int(time.time()))
+            if isinstance(e, str):
+                self.tg.equipe(messaggi.romeo_non_letta(e))
+                continue
+            s = confronta_con_romeo(e, self.stato.seguite)
+            self.stato.romeo.append(e)
+            self.tg.equipe(messaggi.romeo_ricevuta(e, s))
+            registra(CARTELLA, "romeo dal vivo", **asdict(e))
 
     def aggiorna_se_serve(self) -> None:
         """Se su GitHub c'e' codice nuovo, lo prende ed esce per farsi riavviare
@@ -283,7 +307,7 @@ class Bot:
 
     def riunione(self, settimana: str, adesso: int) -> None:
         testo, nuovo, parte = riunione(self.stato.seguite, self.capo, self.storico, adesso - 7 * 86400, settimana,
-                                       self.stato.pagelle, self.esecutore.parte, self.stato.diario)
+                                       self.stato.pagelle, self.esecutore.parte, self.stato.diario, self.stato.romeo)
         self.tg.equipe(testo)
         self.capo, self.esecutore.parte = nuovo, parte
         CARTELLA.mkdir(parents=True, exist_ok=True)
