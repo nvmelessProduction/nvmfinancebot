@@ -59,8 +59,11 @@ class Decisione:
 
     @property
     def chiave(self) -> str:
+        # Due CRT uno dentro l'altro possono scattare sullo stesso turtle soup: sono due decisioni,
+        # e le distingue l'inizio del range.
         r = self.r
-        return f"{r.strumento} {r.alto_tf.value}-{r.basso_tf.value} {r.verso.value} {r.quando} colpo {r.colpo}"
+        crt = f" crt {r.scatto.crt.range_inizio}" if r.scatto is not None else ""
+        return f"{r.strumento} {r.alto_tf.value}-{r.basso_tf.value} {r.verso.value} {r.quando} colpo {r.colpo}{crt}"
 
 
 # Le candele e i CRT gia' costruiti: il bot li rifarebbe uguali a ogni giro e a

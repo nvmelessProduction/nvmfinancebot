@@ -198,6 +198,17 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   La palestra di oggi: tenuto il secondo obiettivo a 0,75 del range (qualità
   +0,005 → +0,017, drawdown 216 → 170 R); nessuna delle 12 idee inventate
   né le uscite nuove sono ancora abbastanza sicure.
+- **Gli agenti si chiedono da soli dove hanno sbagliato (25/09, sera).**
+  Niente comando per segnalare gli errori, su richiesta dell'utente. Dopo
+  ogni operazione finita, Livelli e Grilletto la rifanno sui prezzi veri
+  con ogni loro scelta vicina e dicono se una l'avrebbe salvata; gli agenti
+  dei segnali che avevano sbagliato guardano se quel segnale di solito
+  funziona (vent'anni e dal vivo); il Capo confronta la sua stima con le
+  decisioni simili. Il sabato Livelli e Grilletto dicono cosa avrebbe reso
+  di più su tutte le operazioni dal vivo (`spec/allenamento.md`). Trovato
+  e corretto nel frattempo: due CRT uno dentro l'altro che scattano sullo
+  stesso turtle soup avevano lo stesso nome, e in équipe il messaggio
+  sembrava doppio; ora il nome porta il CRT.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna
@@ -246,6 +257,7 @@ fonti, e dove le fonti non bastano si provano le letture possibili.
 | 25/09/2026 | **Romeo è la partenza, il traguardo è il trading** (`PIANO.md`, "Il chiarimento del 25/09/2026"). Un miglioramento oltre Romeo entra se migliora fuori campione e non ci allontana da lui oltre il rumore; per la Fase F servono il cancello del guadagno e il metro Romeo. Poi arriveranno altre strategie. |
 | 25/09/2026 | **Tutti gli agenti imparano da soli**, non solo Capo, Romeo e Rischio: ogni settimana la palestra (`spec/allenamento.md`), dentro il mansionario e i paletti. |
 | 25/09/2026 | **Romeo dal vivo.** Il bot legge il comando `/romeo` dai suoi due canali: confronta l'entrata di Romeo con le sue decisioni, lo dice in équipe e il sabato ne impara la somiglianza. Mai operazioni copiate: Romeo resta il metro e un esempio (`spec/romeo-dal-vivo.md`). |
+| 25/09/2026 | **Niente comando per gli errori: gli agenti si chiedono da soli dove hanno sbagliato** (*"il bot deve essere intelligente"*). Dopo ogni operazione rifanno i conti con le loro alternative sui prezzi veri (`nvm/vivo/autoanalisi.py`). |
 | 24/09/2026 | Due canali Telegram, già collegati. **Operativo:** avvio del bot, decisioni di apertura, chiusure, avvisi urgenti. **Équipe:** solo la comunicazione fra gli agenti, sempre attivo, con il rendiconto principale nel fine settimana. |
 
 ## Domande aperte

@@ -55,6 +55,13 @@ class Seguita:
     livello: Optional[float] = None
     invalida_candele: int = 0
     tempo_candele: int = 0
+    # Per rifarla con altre scelte dei Livelli (`nvm/vivo/autoanalisi.py`): il CRT, l'estremo della
+    # manipolazione, e lo stop minimo e il secondo obiettivo in uso quando si e' decisa.
+    crt_alto: Optional[float] = None
+    crt_basso: Optional[float] = None
+    estremo: Optional[float] = None
+    stop_minimo: Optional[float] = None
+    oltre: Optional[float] = None
 
 
 @dataclass
@@ -67,6 +74,7 @@ class Stato:
     # Per agente: [volte che aveva ragione, volte che si era schierato].
     pagelle: dict = field(default_factory=dict)
     # Per agente e per segnale dato: [vinte, totali] dal vivo. Serve a capire dove migliorare.
+    # Sotto "alternative": per agente e scelta vicina, come sarebbero finite le operazioni con quella.
     diario: dict = field(default_factory=dict)
     # L'ultimo quarto d'ora guardato per la coppia 4 ore -> 15 minuti.
     ultimo_quarto: Optional[int] = None

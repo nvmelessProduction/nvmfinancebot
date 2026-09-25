@@ -24,16 +24,16 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nvm.agenti import manopole
+from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.tempo import TF
-from nvm.vivo import messaggi
+from nvm.vivo import autoanalisi, messaggi
 from nvm.vivo.ambiente import impostazioni
 from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
-    aggiorna_diario, aggiorna_pagelle, come_migliorare, presentazioni, resoconto, spinte,
+    aggiorna_diario, aggiorna_pagelle, presentazioni, resoconto, spinte,
 )
 from nvm.vivo.esecutore import MAGIC, Esecutore
 from nvm.vivo.giro import COPPIA_VELOCE, COPPIE, armati
@@ -125,6 +125,8 @@ class Bot:
         self.terminale = Terminale(self.imp.suffisso)
         self.esecutore = Esecutore(self.terminale, float(_leggi("rischio.json")["parte"]))
         self.storico = Storico.carica(RADICE / "nvm" / "vivo" / "storico.npz")
+        # Quanto vale ogni segnale di ogni agente sui vent'anni: si calcola alla prima autoanalisi.
+        self._storia = None
         self.versione = _versione()
         self.basi: dict[str, Minuti] = {}
         self.fini: dict[str, Minuti] = {}
@@ -286,7 +288,7 @@ class Bot:
         self._decidi(giro_orario(self.basi, dal, ora, self.capo, COPPIE), ora, 3600)
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
-            self._finita(s)
+            self._finita(s, ora)
         # Le seguite finite da piu' di un anno non servono piu' qui: stanno nel registro.
         self.stato.seguite = [s for s in self.stato.seguite if s.esito is None or s.esito["quando"] > ora - 365 * 86400]
         self.stato.ultimo_giro = ora
@@ -326,23 +328,41 @@ class Bot:
             if d.entra and adesso - d.r.quando > finestra:
                 self.tg.equipe(messaggi.saltata(d, "è scattata mentre il bot era spento"))
             op = d.op
+            crt = d.r.scatto.crt if d.r.scatto is not None else None
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
                         op.ingresso, op.stop, op.tp1, op.tp2, d.scadenza, aperta,
                         [float(v) for v in d.x], d.r.rr1, d.r.rr2, d.r.costo_erre, d.p1, d.q, d.atteso,
-                        spinte=per, leggibile=f"{d.r.strumento} {messaggi.direzione(d.r.verso)} · {messaggi.coppia(d)} · {messaggi.quando(d.r.quando)}",
+                        spinte=per, leggibile=messaggi.leggibile(d),
                         romeo=1.0 if d.romeo is None else d.romeo, pareggio_a=op.pareggio_a, livello=op.livello_model1,
-                        invalida_candele=op.invalida_candele, tempo_candele=op.tempo_candele)
+                        invalida_candele=op.invalida_candele, tempo_candele=op.tempo_candele,
+                        crt_alto=None if crt is None else crt.crt_high, crt_basso=None if crt is None else crt.crt_low,
+                        estremo=None if crt is None else crt.estremo_a(d.r.quando),
+                        stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE)
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
                      atteso=d.atteso, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
 
-    def _finita(self, s: Seguita) -> None:
+    def _finita(self, s: Seguita, adesso: int) -> None:
         testo, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.atteso)
         aggiorna_pagelle(self.stato.pagelle, ragione, torto)
         aggiorna_diario(self.stato.diario, s.x, s.esito["erre"] > 0)
-        migliorare = come_migliorare(torto, self.stato.diario, s.x)
-        self.tg.equipe(testo + ("\n\n" + migliorare if migliorare else ""))
-        registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto, **s.esito)
+        # Ognuno si chiede dove ha sbagliato: rifa' l'operazione con le sue scelte vicine, guarda la sua storia.
+        alt, dove = {}, ""
+        try:
+            sorgente = self.fini if TF(s.basso) is TF.M15 else self.basi
+            if s.strumento in sorgente:
+                alt = autoanalisi.alternative(s, costruisci(sorgente[s.strumento], TF(s.basso)).chiuse_entro(adesso))
+                autoanalisi.aggiorna(self.stato.diario, alt, float(s.esito["erre"]))
+            if self._storia is None and self.storico.erre is not None:
+                self._storia = autoanalisi.storia_dei_segnali(self.storico.x, self.storico.erre)
+            simili = autoanalisi.stime_simili(self.stato.seguite, s.p1)
+            dove = autoanalisi.rifletti(s, alt, torto, self.stato.diario, self._storia, "Capo" not in torto, simili)
+        except Exception:
+            # Un errore qui non deve mai fermare il giro: le operazioni vengono prima.
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        self.tg.equipe(testo + ("\n\n" + dove if dove else ""))
+        registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto,
+                 alternative={a: [[n, v, r] for n, v, r in voci] for a, voci in alt.items()}, **s.esito)
 
     def riunione(self, settimana: str, adesso: int) -> None:
         testo, nuovo, parte = riunione(self.stato.seguite, self.capo, self.storico, adesso - 7 * 86400, settimana,

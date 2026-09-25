@@ -89,6 +89,37 @@ tutte insieme sulla squadra finale) entra nel Capo come colonna nuova
 (`nvm/vivo/domande.json`), e il bot dal vivo la fa a ogni decisione. Ogni
 invenzione provata resta in memoria e non si riprova.
 
+## Dopo ogni operazione: dove ho sbagliato **[D]**
+
+L'utente, 25/09/2026: *"voglio che siano i vari agenti a chiedersi dove
+hanno sbagliato. Il bot deve essere intelligente"* (niente comando per
+segnalare gli errori). Quando una decisione finisce, presa o seguita sulla
+carta (`nvm/vivo/autoanalisi.py`), dopo il "📊 Com'è finita" in équipe
+arriva il "🔍 Dove ho sbagliato":
+
+- **Livelli e Grilletto** rifanno l'operazione sugli stessi prezzi con ogni
+  loro scelta vicina (un passo di ogni manopola: stop minimo, secondo
+  obiettivo, pareggio, uscita a tempo; uscita per idea invalidata). Se una
+  scelta l'avrebbe chiusa meglio di 0,2 R lo dicono; se in perdita nessuna
+  l'avrebbe salvata, dicono che l'errore non è loro. Tutte le scelte,
+  anche quando l'operazione va bene, finiscono nel **diario delle
+  alternative** (nello stato del bot).
+- **Gli agenti dei segnali** che avevano spinto dalla parte sbagliata
+  guardano quanto rende di solito quel loro segnale sui vent'anni, rispetto
+  alla media di tutte le operazioni: se di solito aiuta, "questa volta è
+  andata male"; se di solito pesa, "il Capo farà bene ad ascoltarmi meno".
+  E quante ne ha vinte dal vivo.
+- **Il Capo**, se ha sbagliato, confronta la sua stima con quante
+  decisioni dal vivo con una stima simile sono arrivate al primo obiettivo.
+
+Il sabato, in riunione, Livelli e Grilletto dicono quale scelta vicina
+avrebbe reso di più su tutte le operazioni dal vivo (da 3 operazioni in su),
+e se la differenza è già solida (almeno 20 operazioni e una differenza più
+di due volte il suo errore). Il Capo intanto si riaddestra anche sulle
+decisioni dal vivo. Le manopole le cambia solo la palestra: le operazioni
+dal vivo sono ancora poche rispetto ai vent'anni, e ci entreranno quando la
+palestra potrà leggerle.
+
 ## L'asticella cresce con tutte le prove fatte **[D]**
 
 La storia dei vent'anni è la stessa ogni settimana: chi prova tante volte
@@ -112,10 +143,10 @@ reimportano (`importa_grezzi.py` dall'archivio) prima di allenare.
 
 ## Cosa non fa (ancora)
 
-- **Idee nuove.** Gli agenti girano le manopole che hanno; non inventano
-  domande nuove. Le idee nuove (dalle fonti di Romeo, e dalle strategie che
-  l'utente porterà) entrano come domande o manopole nuove, provate col
-  banco (`banco.py`) e scritte nel registro.
+- **Mattoni nuovi.** Gli agenti inventano combinando i mattoni che hanno.
+  I mattoni nuovi (dalle fonti di Romeo, e dalle strategie che l'utente
+  porterà) entrano come famiglie o manopole nuove, provate col banco
+  (`banco.py`) e scritte nel registro.
 - **L'esperienza dal vivo nella palestra.** La palestra usa 2006–2023; il
   2024–2026 resta chiuso fino alla Fase G. Le decisioni dal vivo le usano
   già il Capo, la voce di Romeo e il Rischio nella riunione del sabato.

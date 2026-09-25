@@ -19,6 +19,7 @@ import numpy as np
 
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
+from nvm.vivo.autoanalisi import riassunto
 from nvm.vivo.dialogo import AGENTI, ascolto, chi_aveva_ragione, consigli, grado
 from nvm.vivo.messaggi import erre
 from nvm.vivo.romeo_vivo import META_RISCHIO, EntrataDiRomeo, confronta, etichette, presa_vicina
@@ -182,6 +183,10 @@ def riunione(
         righe.append(riga)
         if nome in AGENTI:
             righe.append(f"  ↳ {_risposta(nome, diario)}")
+
+    alternative = riassunto(diario or {})
+    if alternative:
+        righe += ["", "Dove abbiamo sbagliato (le operazioni rifatte con le scelte vicine)"] + alternative
 
     righe += ["", "Consigli fra agenti (da oggi li provo)"]
     righe += [f"• {testo}" for testo, _ in scelti] or ["• nessuna coppia che cambi davvero il risultato"]

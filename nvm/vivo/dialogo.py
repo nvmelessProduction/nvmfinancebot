@@ -245,7 +245,7 @@ BINARIE: dict[str, tuple[int, ...]] = {
 }
 
 
-# --- Dopo il risultato: come migliorare ---
+# --- I segnali di ogni agente, in parole ---
 
 _FASCE = {5: "21–01 NY", 6: "01–05 NY", 7: "05–09 NY", 8: "09–13 NY", 9: "13–17 NY"}
 _KEY = {0: "massimo preso", 1: "arriva al massimo", 2: "rejection block", 3: "FVG", 4: "non so"}
@@ -281,16 +281,3 @@ def aggiorna_diario(diario: dict, x, vinta: bool) -> None:
         diario.setdefault(nome, {}).setdefault(f, [0, 0])
         diario[nome][f][0] += int(vinta)
         diario[nome][f][1] += 1
-
-
-def come_migliorare(torto: list[str], diario: dict, x) -> str:
-    righe = []
-    for nome in torto:
-        if nome not in BINARIE and nome != "Livelli":
-            continue
-        f = firma(nome, x)
-        v, t = diario.get(nome, {}).get(f, [0, 0])
-        consiglio = ("se continua così, sabato chiedo al Capo di ascoltarmi meno in questi casi" if t >= 3 and v / t < 0.4
-                     else "troppo presto per cambiare idea, lo segno")
-        righe.append(f"• {nome}: con «{f}» dal vivo {v} vinte su {t}: {consiglio}.")
-    return ("🛠 Cosa impariamo\n" + "\n".join(righe)) if righe else ""

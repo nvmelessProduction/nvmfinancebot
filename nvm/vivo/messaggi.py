@@ -65,6 +65,14 @@ def coppia(d: Decisione) -> str:
     return f"{NOMI_TF[d.r.alto_tf]} → {NOMI_TF[d.r.basso_tf]}"
 
 
+def leggibile(d: Decisione) -> str:
+    """Come si chiama una decisione nei messaggi dopo: "EURUSD vendita · giornaliero → 1 ora · 09/09 03:00 NY · CRT 1.0850–1.0900"."""
+    k = d.r.strumento
+    crt = d.r.scatto.crt if d.r.scatto is not None else None
+    fascia = f" · CRT {prezzo(k, crt.crt_low)}–{prezzo(k, crt.crt_high)}" if crt is not None else ""
+    return f"{k} {direzione(d.r.verso)} · {coppia(d)} · {quando(d.r.quando)}{fascia}"
+
+
 def _candela_range(d: Decisione) -> str:
     t = datetime.fromtimestamp(d.r.scatto.crt.range_inizio + 7 * 3600, tz=timezone.utc).astimezone(NEW_YORK)
     if d.r.alto_tf is TF.MN:
