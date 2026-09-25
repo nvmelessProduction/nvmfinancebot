@@ -162,6 +162,17 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   metro Romeo, le sue entrate ritrovate fra le scelte del Capo nel 2023
   passano da 6 a 5 su 45 (i Livelli cambiano le uscite, non le entrate:
   le entrate che il bot vede restano 11).
+- **Tutti gli agenti imparano da soli (25/09).** Ogni specialista ha il suo
+  mansionario: le manopole che può girare, dentro limiti presi da Romeo
+  (`spec/allenamento.md`). Ogni domenica va in palestra: rilegge i suoi
+  vent'anni, prova da solo un passo per ogni manopola, e tiene una modifica
+  solo se fa guadagnare di più con certezza (più prove, asticella più
+  alta) senza passare i paletti: scadute, durata, drawdown, Romeo. La
+  prima palestra: 19 prove, una tenuta. I Livelli portano il secondo
+  obiettivo a 0,75 del range oltre il lato: sui vent'anni la squadra passa
+  da +0,121 a +0,363 R a settimana, meglio nell'82% degli anni, entrate di
+  Romeo ritrovate 5 → 5. Le altre 18 non sono bastate. Il rapporto arriva
+  in équipe al primo avvio dopo l'aggiornamento.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna
@@ -207,6 +218,8 @@ fonti, e dove le fonti non bastano si provano le letture possibili.
 | 24/09/2026 | L'utente non può rispondere alle domande sulla strategia: le risposte si cercano nelle fonti, e dove non bastano si dichiarano varianti. I casi si prendono dai grafici pubblicati da Romeo. |
 | 24/09/2026 | **Il metro diventa Romeo** (`PIANO.md`, "Il cambio del 24/09/2026"). Dopo le otto configurazioni che non passano, l'utente decide che il test che conta è se il bot fa le stesse entrate di Romeo: la strategia è in gran parte discrezionale, e gli agenti devono imparare le sue scelte. Il guadagno si misura sempre, ma non decide. Dal vivo solo in demo. |
 | 24/09/2026 | L'utente chiede di procedere senza fermarsi. Le domande della bozza ancora senza risposta diventano **varianti dichiarate** (al massimo 3, `PIANO.md` §3), da misurare invece che scegliere. La Fase B (dati) parte in parallelo alla A, perché non dipende dalla specifica del CRT. |
+| 25/09/2026 | **Romeo è la partenza, il traguardo è il trading** (`PIANO.md`, "Il chiarimento del 25/09/2026"). Un miglioramento oltre Romeo entra se migliora fuori campione e non ci allontana da lui oltre il rumore; per la Fase F servono il cancello del guadagno e il metro Romeo. Poi arriveranno altre strategie. |
+| 25/09/2026 | **Tutti gli agenti imparano da soli**, non solo Capo, Romeo e Rischio: ogni settimana la palestra (`spec/allenamento.md`), dentro il mansionario e i paletti. |
 | 25/09/2026 | **Romeo dal vivo.** Il bot legge il comando `/romeo` dai suoi due canali: confronta l'entrata di Romeo con le sue decisioni, lo dice in équipe e il sabato ne impara la somiglianza. Mai operazioni copiate: Romeo resta il metro e un esempio (`spec/romeo-dal-vivo.md`). |
 | 24/09/2026 | Due canali Telegram, già collegati. **Operativo:** avvio del bot, decisioni di apertura, chiusure, avvisi urgenti. **Équipe:** solo la comunicazione fra gli agenti, sempre attivo, con il rendiconto principale nel fine settimana. |
 

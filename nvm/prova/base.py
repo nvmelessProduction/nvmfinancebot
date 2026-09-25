@@ -62,7 +62,7 @@ COLPI_PER_CRT = 3
 
 def opera(
     alte: Candele, basse: Candele, dal: int, al: int,
-    variante: Variante = Variante.MANUALE, stop_stretto: bool = False,
+    variante: Optional[Variante] = None, stop_stretto: bool = False,
 ) -> list[Risultato]:
     """Tutte le operazioni del manuale con ingresso in [dal, al)."""
     risultati = []

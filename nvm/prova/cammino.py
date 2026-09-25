@@ -10,11 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Optional
 
 import numpy as np
 
 from nvm.agenti.capo import COLONNE, Capo, esiti, riga
 from nvm.prova.base import SETTIMANA, Risultato
+from nvm.prova.campo import Uscita
 
 
 def _anno(t: np.ndarray) -> np.ndarray:
@@ -38,6 +40,9 @@ class Tabella:
     rr1: np.ndarray
     rr2: np.ndarray
     costi: np.ndarray
+    # Le operazioni chiuse dal tetto di sicurezza invece che da stop o target:
+    # l'allenamento degli agenti le tiene d'occhio (`spec/allenamento.md`).
+    scaduta: Optional[np.ndarray] = None
 
     def __len__(self) -> int:
         return len(self.quando)
@@ -59,16 +64,52 @@ class Tabella:
             rr1=np.array([r.rr1 for r in risultati]),
             rr2=np.array([r.rr2 for r in risultati]),
             costi=np.array([r.costo_erre for r in risultati]),
+            scaduta=np.array([r.uscita is Uscita.SCADUTA for r in risultati], bool),
         )
 
     def salva(self, percorso: Path) -> None:
         percorso.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(percorso, **self.__dict__)
+        np.savez_compressed(percorso, **{k: v for k, v in self.__dict__.items() if v is not None})
 
     @classmethod
     def carica(cls, percorso: Path) -> "Tabella":
         with np.load(percorso) as f:
             return cls(**{k: f[k] for k in f.files})
+
+
+def costruisci_tabella(
+    basi: dict, coppie, dal: int, al: int, variante=None, stretto: bool = False, spread: float = 1.0,
+    dire: Optional[Callable[[str], None]] = None,
+) -> Tabella:
+    """Tutte le operazioni delle coppie con ingresso in [dal, al), con le risposte degli agenti.
+
+    `basi` sono le ore di ogni strumento. E' la tabella su cui il Capo si allena
+    (`capo.py`) e su cui gli agenti provano le loro manopole (`nvm/prova/allenamento.py`).
+    """
+    from nvm.agenti.conferme import SOPRA, tutti_i_pareri
+    from nvm.dati.candele import costruisci
+    from nvm.dati.spread import allarga
+    from nvm.prova.base import opera
+    from nvm.prova.romeo import grandi
+    from nvm.tempo import TF
+
+    risultati, pareri = [], []
+    for strumento, base in basi.items():
+        fine = int(base.t[-1]) + base.passo
+        g = grandi(base, fine)
+        settimane = costruisci(base, TF.W1).chiuse_entro(fine)
+        for alto, basso in coppie:
+            alte = costruisci(base, alto).chiuse_entro(fine)
+            basse = costruisci(base, basso).chiuse_entro(fine)
+            sopra = costruisci(base, SOPRA[alto]).chiuse_entro(fine)
+            if spread != 1:
+                basse = allarga(basse, spread)
+            r = opera(alte, basse, dal, al, variante, stretto)
+            risultati += r
+            pareri += [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) for x in r]
+            if dire:
+                dire(f"{strumento} {alto.value}-{basso.value}: {len(r)} operazioni")
+    return Tabella.da(risultati, pareri)
 
 
 @dataclass

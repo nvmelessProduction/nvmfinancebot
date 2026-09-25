@@ -24,6 +24,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from nvm.agenti import manopole
 from nvm.agenti.capo import Capo
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.vivo import messaggi
@@ -38,6 +39,7 @@ from nvm.vivo.giro import giro as giro_orario
 from nvm.vivo.riunione import Storico, riunione
 from nvm.vivo.romeo_vivo import confronta as confronta_con_romeo
 from nvm.vivo.romeo_vivo import leggi_comando
+from nvm.prova.allenamento import leggi_memoria
 from nvm.vivo.stato import Seguita, Stato, registra
 from nvm.vivo.telegram import Telegram
 from nvm.vivo.terminale import ErroreMT5, Terminale
@@ -112,6 +114,8 @@ def _versione_nuova(partito_da: str) -> str:
 
 class Bot:
     def __init__(self) -> None:
+        # Le manopole che gli agenti hanno scelto nell'ultimo allenamento (`nvm/vivo/agenti.json`).
+        manopole.carica_e_applica()
         self.imp = impostazioni(RADICE)
         self.tg = Telegram(self.imp)
         self.stato = Stato.carica(CARTELLA)
@@ -173,6 +177,15 @@ class Bot:
             for testo in presentazioni(self.stato.pagelle, self.capo, self.esecutore.parte, self.storico.romeo_x):
                 self.tg.equipe(testo)
             presentati.write_text("sì", encoding="utf-8")
+        self.racconta_allenamento()
+
+    def racconta_allenamento(self) -> None:
+        """Il rapporto dell'ultimo allenamento degli agenti, una volta sola, sul canale equipe."""
+        ultimo = leggi_memoria().get("ultimo", {})
+        if ultimo.get("settimana") and ultimo["settimana"] != self.stato.ultimo_allenamento:
+            self.tg.equipe(ultimo["rapporto"])
+            self.stato.ultimo_allenamento = ultimo["settimana"]
+            self.stato.salva(CARTELLA)
 
     def prova_collegamento(self, solo_se_non_va: bool = False) -> None:
         """A ogni avvio: MT5 accetterebbe un ordine su ogni strumento? Lo dice sul

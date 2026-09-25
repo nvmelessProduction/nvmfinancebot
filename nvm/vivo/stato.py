@@ -69,6 +69,8 @@ class Stato:
     romeo: list[EntrataDiRomeo] = field(default_factory=list)
     # Il primo messaggio di Telegram ancora da leggere.
     telegram_dal: int = 0
+    # L'ultimo allenamento degli agenti gia' raccontato in equipe (`nvm/vivo/allenamento.json`).
+    ultimo_allenamento: str = ""
 
     @classmethod
     def carica(cls, cartella: Path) -> "Stato":
@@ -83,6 +85,7 @@ class Stato:
             ultima_riunione=d.get("ultima_riunione", ""),
             pagelle=d.get("pagelle", {}), diario=d.get("diario", {}), ultimo_quarto=d.get("ultimo_quarto"),
             romeo=[EntrataDiRomeo(**e) for e in d.get("romeo", [])], telegram_dal=d.get("telegram_dal", 0),
+            ultimo_allenamento=d.get("ultimo_allenamento", ""),
         )
 
     def salva(self, cartella: Path) -> None:

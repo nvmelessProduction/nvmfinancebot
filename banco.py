@@ -26,6 +26,7 @@ import argparse
 import numpy as np
 
 from capo import AL, COPPIE, DAL, RADICE, _istante, tabella
+from nvm.agenti import manopole
 from nvm.agenti.capo import COLONNE_ROMEO, Capo, Logistica
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, carica_periodo
@@ -129,6 +130,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("gruppi", nargs="+", choices=sorted(GRUPPI))
     a = parser.parse_args()
+    manopole.carica_e_applica()
     t = tabella(1, 1.0, RADICE / "dati" / "grezzi")
     base = cammino(t, t.x)
     for nome in a.gruppi:

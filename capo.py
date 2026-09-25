@@ -19,18 +19,15 @@ from pathlib import Path
 
 import numpy as np
 
+from nvm.agenti import manopole
 from nvm.agenti.cacciatore import Variante
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
-from nvm.agenti.conferme import SOPRA, tutti_i_pareri
-from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, carica_periodo
 from nvm.dati.ore import carica as carica_ore
-from nvm.dati.spread import allarga
-from nvm.prova.base import opera
-from nvm.prova.cammino import Tabella, cammino, giudica
+from nvm.prova.cammino import Tabella, cammino, costruisci_tabella, giudica
 from nvm.prova.campo import Uscita
-from nvm.prova.romeo import candidati, etichette, grandi, leggi
+from nvm.prova.romeo import candidati, etichette, leggi
 from nvm.tempo import TF
 
 RADICE = Path(__file__).resolve().parent
@@ -59,31 +56,25 @@ def _istante(anno: int) -> int:
 
 
 def tabella(numero: int, spread: float, radice: Path) -> Tabella:
-    nome = f"conf{numero}" + (f"-spread{spread:g}" if spread != 1 else "") + ".npz"
+    # Il nome porta l'impronta delle manopole degli agenti: una tabella fatta
+    # con manopole diverse non si riusa mai per sbaglio.
+    nome = f"conf{numero}" + (f"-spread{spread:g}" if spread != 1 else "") + f"-{manopole.impronta()}.npz"
     percorso = RADICE / "dati" / "tabelle" / nome
     if percorso.exists():
         return Tabella.carica(percorso)
     variante, stretto = CONFIGURAZIONI[numero]
-    dal, al = _istante(DAL), _istante(AL + 1)
-    risultati, pareri = [], []
-    for strumento in PUNTO:
-        base, _ = carica_ore(radice, strumento, dal - 70 * 86400, al + 70 * 86400)
-        fine = int(base.t[-1]) + base.passo
-        g = grandi(base, fine)
-        settimane = costruisci(base, TF.W1).chiuse_entro(fine)
-        for alto, basso in (GRADINO if numero > 4 else COPPIE):
-            alte = costruisci(base, alto).chiuse_entro(fine)
-            basse = costruisci(base, basso).chiuse_entro(fine)
-            sopra = costruisci(base, SOPRA[alto]).chiuse_entro(fine)
-            if spread != 1:
-                basse = allarga(basse, spread)
-            r = opera(alte, basse, dal, al, variante, stretto)
-            risultati += r
-            pareri += [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) for x in r]
-            print(f"  conf {numero} {strumento} {alto.value}-{basso.value}: {len(r)} operazioni", flush=True)
-    t = Tabella.da(risultati, pareri)
+    if numero == 1:
+        variante = None     # la configurazione del bot: la variante e' quella della manopola del Cacciatore
+    t = costruisci_tabella(ore_storiche(radice), GRADINO if numero > 4 else COPPIE, _istante(DAL), _istante(AL + 1),
+                           variante, stretto, spread, dire=lambda testo: print(f"  conf {numero} {testo}", flush=True))
     t.salva(percorso)
     return t
+
+
+def ore_storiche(radice: Path) -> dict:
+    """Le ore di ogni strumento per il periodo della tabella, con il margine per i CRT a cavallo."""
+    dal, al = _istante(DAL), _istante(AL + 1)
+    return {s: carica_ore(radice, s, dal - 70 * 86400, al + 70 * 86400)[0] for s in PUNTO}
 
 
 def main() -> None:
@@ -95,6 +86,7 @@ def main() -> None:
                         help="allena il Capo su tutto il 2006-2023 (configurazione 1) e lo salva per il bot dal vivo")
     a = parser.parse_args()
     radice = Path(a.cartella)
+    manopole.carica_e_applica()
     if a.vivo:
         salva_per_il_vivo(tabella(1, 1.0, radice))
         return

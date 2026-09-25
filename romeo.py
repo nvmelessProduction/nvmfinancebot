@@ -22,7 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
-from capo import CONFIGURAZIONI, COPPIE, GRADINO
+from capo import CONFIGURAZIONI, COPPIE, GRADINO, tabella
+from nvm.agenti import manopole
 from nvm.agenti.cacciatore import Verso, caccia
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.capo import riga as colonne_del_capo
@@ -53,7 +54,7 @@ def _istante(anno: int, mese: int = 1) -> int:
 def _capo_del_2023(numero: int) -> Capo:
     """Il Capo come l'avrebbe avuto il bot a inizio 2023: allenato sulle
     operazioni della configurazione chiuse prima, pesando di piu' le recenti."""
-    t = Tabella.carica(RADICE / "dati" / "tabelle" / f"conf{numero}.npz")
+    t = tabella(numero, 1.0, RADICE / "dati" / "grezzi")
     # La colonna della coppia 4 ore -> 15 minuti nello storico vale zero.
     t.x = np.c_[t.x, np.zeros((len(t), len(COLONNE) - t.x.shape[1]))]
     prima = t.chiusa < _istante(2023)
@@ -168,6 +169,7 @@ def main() -> None:
     parser.add_argument("--righe", action="store_true")
     parser.add_argument("--imita", action="store_true")
     a = parser.parse_args()
+    manopole.carica_e_applica()
     radice = Path(a.cartella)
     if a.imita:
         imita(radice, [e for e in leggi(Path(a.catalogo)) if e.periodo == "studio" and e.strumento in PUNTO])

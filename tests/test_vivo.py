@@ -420,3 +420,17 @@ def test_la_riunione_impara_romeo_anche_dal_vivo_e_da_il_metro():
     ny_ = np.zeros((1, len(COLONNE)))
     ny_[0, COLONNE.index("ora di Romeo: New York")] = 1
     assert nuovo.somiglianza(ny_)[0] > solo_2023.somiglianza(ny_)[0]
+
+
+def test_il_bot_racconta_l_allenamento_una_volta_sola(tmp_path, monkeypatch):
+    import vivo
+    from nvm.vivo.stato import Stato
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S40", "rapporto": "🏋️ Allenamento"}})
+    mandati = []
+    bot = object.__new__(vivo.Bot)
+    bot.tg = Telegram(Impostazioni(token="x", chat_equipe=("-2",)), invia=lambda c, t: mandati.append(t), stampa=lambda _: None)
+    bot.stato = Stato()
+    bot.racconta_allenamento()
+    bot.racconta_allenamento()
+    assert mandati == ["🏋️ Allenamento"] and Stato.carica(tmp_path).ultimo_allenamento == "2026-S40"

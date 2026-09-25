@@ -1,0 +1,33 @@
+{
+ "manopole": {
+  "Cacciatore": {
+   "variante": "manuale"
+  },
+  "Grilletto": {
+   "colpi": 3,
+   "lato della liquidità": 2
+  },
+  "Livelli": {
+   "secondo obiettivo oltre il lato": 0.75,
+   "stop minimo": 0.25
+  },
+  "Key level": {
+   "candele guardate": 24,
+   "vicinanza": 0.1,
+   "lato dello swing": 2
+  },
+  "Orario": {
+   "ora di Londra": [
+    1,
+    5
+   ],
+   "ora di New York": [
+    8,
+    11
+   ]
+  },
+  "Bias": {
+   "sconto": 0.5
+  }
+ }
+}

@@ -32,6 +32,11 @@ QUANTE = 24
 LATO_SWING = 2
 # "Arrivare" a un massimo: finirci entro il 10% dell'ampiezza del CRT, sopra o sotto [D].
 TOLLERANZA = 0.10
+# La liquidita' presa (Grilletto): un massimo di swing e' piu' alto di tante candele per lato.
+LATO_LIQUIDITA = 2
+# Sconto e premio (Bias): un long e' a sconto sotto questa frazione della settimana chiusa prima,
+# uno short a premio sopra 1 - SCONTO. 0,5 e' la meta' del range (msg 6110, "50% = halfway point").
+SCONTO = 0.5
 
 # La Golden candle time di Romeo: 9:00-13:00 di New York (msg 6110).
 GCT = (9, 13)
@@ -249,7 +254,7 @@ def alla_romeo(s: Scatto, basse: Candele, settimane: Candele, grandi: Grandi) ->
         alto, basso = float(settimane.bid[k - 1, MASSIMO]), float(settimane.bid[k - 1, MINIMO])
         if alto > basso:
             dove = (float(basse.bid[s.indice, CHIUSURA]) - basso) / (alto - basso)
-            sconto = dove < 0.5 if crt.verso is Verso.LONG else dove > 0.5
+            sconto = dove < SCONTO if crt.verso is Verso.LONG else dove > 1 - SCONTO
     return AllaRomeo(londra, new_york, annidato, sconto)
 
 
@@ -281,11 +286,12 @@ def liquidita(s: Scatto, basse: Candele) -> Liquidita:
     a, t = np.searchsorted(basse.inizio, [crt.range_inizio, s.turtle_soup_inizio])
     h = (basse.bid[a:t, MASSIMO] if short else -basse.bid[a:t, MINIMO])
     presa = sopra = False
-    if len(h) >= 2 * LATO_SWING + 1:
+    lato_swing = LATO_LIQUIDITA
+    if len(h) >= 2 * lato_swing + 1:
         # Il punto piu' alto da ogni candela fino al turtle soup escluso.
         dopo = np.maximum.accumulate(h[::-1])[::-1]
-        for i in range(LATO_SWING, len(h) - LATO_SWING):
-            vicini = np.r_[h[i - LATO_SWING:i], h[i + 1:i + 1 + LATO_SWING]]
+        for i in range(lato_swing, len(h) - lato_swing):
+            vicini = np.r_[h[i - lato_swing:i], h[i + 1:i + 1 + lato_swing]]
             if h[i] > vicini.max() and dopo[i + 1] < h[i] and estremo > h[i]:
                 presa = True
                 sopra |= bool(h[i] > lato)

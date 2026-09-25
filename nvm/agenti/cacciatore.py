@@ -50,6 +50,11 @@ class Variante(str, Enum):
     CHIUSURA_DENTRO = "chiusura dentro"
 
 
+# La variante in uso quando chi chiama non ne sceglie una: la manopola del
+# Cacciatore (`nvm/agenti/manopole.py`).
+VARIANTE = Variante.MANUALE
+
+
 class Verso(str, Enum):
     SHORT = "short"
     LONG = "long"
@@ -111,7 +116,7 @@ class CRT:
 MAI = np.iinfo(np.int64).max // 2
 
 
-def caccia(alte: Candele, basse: Candele, variante: Variante = Variante.MANUALE) -> list[CRT]:
+def caccia(alte: Candele, basse: Candele, variante: Optional[Variante] = None) -> list[CRT]:
     """Tutti i CRT di una coppia, dal primo all'ultimo, sui prezzi BID.
 
     `alte` e `basse` devono contenere solo candele gia' chiuse (vedi
@@ -120,6 +125,7 @@ def caccia(alte: Candele, basse: Candele, variante: Variante = Variante.MANUALE)
     """
     if alte.strumento != basse.strumento:
         raise ValueError("le candele alte e basse devono essere dello stesso strumento")
+    variante = VARIANTE if variante is None else variante
     # A quale candela alta appartiene ogni candela bassa: la candela 2 e la 3
     # si riconoscono dalle basse, senza aspettare che quelle alte chiudano.
     gruppo = inizio_candela(basse.inizio, alte.tf) if len(basse) else np.empty(0, np.int64)

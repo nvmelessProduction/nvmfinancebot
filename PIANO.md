@@ -231,6 +231,33 @@ Cosa cambia:
 Il piano qui sotto resta valido per tutto il resto (dati, niente
 sbirciate, registro dei tentativi, varianti già dichiarate).
 
+## Il chiarimento del 25/09/2026: Romeo è la partenza, il traguardo è il trading
+
+Due decisioni dell'utente:
+
+> "Non è solo diventa come Romeo, è devi diventare un fenomeno nel
+> trading, partendo ovviamente dalla strategia di Romeo. Una volta che loro
+> si specializzano nella strategia di Romeo, io inietterò altre strategie."
+
+> "Tutti devono imparare, tutti devono migliorarsi, non solo tre."
+
+Cosa cambia:
+
+1. **Il traguardo è guadagnare bene e in modo solido, fuori campione.**
+   Romeo resta la partenza e il maestro: le sue entrate si continuano a
+   raccogliere (anche dal vivo, `/romeo`) e il bot si misura su di lui ogni
+   settimana. Un miglioramento che va oltre Romeo può entrare, se migliora
+   fuori campione e non ci allontana da lui oltre il rumore.
+2. **Per passare la Fase F servono tutti e due i numeri**: il cancello del
+   guadagno di `spec/capo.md` e il metro Romeo di sopra. Si scrivono
+   sempre tutti e due.
+3. **Tutti gli agenti imparano da soli**: la palestra settimanale
+   (`spec/allenamento.md`), con i limiti del mansionario e i paletti. Più
+   prove si fanno, più alta è l'asticella (§2, punto 5).
+4. **Altre strategie** entreranno come è entrata quella di Romeo: fonti,
+   agenti specialisti con il loro mansionario, registro, periodo chiuso,
+   demo. Il Capo, il Rischio, la palestra e la riunione servono a tutte.
+
 ## 3. Le fasi
 
 Si passa alla fase successiva solo quando `STATO.md` dice che quella attuale
