@@ -25,14 +25,14 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 import numpy as np
 
-from nvm.agenti import manopole
+from nvm.agenti import capo as il_capo, inventate, manopole
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.prova.base import SETTIMANA
 from nvm.prova.cammino import Tabella, _anno, cammino, costruisci_tabella
@@ -46,6 +46,8 @@ RICAMPIONI = 2000
 ALFA = 0.10
 # In quale parte degli anni la modifica deve fare meglio.
 ANNI = 0.7
+# Quante domande nuove inventa ogni agente ogni settimana.
+IDEE_PER_AGENTE = 2
 # Settimane prima di riprovare una modifica scartata.
 RIPOSO = 8
 
@@ -193,7 +195,8 @@ def esame(oggi: Prova, nuova: Prova, prove: int, seme: int = 0) -> Esame:
     meglio = []
     for a in np.unique(anni):
         m = anni == a
-        if oggi.conteggi[m].sum() and nuova.conteggi[m].sum():
+        # Un anno senza operazioni vale zero: operare bene dove prima non si operava e' meglio.
+        if oggi.conteggi[m].sum() or nuova.conteggi[m].sum():
             meglio.append(_qualita(nuova.serie[m].sum(), nuova.quadrati[m].sum(), nuova.conteggi[m].sum())
                           > _qualita(oggi.serie[m].sum(), oggi.quadrati[m].sum(), oggi.conteggi[m].sum()))
     note = []
@@ -242,6 +245,9 @@ def diagnosi(agente: str, oggi: Prova) -> str:
 
 _BASI: dict = {}
 _IMPOSTAZIONI: dict = {}
+# L'ultima tabella fatta in questo processo (la squadra di oggi), e quella su cui provare le idee.
+_ULTIMA: Optional[Tabella] = None
+_IDEE: tuple = ()
 
 
 def _valuta(valori: dict) -> Prova:
@@ -249,6 +255,8 @@ def _valuta(valori: dict) -> Prova:
     manopole.applica(valori)
     imp = _IMPOSTAZIONI
     t = costruisci_tabella(_BASI, imp["coppie"], imp["dal"], imp["al"])
+    global _ULTIMA
+    _ULTIMA = t
     p = misura(t, valori, imp["primo"], imp["ultimo"])
     if imp.get("romeo"):
         p.romeo = imp["romeo"](t)
@@ -262,6 +270,42 @@ def prova_tutti(valori: list[dict], basi: dict, impostazioni: dict, processi: in
         return [_valuta(v) for v in valori]
     with multiprocessing.get_context("fork").Pool(processi) as pool:
         return pool.map(_valuta, valori)
+
+
+def risposte(domande: list, basi: dict, coppie, dal: int, al: int) -> np.ndarray:
+    """Le risposte alle domande inventate, per le operazioni della tabella, nello stesso ordine
+    di `costruisci_tabella` (con le manopole in uso)."""
+    from nvm.dati.candele import costruisci
+    from nvm.prova.base import opera
+    righe = []
+    for base in basi.values():
+        fine = int(base.t[-1]) + base.passo
+        ctx = inventate.Contesto.da(base, fine)
+        for alto, basso in coppie:
+            alte, basse = costruisci(base, alto).chiuse_entro(fine), costruisci(base, basso).chiuse_entro(fine)
+            righe += [inventate.rispondi_tutte(domande, r, ctx) for r in opera(alte, basse, dal, al)]
+    return np.array(righe, float).reshape(len(righe), len(domande))
+
+
+def _con_colonne(t: Tabella, colonne: np.ndarray) -> Tabella:
+    return replace(t, x=np.c_[t.x, colonne])
+
+
+def _valuta_idea(j: int) -> Prova:
+    t, r, primo, ultimo = _IDEE
+    return misura(_con_colonne(t, r[:, [j]]), {}, primo, ultimo)
+
+
+def prova_idee(t: Tabella, r: np.ndarray, primo: int, ultimo: int, processi: int = 4) -> list[Prova]:
+    """Il Capo anno per anno con ogni domanda nuova come colonna in piu'."""
+    global _IDEE
+    _IDEE = (t, r, primo, ultimo)
+    if not r.shape[1]:
+        return []
+    if processi <= 1:
+        return [_valuta_idea(j) for j in range(r.shape[1])]
+    with multiprocessing.get_context("fork").Pool(processi) as pool:
+        return pool.map(_valuta_idea, range(r.shape[1]))
 
 
 def _con(valori: dict, agente: str, nome: str, v: Any) -> dict:
@@ -292,6 +336,9 @@ class Esito:
     valori: dict
     cambiato: bool
     prove: list[dict]
+    # Le domande inventate che entrano nel Capo, e tutte quelle provate (per la memoria).
+    idee: list = field(default_factory=list)
+    prove_idee: list = field(default_factory=list)
 
 
 def _r(x: float) -> str:
@@ -305,18 +352,28 @@ def _v(x: Any) -> str:
 
 
 def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
-           dire: Callable[[str], None] = print, processi: int = 4) -> Esito:
-    """Una settimana di palestra: prove, esami, decisioni e rapporto."""
+           dire: Callable[[str], None] = print, processi: int = 4, memoria_idee: list[dict] = ()) -> Esito:
+    """Una settimana di palestra: prove, invenzioni, esami, decisioni e rapporto."""
     settimana = adesso // SETTIMANA
     etichetta = datetime.fromtimestamp(adesso, tz=timezone.utc).strftime("%G-S%V")
     valori = manopole.attuali()
     elenco = proposte(valori, memoria, settimana)
-    dire(f"{len(elenco)} prove, più la squadra di oggi")
+    # Le invenzioni: ogni agente combina i suoi mattoni in domande mai provate.
+    gia = {x["chiave"] for x in memoria_idee} | {d.chiave for d in il_capo.INVENTATE}
+    rng = np.random.default_rng(settimana)
+    idee = [d for agente in manopole.AGENTI for d in inventate.inventa(agente, rng, gia, IDEE_PER_AGENTE)]
+    dire(f"{len(elenco)} prove sulle manopole e {len(idee)} idee nuove, più la squadra di oggi")
     senza_romeo = {k: v for k, v in impostazioni.items() if k != "romeo"}
     oggi = prova_tutti([valori], basi, impostazioni, 1)[0]
+    tabella_oggi = _ULTIMA
+    risposte_idee = risposte(idee, basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"])
+    prove_idee = prova_idee(tabella_oggi, risposte_idee, impostazioni["primo"], impostazioni["ultimo"], processi)
     candidate = prova_tutti([_con(valori, a, n, v) for a, n, _, v in elenco], basi, senza_romeo, processi)
-    k = max(len(elenco), 1)
+    # L'asticella conta tutte le prove fatte da sempre, non solo quelle di questa settimana: la
+    # storia e' la stessa, e chi prova tante volte prima o poi trova qualcosa per caso.
+    k = max(len(memoria) + len(memoria_idee) + len(elenco) + len(idee), 1)
     esami = [esame(oggi, c, k) for c in candidate]
+    esami_idee = [esame(oggi, p, k) for p in prove_idee]
 
     # Il migliore di ogni agente fra quelli che passano; poi la squadra insieme.
     vincitori: dict[str, int] = {}
@@ -350,14 +407,50 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
             else:
                 scelti = []
 
+    # Le idee: la migliore di ogni agente fra quelle che passano, provate insieme sulla squadra finale.
+    migliori_idee: dict[str, int] = {}
+    for j, (d, e) in enumerate(zip(idee, esami_idee)):
+        if e.passa and (d.agente not in migliori_idee or e.media > esami_idee[migliori_idee[d.agente]].media):
+            migliori_idee[d.agente] = j
+    nuove_idee: list = []
+    if migliori_idee:
+        scelte = sorted(migliori_idee.values(), key=lambda j: -esami_idee[j].media)
+        if finali is valori:
+            base_tab, r_base = tabella_oggi, risposte_idee[:, scelte]
+        else:
+            manopole.applica(finali)
+            base_tab = costruisci_tabella(basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"])
+            r_base = risposte([idee[j] for j in scelte], basi, impostazioni["coppie"], impostazioni["dal"], impostazioni["al"])
+            manopole.applica(valori)
+        for quante in ([len(scelte), 1] if len(scelte) > 1 else [1]):
+            p = misura(_con_colonne(base_tab, r_base[:, :quante]), finali, impostazioni["primo"], impostazioni["ultimo"])
+            if esame(oggi, p, k + len(scelte)).passa:
+                nuove_idee = [idee[j] for j in scelte[:quante]]
+                finale = p
+                break
+
     tenute = set(scelti) if finali is not valori else set()
+    idee_tenute = {d.chiave for d in nuove_idee}
     registro = []
     righe = [f"🏋️ Allenamento della settimana {etichetta}",
              "Ognuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora "
              "le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), "
-             f"con certezza contro {k} prove fatte insieme e nella maggior parte degli anni.", ""]
+             f"con una certezza che cresce con le prove fatte da sempre ({k}) e nella maggior parte degli anni.", ""]
+    registro_idee = []
     for agente in manopole.AGENTI:
         righe.append(f"• {agente}: {diagnosi(agente, oggi)}.")
+        for j, d in enumerate(idee):
+            if d.agente != agente:
+                continue
+            e = esami_idee[j]
+            entra = d.chiave in idee_tenute
+            giudizio = "✅ entra nel Capo" if entra else ("❌ non basta" if not e.passa
+                                                        else "❌ da sola sì, ma non con la squadra di oggi")
+            righe.append(f"  💡 ho inventato «{d.nome}»: qualità {_r(e.media)} (fra {_r(e.basso)} e {_r(e.alto)}), "
+                         f"meglio in {e.anni:.0%} degli anni. {giudizio}.")
+            registro_idee.append({"settimana": etichetta, "numero": settimana, "agente": d.agente, "chiave": d.chiave,
+                                  "nome": d.nome, "esito": "tenuta" if entra else "scartata", "qualita": e.media,
+                                  "basso": e.basso, "alto": e.alto, "anni": e.anni})
         for i, (a, nome, da, v) in enumerate(elenco):
             if a != agente:
                 continue
@@ -378,8 +471,9 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
                              "chiave": _chiave(a, nome, da, v), "esito": "tenuta" if tenuta else "scartata",
                              "qualita": e.media, "basso": e.basso, "alto": e.alto, "anni": e.anni, "note": e.note})
     righe.append("")
-    if tenute:
-        cambi = ", ".join(f"{elenco[i][0]} ({elenco[i][1]} {_v(elenco[i][2])} → {_v(elenco[i][3])})" for i in sorted(tenute))
+    if tenute or nuove_idee:
+        cambi = ", ".join([f"{elenco[i][0]} ({elenco[i][1]} {_v(elenco[i][2])} → {_v(elenco[i][3])})" for i in sorted(tenute)]
+                          + [f"{d.agente} (l'idea «{d.nome}»)" for d in nuove_idee])
         righe.append(f"Capo: da oggi cambiano {cambi}. Mi riaddestro sulle operazioni nuove. Sui vent'anni: "
                      f"qualità {_r(oggi.qualita)} → {_r(finale.qualita)}, R a operazione {_r(oggi.r_medio)} → "
                      f"{_r(finale.r_medio)}, operazioni {oggi.n} → {finale.n}, drawdown {oggi.drawdown:.0f} → "
@@ -389,7 +483,7 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     else:
         righe.append(f"Capo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità {_r(oggi.qualita)}, "
                      f"{_r(oggi.r_medio)} R a operazione sui vent'anni). Si resta così, e si riprova con altro.")
-    return Esito("\n".join(righe), finali, bool(tenute), registro)
+    return Esito("\n".join(righe), finali, bool(tenute) or bool(nuove_idee), registro, nuove_idee, registro_idee)
 
 
 # --- Le entrate di Romeo ritrovate (nel rapporto) ----------------------------------------------------------------
@@ -421,7 +515,7 @@ def ritrovate_da_romeo(t: Tabella, radice: Path, catalogo: Path) -> int:
 
 def leggi_memoria(percorso: Path = MEMORIA) -> dict:
     if not percorso.exists():
-        return {"prove": [], "ultimo": {}}
+        return {"prove": [], "idee": [], "ultimo": {}}
     return json.loads(percorso.read_text(encoding="utf-8"))
 
 

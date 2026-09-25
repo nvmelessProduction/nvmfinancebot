@@ -5,9 +5,11 @@
   },
   "Grilletto": {
    "colpi": 3,
-   "lato della liquidità": 2
+   "lato della liquidità": 2,
+   "invalidazione": 0
   },
   "Livelli": {
+   "tempo": 0,
    "secondo obiettivo oltre il lato": 0.75,
    "pareggio": 1.0,
    "stop minimo": 0.25

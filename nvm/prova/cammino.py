@@ -86,6 +86,7 @@ def costruisci_tabella(
     `basi` sono le ore di ogni strumento. E' la tabella su cui il Capo si allena
     (`capo.py`) e su cui gli agenti provano le loro manopole (`nvm/prova/allenamento.py`).
     """
+    from nvm.agenti import capo as il_capo, inventate
     from nvm.agenti.conferme import SOPRA, tutti_i_pareri
     from nvm.dati.candele import costruisci
     from nvm.dati.spread import allarga
@@ -98,6 +99,9 @@ def costruisci_tabella(
         fine = int(base.t[-1]) + base.passo
         g = grandi(base, fine)
         settimane = costruisci(base, TF.W1).chiuse_entro(fine)
+        # Per le domande inventate dagli agenti e tenute dalla palestra.
+        idee = il_capo.INVENTATE
+        ctx = inventate.Contesto.da(base, fine) if idee else None
         for alto, basso in coppie:
             alte = costruisci(base, alto).chiuse_entro(fine)
             basse = costruisci(base, basso).chiuse_entro(fine)
@@ -106,7 +110,8 @@ def costruisci_tabella(
                 basse = allarga(basse, spread)
             r = opera(alte, basse, dal, al, variante, stretto)
             risultati += r
-            pareri += [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) for x in r]
+            pareri += [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) + (inventate.rispondi_tutte(idee, x, ctx),)
+                       for x in r]
             if dire:
                 dire(f"{strumento} {alto.value}-{basso.value}: {len(r)} operazioni")
     return Tabella.da(risultati, pareri)

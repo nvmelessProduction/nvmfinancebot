@@ -25,7 +25,8 @@ import numpy as np
 from capo import CONFIGURAZIONI, COPPIE, GRADINO, tabella
 from nvm.agenti import manopole
 from nvm.agenti.cacciatore import Verso, caccia
-from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
+from nvm.agenti import inventate
+from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti.capo import riga as colonne_del_capo
 from nvm.agenti.conferme import SOPRA, tutti_i_pareri
 from nvm.dati.candele import costruisci
@@ -87,6 +88,8 @@ def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
     coppie = [(alto, basso, base) for alto, basso in (GRADINO if numero > 4 else COPPIE)]
     g = grandi(base, fine)
     settimane = costruisci(base, TF.W1).chiuse_entro(fine)
+    idee = INVENTATE
+    ctx = inventate.Contesto.da(base, fine) if idee else None
     if len(minuti):
         alto, basso = COPPIA_MINUTI[numero > 4]
         coppie.append((alto, basso, minuti))
@@ -98,7 +101,8 @@ def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
         ops = opera(alte, basse, _istante(2023), _istante(2024), variante, stretto)
         if not ops:
             continue
-        x = np.array([colonne_del_capo(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)) for r in ops])
+        x = np.array([colonne_del_capo(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g),
+                                       inventate.rispondi_tutte(idee, r, ctx)) for r in ops])
         atteso = capo.valore_atteso(x, np.array([r.rr1 for r in ops]), np.array([r.rr2 for r in ops]),
                                     np.array([r.costo_erre for r in ops]))
         bot.tutte += ops

@@ -68,6 +68,37 @@ definizione (un'ora fra 0 e 24, una frazione fra 0 e 1, almeno una candela).
    sulle manopole in uso. Il bot sulla VPS si aggiorna da solo e manda il
    rapporto sul canale équipe (ogni allenamento ha il suo numero).
 
+## Le invenzioni **[D]**
+
+L'utente, 25/09/2026: *"perché non dargli la possibilità di inventare?"*.
+Ogni specialista ha dei mattoni del suo mestiere (`nvm/agenti/inventate.py`):
+
+| Agente | Mattoni |
+|---|---|
+| Key level | l'estremo di una candela passata (4 ore, giorno, settimana, mese; 1, 2 o 3 candele fa); il massimo o minimo di una sessione di New York qualunque (inizio e durata) |
+| Bias | dove si entra nel range di una candela passata (giorno, settimana, mese; 25, 50, 75%); se la candela passata va a favore o contro (4 ore … mese) |
+| Orario | una fascia d'ore qualunque; un giorno della settimana |
+| Cacciatore | l'ampiezza del CRT rispetto alla media delle candele prima (10, 20, 50; 0,5 … 2 volte; più o meno) |
+| Livelli | lo stop rispetto alla volatilità delle ore prima (14, 50; 0,5 … 4 volte; più o meno) |
+| Grilletto | quante candele fra il turtle soup e il Model#1 |
+
+Ogni settimana ognuno inventa 2 domande a caso fra quelle che non ha mai
+provato. La palestra le prova come colonna in più del Capo, con lo stesso
+esame delle manopole. Una domanda che passa (la migliore di ogni agente, poi
+tutte insieme sulla squadra finale) entra nel Capo come colonna nuova
+(`nvm/vivo/domande.json`), e il bot dal vivo la fa a ogni decisione. Ogni
+invenzione provata resta in memoria e non si riprova.
+
+## L'asticella cresce con tutte le prove fatte **[D]**
+
+La storia dei vent'anni è la stessa ogni settimana: chi prova tante volte
+sugli stessi dati, prima o poi trova qualcosa per caso. Per questo il
+margine dell'esame non si divide per le prove della settimana, ma per
+**tutte le prove fatte da sempre** (manopole e invenzioni). Più il bot ha
+provato, più una novità deve essere solida per entrare. I dati nuovi (le
+settimane dal vivo, e il 2024–2026 dopo la Fase G) abbassano il rischio di
+imparare il caso.
+
 Anche il Rischio, che sceglie quanto puntare, non ha tetti fissi: impara
 dai risultati la parte del Kelly che fa crescere di più il conto nel lungo
 periodo, cioè quella che non lo espone a perdite che lo rovinano.

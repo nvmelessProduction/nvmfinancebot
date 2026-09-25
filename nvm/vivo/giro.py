@@ -21,7 +21,7 @@ from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.prova.base import Risultato, opera
 from nvm.prova.campo import Operazione
-from nvm.agenti import manopole
+from nvm.agenti import capo as capo_mod, inventate, manopole
 from nvm.agenti.conferme import Grandi
 from nvm.tempo import TF
 
@@ -114,6 +114,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
         fine_ore = min(adesso, int(ore.t[-1]) + ore.passo)
         g = _grandi(ore, fine_ore)
         settimane = _candele(ore, TF.W1, fine_ore)
+        idee = capo_mod.INVENTATE
+        ctx_idee = _ricorda(("idee", _impronta(ore), fine_ore), lambda: inventate.Contesto.da(ore, fine_ore)) if idee else None
         for alto, basso in coppie:
             alte = _candele(base, alto, adesso)
             basse = _candele(base, basso, adesso)
@@ -121,7 +123,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
             for r in opera(alte, basse, dal, adesso + 1, trovati=_crt(base, alto, basso, adesso)):
                 op = piano(r.scatto, basse)
                 kl, ora, ctx, ar, liq = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
-                x = riga(r, kl, ora, ctx, ar, liq)[None]
+                x = riga(r, kl, ora, ctx, ar, liq, inventate.rispondi_tutte(idee, r, ctx_idee))[None]
                 p1, q = capo.probabilita(x)
                 atteso = capo.valore_atteso(x, np.array([r.rr1]), np.array([r.rr2]), np.array([r.costo_erre]))
                 decisioni.append(Decisione(

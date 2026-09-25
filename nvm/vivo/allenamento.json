@@ -484,12 +484,228 @@
    "note": [
     "drawdown 216 → 240 R"
    ]
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Grilletto",
+   "manopola": "invalidazione",
+   "da": 0,
+   "a": 1,
+   "chiave": "[\"Grilletto\", \"invalidazione\", 0, 1]",
+   "esito": "scartata",
+   "qualita": 0.010911124401613684,
+   "basso": -0.28661858348267083,
+   "alto": 0.22318303068964104,
+   "anni": 0.29411764705882354,
+   "note": [
+    "durata 1,1 → 0,8 giorni",
+    "drawdown 170 → 12 R",
+    "operazioni 12400 → 215"
+   ]
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Livelli",
+   "manopola": "tempo",
+   "da": 0,
+   "a": 8,
+   "chiave": "[\"Livelli\", \"tempo\", 0, 8]",
+   "esito": "scartata",
+   "qualita": 0.060920167584060936,
+   "basso": -0.14843198962767293,
+   "alto": 0.21413565220400765,
+   "anni": 0.5882352941176471,
+   "note": [
+    "scadute 1,2% → 0,0%",
+    "drawdown 170 → 11 R",
+    "operazioni 12400 → 292"
+   ]
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Livelli",
+   "manopola": "secondo obiettivo oltre il lato",
+   "da": 0.75,
+   "a": 0.5,
+   "chiave": "[\"Livelli\", \"secondo obiettivo oltre il lato\", 0.75, 0.5]",
+   "esito": "scartata",
+   "qualita": -0.01126393131301906,
+   "basso": -0.020460574520335673,
+   "alto": -0.0005805896190548266,
+   "anni": 0.11764705882352941,
+   "note": [
+    "drawdown 170 → 216 R"
+   ]
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Livelli",
+   "manopola": "secondo obiettivo oltre il lato",
+   "da": 0.75,
+   "a": 1.0,
+   "chiave": "[\"Livelli\", \"secondo obiettivo oltre il lato\", 0.75, 1.0]",
+   "esito": "scartata",
+   "qualita": 0.00014242203669794645,
+   "basso": -0.011756691871926826,
+   "alto": 0.010696010484602307,
+   "anni": 0.47058823529411764,
+   "note": []
   }
  ],
  "ultimo": {
   "settimana": "2026-S39",
-  "id": 1790327678,
-  "rapporto": "🏋️ Allenamento della settimana 2026-S39\nOgnuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), con certezza contro 27 prove fatte insieme e nella maggior parte degli anni.\n\n• Cacciatore: vado meglio con «mensile → giornaliero» (+0,031 R a operazione) e peggio con «giornaliero → 1 ora» (+0,003 R).\n  ↳ variante manuale → chiusura dentro: qualità +0,002 (fra −0,048 e +0,055), meglio in 65% degli anni. ❌ non basta.\n• Grilletto: vado meglio con «liquidità presa prima» (+0,017 R a operazione) e peggio con «primo colpo» (+0,006 R).\n  ↳ colpi 3 → 2: qualità −0,001 (fra −0,010 e +0,008), meglio in 29% degli anni. ❌ non basta.\n  ↳ colpi 3 → 4: qualità −0,002 (fra −0,006 e +0,003), meglio in 47% degli anni. ❌ non basta.\n  ↳ lato della liquidità 2 → 1: qualità −0,002 (fra −0,010 e +0,008), meglio in 41% degli anni. ❌ non basta.\n  ↳ lato della liquidità 2 → 3: qualità −0,001 (fra −0,009 e +0,008), meglio in 41% degli anni. ❌ non basta.\n• Livelli: vado meglio con «stop largo (oltre metà range)» (+0,036 R a operazione) e peggio con «primo obiettivo oltre 2 R» (−0,033 R).\n  ↳ secondo obiettivo oltre il lato 0,5 → 0,25: qualità −0,001 (fra −0,011 e +0,008), meglio in 41% degli anni. ❌ non basta.\n  ↳ secondo obiettivo oltre il lato 0,5 → 0,75: qualità +0,011 (fra +0,001 e +0,020), meglio in 82% degli anni. ✅ la tengo. Cambia anche: drawdown 216 → 170 R. Ci guadagna Bias con «a sconto» (+181 R). Ci perde Grilletto con «liquidità presa prima» (−20 R).\n  ↳ pareggio 1,0 → 0,75: qualità +0,019 (fra −0,033 e +0,071), meglio in 65% degli anni. ❌ non basta.\n  ↳ pareggio 1,0 → 1,25: qualità −0,006 (fra −0,016 e +0,004), meglio in 47% degli anni. ❌ non basta.\n  ↳ stop minimo 0,25 → 0,2: qualità −0,004 (fra −0,017 e +0,010), meglio in 47% degli anni. ❌ non basta.\n  ↳ stop minimo 0,25 → 0,3: qualità +0,003 (fra −0,013 e +0,021), meglio in 53% degli anni. ❌ non basta.\n• Key level: vado meglio con «FVG» (+0,027 R a operazione) e peggio con «massimo preso» (+0,001 R).\n  ↳ candele guardate 24 → 18: qualità −0,001 (fra −0,006 e +0,004), meglio in 35% degli anni. ❌ non basta.\n  ↳ candele guardate 24 → 30: qualità −0,000 (fra −0,004 e +0,003), meglio in 29% degli anni. ❌ non basta.\n  ↳ vicinanza 0,1 → 0,05: qualità −0,001 (fra −0,004 e +0,001), meglio in 18% degli anni. ❌ non basta.\n  ↳ vicinanza 0,1 → 0,15: qualità −0,000 (fra −0,003 e +0,002), meglio in 35% degli anni. ❌ non basta.\n  ↳ lato dello swing 2 → 1: qualità +0,000 (fra −0,007 e +0,008), meglio in 35% degli anni. ❌ non basta.\n  ↳ lato dello swing 2 → 3: qualità −0,002 (fra −0,008 e +0,005), meglio in 35% degli anni. ❌ non basta.\n• Orario: vado meglio con «ora di Londra di Romeo» (+0,041 R a operazione) e peggio con «fuori dalle ore di Romeo» (−0,034 R).\n  ↳ ora di Londra 1–5 → 0–5: qualità −0,004 (fra −0,013 e +0,004), meglio in 35% degli anni. ❌ non basta.\n  ↳ ora di Londra 1–5 → 2–5: qualità +0,001 (fra −0,003 e +0,004), meglio in 47% degli anni. ❌ non basta.\n  ↳ ora di Londra 1–5 → 1–4: qualità +0,001 (fra −0,002 e +0,005), meglio in 53% degli anni. ❌ non basta.\n  ↳ ora di Londra 1–5 → 1–6: qualità −0,001 (fra −0,006 e +0,003), meglio in 41% degli anni. ❌ non basta.\n  ↳ ora di New York 8–11 → 7–11: qualità −0,002 (fra −0,009 e +0,005), meglio in 29% degli anni. ❌ non basta.\n  ↳ ora di New York 8–11 → 9–11: qualità −0,001 (fra −0,009 e +0,005), meglio in 53% degli anni. ❌ non basta.\n  ↳ ora di New York 8–11 → 8–10: qualità −0,000 (fra −0,008 e +0,007), meglio in 35% degli anni. ❌ non basta.\n  ↳ ora di New York 8–11 → 8–12: qualità +0,001 (fra −0,006 e +0,009), meglio in 53% degli anni. ❌ non basta.\n• Bias: vado meglio con «sopra contro» (+0,020 R a operazione) e peggio con «sopra a favore» (−0,010 R).\n  ↳ sconto 0,5 → 0,4: qualità −0,001 (fra −0,009 e +0,006), meglio in 41% degli anni. ❌ non basta.\n  ↳ sconto 0,5 → 0,6: qualità +0,000 (fra −0,006 e +0,006), meglio in 47% degli anni. ❌ non basta.\n\nCapo: da oggi cambiano Livelli (secondo obiettivo oltre il lato 0,5 → 0,75). Mi riaddestro sulle operazioni nuove. Sui vent'anni: qualità +0,005 → +0,017, R a operazione +0,009 → +0,026, operazioni 13138 → 12400, drawdown 216 → 170 R, entrate di Romeo del 2023 ritrovate 5 → 5.",
-  "cambiato": true
- }
+  "id": 1790329306,
+  "rapporto": "🏋️ Allenamento della settimana 2026-S39\nOgnuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), con una certezza che cresce con le prove fatte da sempre (43) e nella maggior parte degli anni.\n\n• Cacciatore: vado meglio con «mensile → giornaliero» (+0,054 R a operazione) e peggio con «dentro un CRT più grande» (+0,022 R).\n  💡 ho inventato «range più di 2 volte la media di 50 candele»: qualità +0,000 (fra −0,004 e +0,006), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «range meno di 1,5 volte la media di 10 candele»: qualità −0,003 (fra −0,011 e +0,004), meglio in 29% degli anni. ❌ non basta.\n• Grilletto: vado meglio con «secondo colpo» (+0,044 R a operazione) e peggio con «liquidità presa prima» (+0,010 R).\n  💡 ho inventato «Model#1 entro 3 candele dal turtle soup»: qualità −0,004 (fra −0,009 e −0,000), meglio in 29% degli anni. ❌ non basta.\n  💡 ho inventato «Model#1 entro 2 candele dal turtle soup»: qualità −0,004 (fra −0,009 e +0,002), meglio in 35% degli anni. ❌ non basta.\n  ↳ invalidazione 0 → 1: qualità +0,011 (fra −0,287 e +0,223), meglio in 29% degli anni. ❌ non basta.\n• Livelli: vado meglio con «stop largo (oltre metà range)» (+0,045 R a operazione) e peggio con «primo obiettivo oltre 2 R» (−0,012 R).\n  💡 ho inventato «stop meno di 2 volte la volatilità di 50 ore»: qualità −0,002 (fra −0,006 e +0,003), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «stop meno di 1 volta la volatilità di 14 ore»: qualità +0,001 (fra −0,003 e +0,005), meglio in 59% degli anni. ❌ non basta.\n  ↳ tempo 0 → 8: qualità +0,061 (fra −0,148 e +0,214), meglio in 59% degli anni. ❌ non basta.\n  ↳ secondo obiettivo oltre il lato 0,75 → 0,5: qualità −0,011 (fra −0,020 e −0,001), meglio in 12% degli anni. ❌ non basta.\n  ↳ secondo obiettivo oltre il lato 0,75 → 1,0: qualità +0,000 (fra −0,012 e +0,011), meglio in 47% degli anni. ❌ non basta.\n• Key level: vado meglio con «FVG» (+0,058 R a operazione) e peggio con «massimo preso» (−0,016 R).\n  💡 ho inventato «presa l'estremo del giorno, 2 candele fa»: qualità −0,005 (fra −0,011 e +0,001), meglio in 24% degli anni. ❌ non basta.\n  💡 ho inventato «presa l'estremo della settimana, 3 candele fa»: qualità −0,003 (fra −0,016 e +0,010), meglio in 53% degli anni. ❌ non basta.\n• Orario: vado meglio con «ora di Londra di Romeo» (+0,069 R a operazione) e peggio con «fuori dalle ore di Romeo» (−0,005 R).\n  💡 ho inventato «scatta fra le 16 e le 17 NY»: qualità −0,001 (fra −0,004 e +0,002), meglio in 35% degli anni. ❌ non basta.\n  💡 ho inventato «scatta fra le 07 e le 08 NY»: qualità −0,005 (fra −0,011 e +0,002), meglio in 18% degli anni. ❌ non basta.\n• Bias: vado meglio con «a sconto» (+0,039 R a operazione) e peggio con «range a favore» (+0,003 R).\n  💡 ho inventato «entra nel 25% buono del giorno prima»: qualità −0,012 (fra −0,023 e +0,001), meglio in 18% degli anni. ❌ non basta.\n  💡 ho inventato «la settimana prima è a favore»: qualità −0,005 (fra −0,015 e +0,003), meglio in 35% degli anni. ❌ non basta.\n\nCapo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità +0,017, +0,026 R a operazione sui vent'anni). Si resta così, e si riprova con altro.",
+  "cambiato": false
+ },
+ "idee": [
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Cacciatore",
+   "chiave": "[\"Cacciatore\", \"ampiezza\", [[\"candele\", 50], [\"volte\", 2.0], [\"verso\", \"più\"]]]",
+   "nome": "range più di 2 volte la media di 50 candele",
+   "esito": "scartata",
+   "qualita": 0.0003760555048461685,
+   "basso": -0.004006168000014648,
+   "alto": 0.005893958012615528,
+   "anni": 0.47058823529411764
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Cacciatore",
+   "chiave": "[\"Cacciatore\", \"ampiezza\", [[\"candele\", 10], [\"volte\", 1.5], [\"verso\", \"meno\"]]]",
+   "nome": "range meno di 1,5 volte la media di 10 candele",
+   "esito": "scartata",
+   "qualita": -0.0032959281616691694,
+   "basso": -0.010820275516102495,
+   "alto": 0.004272518600381695,
+   "anni": 0.29411764705882354
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Grilletto",
+   "chiave": "[\"Grilletto\", \"velocità\", [[\"candele\", 3]]]",
+   "nome": "Model#1 entro 3 candele dal turtle soup",
+   "esito": "scartata",
+   "qualita": -0.004415391390056131,
+   "basso": -0.008838971435961072,
+   "alto": -0.0003270907960125783,
+   "anni": 0.29411764705882354
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Grilletto",
+   "chiave": "[\"Grilletto\", \"velocità\", [[\"candele\", 2]]]",
+   "nome": "Model#1 entro 2 candele dal turtle soup",
+   "esito": "scartata",
+   "qualita": -0.0036117620289052663,
+   "basso": -0.008802223425907757,
+   "alto": 0.0016986175716289592,
+   "anni": 0.35294117647058826
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Livelli",
+   "chiave": "[\"Livelli\", \"volatilità\", [[\"candele\", 50], [\"volte\", 2.0], [\"verso\", \"meno\"]]]",
+   "nome": "stop meno di 2 volte la volatilità di 50 ore",
+   "esito": "scartata",
+   "qualita": -0.0015311875248759516,
+   "basso": -0.005640964514141982,
+   "alto": 0.0025683795171092365,
+   "anni": 0.47058823529411764
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Livelli",
+   "chiave": "[\"Livelli\", \"volatilità\", [[\"candele\", 14], [\"volte\", 1.0], [\"verso\", \"meno\"]]]",
+   "nome": "stop meno di 1 volta la volatilità di 14 ore",
+   "esito": "scartata",
+   "qualita": 0.0010557102832369387,
+   "basso": -0.002603314109375811,
+   "alto": 0.00490127500954882,
+   "anni": 0.5882352941176471
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Key level",
+   "chiave": "[\"Key level\", \"livello\", [[\"tf\", \"D1\"], [\"indietro\", 2]]]",
+   "nome": "presa l'estremo del giorno, 2 candele fa",
+   "esito": "scartata",
+   "qualita": -0.0053269373879833715,
+   "basso": -0.0111955826383506,
+   "alto": 0.0006864399449328535,
+   "anni": 0.23529411764705882
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Key level",
+   "chiave": "[\"Key level\", \"livello\", [[\"tf\", \"W1\"], [\"indietro\", 3]]]",
+   "nome": "presa l'estremo della settimana, 3 candele fa",
+   "esito": "scartata",
+   "qualita": -0.002853298385850982,
+   "basso": -0.01592113740717175,
+   "alto": 0.010075139388187779,
+   "anni": 0.5294117647058824
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Orario",
+   "chiave": "[\"Orario\", \"ora\", [[\"inizio\", 16], [\"durata\", 1]]]",
+   "nome": "scatta fra le 16 e le 17 NY",
+   "esito": "scartata",
+   "qualita": -0.001358841546686149,
+   "basso": -0.004342630806093018,
+   "alto": 0.0017634943935298476,
+   "anni": 0.35294117647058826
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Orario",
+   "chiave": "[\"Orario\", \"ora\", [[\"inizio\", 7], [\"durata\", 1]]]",
+   "nome": "scatta fra le 07 e le 08 NY",
+   "esito": "scartata",
+   "qualita": -0.005180875964331337,
+   "basso": -0.01125806838286323,
+   "alto": 0.0018278446520474311,
+   "anni": 0.17647058823529413
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Bias",
+   "chiave": "[\"Bias\", \"posizione\", [[\"tf\", \"D1\"], [\"frazione\", 0.25]]]",
+   "nome": "entra nel 25% buono del giorno prima",
+   "esito": "scartata",
+   "qualita": -0.011642253025348244,
+   "basso": -0.023037574896680832,
+   "alto": 0.0008557290014832718,
+   "anni": 0.17647058823529413
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Bias",
+   "chiave": "[\"Bias\", \"direzione\", [[\"tf\", \"W1\"], [\"verso\", \"a favore\"]]]",
+   "nome": "la settimana prima è a favore",
+   "esito": "scartata",
+   "qualita": -0.005370226580345597,
+   "basso": -0.014985214481079501,
+   "alto": 0.0025167150757156075,
+   "anni": 0.35294117647058826
+  }
+ ]
 }

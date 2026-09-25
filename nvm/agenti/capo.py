@@ -13,16 +13,17 @@ piano, mai lo strumento; e ogni peso si legge.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 
+from nvm.agenti import inventate
 from nvm.agenti.conferme import AllaRomeo, Contesto, KeyLevel, Liquidita, Orario
 from nvm.prova.base import Risultato
 from nvm.prova.campo import Uscita
 from nvm.tempo import TF
 
-COLONNE = (
+COLONNE_BASE = (
     "key level: massimo preso", "key level: arriva al massimo", "key level: rejection block",
     "key level: fvg", "key level: non so",
     "ora 21-01", "ora 01-05", "ora 05-09", "ora 09-13", "ora 13-17",
@@ -38,6 +39,10 @@ COLONNE = (
     # La liquidita' presa dalla manipolazione (la terza gamba di Romeo), aggiunta il 25/09/2026.
     "liquidità presa prima", "liquidità presa sopra il CRT",
 )
+# Le domande che gli agenti hanno inventato e che la palestra ha tenuto
+# (`nvm/agenti/inventate.py`): colonne in piu', dopo quelle di base.
+INVENTATE = inventate.tenute()
+COLONNE = COLONNE_BASE + tuple(f"💡 {d.agente}: {d.nome}" for d in INVENTATE)
 # Penalita' L2, fissata nella scheda.
 PENALITA = 1.0
 # Dal vivo il Capo si riaddestra pesando di piu' i casi recenti: il peso di un
@@ -61,7 +66,8 @@ def pesi_per_eta(quando: np.ndarray, adesso: int, emivita: float = EMIVITA_ANNI)
 
 
 def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contesto],
-         ar: Optional[AllaRomeo] = None, liq: Optional[Liquidita] = None) -> np.ndarray:
+         ar: Optional[AllaRomeo] = None, liq: Optional[Liquidita] = None,
+         inv: Optional[Sequence[float]] = None) -> np.ndarray:
     """Le colonne del Capo per un'operazione, nell'ordine di `COLONNE`."""
     x = np.zeros(len(COLONNE))
     if kl is None:
@@ -86,6 +92,8 @@ def riga(r: Risultato, kl: Optional[KeyLevel], ora: Orario, ctx: Optional[Contes
         x[22:26] = ar.londra, ar.new_york, ar.annidato, bool(ar.sconto)
     if liq is not None:
         x[26:28] = liq.presa, liq.sopra_il_crt
+    if inv is not None and len(inv):
+        x[len(COLONNE_BASE):len(COLONNE_BASE) + len(inv)] = inv
     return x
 
 

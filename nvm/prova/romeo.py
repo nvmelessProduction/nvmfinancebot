@@ -204,6 +204,9 @@ def candidati(ore: Minuti, minuti: Minuti, dal: int, al: int) -> tuple[list[Risu
     fine = int(ore.t[-1]) + ore.passo
     g = grandi(ore, fine)
     settimane = costruisci(ore, TF.W1).chiuse_entro(fine)
+    from nvm.agenti import capo as il_capo, inventate
+    idee = il_capo.INVENTATE
+    ctx = inventate.Contesto.da(ore, fine) if idee else None
     coppie = [(alto, basso, ore) for alto, basso in COPPIE_ORE]
     if len(minuti):
         coppie.append((*COPPIA_MINUTI, minuti))
@@ -214,7 +217,8 @@ def candidati(ore: Minuti, minuti: Minuti, dal: int, al: int) -> tuple[list[Risu
         sopra = costruisci(ore, SOPRA[alto]).chiuse_entro(fine)
         for r in opera(alte, basse, dal, al):
             ops.append(r)
-            righe.append(riga(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)))
+            righe.append(riga(r, *tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g),
+                              inventate.rispondi_tutte(idee, r, ctx)))
     return ops, np.array(righe, dtype=float).reshape(len(ops), len(COLONNE))
 
 

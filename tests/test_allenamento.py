@@ -116,6 +116,6 @@ def test_la_diagnosi_e_gli_effetti_parlano_dei_segnali():
 
 def test_la_memoria_si_salva_e_si_rilegge(tmp_path):
     p = tmp_path / "allenamento.json"
-    assert al.leggi_memoria(p) == {"prove": [], "ultimo": {}}
+    assert al.leggi_memoria(p) == {"prove": [], "idee": [], "ultimo": {}}
     al.salva_memoria({"prove": [{"agente": "Livelli", "media": np.float64(0.1)}], "ultimo": {"settimana": "2026-S39"}}, p)
     assert al.leggi_memoria(p)["prove"][0]["media"] == 0.1

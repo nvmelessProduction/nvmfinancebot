@@ -19,9 +19,9 @@ from pathlib import Path
 
 import numpy as np
 
-from nvm.agenti import manopole
+from nvm.agenti import inventate, manopole
 from nvm.agenti.cacciatore import Variante
-from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
+from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.dati.minuti import PUNTO, carica_periodo
 from nvm.dati.ore import carica as carica_ore
@@ -58,7 +58,8 @@ def _istante(anno: int) -> int:
 def tabella(numero: int, spread: float, radice: Path) -> Tabella:
     # Il nome porta l'impronta delle manopole degli agenti: una tabella fatta
     # con manopole diverse non si riusa mai per sbaglio.
-    nome = f"conf{numero}" + (f"-spread{spread:g}" if spread != 1 else "") + f"-{manopole.impronta()}.npz"
+    nome = (f"conf{numero}" + (f"-spread{spread:g}" if spread != 1 else "")
+            + f"-{manopole.impronta()}{inventate.impronta(INVENTATE)}.npz")
     percorso = RADICE / "dati" / "tabelle" / nome
     if percorso.exists():
         return Tabella.carica(percorso)

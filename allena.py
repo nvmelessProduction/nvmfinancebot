@@ -14,13 +14,16 @@ canale equipe al primo avvio dopo l'aggiornamento.
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 
 import capo
-from nvm.agenti import manopole
+from nvm.agenti import inventate, manopole
+from nvm.agenti.capo import INVENTATE
 from nvm.prova import allenamento
 
 RADICE = Path(__file__).resolve().parent
@@ -42,18 +45,21 @@ def main() -> None:
     }
     memoria = allenamento.leggi_memoria()
     esito = allenamento.allena(basi, impostazioni, memoria["prove"], adesso, processi=a.processi,
-                               dire=lambda testo: print(testo, flush=True))
+                               dire=lambda testo: print(testo, flush=True), memoria_idee=memoria.get("idee", []))
     print(esito.rapporto, flush=True)
     settimana = datetime.fromtimestamp(adesso, tz=timezone.utc).strftime("%G-S%V")
     memoria["prove"] += esito.prove
+    memoria["idee"] = memoria.get("idee", []) + esito.prove_idee
     memoria["ultimo"] = {"settimana": settimana, "id": adesso, "rapporto": esito.rapporto, "cambiato": esito.cambiato}
     allenamento.salva_memoria(memoria)
     manopole.applica(esito.valori)
     manopole.salva(manopole.attuali())
-    # Il Capo del bot si riallena sempre sulla tabella delle manopole in uso: se nessuno e' cambiato,
-    # la tabella c'e' gia' e ci vuole poco.
-    print("Riaddestro il Capo del bot sulle manopole in uso.", flush=True)
-    capo.salva_per_il_vivo(capo.tabella(1, 1.0, radice))
+    if esito.idee:
+        inventate.salva(INVENTATE + esito.idee)
+    # Il Capo del bot si riallena sempre sulle manopole e sulle domande in uso. In un processo
+    # nuovo: le domande inventate sono colonne del Capo, e le colonne si leggono all'avvio.
+    print("Riaddestro il Capo del bot sulle manopole e sulle domande in uso.", flush=True)
+    subprocess.run([sys.executable, str(RADICE / "capo.py"), "--vivo", "--cartella", str(radice)], check=True)
 
 
 if __name__ == "__main__":

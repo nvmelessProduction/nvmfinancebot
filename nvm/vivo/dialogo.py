@@ -16,7 +16,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.capo import COLONNE, Capo
+from nvm.agenti.capo import COLONNE, COLONNE_BASE, INVENTATE, Capo
 from nvm.vivo.messaggi import erre, quando
 
 # Quali colonne del Capo vengono da quale agente.
@@ -28,6 +28,9 @@ AGENTI: dict[str, tuple[int, ...]] = {
     "Orario": (5, 6, 7, 8, 9, 22, 23),
     "Bias": (10, 11, 12, 13, 25),
 }
+# Le domande che gli agenti hanno inventato sono loro: il Capo le conta nella loro voce.
+for _i, _d in enumerate(INVENTATE):
+    AGENTI[_d.agente] = AGENTI.get(_d.agente, ()) + (len(COLONNE_BASE) + _i,)
 # Sotto questa spinta un agente non si schiera.
 NEUTRO = 0.02
 
