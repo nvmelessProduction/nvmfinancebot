@@ -192,8 +192,9 @@ turtle soup esclusa:
   il 46% delle volte contro il 32%; l'R medio resta simile, perché quel
   primo target è più vicino.
 - Il Capo, anno per anno, la impara come uno dei pesi più forti sul primo
-  target. La somiglianza a Romeo, fuori campione per trimestre, le
-  riconosce a 0,62 invece di 0,60.
+  target. La somiglianza a Romeo, fuori campione per trimestre, sui primi
+  36 casi le riconosceva a 0,62 invece di 0,60; con 45 casi (più minuti)
+  0,56 con e senza: su Romeo il guadagno non si è ripetuto.
 
 Provate insieme e lasciate fuori, perché cambiavano poco o niente:
 l'estremo del giorno, della settimana e del mese prima presi, la sessione

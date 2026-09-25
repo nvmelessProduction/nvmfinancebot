@@ -138,17 +138,22 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   liquidità lasciata prima?" e "l'ha ripresa fuori dal CRT?". Le scelte di
   Romeo del 2023 ce l'hanno molto più spesso (44% contro 27%; fuori dal
   CRT 33% contro 11%). Il Capo la impara da solo come uno dei segnali più
-  forti; fuori campione riconosce Romeo meglio (0,62 invece di 0,60) e
-  sceglie meglio (+0,055 R invece di +0,041 sul 2023). Provate e lasciate
-  fuori altre sette domande che non aiutavano (`registro/tentativi.md`).
+  forti. Sul riconoscere Romeo il guadagno della prima misura (0,62
+  invece di 0,60) non si è ripetuto con più minuti (45 sue scelte: 0,56 con
+  e senza); ritrova un'entrata di Romeo in più (7 invece di 6). Provate e
+  lasciate fuori altre sette domande che non aiutavano
+  (`registro/tentativi.md`).
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna
   aiuta, e restano scritte nel registro e rifacibili con `banco.py`. Il caso
   per caso dice dove sta il resto: Romeo entra sul minuto su un turtle
   soup della liquidità della giornata (il minimo della sessione, il secondo
-  massimo), non solo sul lato del CRT. Si riprova con i minuti di GBPUSD
-  (gennaio–maggio 2023, in scaricamento).
+  massimo), non solo sul lato del CRT. Provato anche questo, con i minuti di
+  GBPUSD: il Grilletto sulla liquidità della sessione non ritrova le sue
+  entrate sul minuto meglio di quello di oggi. Con i dati di prezzo da soli
+  quelle entrate non si ricostruiscono: dipendono da livelli che Romeo
+  sceglie lui.
 
 ### Cosa serve da te
 
