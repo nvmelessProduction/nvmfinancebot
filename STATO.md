@@ -173,6 +173,31 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   da +0,121 a +0,363 R a settimana, meglio nell'82% degli anni, entrate di
   Romeo ritrovate 5 → 5. Le altre 18 non sono bastate. Il rapporto arriva
   in équipe al primo avvio dopo l'aggiornamento.
+- **Un cervello che si allena da solo (25/09, giorno).** Su indicazione
+  dell'utente (*"non devono avere obblighi… devono potersi migliorare in
+  autonomia in ogni dettaglio"*):
+  - **niente recinti**: ogni manopola si sposta di un passo senza limiti
+    fissi; anche il Rischio impara da solo quanto puntare;
+  - **si allenano le prestazioni, non il guadagno**: una modifica resta se
+    alza la qualità delle operazioni (rendimento diviso per quanto oscilla),
+    che non cambia puntando di più o aprendo di più; uno stop enorme la
+    peggiora da solo;
+  - **l'asticella cresce con tutte le prove fatte da sempre**, per non
+    imparare il caso;
+  - **il pareggio e due uscite nuove si imparano** (idea invalidata, troppo
+    lenta), anche nel bot vero con la chiusura a mercato su MT5;
+  - **gli agenti inventano**: ognuno ha i mattoni del suo mestiere e ogni
+    settimana inventa due domande nuove; quelle che migliorano diventano
+    colonne del Capo e il bot le fa dal vivo;
+  - **più veloce**: decide 5 secondi dopo la chiusura della candela (prima
+    20–80), apre gli ordini prima dei messaggi, e non rifà due volte lo
+    stesso calcolo (un giro da 4,8 a 2,8 s);
+  - **un cervello ad alberi per il Capo** è pronto e provato: oggi non fa
+    meglio della regressione, perché il limite sono le informazioni, non il
+    cervello.
+  La palestra di oggi: tenuto il secondo obiettivo a 0,75 del range (qualità
+  +0,005 → +0,017, drawdown 216 → 170 R); nessuna delle 12 idee inventate
+  né le uscite nuove sono ancora abbastanza sicure.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna
