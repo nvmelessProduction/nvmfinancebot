@@ -89,7 +89,7 @@ def operazioni(numero: int, base, fine: int, capo: Capo, minuti: Minuti) -> Bot:
     g = grandi(base, fine)
     settimane = costruisci(base, TF.W1).chiuse_entro(fine)
     idee = INVENTATE
-    ctx = inventate.Contesto.da(base, fine) if idee else None
+    ctx = inventate.Contesto.da(base, fine, g) if idee else None
     if len(minuti):
         alto, basso = COPPIA_MINUTI[numero > 4]
         coppie.append((alto, basso, minuti))

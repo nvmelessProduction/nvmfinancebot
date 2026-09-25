@@ -228,9 +228,15 @@ def test_se_il_prezzo_e_gia_oltre_lo_stop_non_apre():
 # --- l'equipe e la riunione ---
 
 def test_ogni_agente_dice_la_sua():
-    testo = pareri(_una_decisione())
-    for agente in ("Cacciatore", "Grilletto", "Livelli", "Key level", "Orario", "Bias", "Capo"):
+    d = _una_decisione()
+    testo = pareri(d)
+    for agente in ("Cacciatore", "Grilletto", "Livelli", "Key level", "Orario", "Bias", "Allineamento", "Gap", "Capo"):
         assert agente in testo
+    # Allineamento e Gap guardano i quattro timeframe grandi e dicono cosa vedono.
+    assert d.sguardo is not None and len(d.sguardo.lati) == 4
+    riga = next(r for r in testo.splitlines() if r.startswith("Allineamento — "))
+    assert sum(n in riga for n in ("4 ore", "giorno", "settimana", "mese")) == 4
+    assert "FVG" in next(r for r in testo.splitlines() if r.startswith("Gap — "))
 
 
 def test_il_capo_salvato_da_le_stesse_stime():

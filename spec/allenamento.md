@@ -81,9 +81,13 @@ Ogni specialista ha dei mattoni del suo mestiere (`nvm/agenti/inventate.py`):
 | Cacciatore | l'ampiezza del CRT rispetto alla media delle candele prima (10, 20, 50; 0,5 … 2 volte; più o meno) |
 | Livelli | lo stop rispetto alla volatilità delle ore prima (14, 50; 0,5 … 4 volte; più o meno) |
 | Grilletto | quante candele fra il turtle soup e il Model#1 |
+| Allineamento | il bias di Romeo su più timeframe grandi insieme; i CRT più grandi armati su più livelli (`spec/panorama.md`) |
+| Gap | i fair value gap aperti fra l'ingresso e l'obiettivo o alle spalle; il gap del weekend da chiudere (`spec/panorama.md`) |
 
 Ogni settimana ognuno inventa 2 domande a caso fra quelle che non ha mai
-provato. La palestra le prova come colonna in più del Capo, con lo stesso
+provato. Un agente nuovo, prima, prova le domande del suo mestiere (sei a
+testa per Allineamento e Gap); per allenare solo lui: `python allena.py
+--agenti Allineamento,Gap`. La palestra le prova come colonna in più del Capo, con lo stesso
 esame delle manopole. Una domanda che passa (la migliore di ogni agente, poi
 tutte insieme sulla squadra finale) entra nel Capo come colonna nuova
 (`nvm/vivo/domande.json`), e il bot dal vivo la fa a ogni decisione. Ogni

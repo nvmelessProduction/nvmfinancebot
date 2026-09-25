@@ -101,7 +101,7 @@ def costruisci_tabella(
         settimane = costruisci(base, TF.W1).chiuse_entro(fine)
         # Per le domande inventate dagli agenti e tenute dalla palestra.
         idee = il_capo.INVENTATE
-        ctx = inventate.Contesto.da(base, fine) if idee else None
+        ctx = inventate.Contesto.da(base, fine, g) if idee else None
         for alto, basso in coppie:
             alte = costruisci(base, alto).chiuse_entro(fine)
             basse = costruisci(base, basso).chiuse_entro(fine)

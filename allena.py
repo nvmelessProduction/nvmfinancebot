@@ -2,6 +2,7 @@
 
     python allena.py                 # una settimana di palestra: prove, esami, rapporto
     python allena.py --processi 2    # con meno processori
+    python allena.py --agenti Allineamento,Gap   # solo alcuni agenti (per esempio i nuovi)
 
 Ogni specialista prova da solo a girare di un passo le sue manopole; resta
 solo quello che fa guadagnare di piu' con certezza, dentro i paletti. Se
@@ -33,6 +34,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cartella", default=str(RADICE / "dati" / "grezzi"))
     parser.add_argument("--processi", type=int, default=4)
+    parser.add_argument("--agenti", default="", help="solo questi agenti, separati da virgole")
     a = parser.parse_args()
     radice = Path(a.cartella)
     manopole.carica_e_applica()
@@ -45,7 +47,8 @@ def main() -> None:
     }
     memoria = allenamento.leggi_memoria()
     esito = allenamento.allena(basi, impostazioni, memoria["prove"], adesso, processi=a.processi,
-                               dire=lambda testo: print(testo, flush=True), memoria_idee=memoria.get("idee", []))
+                               dire=lambda testo: print(testo, flush=True), memoria_idee=memoria.get("idee", []),
+                               solo=set(a.agenti.split(",")) if a.agenti else None)
     print(esito.rapporto, flush=True)
     settimana = datetime.fromtimestamp(adesso, tz=timezone.utc).strftime("%G-S%V")
     memoria["prove"] += esito.prove

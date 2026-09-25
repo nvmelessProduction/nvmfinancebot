@@ -228,13 +228,18 @@ class Grandi:
         return cls(armati, decadono)
 
     def armato(self, verso: Verso, piu_grande_di: int, istante: int) -> bool:
+        return self.livelli(verso, piu_grande_di, istante) > 0
+
+    def livelli(self, verso: Verso, piu_grande_di: int, istante: int) -> int:
+        """Su quante grandezze piu' grandi c'era un CRT armato nello stesso verso a quell'istante."""
+        n = 0
         for (v, grandezza), inizi in self.armati.items():
             if v is not verso or grandezza <= piu_grande_di:
                 continue
             k = int(np.searchsorted(inizi, istante, side="right"))
             if k and self.decadono[(v, grandezza)][k - 1] > istante:
-                return True
-        return False
+                n += 1
+        return n
 
 
 def alla_romeo(s: Scatto, basse: Candele, settimane: Candele, grandi: Grandi) -> AllaRomeo:

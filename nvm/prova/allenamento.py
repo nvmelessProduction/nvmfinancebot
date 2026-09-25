@@ -277,10 +277,13 @@ def risposte(domande: list, basi: dict, coppie, dal: int, al: int) -> np.ndarray
     di `costruisci_tabella` (con le manopole in uso)."""
     from nvm.dati.candele import costruisci
     from nvm.prova.base import opera
+    from nvm.prova.romeo import grandi
     righe = []
+    if not domande:
+        return np.zeros((0, 0))
     for base in basi.values():
         fine = int(base.t[-1]) + base.passo
-        ctx = inventate.Contesto.da(base, fine)
+        ctx = inventate.Contesto.da(base, fine, grandi(base, fine))
         for alto, basso in coppie:
             alte, basse = costruisci(base, alto).chiuse_entro(fine), costruisci(base, basso).chiuse_entro(fine)
             righe += [inventate.rispondi_tutte(domande, r, ctx) for r in opera(alte, basse, dal, al)]
@@ -351,17 +354,30 @@ def _v(x: Any) -> str:
     return str(x).replace(".", ",")
 
 
+def idee_della_settimana(agenti, gia: set[str], rng: np.random.Generator) -> list:
+    """Un agente nuovo prova prima le domande del suo mestiere (`inventate.PRIME`); poi inventa
+    ogni settimana IDEE_PER_AGENTE domande a caso fra quelle mai provate."""
+    idee = []
+    for agente in agenti:
+        prime = [d for d in inventate.PRIME.get(agente, []) if d.chiave not in gia]
+        idee += prime or inventate.inventa(agente, rng, gia, IDEE_PER_AGENTE)
+    return idee
+
+
 def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
-           dire: Callable[[str], None] = print, processi: int = 4, memoria_idee: list[dict] = ()) -> Esito:
-    """Una settimana di palestra: prove, invenzioni, esami, decisioni e rapporto."""
+           dire: Callable[[str], None] = print, processi: int = 4, memoria_idee: list[dict] = (),
+           solo: Optional[set[str]] = None) -> Esito:
+    """Una settimana di palestra: prove, invenzioni, esami, decisioni e rapporto.
+    `solo`: si allenano solo questi agenti (per esempio i nuovi, appena arrivati)."""
     settimana = adesso // SETTIMANA
     etichetta = datetime.fromtimestamp(adesso, tz=timezone.utc).strftime("%G-S%V")
     valori = manopole.attuali()
-    elenco = proposte(valori, memoria, settimana)
+    elenco = [x for x in proposte(valori, memoria, settimana) if solo is None or x[0] in solo]
     # Le invenzioni: ogni agente combina i suoi mattoni in domande mai provate.
     gia = {x["chiave"] for x in memoria_idee} | {d.chiave for d in il_capo.INVENTATE}
     rng = np.random.default_rng(settimana)
-    idee = [d for agente in manopole.AGENTI for d in inventate.inventa(agente, rng, gia, IDEE_PER_AGENTE)]
+    agenti = [a for a in dict.fromkeys(list(manopole.AGENTI) + list(inventate.MATTONI)) if solo is None or a in solo]
+    idee = idee_della_settimana(agenti, gia, rng)
     dire(f"{len(elenco)} prove sulle manopole e {len(idee)} idee nuove, più la squadra di oggi")
     senza_romeo = {k: v for k, v in impostazioni.items() if k != "romeo"}
     oggi = prova_tutti([valori], basi, impostazioni, 1)[0]
@@ -437,8 +453,11 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
              "le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), "
              f"con una certezza che cresce con le prove fatte da sempre ({k}) e nella maggior parte degli anni.", ""]
     registro_idee = []
-    for agente in manopole.AGENTI:
-        righe.append(f"• {agente}: {diagnosi(agente, oggi)}.")
+    for agente in agenti:
+        if agente in GRUPPI:
+            righe.append(f"• {agente}: {diagnosi(agente, oggi)}.")
+        else:
+            righe.append(f"• {agente}: sono nuovo, provo le domande del mio mestiere.")
         for j, d in enumerate(idee):
             if d.agente != agente:
                 continue

@@ -260,6 +260,49 @@ def _liquidita(d: Decisione) -> str:
     return "; nessuna liquidità presa prima della manipolazione"
 
 
+_GRANDI_BREVI = ("4 ore", "giorno", "settimana", "mese")
+
+
+def _in_prova(agente: str) -> str:
+    """Un agente nuovo parla, ma finche' la palestra non gli tiene una domanda il Capo non lo ascolta."""
+    from nvm.agenti.capo import INVENTATE
+    return "" if any(x.agente == agente for x in INVENTATE) else " (sto imparando: il Capo non mi ascolta ancora)"
+
+
+def _allineamento(d: Decisione) -> str:
+    sg = d.sguardo
+    if sg is None:
+        return "non so"
+    gruppi = {True: [], False: [], None: []}
+    for nome, lato in zip(_GRANDI_BREVI, sg.lati):
+        gruppi[lato].append(nome)
+    parti = [f"{titolo} {', '.join(gruppi[k])}" for k, titolo in ((True, "a favore:"), (False, "contro:"), (None, "neutri:"))
+             if gruppi[k]]
+    testo = " · ".join(parti)
+    if sg.livelli:
+        testo += f"; CRT più grandi armati nello stesso verso su {sg.livelli} livell{'o' if sg.livelli == 1 else 'i'}"
+    return testo + _in_prova("Allineamento")
+
+
+def _gap(d: Decisione) -> str:
+    sg = d.sguardo
+    if sg is None:
+        return "non so"
+    k = d.r.strumento
+    parti = []
+    if sg.fvg is not None:
+        tf, basso, alto = sg.fvg
+        dove = "delle 4 ore" if tf is TF.H4 else "del giorno"
+        parti.append(f"FVG {dove} aperto verso l'obiettivo a {prezzo(k, basso)}–{prezzo(k, alto)}")
+    else:
+        parti.append("nessun FVG aperto verso l'obiettivo")
+    if sg.weekend is not None:
+        venerdi, a_favore = sg.weekend
+        parti.append(f"gap del weekend aperto (venerdì a {prezzo(k, venerdi)}), chiuderlo è "
+                     + ("a favore" if a_favore else "contro"))
+    return "; ".join(parti) + _in_prova("Gap")
+
+
 def pareri(d: Decisione, per: Optional[dict[str, float]] = None) -> str:
     """La scheda di una decisione per il canale équipe: cosa dice ognuno, cosa decide il Capo."""
     k, op, r = d.r.strumento, d.op, d.r
@@ -275,6 +318,8 @@ def pareri(d: Decisione, per: Optional[dict[str, float]] = None) -> str:
         f"Key level — {_key_level(d)}",
         f"Orario — {_orario(d)}",
         f"Bias — {_bias_riga(d)}",
+        f"Allineamento — {_allineamento(d)}",
+        f"Gap — {_gap(d)}",
         f"Romeo — {_romeo_riga(d)}",
         "",
         f"Capo: {d.p1:.0%} di arrivare al primo obiettivo, guadagno atteso {erre(d.atteso)} → "

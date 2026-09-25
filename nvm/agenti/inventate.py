@@ -23,15 +23,19 @@ from typing import Optional
 
 import numpy as np
 
+from nvm.agenti import panorama
 from nvm.agenti.cacciatore import Verso
-from nvm.dati.candele import Candele, costruisci
-from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, Minuti
+from nvm.agenti.conferme import GRANDEZZA
+from nvm.agenti.panorama import GRANDI, Contesto
+from nvm.dati.candele import Candele
+from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
 from nvm.tempo import NEW_YORK, PASSO, TF
 
 FILE = Path(__file__).resolve().parent.parent / "vivo" / "domande.json"
 GIORNI = ("lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica")
 NOMI_TF = {TF.H1: "l'ora", TF.H4: "le 4 ore", TF.D1: "il giorno", TF.W1: "la settimana", TF.MN: "il mese"}
-ARTICOLATO = {TF.H4: "delle 4 ore", TF.D1: "del giorno", TF.W1: "della settimana", TF.MN: "del mese"}
+ARTICOLATO = {TF.H1: "dell'ora", TF.H4: "delle 4 ore", TF.D1: "del giorno", TF.W1: "della settimana", TF.MN: "del mese"}
+DAL = {TF.H4: "dalle 4 ore", TF.D1: "dal giorno"}
 
 # I mattoni di ogni agente: famiglia -> i valori possibili di ogni parametro.
 MATTONI: dict[str, dict[str, dict[str, tuple]]] = {
@@ -56,7 +60,32 @@ MATTONI: dict[str, dict[str, dict[str, tuple]]] = {
     "Grilletto": {
         "velocità": {"candele": (1, 2, 3, 5, 8)},
     },
+    # Gli agenti nuovi del 25/09/2026 (`nvm/agenti/panorama.py`).
+    "Allineamento": {
+        "concordi": {"da": ("H4", "D1"), "quanti": (2, 3, 4), "verso": ("a favore", "contro")},
+        "coppia": {"primo": ("H4", "D1", "W1"), "secondo": ("D1", "W1", "MN"), "verso": ("a favore", "contro")},
+        "annidati": {"livelli": (2, 3)},
+    },
+    "Gap": {
+        "fvg": {"tf": ("H1", "H4", "D1", "W1"), "candele": (20, 50, 100), "dove": ("verso l'obiettivo", "alle spalle"),
+                "tipo": ("qualunque", "nel verso", "contro verso")},
+        "weekend": {"soglia": (0.05, 0.1, 0.25, 0.5), "verso": ("da chiudere a favore", "da chiudere contro")},
+    },
 }
+
+
+def _d(agente: str, famiglia: str, **p) -> "Domanda":
+    return Domanda(agente, famiglia, tuple(p.items()))
+
+
+def valida(d: "Domanda") -> bool:
+    """Le combinazioni di mattoni che hanno senso."""
+    p = d.p
+    if d.famiglia == "concordi":
+        return p["quanti"] <= len(GRANDI) - GRANDI.index(TF(p["da"]))
+    if d.famiglia == "coppia":
+        return GRANDI.index(TF(p["primo"])) < GRANDI.index(TF(p["secondo"]))
+    return True
 
 
 @dataclass(frozen=True)
@@ -97,6 +126,17 @@ class Domanda:
             return f"stop {p['verso']} di {p['volte']:g} {_volte(p['volte'])} la volatilità di {p['candele']} ore".replace(".", ",")
         if f == "velocità":
             return f"Model#1 entro {p['candele']} candel{'a' if p['candele'] == 1 else 'e'} dal turtle soup"
+        if f == "concordi":
+            return f"almeno {p['quanti']} timeframe {DAL[TF(p['da'])]} in su {p['verso']}"
+        if f == "coppia":
+            return f"{NOMI_TF[TF(p['primo'])]} e {NOMI_TF[TF(p['secondo'])]} {p['verso']}"
+        if f == "annidati":
+            return f"dentro CRT più grandi su {p['livelli']} livelli"
+        if f == "fvg":
+            tipo = {"qualunque": "", "nel verso": " nel verso", "contro verso": " contro verso"}[p["tipo"]]
+            return f"FVG{tipo} {ARTICOLATO[TF(p['tf'])]} aperto {p['dove']} (ultime {p['candele']} candele)"
+        if f == "weekend":
+            return f"gap del weekend aperto, {p['verso']} (almeno {p['soglia']:g} del giorno medio)".replace(".", ",")
         return f
 
     def come_dati(self) -> dict:
@@ -105,6 +145,28 @@ class Domanda:
     @classmethod
     def da_dati(cls, d: dict) -> "Domanda":
         return cls(d["agente"], d["famiglia"], tuple(tuple(x) for x in d["parametri"]))
+
+
+# Le prime domande di un agente nuovo: il suo mestiere, prima di inventare a caso.
+def _prime() -> dict[str, list[Domanda]]:
+    return {
+        "Allineamento": [
+            _d("Allineamento", "concordi", da="H4", quanti=3, verso="a favore"),
+            _d("Allineamento", "concordi", da="H4", quanti=3, verso="contro"),
+            _d("Allineamento", "concordi", da="H4", quanti=4, verso="a favore"),
+            _d("Allineamento", "coppia", primo="D1", secondo="W1", verso="a favore"),
+            _d("Allineamento", "coppia", primo="W1", secondo="MN", verso="a favore"),
+            _d("Allineamento", "annidati", livelli=2),
+        ],
+        "Gap": [
+            _d("Gap", "fvg", tf="H4", candele=50, dove="verso l'obiettivo", tipo="qualunque"),
+            _d("Gap", "fvg", tf="D1", candele=50, dove="verso l'obiettivo", tipo="qualunque"),
+            _d("Gap", "fvg", tf="H4", candele=50, dove="alle spalle", tipo="qualunque"),
+            _d("Gap", "fvg", tf="D1", candele=20, dove="verso l'obiettivo", tipo="contro verso"),
+            _d("Gap", "weekend", soglia=0.1, verso="da chiudere a favore"),
+            _d("Gap", "weekend", soglia=0.1, verso="da chiudere contro"),
+        ],
+    }
 
 
 def _volte(x: float) -> str:
@@ -122,25 +184,12 @@ def inventa(agente: str, rng: np.random.Generator, gia: set[str], quante: int = 
         parametri = tuple((k, v[int(rng.integers(len(v)))]) for k, v in famiglie[famiglia].items())
         parametri = tuple((k, v.item() if hasattr(v, "item") else v) for k, v in parametri)
         d = Domanda(agente, famiglia, parametri)
-        if d.chiave not in gia and all(d.chiave != x.chiave for x in nuove):
+        if valida(d) and d.chiave not in gia and all(d.chiave != x.chiave for x in nuove):
             nuove.append(d)
     return nuove
 
 
 # --- Le risposte ------------------------------------------------------------------------
-
-@dataclass
-class Contesto:
-    """Le candele di uno strumento che servono alle domande, dalle ore: chiuse entro `fine`."""
-
-    ore: Candele
-    candele: dict
-
-    @classmethod
-    def da(cls, ore: Minuti, fine: int) -> "Contesto":
-        tutte = {tf: costruisci(ore, tf).chiuse_entro(fine) for tf in (TF.H4, TF.D1, TF.W1, TF.MN)}
-        return cls(costruisci(ore, TF.H1).chiuse_entro(fine), tutte)
-
 
 def _prima(c: Candele, t: int, indietro: int = 1) -> int:
     """L'indice della candela chiusa `indietro` volte prima di t (-1 se non c'e')."""
@@ -225,7 +274,41 @@ def rispondi(domanda: Domanda, r, ctx: Contesto) -> float:
         return float(rapporto > p["volte"] if p["verso"] == "più" else rapporto < p["volte"])
     if f == "velocità":
         return float((t - s.turtle_soup_inizio) / PASSO[r.basso_tf] <= p["candele"] + 1)
+    if f in ("concordi", "coppia"):
+        verso = "a favore" == p["verso"]
+        tfs = GRANDI[GRANDI.index(TF(p["da"])):] if f == "concordi" else (TF(p["primo"]), TF(p["secondo"]))
+        lati = [panorama.a_favore(panorama.bias_a(ctx.candele[x], t), crt.verso) for x in tfs]
+        quanti = sum(v is verso for v in lati)
+        return float(quanti >= (p["quanti"] if f == "concordi" else 2))
+    if f == "annidati":
+        if ctx.grandi is None:
+            return 0.0
+        return float(ctx.grandi.livelli(crt.verso, GRANDEZZA.get(crt.alto_tf, 0), t) >= p["livelli"])
+    if f == "fvg":
+        tf = TF(p["tf"])
+        # Verso l'obiettivo: fra l'ingresso e l'altro lato del CRT; alle spalle: la stessa distanza dietro.
+        lato = crt.crt_low if short else crt.crt_high
+        da, a = (r.ingresso, lato) if p["dove"] == "verso l'obiettivo" else (r.ingresso, 2 * r.ingresso - lato)
+        b = ctx.buchi(tf)
+        trovati = panorama.aperti(b, ctx.tf(tf), t, p["candele"], da, a)
+        if p["tipo"] != "qualunque":
+            nel_verso = b.rialzista[trovati] != short
+            trovati = trovati[nel_verso if p["tipo"] == "nel verso" else ~nel_verso]
+        return float(len(trovati) > 0)
+    if f == "weekend":
+        ap = ctx.aperture()
+        j = panorama.gap_della_settimana(ap, t)
+        if j is None or ap.chiuso[j] <= t or ap.giorno_medio[j] <= 0:
+            return 0.0
+        if abs(ap.apertura[j] - ap.prima[j]) < p["soglia"] * ap.giorno_medio[j]:
+            return 0.0
+        # Un gap in su si chiude scendendo: e' a favore di uno short.
+        chiude_a_favore = (ap.apertura[j] > ap.prima[j]) == short
+        return float(chiude_a_favore if p["verso"] == "da chiudere a favore" else not chiude_a_favore)
     return 0.0
+
+
+PRIME = _prime()
 
 
 def rispondi_tutte(domande: list[Domanda], r, ctx: Optional[Contesto]) -> list[float]:

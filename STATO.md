@@ -209,6 +209,14 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   e corretto nel frattempo: due CRT uno dentro l'altro che scattano sullo
   stesso turtle soup avevano lo stesso nome, e in équipe il messaggio
   sembrava doppio; ora il nome porta il CRT.
+- **Due agenti nuovi: Allineamento e Gap (25/09, sera).** L'Allineamento
+  guarda il bias di Romeo su 4 ore, giorno, settimana e mese, e su quanti
+  livelli ci sono CRT più grandi nello stesso verso; il Gap i fair value gap
+  ancora aperti e il gap del weekend (`spec/panorama.md`). Parlano nella
+  scheda di ogni decisione. Primo allenamento: le 6 domande del mestiere di
+  ognuno, sui vent'anni; nessuna migliora il Capo (tutte fra −0,008 e 0 di
+  qualità), quindi il Capo non li ascolta ancora. Ogni domenica ne
+  inventano due nuove, come gli altri.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna

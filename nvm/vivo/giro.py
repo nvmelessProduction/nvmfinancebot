@@ -21,7 +21,7 @@ from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.prova.base import Risultato, opera
 from nvm.prova.campo import Operazione
-from nvm.agenti import capo as capo_mod, inventate, manopole
+from nvm.agenti import capo as capo_mod, inventate, manopole, panorama
 from nvm.agenti.conferme import Grandi
 from nvm.tempo import TF
 
@@ -52,6 +52,8 @@ class Decisione:
     romeo_medio: Optional[float] = None
     # La risposta del Grilletto sulla liquidita' presa dalla manipolazione.
     liquidita: Optional[Liquidita] = None
+    # Cosa vedono Allineamento e Gap dai timeframe grandi.
+    sguardo: Optional[panorama.Sguardo] = None
 
     @property
     def entra(self) -> bool:
@@ -118,7 +120,9 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
         g = _grandi(ore, fine_ore)
         settimane = _candele(ore, TF.W1, fine_ore)
         idee = capo_mod.INVENTATE
-        ctx_idee = _ricorda(("idee", _impronta(ore), fine_ore), lambda: inventate.Contesto.da(ore, fine_ore)) if idee else None
+        # Le candele grandi: per Allineamento e Gap, e per le domande inventate.
+        ctx_idee = _ricorda(("idee", _impronta(ore), fine_ore, manopole.impronta()),
+                            lambda: inventate.Contesto.da(ore, fine_ore, g))
         for alto, basso in coppie:
             alte = _candele(base, alto, adesso)
             basse = _candele(base, basso, adesso)
@@ -132,7 +136,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                 decisioni.append(Decisione(
                     r, op, scadenza(r.scatto), kl, ora, ctx, float(p1[0]), float(q[0]), float(atteso[0]), x[0],
                     ar, float(capo.somiglianza(x)[0]) if capo.romeo is not None else None,
-                    float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq))
+                    float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq,
+                    panorama.sguardo(r, ctx_idee)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

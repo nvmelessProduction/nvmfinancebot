@@ -206,7 +206,7 @@ def candidati(ore: Minuti, minuti: Minuti, dal: int, al: int) -> tuple[list[Risu
     settimane = costruisci(ore, TF.W1).chiuse_entro(fine)
     from nvm.agenti import capo as il_capo, inventate
     idee = il_capo.INVENTATE
-    ctx = inventate.Contesto.da(ore, fine) if idee else None
+    ctx = inventate.Contesto.da(ore, fine, g) if idee else None
     coppie = [(alto, basso, ore) for alto, basso in COPPIE_ORE]
     if len(minuti):
         coppie.append((*COPPIA_MINUTI, minuti))

@@ -558,8 +558,8 @@
  ],
  "ultimo": {
   "settimana": "2026-S39",
-  "id": 1790329306,
-  "rapporto": "🏋️ Allenamento della settimana 2026-S39\nOgnuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), con una certezza che cresce con le prove fatte da sempre (43) e nella maggior parte degli anni.\n\n• Cacciatore: vado meglio con «mensile → giornaliero» (+0,054 R a operazione) e peggio con «dentro un CRT più grande» (+0,022 R).\n  💡 ho inventato «range più di 2 volte la media di 50 candele»: qualità +0,000 (fra −0,004 e +0,006), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «range meno di 1,5 volte la media di 10 candele»: qualità −0,003 (fra −0,011 e +0,004), meglio in 29% degli anni. ❌ non basta.\n• Grilletto: vado meglio con «secondo colpo» (+0,044 R a operazione) e peggio con «liquidità presa prima» (+0,010 R).\n  💡 ho inventato «Model#1 entro 3 candele dal turtle soup»: qualità −0,004 (fra −0,009 e −0,000), meglio in 29% degli anni. ❌ non basta.\n  💡 ho inventato «Model#1 entro 2 candele dal turtle soup»: qualità −0,004 (fra −0,009 e +0,002), meglio in 35% degli anni. ❌ non basta.\n  ↳ invalidazione 0 → 1: qualità +0,011 (fra −0,287 e +0,223), meglio in 29% degli anni. ❌ non basta.\n• Livelli: vado meglio con «stop largo (oltre metà range)» (+0,045 R a operazione) e peggio con «primo obiettivo oltre 2 R» (−0,012 R).\n  💡 ho inventato «stop meno di 2 volte la volatilità di 50 ore»: qualità −0,002 (fra −0,006 e +0,003), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «stop meno di 1 volta la volatilità di 14 ore»: qualità +0,001 (fra −0,003 e +0,005), meglio in 59% degli anni. ❌ non basta.\n  ↳ tempo 0 → 8: qualità +0,061 (fra −0,148 e +0,214), meglio in 59% degli anni. ❌ non basta.\n  ↳ secondo obiettivo oltre il lato 0,75 → 0,5: qualità −0,011 (fra −0,020 e −0,001), meglio in 12% degli anni. ❌ non basta.\n  ↳ secondo obiettivo oltre il lato 0,75 → 1,0: qualità +0,000 (fra −0,012 e +0,011), meglio in 47% degli anni. ❌ non basta.\n• Key level: vado meglio con «FVG» (+0,058 R a operazione) e peggio con «massimo preso» (−0,016 R).\n  💡 ho inventato «presa l'estremo del giorno, 2 candele fa»: qualità −0,005 (fra −0,011 e +0,001), meglio in 24% degli anni. ❌ non basta.\n  💡 ho inventato «presa l'estremo della settimana, 3 candele fa»: qualità −0,003 (fra −0,016 e +0,010), meglio in 53% degli anni. ❌ non basta.\n• Orario: vado meglio con «ora di Londra di Romeo» (+0,069 R a operazione) e peggio con «fuori dalle ore di Romeo» (−0,005 R).\n  💡 ho inventato «scatta fra le 16 e le 17 NY»: qualità −0,001 (fra −0,004 e +0,002), meglio in 35% degli anni. ❌ non basta.\n  💡 ho inventato «scatta fra le 07 e le 08 NY»: qualità −0,005 (fra −0,011 e +0,002), meglio in 18% degli anni. ❌ non basta.\n• Bias: vado meglio con «a sconto» (+0,039 R a operazione) e peggio con «range a favore» (+0,003 R).\n  💡 ho inventato «entra nel 25% buono del giorno prima»: qualità −0,012 (fra −0,023 e +0,001), meglio in 18% degli anni. ❌ non basta.\n  💡 ho inventato «la settimana prima è a favore»: qualità −0,005 (fra −0,015 e +0,003), meglio in 35% degli anni. ❌ non basta.\n\nCapo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità +0,017, +0,026 R a operazione sui vent'anni). Si resta così, e si riprova con altro.",
+  "id": 1790335357,
+  "rapporto": "🏋️ Allenamento della settimana 2026-S39\nOgnuno ha riletto i suoi vent'anni e ha provato da solo a migliorarsi. Una modifica resta se migliora le prestazioni, non il guadagno: la qualità di ogni operazione (quanto rende per quanto oscilla), con una certezza che cresce con le prove fatte da sempre (55) e nella maggior parte degli anni.\n\n• Allineamento: sono nuovo, provo le domande del mio mestiere.\n  💡 ho inventato «almeno 3 timeframe dalle 4 ore in su a favore»: qualità −0,002 (fra −0,007 e +0,004), meglio in 24% degli anni. ❌ non basta.\n  💡 ho inventato «almeno 3 timeframe dalle 4 ore in su contro»: qualità −0,008 (fra −0,017 e +0,001), meglio in 41% degli anni. ❌ non basta.\n  💡 ho inventato «almeno 4 timeframe dalle 4 ore in su a favore»: qualità −0,001 (fra −0,004 e +0,002), meglio in 41% degli anni. ❌ non basta.\n  💡 ho inventato «il giorno e la settimana a favore»: qualità −0,000 (fra −0,006 e +0,006), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «la settimana e il mese a favore»: qualità −0,002 (fra −0,007 e +0,004), meglio in 47% degli anni. ❌ non basta.\n  💡 ho inventato «dentro CRT più grandi su 2 livelli»: qualità −0,004 (fra −0,012 e +0,005), meglio in 41% degli anni. ❌ non basta.\n• Gap: sono nuovo, provo le domande del mio mestiere.\n  💡 ho inventato «FVG delle 4 ore aperto verso l'obiettivo (ultime 50 candele)»: qualità −0,002 (fra −0,008 e +0,002), meglio in 41% degli anni. ❌ non basta.\n  💡 ho inventato «FVG del giorno aperto verso l'obiettivo (ultime 50 candele)»: qualità −0,005 (fra −0,013 e +0,003), meglio in 35% degli anni. ❌ non basta.\n  💡 ho inventato «FVG delle 4 ore aperto alle spalle (ultime 50 candele)»: qualità −0,003 (fra −0,009 e +0,002), meglio in 29% degli anni. ❌ non basta.\n  💡 ho inventato «FVG contro verso del giorno aperto verso l'obiettivo (ultime 20 candele)»: qualità −0,002 (fra −0,008 e +0,004), meglio in 29% degli anni. ❌ non basta.\n  💡 ho inventato «gap del weekend aperto, da chiudere a favore (almeno 0,1 del giorno medio)»: qualità −0,003 (fra −0,017 e +0,011), meglio in 53% degli anni. ❌ non basta.\n  💡 ho inventato «gap del weekend aperto, da chiudere contro (almeno 0,1 del giorno medio)»: qualità −0,002 (fra −0,005 e +0,001), meglio in 29% degli anni. ❌ non basta.\n\nCapo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità +0,017, +0,026 R a operazione sui vent'anni). Si resta così, e si riprova con altro.",
   "cambiato": false
  },
  "idee": [
@@ -706,6 +706,150 @@
    "basso": -0.014985214481079501,
    "alto": 0.0025167150757156075,
    "anni": 0.35294117647058826
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Allineamento",
+   "chiave": "[\"Allineamento\", \"concordi\", [[\"da\", \"H4\"], [\"quanti\", 3], [\"verso\", \"a favore\"]]]",
+   "nome": "almeno 3 timeframe dalle 4 ore in su a favore",
+   "esito": "scartata",
+   "qualita": -0.0022045734525366675,
+   "basso": -0.007406965913813117,
+   "alto": 0.004450679687094741,
+   "anni": 0.23529411764705882
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Allineamento",
+   "chiave": "[\"Allineamento\", \"concordi\", [[\"da\", \"H4\"], [\"quanti\", 3], [\"verso\", \"contro\"]]]",
+   "nome": "almeno 3 timeframe dalle 4 ore in su contro",
+   "esito": "scartata",
+   "qualita": -0.00790741922527422,
+   "basso": -0.01658934261882836,
+   "alto": 0.0010779298760674855,
+   "anni": 0.4117647058823529
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Allineamento",
+   "chiave": "[\"Allineamento\", \"concordi\", [[\"da\", \"H4\"], [\"quanti\", 4], [\"verso\", \"a favore\"]]]",
+   "nome": "almeno 4 timeframe dalle 4 ore in su a favore",
+   "esito": "scartata",
+   "qualita": -0.0011149329137146464,
+   "basso": -0.004136021881730386,
+   "alto": 0.002057869263858579,
+   "anni": 0.4117647058823529
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Allineamento",
+   "chiave": "[\"Allineamento\", \"coppia\", [[\"primo\", \"D1\"], [\"secondo\", \"W1\"], [\"verso\", \"a favore\"]]]",
+   "nome": "il giorno e la settimana a favore",
+   "esito": "scartata",
+   "qualita": -0.000235174781017429,
+   "basso": -0.00593285830242469,
+   "alto": 0.00572193005698186,
+   "anni": 0.47058823529411764
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Allineamento",
+   "chiave": "[\"Allineamento\", \"coppia\", [[\"primo\", \"W1\"], [\"secondo\", \"MN\"], [\"verso\", \"a favore\"]]]",
+   "nome": "la settimana e il mese a favore",
+   "esito": "scartata",
+   "qualita": -0.0018695810768633442,
+   "basso": -0.007355780680802295,
+   "alto": 0.004476883327815312,
+   "anni": 0.47058823529411764
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Allineamento",
+   "chiave": "[\"Allineamento\", \"annidati\", [[\"livelli\", 2]]]",
+   "nome": "dentro CRT più grandi su 2 livelli",
+   "esito": "scartata",
+   "qualita": -0.003981862552124385,
+   "basso": -0.012204136489019315,
+   "alto": 0.0049138419121981265,
+   "anni": 0.4117647058823529
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Gap",
+   "chiave": "[\"Gap\", \"fvg\", [[\"tf\", \"H4\"], [\"candele\", 50], [\"dove\", \"verso l'obiettivo\"], [\"tipo\", \"qualunque\"]]]",
+   "nome": "FVG delle 4 ore aperto verso l'obiettivo (ultime 50 candele)",
+   "esito": "scartata",
+   "qualita": -0.0024690532531518525,
+   "basso": -0.007558755205893144,
+   "alto": 0.0022154840319015376,
+   "anni": 0.4117647058823529
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Gap",
+   "chiave": "[\"Gap\", \"fvg\", [[\"tf\", \"D1\"], [\"candele\", 50], [\"dove\", \"verso l'obiettivo\"], [\"tipo\", \"qualunque\"]]]",
+   "nome": "FVG del giorno aperto verso l'obiettivo (ultime 50 candele)",
+   "esito": "scartata",
+   "qualita": -0.004910530548775712,
+   "basso": -0.012652438349462808,
+   "alto": 0.002842377989991867,
+   "anni": 0.35294117647058826
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Gap",
+   "chiave": "[\"Gap\", \"fvg\", [[\"tf\", \"H4\"], [\"candele\", 50], [\"dove\", \"alle spalle\"], [\"tipo\", \"qualunque\"]]]",
+   "nome": "FVG delle 4 ore aperto alle spalle (ultime 50 candele)",
+   "esito": "scartata",
+   "qualita": -0.0031900862860219006,
+   "basso": -0.008841771095408756,
+   "alto": 0.001989791077001774,
+   "anni": 0.29411764705882354
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Gap",
+   "chiave": "[\"Gap\", \"fvg\", [[\"tf\", \"D1\"], [\"candele\", 20], [\"dove\", \"verso l'obiettivo\"], [\"tipo\", \"contro verso\"]]]",
+   "nome": "FVG contro verso del giorno aperto verso l'obiettivo (ultime 20 candele)",
+   "esito": "scartata",
+   "qualita": -0.0018821229188171525,
+   "basso": -0.0075709044329357695,
+   "alto": 0.0037949342741758992,
+   "anni": 0.29411764705882354
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Gap",
+   "chiave": "[\"Gap\", \"weekend\", [[\"soglia\", 0.1], [\"verso\", \"da chiudere a favore\"]]]",
+   "nome": "gap del weekend aperto, da chiudere a favore (almeno 0,1 del giorno medio)",
+   "esito": "scartata",
+   "qualita": -0.0026434954526905405,
+   "basso": -0.016873882443059707,
+   "alto": 0.010702476883773706,
+   "anni": 0.5294117647058824
+  },
+  {
+   "settimana": "2026-S39",
+   "numero": 2960,
+   "agente": "Gap",
+   "chiave": "[\"Gap\", \"weekend\", [[\"soglia\", 0.1], [\"verso\", \"da chiudere contro\"]]]",
+   "nome": "gap del weekend aperto, da chiudere contro (almeno 0,1 del giorno medio)",
+   "esito": "scartata",
+   "qualita": -0.001805738311440581,
+   "basso": -0.0052230250833027216,
+   "alto": 0.0014973751692018858,
+   "anni": 0.29411764705882354
   }
  ]
 }
