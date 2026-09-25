@@ -113,7 +113,8 @@ come prima.
   Grilletto sulla liquidità presa (`spec/conferme.md`). Con tutte le
   colonne del Capo, provata fuori campione per trimestre, riconosceva le
   sue scelte come il caso (AUC 0,51); con le quattro risposte 0,59–0,60, con
-  la liquidità 0,62 (`registro/tentativi.md`).
+  la liquidità 0,62 sui primi 36 casi, 0,56 con e senza su 45
+  (`registro/tentativi.md`).
 - **Penalità L2: 10**, scelta fra 1, 10 e 100 allenando su tre trimestri
   del 2023 e provando sul quarto.
 - **Come arriva Romeo nelle decisioni: la fiducia in Romeo.** L'utente,
