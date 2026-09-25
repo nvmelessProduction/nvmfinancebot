@@ -30,7 +30,7 @@ from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.tempo import TF
 from nvm.vivo import autoanalisi, messaggi
-from nvm.vivo.ambiente import impostazioni
+from nvm.vivo.ambiente import impostazioni, leggi_env
 from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
     aggiorna_diario, aggiorna_pagelle, presentazioni, resoconto, spinte,
@@ -374,6 +374,19 @@ class Bot:
         (CARTELLA / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
         registra(CARTELLA, "riunione", settimana=settimana, testo=testo)
         self.stato.ultima_riunione = settimana
+        self.stato.salva(CARTELLA)
+        self.consegna()
+
+    def consegna(self) -> None:
+        """Le settimane dal vivo vanno alla palestra (`consegna.py`), se nel .env c'e' il GITHUB_TOKEN.
+        In un processo a parte: il bot non aspetta GitHub."""
+        if not leggi_env(RADICE / ".env").get("GITHUB_TOKEN"):
+            return
+        try:
+            subprocess.Popen([sys.executable, str(RADICE / "consegna.py"), "--solo-vivo"], cwd=RADICE,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as errore:
+            registra(CARTELLA, "errore", testo=f"consegna non partita: {errore!r}")
 
 
 def main() -> None:

@@ -17,3 +17,8 @@ __pycache__/
 .pytest_cache/
 # Lo stato del bot dal vivo: resta sulla macchina dove gira
 dati/vivo/
+
+# I dati preparati per la palestra (consegna.py): vanno nel ramo dati-vps, non qui
+dati/consegna/
+# I dati arrivati dalla VPS (importa_vps.py): restano sulla macchina
+dati/vps/

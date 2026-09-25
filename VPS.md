@@ -1,42 +1,74 @@
-# Scaricare lo storico sulla VPS
+# I dati dalla VPS alla palestra
 
-Serve una volta sola. Scarica vent'anni di prezzi al minuto, con bid e ask,
-per i sei strumenti. **Non opera**: scarica soltanto.
+La palestra degli agenti (`allena.py`) gira da Claude. Da lì Dukascopy
+blocca i download dei prezzi al minuto; dalla VPS no. E le settimane dal
+vivo nascono sulla VPS. Per questo la VPS scarica e spedisce, e la palestra
+riceve.
 
-Da un server condiviso Dukascopy blocca le richieste, dalla VPS no. Per
-questo si fa lì.
+Tre passi, una volta sola. Il bot può continuare a girare durante tutto.
 
-## 1. Prendere il progetto nuovo
+## 1. Scaricare vent'anni di prezzi al minuto
 
-Apri **PowerShell** sulla VPS e scrivi:
-
-```
-cd $HOME
-git clone -b claude/zealous-albattani-394cd9 https://github.com/nvmelessProduction/nvmfinancebot nvm-nuovo
-```
-
-Si crea la cartella `nvm-nuovo`, separata da quella del vecchio bot.
-
-## 2. Avviare
-
-Apri la cartella `nvm-nuovo` e fai **doppio clic su `scarica.bat`**.
+Nella cartella del bot sulla VPS (quella con `avvia.bat`), **doppio clic su
+`scarica.bat`**.
 
 - La prima volta prepara Python da solo: un paio di minuti.
 - Poi scarica un mese alla volta e scrive a che punto è.
-- **Ci mette parecchie ore.** Puoi chiudere la finestra quando vuoi: al
-  prossimo doppio clic riprende da dove era.
+- **Ci mette parecchie ore**, anche una notte. Puoi chiudere la finestra
+  quando vuoi: al prossimo doppio clic riprende da dove era.
 - Occupa qualche GB nella cartella `dati\grezzi`.
+- Alla fine scrive `Finito`.
 
-## 3. Quando ha finito
+## 2. La chiave per spedire (una volta sola)
 
-Scrive `Finito` e il rapporto dei controlli finisce in
-`dati\rapporto-dati.txt`. Dimmelo e mandami quel file: lo leggo e decidiamo
-se i dati sono buoni.
+La chiave è un segreto: **non mandarla a nessuno, nemmeno a Claude**. Va solo
+nel file `.env` della VPS, che non entra mai nel repository.
+
+1. Entra su **github.com** con il tuo account.
+2. In alto a destra, clic sulla tua foto → **Settings**.
+3. In fondo al menu a sinistra → **Developer settings**.
+4. **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+5. **Token name**: `bot VPS dati`. **Expiration**: la più lunga che ti offre.
+6. **Repository access** → **Only select repositories** → scegli
+   `nvmfinancebot`.
+7. **Permissions** → **Repository permissions** → **Contents** →
+   **Read and write**. Il resto lascialo com'è.
+8. In fondo, **Generate token**. Copia la chiave (inizia con `github_pat_`):
+   GitHub la mostra una volta sola.
+9. Sulla VPS, nella cartella del bot, apri il file `.env` con il **Blocco
+   note** e aggiungi in fondo una riga:
+
+   ```
+   GITHUB_TOKEN=la_chiave_che_hai_copiato
+   ```
+
+   Salva con lo stesso nome (`.env`, non `.env.txt`) e chiudi.
+
+Questa chiave può scrivere solo in questo repository. Se un giorno vuoi
+toglierla, la cancelli da GitHub (stesso posto del punto 4) e togli la riga
+dal `.env`.
+
+## 3. Spedire
+
+Quando `scarica.bat` ha finito, **doppio clic su `consegna.bat`**.
+
+- Fa candele da 15 minuti dai minuti scaricati (quindici volte più
+  leggere), ci aggiunge le decisioni e i risultati del bot dal vivo, e
+  spedisce tutto su GitHub in un ramo a parte, `dati-vps`, che non tocca il
+  codice.
+- Prima di spedire, toglie dal registro del bot ogni valore segreto del
+  `.env` (token, password): i segreti non escono mai dalla VPS.
+- Alla fine scrive `GitHub: spedito.` Dillo a Claude: prende i dati e li
+  porta in palestra.
+- Da lì in poi il bot spedisce da solo le settimane dal vivo, ogni sabato
+  dopo la riunione.
 
 ## Se qualcosa va storto
 
 | Cosa vedi | Cosa vuol dire |
 |---|---|
-| `TroppeRichieste` | Dukascopy ha smesso di rispondere per un po'. Aspetta mezz'ora e rilancia |
+| `TroppeRichieste` | Dukascopy ha smesso di rispondere per un po'. Aspetta mezz'ora e rilancia `scarica.bat` |
+| `Manca GITHUB_TOKEN nel file .env` | manca la riga del punto 2.9, o il file non si chiama `.env` |
+| `GitHub non accetta i dati` | la chiave è sbagliata, scaduta o senza **Contents: Read and write**: rifai il punto 2 |
 | `python non è riconosciuto` | manca Python. Installalo da python.org, spuntando "Add Python to PATH" |
-| qualsiasi altro errore | mandami una foto della finestra |
+| qualsiasi altro errore | manda a Claude una foto della finestra (senza la chiave in vista) |
