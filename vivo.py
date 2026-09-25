@@ -28,7 +28,7 @@ from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
-from nvm.dati.strumenti import BASE
+from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import TF
 from nvm.vivo import autoanalisi, messaggi
 from nvm.vivo.ambiente import impostazioni, leggi_env
@@ -43,14 +43,17 @@ from nvm.vivo.riunione import Storico, riunione
 from nvm.vivo.romeo_vivo import confronta as confronta_con_romeo
 from nvm.vivo.romeo_vivo import leggi_comando
 from nvm.prova.allenamento import leggi_memoria
-from nvm.vivo.stato import Seguita, Stato, registra
-from nvm.vivo.telegram import Telegram
+from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
+from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
 
 RADICE = Path(__file__).resolve().parent
-# Gli strumenti su cui il bot opera dal vivo. Il bot ne conosce di piu' (`nvm/dati/strumenti.py`)
-# e impara da tutti quelli di cui ci sono i dati; dal vivo, per ora, i sei di partenza.
-STRUMENTI_VIVO = BASE
+# Gli strumenti su cui il bot opera dal vivo, sul conto demo: tutti quelli che conosce
+# (`nvm/dati/strumenti.py`: forex, oro e argento, petrolio, indici, crypto) che il broker ha.
+# L'utente, 25/09/2026: "testare tutto sul live sempre su mt5".
+STRUMENTI_VIVO = tuple(STRUMENTI)
+# Per quanto le decisioni finite restano nello stato, prima dell'archivio.
+TENERE = 14 * 86400
 CARTELLA = RADICE / "dati" / "vivo"
 RAMO = "claude/zealous-albattani-394cd9"
 ORARIE = 13000          # circa due anni: servono al key level del mensile
@@ -124,6 +127,10 @@ class Bot:
         manopole.carica_e_applica()
         self.imp = impostazioni(RADICE)
         self.tg = Telegram(self.imp)
+        # I messaggi dell'equipe di un giro: partono insieme alla fine, in pochi messaggi.
+        self._da_dire: list[str] = []
+        # Gli strumenti su cui si opera davvero: quelli di STRUMENTI_VIVO che il broker ha (si vede all'avvio).
+        self.strumenti: list[str] = list(STRUMENTI_VIVO)
         self.stato = Stato.carica(CARTELLA)
         self.capo = Capo.da_dati(_leggi("capo.json"))
         self.terminale = Terminale(self.imp.suffisso)
@@ -158,9 +165,18 @@ class Bot:
             self.allarme("Non so ancora l'ora del server del broker: aspetto che il mercato si muova.")
             time.sleep(60)
         self.stato.scarto = self.terminale.scarto
+        # Il broker puo' non avere tutti gli strumenti: quelli che mancano si saltano, e si dice quali.
+        self.strumenti, mancanti = [], []
         for strumento in STRUMENTI_VIVO:
-            self.basi[strumento] = self.terminale.orarie(strumento, ORARIE)
-            self.fini[strumento] = self.terminale.barre(strumento, QUARTI, 900)
+            if not self.terminale.esiste(strumento):
+                mancanti.append(strumento)
+                continue
+            try:
+                self.basi[strumento] = self.terminale.orarie(strumento, ORARIE)
+                self.fini[strumento] = self.terminale.barre(strumento, QUARTI, 900)
+                self.strumenti.append(strumento)
+            except ErroreMT5:
+                mancanti.append(strumento)
         adesso = time.time()
         if self.stato.ultimo_giro is None:
             self.stato.ultimo_giro = _su(adesso, 3600)
@@ -174,7 +190,9 @@ class Bot:
             self.tg.operativo(messaggi.aggiornato(riavvio.read_text(encoding="utf-8")))
             riavvio.unlink()
         else:
-            self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(STRUMENTI_VIVO), self.terminale.scarto))
+            self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(self.strumenti), self.terminale.scarto))
+        if mancanti:
+            self.tg.operativo(messaggi.mancanti(mancanti, len(self.strumenti)))
         self.prova_collegamento(solo_se_non_va=da_aggiornamento)
         if not self.imp.chat_equipe:
             self.tg.operativo(messaggi.allarme(
@@ -201,7 +219,7 @@ class Bot:
         """A ogni avvio: MT5 accetterebbe un ordine su ogni strumento? Lo dice sul
         canale operativo; dopo un aggiornamento, solo se qualcosa non va."""
         prove = []
-        for strumento in STRUMENTI_VIVO:
+        for strumento in self.strumenti:
             try:
                 e = self.terminale.prova_ordine(strumento, MAGIC)
                 prove.append((strumento, e.ok, e.messaggio))
@@ -273,29 +291,47 @@ class Bot:
             sys.exit(AGGIORNATO)
 
     def giro_veloce(self, quarto: int) -> None:
-        """La coppia 4 ore -> 15 minuti, ogni quarto d'ora."""
-        for strumento in STRUMENTI_VIVO:
-            self.fini[strumento] = _unisci(self.fini[strumento], self.terminale.barre(strumento, 20, 900), QUARTI)
+        """La coppia 4 ore -> 15 minuti, ogni quarto d'ora. Uno strumento alla volta: con tante
+        coppie, la prima non aspetta che il bot abbia guardato tutte le altre."""
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
-        self._decidi(giro_orario(self.fini, dal, quarto, self.capo, (COPPIA_VELOCE,), self.basi), quarto, 900)
+        for s in self.strumenti:
+            self.fini[s] = _unisci(self.fini[s], self.terminale.barre(s, 20, 900), QUARTI)
+            self._decidi(giro_orario({s: self.fini[s]}, dal, quarto, self.capo, (COPPIA_VELOCE,), {s: self.basi[s]}),
+                         quarto, 900)
         self.uscite(quarto)
         self.stato.ultimo_quarto = quarto
+        self.parla()
 
     def giro(self, ora: int) -> None:
-        for strumento in STRUMENTI_VIVO:
-            self.basi[strumento] = _unisci(self.basi[strumento], self.terminale.orarie(strumento, 50), ORARIE)
-        self.stato.scarto = self.terminale.scarto
         dal = max(self.stato.ultimo_giro + 1, ora - 86400)
+        # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini.
+        for s in self.strumenti:
+            self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
+            self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE), ora, 3600)
+        self.stato.scarto = self.terminale.scarto
         nuovi = armati(self.basi, dal, ora, COPPIE) + armati(self.fini, dal, ora, (COPPIA_VELOCE,))
         if nuovi:
-            self.tg.equipe(messaggi.armati(nuovi))
-        self._decidi(giro_orario(self.basi, dal, ora, self.capo, COPPIE), ora, 3600)
+            self._equipe(messaggi.armati(nuovi))
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
             self._finita(s, ora)
-        # Le seguite finite da piu' di un anno non servono piu' qui: stanno nel registro.
-        self.stato.seguite = [s for s in self.stato.seguite if s.esito is None or s.esito["quando"] > ora - 365 * 86400]
+        # Le seguite finite da piu' di due settimane vanno nell'archivio: con tanti strumenti lo
+        # stato, salvato ogni minuto, diventerebbe troppo grande. La riunione le rilegge.
+        vecchie = [s for s in self.stato.seguite if s.esito is not None and s.esito["quando"] <= ora - TENERE]
+        if vecchie:
+            archivia(CARTELLA, vecchie)
+            self.stato.seguite = [s for s in self.stato.seguite if s.esito is None or s.esito["quando"] > ora - TENERE]
         self.stato.ultimo_giro = ora
+        self.parla()
+
+    def _equipe(self, testo: str) -> None:
+        self._da_dire.append(testo)
+
+    def parla(self) -> None:
+        """I messaggi dell'equipe del giro, messi insieme: con tante coppie sarebbero troppi per Telegram."""
+        for testo in raggruppa(self._da_dire):
+            self.tg.equipe(testo)
+        self._da_dire.clear()
 
     def uscite(self, adesso: int) -> None:
         """Le uscite prima dello stop che gli agenti hanno imparato: idea invalidata o troppo lenta."""
@@ -308,7 +344,7 @@ class Bot:
             basse = costruisci(sorgente[v.strumento], TF(v.basso)).chiuse_entro(adesso)
             fatto = self.esecutore.uscita_anticipata(v, basse)
             if fatto is not None:
-                (self.tg.equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
+                (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
                 registra(CARTELLA, "uscita anticipata", chiave=v.chiave, motivo=v.uscita_anticipata)
 
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
@@ -324,13 +360,13 @@ class Bot:
                     aperte.add(d.chiave)
                     conto = self.terminale.conto()
         for fatto in da_dire:
-            (self.tg.equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
+            (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
         for d in decisioni:
             per = spinte(self.capo, d.x)
-            self.tg.equipe(messaggi.pareri(d, per))
+            self._equipe(messaggi.pareri(d, per))
             aperta = d.chiave in aperte
             if d.entra and adesso - d.r.quando > finestra:
-                self.tg.equipe(messaggi.saltata(d, "è scattata mentre il bot era spento"))
+                self._equipe(messaggi.saltata(d, "è scattata mentre il bot era spento"))
             op = d.op
             crt = d.r.scatto.crt if d.r.scatto is not None else None
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
@@ -364,12 +400,13 @@ class Bot:
         except Exception:
             # Un errore qui non deve mai fermare il giro: le operazioni vengono prima.
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        self.tg.equipe(testo + ("\n\n" + dove if dove else ""))
+        self._equipe(testo + ("\n\n" + dove if dove else ""))
         registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto,
                  alternative={a: [[n, v, r] for n, v, r in voci] for a, voci in alt.items()}, **s.esito)
 
     def riunione(self, settimana: str, adesso: int) -> None:
-        testo, nuovo, parte = riunione(self.stato.seguite, self.capo, self.storico, adesso - 7 * 86400, settimana,
+        tutte = archiviate(CARTELLA, adesso - 365 * 86400) + self.stato.seguite
+        testo, nuovo, parte = riunione(tutte, self.capo, self.storico, adesso - 7 * 86400, settimana,
                                        self.stato.pagelle, self.esecutore.parte, self.stato.diario, self.stato.romeo)
         self.tg.equipe(testo)
         self.capo, self.esecutore.parte = nuovo, parte

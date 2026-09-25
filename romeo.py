@@ -30,13 +30,13 @@ from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti.capo import riga as colonne_del_capo
 from nvm.agenti.conferme import SOPRA, tutti_i_pareri
 from nvm.dati.candele import costruisci
-from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
+from nvm.dati.minuti import Minuti, carica_periodo
 from nvm.dati.ore import carica as carica_ore
 from nvm.prova.base import SETTIMANA, Risultato, opera
 from nvm.prova.cammino import Tabella
 from nvm.prova.campo import Uscita
 from nvm.prova.romeo import Entrata, al_prezzo, armati, candidati, confronta, esito, etichette, grandi, leggi
-from nvm.dati.strumenti import STRUMENTI
+from nvm.dati.strumenti import BASE, STRUMENTI
 from nvm.tempo import TF, come_testo
 
 RADICE = Path(__file__).resolve().parent
@@ -177,13 +177,13 @@ def main() -> None:
     manopole.carica_e_applica()
     radice = Path(a.cartella)
     if a.imita:
-        imita(radice, [e for e in leggi(Path(a.catalogo)) if e.periodo == "studio" and e.strumento in PUNTO])
+        imita(radice, [e for e in leggi(Path(a.catalogo)) if e.periodo == "studio" and e.strumento in BASE])
         return
     numeri = _numeri(a.configurazioni)
     capi = {n: _capo_del_2023(n) for n in numeri}
     tutte = leggi(Path(a.catalogo))
-    fuori = [e for e in tutte if e.strumento not in PUNTO]
-    nostre = [e for e in tutte if e.strumento in PUNTO]
+    fuori = [e for e in tutte if e.strumento not in BASE]
+    nostre = [e for e in tutte if e.strumento in BASE]
     studio = [e for e in nostre if e.periodo == "studio"]
     print(f"{len(tutte)} entrate nel catalogo; {len(fuori)} su strumenti non ancora nei dati "
           f"({', '.join(sorted({e.strumento for e in fuori}))}).")

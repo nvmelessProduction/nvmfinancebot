@@ -234,6 +234,15 @@ sui prezzi veri e le confronta col bot (`registro/misure/2026-09-24-romeo.txt`):
   solo le settimane dal vivo ogni sabato. La palestra della domenica li
   prende (`importa_vps.py`) e allena anche la coppia 4 ore → 15 minuti sui
   vent'anni, che finora il Capo imparava solo dal vivo.
+- **40 strumenti, dal vivo su tutti (25/09, sera).** Su richiesta
+  dell'utente il bot conosce 28 coppie forex, oro, argento, petrolio (WTI e
+  Brent), sei indici e due crypto (`nvm/dati/strumenti.py`), tutti con dati
+  gratis da Dukascopy (`scarica_nuovi.bat` sulla VPS). Dal vivo, sul demo,
+  opera su tutti quelli che il broker ha, trovandone il nome da solo. Il
+  Capo è allenato sui sei di partenza: sugli altri la prova dal vivo è la
+  più onesta. Con tanti strumenti possono esserci molte operazioni aperte
+  insieme, anche su mercati legati fra loro: sul demo va bene per
+  imparare, prima di soldi veri il Rischio deve impararlo.
 - **Gli altri agenti, la stessa notte.** Sulle ore sono state provate
   altre 33 domande per Orario, Key level, Cacciatore e Bias, più la seconda
   entrata di Romeo (msg 1891) e il Grilletto sui 5 e sull'1 minuto: nessuna

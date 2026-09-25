@@ -93,7 +93,7 @@ def vivo(cartella_vivo: Path, uscita: Path, nascosti: list[str] = ()) -> list[st
     valore segreto del .env ci fosse finito dentro (in un messaggio d'errore, per esempio),
     al suo posto si scrive ***: i segreti non escono mai dalla VPS."""
     copiati = []
-    for nome in ("stato.json", "registro.jsonl"):
+    for nome in ("stato.json", "registro.jsonl", "seguite_finite.jsonl"):
         sorgente = cartella_vivo / nome
         if sorgente.exists():
             testo = sorgente.read_text(encoding="utf-8", errors="replace")

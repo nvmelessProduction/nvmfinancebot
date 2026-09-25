@@ -5,6 +5,9 @@
 - `registro.jsonl`: ogni decisione, apertura e chiusura, una riga per
   evento. Non si cancella mai: e' da qui che l'equipe impara, anche dalle
   operazioni non aperte;
+- `seguite_finite.jsonl`: le decisioni finite da piu' di due settimane, una per
+  riga. Nello stato restano solo le recenti: con tanti strumenti lo stato, che
+  si salva ogni minuto, diventerebbe troppo grande. La riunione le rilegge;
 - `capo.json`: il Capo in uso, riaddestrato ogni fine settimana.
 """
 
@@ -111,8 +114,35 @@ class Stato:
     def salva(self, cartella: Path) -> None:
         cartella.mkdir(parents=True, exist_ok=True)
         tmp = cartella / "stato.json.tmp"
-        tmp.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.write_text(json.dumps(asdict(self), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         tmp.replace(cartella / "stato.json")
+
+
+ARCHIVIO = "seguite_finite.jsonl"
+
+
+def archivia(cartella: Path, seguite: list[Seguita]) -> None:
+    """Le decisioni finite escono dallo stato e vanno nell'archivio, una per riga."""
+    cartella.mkdir(parents=True, exist_ok=True)
+    with open(cartella / ARCHIVIO, "a", encoding="utf-8") as f:
+        for s in seguite:
+            f.write(json.dumps(asdict(s), ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def archiviate(cartella: Path, dal: int = 0) -> list[Seguita]:
+    """Le decisioni dell'archivio finite da `dal` in poi."""
+    p = cartella / ARCHIVIO
+    if not p.exists():
+        return []
+    campi = set(Seguita.__dataclass_fields__)
+    fuori = []
+    for riga in p.read_text(encoding="utf-8").splitlines():
+        if not riga.strip():
+            continue
+        d = json.loads(riga)
+        if d.get("esito") and d["esito"]["quando"] >= dal:
+            fuori.append(Seguita(**{k: v for k, v in d.items() if k in campi}))
+    return fuori
 
 
 def registra(cartella: Path, evento: str, **dati) -> None:

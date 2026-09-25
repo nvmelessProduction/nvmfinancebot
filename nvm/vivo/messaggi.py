@@ -111,6 +111,11 @@ def avvio(login: int, server: str, saldo: float, valuta: str, strumenti: list[st
     ])
 
 
+def mancanti(strumenti: list[str], guardati: int) -> str:
+    return (f"ℹ️ Il broker non ha {', '.join(strumenti)} su questo conto: li salto. "
+            f"Opero su {guardati} strumenti.")
+
+
 def aggiornato(titolo: str) -> str:
     return f"🔄 Aggiornato e ripartito: {titolo}"
 

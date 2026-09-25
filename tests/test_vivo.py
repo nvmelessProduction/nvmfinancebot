@@ -83,6 +83,29 @@ def test_con_token_ogni_canale_va_alle_sue_chat():
     assert mandati == [("op", "a"), ("eq1", "b"), ("eq2", "b")]
 
 
+def test_i_messaggi_partono_da_una_coda_al_ritmo_di_telegram():
+    import time
+    from nvm.vivo.telegram import TroppiMessaggi
+    mandati, rifiuti = [], [1]
+
+    def invia(c, t):
+        if t == "b" and rifiuti:
+            rifiuti.pop()
+            raise TroppiMessaggi(0.05)          # Telegram: aspetta un attimo
+        mandati.append((c, t, time.monotonic()))
+
+    imp = Impostazioni(token="x", chat_equipe=("eq",))
+    tg = Telegram(imp, invia=invia, stampa=lambda _: None, intervallo=0.1, in_coda=True)
+    prima = time.monotonic()
+    for t in "abc":
+        tg.equipe(t)
+    assert time.monotonic() - prima < 0.05       # il bot non aspetta
+    assert tg.svuota(5)
+    assert [t for _, t, _ in mandati] == ["a", "b", "c"]
+    distanze = [y[2] - x[2] for x, y in zip(mandati, mandati[1:])]
+    assert all(d >= 0.09 for d in distanze)      # mai piu' veloce del ritmo
+
+
 def test_i_certificati_si_controllano_sempre():
     import ssl
     from nvm.vivo.telegram import contesto
@@ -493,3 +516,16 @@ def test_il_bot_si_sveglia_pochi_secondi_dopo_la_chiusura():
     assert vivo.attesa(base + vivo.RITARDO_GIRO) == 60 - vivo.RITARDO_GIRO + 1   # giro fatto: al prossimo minuto
     assert vivo.attesa(base + 14 * 60 + 58) == 3      # prima il minuto, poi la chiusura
     assert vivo.RITARDO_GIRO <= 5
+
+
+def test_le_decisioni_vecchie_vanno_nell_archivio_e_la_riunione_le_rilegge(tmp_path):
+    from nvm.vivo.stato import archivia, archiviate
+    vecchia = Seguita("k1", "EURUSD", "D1", "H1", "short", 100, 1.1, 1.101, 1.099, 1.098, 10**9, False,
+                      [0.0] * len(COLONNE), 1.0, 2.0, 0.0, 0.5, 0.3, 0.1)
+    vecchia.esito = {"uscita": "stop", "erre": -1.0, "quando": 1000, "tp1": False, "tp2": False}
+    recente = Seguita(**{**vecchia.__dict__, "chiave": "k2"})
+    recente.esito = {**vecchia.esito, "quando": 5000}
+    archivia(tmp_path, [vecchia, recente])
+    assert [s.chiave for s in archiviate(tmp_path)] == ["k1", "k2"]
+    assert [s.chiave for s in archiviate(tmp_path, dal=2000)] == ["k2"]
+    assert archiviate(tmp_path / "vuota") == []

@@ -63,13 +63,16 @@ Quando `scarica.bat` ha finito, **doppio clic su `consegna.bat`**.
 - Da lì in poi il bot spedisce da solo le settimane dal vivo, ogni sabato
   dopo la riunione.
 
-## 4. Le altre coppie
+## 4. Gli altri strumenti
 
 Il bot impara anche dalle altre 23 coppie forex fra le otto valute
-principali (EURGBP, GBPJPY, AUDNZD, …; l'elenco è in
-`nvm/dati/strumenti.py`). Quando `scarica.bat` ha finito:
+principali (EURGBP, GBPJPY, AUDNZD, …), dall'argento, dal petrolio (WTI e
+Brent), da sei indici (S&P 500, Nasdaq 100, Dow Jones, DAX, FTSE 100,
+Nikkei) e da due crypto (BTCUSD, ETHUSD); l'elenco è in
+`nvm/dati/strumenti.py`. Tutti gratis da Dukascopy. Quando `scarica.bat`
+ha finito:
 
-1. **Doppio clic su `scarica_coppie.bat`.** Prima scarica le ore (un paio
+1. **Doppio clic su `scarica_nuovi.bat`.** Prima scarica le ore (un paio
    d'ore), poi i minuti (qualche giorno: puoi chiudere e riprendere quando
    vuoi).
 2. Quando le ore sono finite, e poi di nuovo quando sono finiti i minuti,

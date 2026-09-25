@@ -31,6 +31,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from nvm.dati.minuti import Minuti, file_del_mese
+from nvm.dati.strumenti import STRUMENTI
 
 INDIRIZZO = "https://datafeed.dukascopy.com/datafeed/{strumento}/{anno:04d}/{mese0:02d}/{giorno:02d}/{lato}_candles_min_1.bi5"
 # Le ore: un file per mese, con i secondi contati dall'inizio del mese.
@@ -39,16 +40,22 @@ RECORD = struct.Struct(">iiiiif")
 LATI = ("BID", "ASK")
 
 
+def _codice(strumento: str) -> str:
+    """Il nome sul datafeed di Dukascopy (il petrolio WTI e' LIGHTCMDUSD, l'S&P 500 USA500IDXUSD...)."""
+    s = STRUMENTI.get(strumento)
+    return s.codice if s is not None else strumento
+
+
 def indirizzo(strumento: str, giorno: date, lato: str) -> str:
     # Dukascopy conta i mesi da zero.
     return INDIRIZZO.format(
-        strumento=strumento, anno=giorno.year, mese0=giorno.month - 1,
+        strumento=_codice(strumento), anno=giorno.year, mese0=giorno.month - 1,
         giorno=giorno.day, lato=lato,
     )
 
 
 def indirizzo_ore(strumento: str, anno: int, mese: int, lato: str) -> str:
-    return INDIRIZZO_ORE.format(strumento=strumento, anno=anno, mese0=mese - 1, lato=lato)
+    return INDIRIZZO_ORE.format(strumento=_codice(strumento), anno=anno, mese0=mese - 1, lato=lato)
 
 
 def leggi_bi5(grezzo: bytes) -> np.ndarray:
@@ -161,12 +168,12 @@ class Scaricatore:
         return grezzo
 
 
-def giorni_del_mese(anno: int, mese: int, fino_a: date) -> list[date]:
-    """I giorni UTC da scaricare: tutti tranne il sabato, e mai oggi o dopo."""
+def giorni_del_mese(anno: int, mese: int, fino_a: date, sabato: bool = False) -> list[date]:
+    """I giorni UTC da scaricare: tutti tranne il sabato (le crypto anche il sabato), e mai oggi o dopo."""
     giorno = date(anno, mese, 1)
     giorni = []
     while giorno.month == mese and giorno < fino_a:
-        if giorno.weekday() != 5:  # il sabato il mercato e' chiuso
+        if sabato or giorno.weekday() != 5:  # il sabato il mercato e' chiuso, tranne le crypto
             giorni.append(giorno)
         giorno += timedelta(days=1)
     return giorni
@@ -184,7 +191,8 @@ def scarica_mese(
     if percorso.exists() and mese_finito:
         return percorso
     pezzi = []
-    for giorno in giorni_del_mese(anno, mese, oggi):
+    crypto = strumento in STRUMENTI and STRUMENTI[strumento].famiglia == "crypto"
+    for giorno in giorni_del_mese(anno, mese, oggi, sabato=crypto):
         recente = giorno >= oggi - timedelta(days=7)
         bid = scaricatore.file(strumento, giorno, "BID", recente)
         ask = scaricatore.file(strumento, giorno, "ASK", recente)

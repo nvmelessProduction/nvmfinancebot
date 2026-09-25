@@ -22,6 +22,7 @@ import numpy as np
 
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.minuti import PUNTO, Minuti
+from nvm.dati.strumenti import STRUMENTI
 
 # Lo scarto del server del broker rispetto a UTC, in ore: i valori credibili.
 SCARTI_CREDIBILI = range(0, 5)
@@ -73,6 +74,8 @@ class Terminale:
         self.suffisso = suffisso
         self.scarto: Optional[int] = None
         self._ultimo_tick: dict[str, int] = {}
+        # Il nome che il broker usa per ogni strumento, trovato da `esiste`.
+        self._nomi: dict[str, str] = {}
         self._dormi = dormi
         self._orologio = orologio
 
@@ -94,7 +97,22 @@ class Terminale:
         )
 
     def simbolo(self, strumento: str) -> str:
-        return strumento + self.suffisso
+        return self._nomi.get(strumento, strumento + self.suffisso)
+
+    def esiste(self, strumento: str) -> bool:
+        """Il broker ha questo strumento su questo conto? Si provano il nome del bot e gli altri
+        nomi con cui i broker lo chiamano (`nvm/dati/strumenti.py`), col suffisso e senza; il
+        primo che il conto ha diventa il suo nome."""
+        s = STRUMENTI.get(strumento)
+        nomi = [strumento] + list(s.mt5 if s is not None else ())
+        for nome in dict.fromkeys([n + self.suffisso for n in nomi] + nomi):
+            try:
+                if self.mt5.symbol_select(nome, True) and self.mt5.symbol_info(nome) is not None:
+                    self._nomi[strumento] = nome
+                    return True
+            except Exception:
+                continue
+        return False
 
     # --- l'ora del server -----------------------------------------------------
 
