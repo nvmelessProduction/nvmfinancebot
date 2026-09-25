@@ -21,6 +21,8 @@ from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.vivo.dialogo import AGENTI, ascolto, chi_aveva_ragione, consigli, grado
 from nvm.vivo.messaggi import erre
+from nvm.vivo.errori import Errore
+from nvm.vivo.errori import pesi as pesi_errori
 from nvm.vivo.romeo_vivo import META_RISCHIO, EntrataDiRomeo, confronta, etichette, presa_vicina
 from nvm.vivo.stato import Seguita
 
@@ -103,7 +105,7 @@ def _romeo_dal_vivo(entrate: list[EntrataDiRomeo], seguite: list[Seguita], dal: 
 def riunione(
     seguite: list[Seguita], capo: Capo, storico: Storico, dal: int, settimana: str,
     pagelle: Optional[dict] = None, parte: float = 1.0, diario: Optional[dict] = None,
-    romeo_vivo: Optional[list[EntrataDiRomeo]] = None,
+    romeo_vivo: Optional[list[EntrataDiRomeo]] = None, errori: Optional[list[Errore]] = None,
 ) -> tuple[str, Capo, float]:
     finite = [s for s in seguite if s.esito is not None]
     di_questa = [s for s in finite if s.esito["quando"] >= dal]
@@ -135,6 +137,10 @@ def riunione(
     if storico.quando is not None:
         quando = np.r_[storico.quando, [s.esito["quando"] for s in finite]]
         pesi = pesi_per_eta(quando, int(quando.max()))
+    if errori and finite:
+        # Le decisioni che l'utente ha segnalato come errori pesano il doppio (`nvm/vivo/errori.py`).
+        pesi = np.ones(len(x)) if pesi is None else pesi
+        pesi[len(x) - len(finite):] *= pesi_errori(finite, errori)
     nuovo = Capo.allena(x, tp1, tp2, interazioni=tuple(c for _, c in scelti), pesi=pesi)
     romeo = storico.romeo_x is not None and storico.romeo_x.shape[1] == len(COLONNE) and storico.romeo_y.any()
     # Le entrate di Romeo mandate dal vivo si aggiungono a quelle del 2023.
@@ -206,6 +212,11 @@ def riunione(
                          f"{np.mean(scartate_simili):.1%}".replace(".", ","))
     if romeo_vivo:
         righe += ["", "Romeo dal vivo"] + _romeo_dal_vivo(romeo_vivo, seguite, dal)
+    della_settimana = [e for e in (errori or []) if e.quando >= dal]
+    if della_settimana:
+        righe += ["", "Errori che mi avete segnalato"]
+        righe += [f"• {e.leggibile} ({'presa' if e.entrata else 'non presa'}): «{e.nota}»" for e in della_settimana]
+        righe.append("Mi sono riaddestrato dando a queste decisioni il doppio del peso.")
     righe += [
         "",
         f"Rischio: uso {_peso(nuova_parte)[1:]} del Kelly (era {_peso(parte)[1:]}), rifatto su {len(f)} puntate, "

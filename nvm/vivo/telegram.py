@@ -53,6 +53,8 @@ class Ricevuto:
     chat: str
     testo: str
     quando: int      # UTC
+    # Il testo del messaggio a cui questo risponde, se risponde a qualcosa (per /errore sulla scheda).
+    risposta: str = ""
 
 
 class Telegram:
@@ -81,7 +83,8 @@ class Telegram:
             m = u.get("message") or u.get("channel_post") or {}
             chat, testo = str(m.get("chat", {}).get("id", "")), m.get("text", "")
             if chat in miei and testo:
-                arrivati.append(Ricevuto(int(u["update_id"]), chat, testo, int(m.get("date", 0))))
+                risposta = (m.get("reply_to_message") or {}).get("text", "")
+                arrivati.append(Ricevuto(int(u["update_id"]), chat, testo, int(m.get("date", 0)), risposta))
         return arrivati, prossimo
 
     def operativo(self, testo: str) -> None:
