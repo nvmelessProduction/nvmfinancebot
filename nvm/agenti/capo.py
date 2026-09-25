@@ -246,6 +246,9 @@ class Capo:
 
     def fiducia(self) -> list[tuple[str, float, float]]:
         """Per ogni colonna, il peso nelle due regressioni (sulle colonne standardizzate)."""
+        if not hasattr(self.primo, "pesi"):
+            # Un cervello ad alberi non ha un peso per colonna: quanto ascolta ognuno si legge dalle spinte.
+            return [(n, 0.0, 0.0) for n in self.nomi()]
         return [(n, float(a), float(b)) for n, a, b in zip(self.nomi(), self.primo.pesi[1:], self.secondo.pesi[1:])]
 
     def probabilita(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

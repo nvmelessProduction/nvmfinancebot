@@ -98,3 +98,16 @@ def test_la_palestra_riconosce_un_idea_che_serve():
     utile, a_caso = al.prova_idee(t, colonne, 2008, 2023, processi=1)
     assert al.esame(oggi, utile, prove=12).passa
     assert not al.esame(oggi, a_caso, prove=12).passa
+
+
+def test_il_cervello_ad_alberi_trova_le_combinazioni_e_si_salva():
+    from nvm.agenti.alberi import Alberi
+    rng = np.random.default_rng(0)
+    n = 12000
+    x = rng.integers(0, 2, (n, 6)).astype(float)
+    insieme = (x[:, 0] == 1) & (x[:, 3] == 1)
+    y = rng.random(n) < np.where(insieme, 0.6, 0.3)
+    m = Alberi(alberi=60, foglia=200).allena(x, y)
+    p = m.probabilita(x)
+    assert p[insieme].mean() > p[~insieme].mean() + 0.2
+    assert np.allclose(Alberi.da_dati(m.come_dati()).probabilita(x[:20]), p[:20])
