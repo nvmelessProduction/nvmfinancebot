@@ -383,7 +383,7 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
         righe.append(f"Capo: da oggi cambiano {cambi}. Mi riaddestro sulle operazioni nuove. Sui vent'anni: "
                      f"qualità {_r(oggi.qualita)} → {_r(finale.qualita)}, R a operazione {_r(oggi.r_medio)} → "
                      f"{_r(finale.r_medio)}, operazioni {oggi.n} → {finale.n}, drawdown {oggi.drawdown:.0f} → "
-                     f"{finale.drawdown:.0f} R".replace(".", ",")
+                     f"{finale.drawdown:.0f} R"
                      + (f", entrate di Romeo del 2023 ritrovate {oggi.romeo} → {finale.romeo}" if finale.romeo is not None else "")
                      + ".")
     else:

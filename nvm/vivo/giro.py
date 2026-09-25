@@ -21,7 +21,8 @@ from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.prova.base import Risultato, opera
 from nvm.prova.campo import Operazione
-from nvm.prova.romeo import grandi
+from nvm.agenti import manopole
+from nvm.agenti.conferme import Grandi
 from nvm.tempo import TF
 
 # Le coppie che si guardano con le orarie, ogni ora.
@@ -62,6 +63,40 @@ class Decisione:
         return f"{r.strumento} {r.alto_tf.value}-{r.basso_tf.value} {r.verso.value} {r.quando} colpo {r.colpo}"
 
 
+# Le candele e i CRT gia' costruiti: il bot li rifarebbe uguali a ogni giro e a
+# ogni quarto d'ora. Si riusano finche' le candele di base sono le stesse.
+_MEMORIA: dict = {}
+_MEMORIA_MASSIMA = 256
+
+
+def _ricorda(chiave, fai):
+    if chiave not in _MEMORIA:
+        if len(_MEMORIA) >= _MEMORIA_MASSIMA:
+            _MEMORIA.pop(next(iter(_MEMORIA)))
+        _MEMORIA[chiave] = fai()
+    return _MEMORIA[chiave]
+
+
+def _impronta(base: Minuti) -> tuple:
+    """Le candele di base sono le stesse se hanno lo stesso strumento, passo, numero, inizio, fine e ultima chiusura."""
+    return (base.strumento, base.passo, len(base), int(base.t[0]), int(base.t[-1]), int(base.bid[-1, 3]))
+
+
+def _candele(base: Minuti, tf: TF, adesso: int):
+    return _ricorda(("candele", _impronta(base), tf, adesso), lambda: costruisci(base, tf).chiuse_entro(adesso))
+
+
+def _crt(base: Minuti, alto: TF, basso: TF, adesso: int):
+    return _ricorda(("crt", _impronta(base), alto, basso, adesso, manopole.impronta()),
+                    lambda: caccia(_candele(base, alto, adesso), _candele(base, basso, adesso)))
+
+
+def _grandi(ore: Minuti, adesso: int):
+    """I CRT delle coppie sulle ore, per "dentro un CRT piu' grande?": gli stessi del giro orario."""
+    return _ricorda(("grandi", _impronta(ore), adesso, manopole.impronta()),
+                    lambda: Grandi.da([c for alto, basso in COPPIE for c in _crt(ore, alto, basso, adesso)]))
+
+
 def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
          orarie: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
@@ -75,13 +110,15 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
         ore = orarie.get(strumento, base)
         if not len(base) or not len(ore):
             continue
-        g = grandi(ore, adesso)
-        settimane = costruisci(ore, TF.W1).chiuse_entro(adesso)
+        # Le ore cambiano una volta l'ora: fino ad allora i CRT grandi e la settimana sono gli stessi.
+        fine_ore = min(adesso, int(ore.t[-1]) + ore.passo)
+        g = _grandi(ore, fine_ore)
+        settimane = _candele(ore, TF.W1, fine_ore)
         for alto, basso in coppie:
-            alte = costruisci(base, alto).chiuse_entro(adesso)
-            basse = costruisci(base, basso).chiuse_entro(adesso)
-            sopra = costruisci(ore, SOPRA[alto]).chiuse_entro(adesso)
-            for r in opera(alte, basse, dal, adesso + 1):
+            alte = _candele(base, alto, adesso)
+            basse = _candele(base, basso, adesso)
+            sopra = _candele(ore, SOPRA[alto], fine_ore)
+            for r in opera(alte, basse, dal, adesso + 1, trovati=_crt(base, alto, basso, adesso)):
                 op = piano(r.scatto, basse)
                 kl, ora, ctx, ar, liq = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
                 x = riga(r, kl, ora, ctx, ar, liq)[None]
@@ -102,8 +139,6 @@ def armati(basi: dict[str, Minuti], dal: int, adesso: int, coppie=COPPIE) -> lis
         if not len(base):
             continue
         for alto, basso in coppie:
-            alte = costruisci(base, alto).chiuse_entro(adesso)
-            basse = costruisci(base, basso).chiuse_entro(adesso)
-            trovati += [c for c in caccia(alte, basse) if dal <= c.armato_quando <= adesso]
+            trovati += [c for c in _crt(base, alto, basso, adesso) if dal <= c.armato_quando <= adesso]
     trovati.sort(key=lambda c: (c.armato_quando, c.strumento))
     return trovati

@@ -46,6 +46,12 @@ OLTRE = 0.5
 # primo target: 1 = al primo target, come fino al 25/09/2026. La manopola la
 # gira l'allenamento (`spec/allenamento.md`).
 PAREGGIO = 1.0
+# Le uscite prima dello stop (spente all'inizio, le accende l'allenamento se
+# migliorano le prestazioni): dopo tante candele basse di fila chiuse oltre il
+# livello del Model#1 dalla parte sbagliata, e se il primo target non arriva
+# entro tante candele basse. 0 = mai.
+INVALIDAZIONE = 0
+TEMPO = 0
 # Lo stop sta almeno a questa frazione dell'ampiezza del CRT dall'ingresso.
 # Fino al 25/09/2026 non c'era: sui vent'anni, col Capo, le scelte passano da
 # -0,011 a +0,009 R e battono la base in tutti gli anni (registro).
@@ -90,6 +96,7 @@ def piano(
         strumento=crt.strumento, verso=crt.verso, quando=s.quando,
         ingresso=ingresso, stop=stop, tp1=tp1, tp2=tp2,
         parziale=parziale, pareggio=pareggio, pareggio_a=PAREGGIO,
+        livello_model1=s.livello, invalida_candele=INVALIDAZIONE, tempo_candele=TEMPO,
     )
 
 

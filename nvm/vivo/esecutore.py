@@ -15,6 +15,7 @@ from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
 from nvm.agenti.rischio import USCITE, crescita, esiti, kelly
+from nvm.dati.minuti import CHIUSURA
 from nvm.vivo import messaggi
 from nvm.vivo.giro import Decisione
 from nvm.vivo.terminale import Conto, Terminale
@@ -47,6 +48,13 @@ class Viva:
     # target, com'era la manopola dei Livelli all'apertura (1 = al primo target).
     pareggio_a: float = 1.0
     primo_detto: bool = False
+    # Per le uscite prima dello stop: il timeframe delle candele basse, il livello
+    # del Model#1, e le manopole all'apertura (0 = spente).
+    basso: str = ""
+    livello: float = 0.0
+    invalida_candele: int = 0
+    tempo_candele: int = 0
+    uscita_anticipata: str = ""
 
     @property
     def short(self) -> bool:
@@ -128,7 +136,9 @@ class Esecutore:
         ingresso = sum(prezzi) / len(prezzi)
         rischio = messi * per_lotto
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
-                    tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a)
+                    tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a, basso=d.r.basso_tf.value,
+                    livello=float(op.livello_model1 or 0.0), invalida_candele=op.invalida_candele,
+                    tempo_candele=op.tempo_candele)
         testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0])
         testo += (f"\nPuntata del Rischio: {f:.2%} del conto (Kelly {pieno:.1%} × {self.parte:.2f})".replace(".", ",")
                   + (": è sotto il lotto minimo, apro il minimo." if volume < minimo else "."))
@@ -148,7 +158,9 @@ class Esecutore:
             if not ancora:
                 r = v.incassato / v.rischio if v.rischio else 0.0
                 motivo = "stop" if r <= -0.8 else ("pareggio" if abs(r) < 0.1 else "target")
-                if v.pareggio_fatto and r > 0.1:
+                if v.uscita_anticipata:
+                    motivo = v.uscita_anticipata
+                elif v.pareggio_fatto and r > 0.1:
                     motivo = "primo target e poi " + ("secondo target" if r > 0.5 * abs(v.tp1 - v.ingresso) / abs(v.ingresso - v.stop) + 0.1 else "pareggio")
                 fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo)))
                 continue
@@ -176,6 +188,32 @@ class Esecutore:
                 fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
             restano.append(v)
         return restano, fatti
+
+
+    def uscita_anticipata(self, v: Viva, basse) -> Optional[Fatto]:
+        """Chiude prima dello stop se l'idea non vale piu' o e' troppo lenta, come nelle prove
+        (`nvm/prova/campo.simula`): solo prima del primo target e del pareggio."""
+        if v.pareggio_fatto or v.primo_detto or v.uscita_anticipata:
+            return None
+        dopo = basse.inizio >= v.quando
+        chiusure = basse.bid[dopo, CHIUSURA] if not v.short else basse.ask[dopo, CHIUSURA]
+        motivo = ""
+        if v.invalida_candele and len(chiusure) >= v.invalida_candele:
+            segno = -1 if v.short else 1
+            ultime = chiusure[-v.invalida_candele:]
+            if all(segno * (c - v.livello) < 0 for c in ultime):
+                motivo = f"l'idea non vale più: {v.invalida_candele} candele chiuse oltre il livello del Model#1"
+        if not motivo and v.tempo_candele and len(chiusure) >= v.tempo_candele:
+            motivo = f"troppo lenta: il primo obiettivo non è arrivato in {v.tempo_candele} candele"
+        if not motivo:
+            return None
+        for ticket in v.tickets:
+            if ticket not in v.chiusi:
+                e = self.t.chiudi_posizione(v.strumento, ticket)
+                if not e.ok:
+                    return Fatto(messaggi.allarme(f"{v.strumento}: non riesco a chiudere ({e.messaggio})"))
+        v.uscita_anticipata = motivo
+        return Fatto(messaggi.uscita_anticipata(v.strumento, Verso(v.verso), motivo))
 
 
 def come_dati(v: Viva) -> dict:

@@ -62,11 +62,12 @@ COLPI_PER_CRT = 3
 
 def opera(
     alte: Candele, basse: Candele, dal: int, al: int,
-    variante: Optional[Variante] = None, stop_stretto: bool = False,
+    variante: Optional[Variante] = None, stop_stretto: bool = False, trovati: Optional[list] = None,
 ) -> list[Risultato]:
-    """Tutte le operazioni del manuale con ingresso in [dal, al)."""
+    """Tutte le operazioni del manuale con ingresso in [dal, al). `trovati` sono i CRT
+    di queste candele, se chi chiama li ha gia' cercati (il bot dal vivo, per non rifarlo)."""
     risultati = []
-    for crt in caccia(alte, basse, variante):
+    for crt in (caccia(alte, basse, variante) if trovati is None else trovati):
         dopo = None
         for colpo in range(1, COLPI_PER_CRT + 1):
             s = scatto(crt, basse, dopo)

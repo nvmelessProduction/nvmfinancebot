@@ -28,7 +28,9 @@ def segui(seguite: list[Seguita], basi: dict[str, Minuti], adesso: int,
         chiave = (s.strumento, s.basso)
         if chiave not in candele:
             candele[chiave] = costruisci(sorgente[s.strumento], TF(s.basso)).chiuse_entro(adesso)
-        op = Operazione(s.strumento, Verso(s.verso), s.quando, s.ingresso, s.stop, s.tp1, s.tp2)
+        op = Operazione(s.strumento, Verso(s.verso), s.quando, s.ingresso, s.stop, s.tp1, s.tp2,
+                        pareggio_a=s.pareggio_a, livello_model1=s.livello,
+                        invalida_candele=s.invalida_candele, tempo_candele=s.tempo_candele)
         e = simula(op, candele[chiave], s.scadenza)
         if e.uscita is Uscita.SCADUTA and adesso < s.scadenza:
             continue

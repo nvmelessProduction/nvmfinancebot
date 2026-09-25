@@ -456,3 +456,34 @@ def test_il_pareggio_prima_del_primo_obiettivo_tiene_i_due_target():
     assert vive[0].pareggio_fatto and "pareggio" in fatti[0].testo
     assert m.posizioni[a].sl == m.posizioni[b].sl == round(viva.ingresso, 5)
     assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
+
+
+def test_l_uscita_anticipata_chiude_a_mercato_e_lo_dice():
+    from tests.aiuti import candele
+    from nvm.tempo import TF
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    viva.invalida_candele, viva.livello = 2, viva.ingresso      # l'allenamento l'ha accesa
+    segno = -1 if viva.short else 1
+    oltre = viva.livello - segno * 0.0003                       # dalla parte sbagliata del livello
+    passo = 3600 if viva.basso == "H1" else 900
+    righe = [(viva.quando + k * passo, oltre, oltre + 0.0001, oltre - 0.0001, oltre) for k in range(2)]
+    basse = candele("EURUSD", TF(viva.basso or "H1"), righe)
+    assert e.uscita_anticipata(viva, candele("EURUSD", TF(viva.basso or "H1"), righe[:1])) is None
+    fatto = e.uscita_anticipata(viva, basse)
+    assert fatto is not None and "prima dello stop" in fatto.testo and not m.posizioni
+    vive, fatti = e.sorveglia([viva])
+    assert vive == [] and "l'idea non vale più" in fatti[0].testo
+
+
+def test_il_bot_si_sveglia_pochi_secondi_dopo_la_chiusura():
+    import vivo
+    base = utc(2026, 9, 25, 10)                       # una chiusura di quarto d'ora
+    assert vivo.attesa(base + 1) == vivo.RITARDO_GIRO - 1      # appena dopo: aspetta solo il ritardo
+    assert vivo.attesa(base + vivo.RITARDO_GIRO) == 60 - vivo.RITARDO_GIRO + 1   # giro fatto: al prossimo minuto
+    assert vivo.attesa(base + 14 * 60 + 58) == 3      # prima il minuto, poi la chiusura
+    assert vivo.RITARDO_GIRO <= 5

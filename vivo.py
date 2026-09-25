@@ -26,7 +26,9 @@ from pathlib import Path
 
 from nvm.agenti import manopole
 from nvm.agenti.capo import Capo
+from nvm.dati.candele import costruisci
 from nvm.dati.minuti import PUNTO, Minuti
+from nvm.tempo import TF
 from nvm.vivo import messaggi
 from nvm.vivo.ambiente import impostazioni
 from nvm.vivo.carta import segui
@@ -49,7 +51,7 @@ CARTELLA = RADICE / "dati" / "vivo"
 RAMO = "claude/zealous-albattani-394cd9"
 ORARIE = 13000          # circa due anni: servono al key level del mensile
 QUARTI = 4000           # circa sei settimane di quarti d'ora: il 4 ore e il giornaliero sopra
-RITARDO_GIRO = 20       # secondi dopo la chiusura, per dare al broker il tempo di chiudere la barra
+RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo di chiudere la barra
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
@@ -270,6 +272,7 @@ class Bot:
             self.fini[strumento] = _unisci(self.fini[strumento], self.terminale.barre(strumento, 20, 900), QUARTI)
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
         self._decidi(giro_orario(self.fini, dal, quarto, self.capo, (COPPIA_VELOCE,), self.basi), quarto, 900)
+        self.uscite(quarto)
         self.stato.ultimo_quarto = quarto
 
     def giro(self, ora: int) -> None:
@@ -281,33 +284,54 @@ class Bot:
         if nuovi:
             self.tg.equipe(messaggi.armati(nuovi))
         self._decidi(giro_orario(self.basi, dal, ora, self.capo, COPPIE), ora, 3600)
+        self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
             self._finita(s)
         # Le seguite finite da piu' di un anno non servono piu' qui: stanno nel registro.
         self.stato.seguite = [s for s in self.stato.seguite if s.esito is None or s.esito["quando"] > ora - 365 * 86400]
         self.stato.ultimo_giro = ora
 
+    def uscite(self, adesso: int) -> None:
+        """Le uscite prima dello stop che gli agenti hanno imparato: idea invalidata o troppo lenta."""
+        for v in self.stato.vive:
+            if not (v.invalida_candele or v.tempo_candele) or not v.basso:
+                continue
+            sorgente = self.fini if TF(v.basso) is TF.M15 else self.basi
+            if v.strumento not in sorgente:
+                continue
+            basse = costruisci(sorgente[v.strumento], TF(v.basso)).chiuse_entro(adesso)
+            fatto = self.esecutore.uscita_anticipata(v, basse)
+            if fatto is not None:
+                (self.tg.equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
+                registra(CARTELLA, "uscita anticipata", chiave=v.chiave, motivo=v.uscita_anticipata)
+
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
         conto = self.terminale.conto() if decisioni else None
+        # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
+        aperte, da_dire = set(), []
+        for d in decisioni:
+            if d.entra and adesso - d.r.quando <= finestra:
+                viva, fatto = self.esecutore.apri(d, conto)
+                da_dire.append(fatto)
+                if viva is not None:
+                    self.stato.vive.append(viva)
+                    aperte.add(d.chiave)
+                    conto = self.terminale.conto()
+        for fatto in da_dire:
+            (self.tg.equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
         for d in decisioni:
             per = spinte(self.capo, d.x)
             self.tg.equipe(messaggi.pareri(d, per))
-            aperta = False
-            if d.entra and adesso - d.r.quando <= finestra:
-                viva, fatto = self.esecutore.apri(d, conto)
-                (self.tg.equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
-                if viva is not None:
-                    self.stato.vive.append(viva)
-                    aperta = True
-                    conto = self.terminale.conto()
-            elif d.entra:
+            aperta = d.chiave in aperte
+            if d.entra and adesso - d.r.quando > finestra:
                 self.tg.equipe(messaggi.saltata(d, "è scattata mentre il bot era spento"))
             op = d.op
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
                         op.ingresso, op.stop, op.tp1, op.tp2, d.scadenza, aperta,
                         [float(v) for v in d.x], d.r.rr1, d.r.rr2, d.r.costo_erre, d.p1, d.q, d.atteso,
                         spinte=per, leggibile=f"{d.r.strumento} {messaggi.direzione(d.r.verso)} · {messaggi.coppia(d)} · {messaggi.quando(d.r.quando)}",
-                        romeo=1.0 if d.romeo is None else d.romeo)
+                        romeo=1.0 if d.romeo is None else d.romeo, pareggio_a=op.pareggio_a, livello=op.livello_model1,
+                        invalida_candele=op.invalida_candele, tempo_candele=op.tempo_candele)
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
                      atteso=d.atteso, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
@@ -353,7 +377,17 @@ def main() -> None:
         except Exception as errore:
             bot.allarme(f"errore nel bot: {errore!r}")
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        time.sleep(60 - time.time() % 60 + 1)
+        time.sleep(attesa(time.time()))
+
+
+def attesa(adesso: float) -> float:
+    """Fino al prossimo minuto, o prima se una candela da un quarto d'ora chiude prima:
+    il bot decide pochi secondi dopo la chiusura, non fino a un minuto dopo."""
+    prossimo_minuto = 60 - adesso % 60 + 1
+    prossimo_quarto = 900 - adesso % 900 + RITARDO_GIRO
+    if prossimo_quarto > 900:            # siamo appena dopo la chiusura: il giro e' questo
+        prossimo_quarto -= 900
+    return max(0.5, min(prossimo_minuto, prossimo_quarto))
 
 
 if __name__ == "__main__":

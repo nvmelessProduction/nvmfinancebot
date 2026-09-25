@@ -88,6 +88,12 @@ MANOPOLE: tuple[Manopola, ...] = (
              minimo=1),
     Manopola("Grilletto", "lato della liquidità", "nvm.agenti.conferme", "LATO_LIQUIDITA", "intero",
              "quante candele per lato fanno un massimo di swing da prendere prima della manipolazione", minimo=1),
+    Manopola("Grilletto", "invalidazione", "nvm.agenti.livelli", "INVALIDAZIONE", "intero",
+             "dopo quante candele basse di fila chiuse oltre il livello del Model#1, dalla parte sbagliata, "
+             "l'idea non vale piu' e si esce (0 = mai); Romeo: 'turtle soup high has to be the ceiling'", minimo=0),
+    Manopola("Livelli", "tempo", "nvm.agenti.livelli", "TEMPO", "passo",
+             "entro quante candele basse deve arrivare il primo obiettivo, se no si esce (0 = mai); "
+             "Romeo: 'when you're right, trade will be over very quick'", passo=8, minimo=0),
     Manopola("Livelli", "secondo obiettivo oltre il lato", "nvm.agenti.livelli", "OLTRE", "passo",
              "quanto oltre il lato opposto del CRT, in ampiezze del CRT; Romeo: 'CRTH/L', ma i suoi target arrivano a 1,8 volte il range",
              passo=0.25, minimo=0.0),

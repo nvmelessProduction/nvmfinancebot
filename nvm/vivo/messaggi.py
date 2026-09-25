@@ -136,6 +136,10 @@ def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True,
     return f"{testa} Il resto tiene lo stop: va a pareggio quando il prezzo arriva a {prezzo(k, livello)}."
 
 
+def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
+    return f"✋ {k}: chiudo prima dello stop, {motivo}."
+
+
 def pareggio(k: str, verso: Verso, ingresso: float) -> str:
     return f"🛡 {k}: stop spostato a pareggio ({prezzo(k, ingresso)}). Da qui l'operazione non può più perdere."
 

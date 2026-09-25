@@ -46,6 +46,9 @@ class Uscita(str, Enum):
     TARGET = "target"
     PAREGGIO = "pareggio"
     SCADUTA = "scaduta"
+    # Le uscite prima dello stop, se i Livelli e il Grilletto le hanno imparate.
+    INVALIDATA = "invalidata"
+    TEMPO = "tempo"
 
 
 @dataclass
@@ -66,6 +69,14 @@ class Operazione:
     # l'ingresso e il primo target (1 = al primo target, prima meno di 1, dopo
     # piu' di 1). La impara Livelli (`nvm/agenti/manopole.py`).
     pareggio_a: float = 1.0
+    # L'idea non vale piu': si esce alla chiusura della candela bassa numero
+    # `invalida_candele` di fila che chiude oltre il livello del Model#1, dalla
+    # parte sbagliata (0 = mai). Romeo: "turtle soup high has to be the ceiling".
+    livello_model1: Optional[float] = None
+    invalida_candele: int = 0
+    # Troppo lenta: si esce se il primo target non arriva entro tante candele
+    # basse (0 = mai). Romeo: "when you're right, trade will be over very quick".
+    tempo_candele: int = 0
 
     def __post_init__(self) -> None:
         segno = 1 if self.verso is Verso.LONG else -1
@@ -108,6 +119,7 @@ def simula(op: Operazione, basse: Candele, scadenza: Optional[int] = None) -> Es
         return Esito(erre - commissione, uscita, quando, tp1_preso, commissione)
 
     livello_pareggio = op.ingresso + op.pareggio_a * (op.tp1 - op.ingresso)
+    di_fila = 0
     for n in range(i, j):
         alto, basso = float(lato[n, MASSIMO]), float(lato[n, MINIMO])
         contro, favore = (basso, alto) if long else (alto, basso)
@@ -126,6 +138,16 @@ def simula(op: Operazione, basse: Candele, scadenza: Optional[int] = None) -> Es
         # Lo stop va a pareggio quando il prezzo arriva al livello scelto: vale dalla candela dopo.
         if op.pareggio and stop != op.ingresso and segno * (favore - livello_pareggio) >= 0:
             stop = op.ingresso
+        # Le uscite prima dello stop, finche' il primo target non e' preso e lo stop non e' a pareggio.
+        if not tp1_preso and stop != op.ingresso:
+            chiusura = float(lato[n, CHIUSURA])
+            if op.invalida_candele and op.livello_model1 is not None:
+                contro_livello = segno * (chiusura - op.livello_model1) < 0
+                di_fila = di_fila + 1 if contro_livello else 0
+                if di_fila >= op.invalida_candele:
+                    return risultato(chiusura, Uscita.INVALIDATA, int(basse.fine[n]))
+            if op.tempo_candele and n - i + 1 >= op.tempo_candele:
+                return risultato(chiusura, Uscita.TEMPO, int(basse.fine[n]))
     ultima = j - 1
     if ultima < i:
         return risultato(op.ingresso, Uscita.SCADUTA, op.quando)

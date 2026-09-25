@@ -242,6 +242,25 @@ class Terminale:
             return Esito(False, f"stop non spostato: {getattr(r, 'retcode', None)} {self.mt5.last_error()}")
         return Esito(True, "stop spostato")
 
+    def chiudi_posizione(self, strumento: str, ticket: int) -> Esito:
+        """Chiude una posizione a mercato: le uscite prima dello stop che gli agenti hanno imparato."""
+        posizioni = self.mt5.positions_get(ticket=int(ticket))
+        if not posizioni:
+            return Esito(True, "già chiusa")
+        p = posizioni[0]
+        simbolo = self.simbolo(strumento)
+        bid, ask = self.prezzo(strumento)
+        compra = int(p.type) == self.mt5.ORDER_TYPE_SELL
+        r = self.mt5.order_send({
+            "action": self.mt5.TRADE_ACTION_DEAL, "symbol": simbolo, "volume": float(p.volume),
+            "type": self.mt5.ORDER_TYPE_BUY if compra else self.mt5.ORDER_TYPE_SELL, "position": int(ticket),
+            "price": ask if compra else bid, "deviation": 20, "magic": int(p.magic), "comment": "nvm uscita",
+            "type_time": self.mt5.ORDER_TIME_GTC, "type_filling": self._riempimento(simbolo),
+        })
+        if r is None or r.retcode != self.mt5.TRADE_RETCODE_DONE:
+            return Esito(False, f"chiusura rifiutata: {getattr(r, 'retcode', None)} {self.mt5.last_error()}")
+        return Esito(True, "chiusa", prezzo=float(r.price))
+
     def aperte(self, magic: int) -> set[int]:
         """I ticket delle posizioni del bot ancora aperte."""
         posizioni = self.mt5.positions_get()

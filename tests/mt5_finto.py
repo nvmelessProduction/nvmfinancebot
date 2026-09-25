@@ -74,6 +74,9 @@ class MT5Finto:
 
     def order_send(self, r):
         self.richieste.append(dict(r))
+        if r["action"] == self.TRADE_ACTION_DEAL and "position" in r:
+            self.chiudi(r["position"], r["price"])
+            return NS(retcode=self.TRADE_RETCODE_DONE, order=0, price=r["price"], volume=r["volume"])
         if r["action"] == self.TRADE_ACTION_DEAL:
             self._ticket += 1
             self.posizioni[self._ticket] = NS(ticket=self._ticket, magic=r["magic"], symbol=r["symbol"], type=r["type"],
@@ -83,7 +86,9 @@ class MT5Finto:
         p.sl, p.tp = r["sl"], r["tp"]
         return NS(retcode=self.TRADE_RETCODE_DONE, order=0, price=0.0, volume=0.0)
 
-    def positions_get(self):
+    def positions_get(self, ticket=None):
+        if ticket is not None:
+            return [p for p in self.posizioni.values() if p.ticket == ticket]
         return list(self.posizioni.values())
 
     def history_deals_get(self, position):

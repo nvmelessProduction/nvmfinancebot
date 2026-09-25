@@ -50,6 +50,11 @@ class Seguita:
     leggibile: str = ""
     # Quanto somigliava a un'entrata di Romeo, per il Capo (`spec/capo.md`).
     romeo: float = 1.0
+    # Le uscite con cui e' stata decisa (le manopole dei Livelli e del Grilletto in quel momento).
+    pareggio_a: float = 1.0
+    livello: Optional[float] = None
+    invalida_candele: int = 0
+    tempo_candele: int = 0
 
 
 @dataclass

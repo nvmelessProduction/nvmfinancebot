@@ -73,3 +73,29 @@ def test_livelli_dalla_parte_sbagliata_sono_rifiutati():
         _short(stop=1.1070)
     with pytest.raises(ValueError):
         _short(tp1=1.1090)
+
+
+# --- Le uscite che gli agenti possono imparare (spente all'inizio) ---
+
+def test_il_pareggio_prima_del_primo_target():
+    # Short a 1.1080, primo target 1.1050: a meta' strada (1.1065) lo stop va a pareggio, poi il prezzo torna su.
+    righe = [(1.108, 1.1081, 1.1064, 1.1070), (1.107, 1.1085, 1.1068, 1.1082)]
+    assert simula(_short(), _basse(righe)).uscita is Uscita.SCADUTA          # col pareggio al primo target non succede niente
+    esito = simula(_short(pareggio_a=0.5), _basse(righe))
+    assert esito.uscita is Uscita.PAREGGIO and esito.erre == pytest.approx(-esito.costo_erre)
+
+
+def test_l_idea_invalidata_esce_prima_dello_stop():
+    # Short col livello del Model#1 a 1.1075: due candele chiudono sopra, senza toccare lo stop.
+    righe = [(1.108, 1.1085, 1.1072, 1.1078), (1.1078, 1.1090, 1.1076, 1.1086), (1.1086, 1.1099, 1.1080, 1.1095)]
+    op = dict(livello_model1=1.1075)
+    assert simula(_short(**op), _basse(righe)).uscita is Uscita.SCADUTA     # spenta: aspetta lo stop
+    esito = simula(_short(invalida_candele=2, **op), _basse(righe))
+    assert esito.uscita is Uscita.INVALIDATA
+    assert esito.erre == pytest.approx(-(1.1086 - 1.1080) / 0.002 - esito.costo_erre)
+
+
+def test_troppo_lenta_esce_dopo_tante_candele():
+    righe = [(1.108, 1.1085, 1.1072, 1.1078)] * 5
+    esito = simula(_short(tempo_candele=3), _basse(righe))
+    assert esito.uscita is Uscita.TEMPO and esito.quando == T0 + 3 * Q
