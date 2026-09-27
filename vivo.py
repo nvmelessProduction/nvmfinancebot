@@ -27,6 +27,7 @@ from typing import Optional
 
 from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
+from nvm.cervello import dal_vivo
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.dati.strumenti import STRUMENTI
@@ -146,6 +147,13 @@ class Bot:
         self.esecutore = Esecutore(self.terminale, float(rischio["parte"]), rischio.get("correlazioni"),
                                    float(rischio.get("minimo", 0.0)))
         self.storico = Storico.carica(RADICE / "nvm" / "vivo" / "storico.npz")
+        # I cervelli degli agenti (`nvm/cervello/`): usciti da scuola, con tutto quello che hanno
+        # imparato dal vivo. Se qualcosa non va, il bot lavora come prima, col Capo.
+        try:
+            self.cervelli, self.cervelli_info = dal_vivo.carica(RADICE / "nvm" / "vivo" / "cervelli.json", CARTELLA)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+            self.cervelli, self.cervelli_info = None, {}
         # Quante volte, per segnale, e' arrivato il primo obiettivo: le prove della conversazione.
         self._prove = None
         self.versione = _versione()
@@ -366,8 +374,9 @@ class Bot:
             saldo = 0.0
         lezioni = [f"{k} avrebbe fatto meglio {n} volt{'a' if n == 1 else 'e'}"
                    for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
+        gara = dal_vivo.gara(self.stato.seguite, fine - 86400, fine, self.cervelli_info.get("soglia", 0.5))
         testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
-                                        self.stato.saltate, [r for _, r in self.stato.chiuse])
+                                        self.stato.saltate, [r for _, r in self.stato.chiuse], [gara] if gara else [])
         if testo:
             self.tg.equipe(testo)
         self.stato.lezioni = {}
@@ -395,13 +404,40 @@ class Bot:
                 (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
                 registra(CARTELLA, "uscita anticipata", chiave=v.chiave, motivo=v.uscita_anticipata)
 
+    def _giudizio(self, d) -> Optional[dict]:
+        """Cosa ne pensano i cervelli degli agenti, dopo il confronto."""
+        if self.cervelli is None or d.viste is None:
+            return None
+        try:
+            return dal_vivo.giudica(self.cervelli, d.viste)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+            return None
+
+    @property
+    def _decidono_i_cervelli(self) -> bool:
+        return bool(self.cervelli is not None and self.cervelli_info.get("decidono"))
+
+    def _entra(self, d, g: Optional[dict]) -> bool:
+        """Chi decide: i cervelli, se all'esame hanno battuto il Capo; altrimenti il Capo."""
+        if self._decidono_i_cervelli and g is not None:
+            return g["fiducia"] > self.cervelli_info.get("soglia", 0.5)
+        return d.entra
+
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
         conto = self.terminale.conto() if decisioni else None
+        giudizi = {d.chiave: self._giudizio(d) for d in decisioni}
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
         aperte, da_dire = set(), []
         for d in decisioni:
-            if d.entra and adesso - d.r.quando <= finestra:
-                viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
+            g = giudizi[d.chiave]
+            if self._entra(d, g) and adesso - d.r.quando <= finestra:
+                if self._decidono_i_cervelli and g is not None:
+                    r = self.cervelli_info.get("rischio", {})
+                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=max(2 * g["fiducia"] - 1, 0.0),
+                                                      parte=r.get("parte"), fiducia_minima=r.get("minimo"))
+                else:
+                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
                 da_dire.append(fatto)
                 if viva is not None:
                     self.stato.vive.append(viva)
@@ -422,9 +458,15 @@ class Bot:
                 # le occasioni lasciate si contano nel riepilogo della sera.
                 viva = next(v for v in self.stato.vive if v.chiave == d.chiave)
                 saldo = conto.saldo if conto is not None else 0.0
-                self.tg.voci(conversazione.apertura(d, per, self._prove_dei_segnali(), viva.rischio / saldo if saldo else 0.0,
-                                                    *self._esposizione(saldo), ingresso=viva.ingresso,
-                                                    da_sola=viva.da_sola, legate=tuple(viva.legate)))
+                voci = conversazione.apertura(d, per, self._prove_dei_segnali(), viva.rischio / saldo if saldo else 0.0,
+                                              *self._esposizione(saldo), ingresso=viva.ingresso,
+                                              da_sola=viva.da_sola, legate=tuple(viva.legate))
+                g = giudizi[d.chiave]
+                if g is not None:
+                    # Il ragionamento dei cervelli, prima che il Capo chiuda.
+                    voci.insert(len(voci) - 1, conversazione.Voce("Cervelli", dal_vivo.voce(
+                        g, self.cervelli_info.get("soglia", 0.5), self._decidono_i_cervelli)))
+                self.tg.voci(voci)
             op = d.op
             crt = d.r.scatto.crt if d.r.scatto is not None else None
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
@@ -435,7 +477,8 @@ class Bot:
                         invalida_candele=op.invalida_candele, tempo_candele=op.tempo_candele,
                         crt_alto=None if crt is None else crt.crt_high, crt_basso=None if crt is None else crt.crt_low,
                         estremo=None if crt is None else crt.estremo_a(d.r.quando),
-                        stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE, qualita=d.qualita, decisa=d.entra)
+                        stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE, qualita=d.qualita,
+                        decisa=self._entra(d, giudizi[d.chiave]), cervelli=giudizi[d.chiave])
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
                      atteso=d.atteso, qualita=d.qualita, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
@@ -454,6 +497,12 @@ class Bot:
         except Exception:
             # Un errore qui non deve mai fermare il giro: le operazioni vengono prima.
             registra(CARTELLA, "errore", testo=traceback.format_exc())
+        if s.cervelli and self.cervelli is not None:
+            # Ogni risultato vero insegna qualcosa ai cervelli: imparano subito, e lo ricordano.
+            try:
+                dal_vivo.impara(self.cervelli, CARTELLA, s.cervelli, float(s.esito["erre"]))
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
         if s.entrata:
             self.tg.voci(conversazione.chiusura(s, alt, torto, self._prove_dei_segnali()))
         # Le lezioni della giornata, per il riepilogo della sera: chi, con quale scelta, avrebbe fatto meglio.
