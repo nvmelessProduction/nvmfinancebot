@@ -80,6 +80,8 @@ class Fatto:
     saltata: str = ""
     # Un'operazione chiusa sul conto: il risultato vero, in R (per il riepilogo della sera).
     erre: Optional[float] = None
+    # Per il libro delle operazioni vere (`libro.py`): i dati dell'evento.
+    libro: Optional[dict] = None
 
 
 def _giu(x: float, passo: float) -> float:
@@ -216,7 +218,11 @@ class Esecutore:
                     motivo = v.uscita_anticipata
                 elif v.pareggio_fatto and r > 0.1:
                     motivo = "primo target e poi " + ("secondo target" if r > 0.5 * abs(v.tp1 - v.ingresso) / abs(v.ingresso - v.stop) + 0.1 else "pareggio")
-                fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo), erre=r))
+                fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo), erre=r,
+                                   libro={"strumento": v.strumento, "verso": v.verso, "tickets": v.tickets,
+                                          "volume": v.volume, "ingresso": v.ingresso, "rischio": v.rischio,
+                                          "netto": v.incassato, "erre": r, "motivo": motivo, "valuta": v.valuta,
+                                          "chiave": v.chiave}))
                 continue
             bid, ask = self.t.prezzo(v.strumento)
             # Il primo target: la meta' al primo target e' stata incassata, o il prezzo ci e' arrivato.

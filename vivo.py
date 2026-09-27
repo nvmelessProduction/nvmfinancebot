@@ -28,6 +28,7 @@ from typing import Optional
 from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
+from nvm.vivo import libro
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.dati.strumenti import STRUMENTI
@@ -179,7 +180,8 @@ class Bot:
         if not conto.demo:
             self.tg.operativo(messaggi.allarme(
                 f"Il conto {conto.login} è un conto reale: il bot opera solo sul demo. Mi fermo."))
-            sys.exit(1)
+            # Codice 2: fermo per scelta, avvia.bat non riparte da solo.
+            sys.exit(FERMO)
         if self.stato.scarto is not None:
             self.terminale.scarto = self.stato.scarto
         while self.terminale.misura_scarto("EURUSD") is None:
@@ -275,6 +277,8 @@ class Bot:
             registra(CARTELLA, "sorveglianza", testo=f.testo)
             if f.erre is not None:
                 self.stato.chiuse.append([int(time.time()), float(f.erre)])
+            if f.libro is not None:
+                self._nel_libro("chiusura", **f.libro)
         adesso = time.time()
         quarto = _su(adesso, 900)
         if quarto > self.stato.ultimo_quarto and adesso - quarto >= RITARDO_GIRO:
@@ -418,6 +422,17 @@ class Bot:
                 (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
                 registra(CARTELLA, "uscita anticipata", chiave=v.chiave, motivo=v.uscita_anticipata)
 
+    def _nel_libro(self, evento: str, **dati) -> None:
+        """Il libro delle operazioni vere, col saldo del momento. Un errore qui non ferma il bot."""
+        try:
+            try:
+                dati["saldo"] = self.terminale.conto().saldo
+            except ErroreMT5:
+                dati["saldo"] = None
+            libro.scrivi(CARTELLA, evento, quando=int(time.time()), **dati)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
     def _giudizio(self, d) -> Optional[dict]:
         """Cosa ne pensano i cervelli degli agenti, dopo il confronto."""
         if self.cervelli is None or d.viste is None:
@@ -478,6 +493,10 @@ class Bot:
                     self.stato.vive.append(viva)
                     aperte.add(d.chiave)
                     conto = self.terminale.conto()
+                    self._nel_libro("apertura", strumento=viva.strumento, verso=viva.verso, tickets=viva.tickets,
+                                    volume=viva.volume, ingresso=viva.ingresso, stop=viva.stop, tp1=viva.tp1,
+                                    tp2=viva.tp2, rischio=viva.rischio, valuta=viva.valuta, chiave=viva.chiave,
+                                    chi_decide="cervelli" if self._decidono_i_cervelli else "Capo")
         for fatto in da_dire:
             if fatto.saltata:
                 # Non fa rumore: si conta nel riepilogo della sera (e resta nel registro).
@@ -589,6 +608,11 @@ class Bot:
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as errore:
             registra(CARTELLA, "errore", testo=f"consegna non partita: {errore!r}")
+
+
+# I codici d'uscita per avvia.bat: 3 si e' aggiornato (riparte subito), 2 fermo per scelta (non
+# riparte), qualunque altro (MT5 non risponde, un errore imprevisto) riparte da solo dopo un minuto.
+FERMO = 2
 
 
 def main() -> None:

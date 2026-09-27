@@ -17,6 +17,13 @@ if not exist ".venv\Scripts\python.exe" (
 ".venv\Scripts\python.exe" vivo.py
 rem Codice 3: il bot si e' aggiornato da solo, si riparte con la versione nuova.
 if %errorlevel%==3 goto parti
+rem Codice 2: fermo per scelta (per esempio un conto reale): non riparte.
+if %errorlevel%==2 goto fermo
+rem Qualunque altro motivo (MT5 chiuso, internet assente, un errore): riprova da solo fra un minuto.
+echo Il bot si e' fermato (codice %errorlevel%): riprovo fra un minuto. Per fermarlo chiudi questa finestra.
+timeout /t 60 /nobreak >nul
+goto parti
+:fermo
 echo.
 echo Il bot si e' fermato. Leggi l'ultimo messaggio sul canale operativo.
 pause
