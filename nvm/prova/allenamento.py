@@ -488,8 +488,10 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
                          "provo a spostare l'asticella.")
         elif agente in GRUPPI:
             righe.append(f"• {agente}: {diagnosi(agente, oggi)}.")
-        else:
+        elif any(d.agente == agente and d in inventate.PRIME.get(agente, []) for d in idee):
             righe.append(f"• {agente}: sono nuovo, provo le domande del mio mestiere.")
+        else:
+            righe.append(f"• {agente}: il Capo non mi ascolta ancora, provo domande nuove dai miei mattoni.")
         for j, d in enumerate(idee):
             if d.agente != agente:
                 continue
