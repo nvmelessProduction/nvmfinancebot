@@ -119,3 +119,17 @@ def test_la_memoria_si_salva_e_si_rilegge(tmp_path):
     assert al.leggi_memoria(p) == {"prove": [], "idee": [], "ultimo": {}}
     al.salva_memoria({"prove": [{"agente": "Livelli", "media": np.float64(0.1)}], "ultimo": {"settimana": "2026-S39"}}, p)
     assert al.leggi_memoria(p)["prove"][0]["media"] == 0.1
+
+
+def test_il_rapporto_corto_dice_cosa_cambia_in_poche_righe():
+    from types import SimpleNamespace as NS
+    from nvm.prova.allenamento import breve
+    oggi, dopo = NS(r_medio=0.026, n=12000), NS(r_medio=0.031, n=11500)
+    idea = NS(agente="Gap", nome="gap del weekend aperto")
+    testo = breve("2026-S39", 20, 16, [("Livelli", "tempo", 0, 8)], [idea], oggi, dopo, [])
+    assert testo.startswith("🏋️ Palestra della settimana 39") and "• Livelli: «fuori se il primo obiettivo non arriva in 8 candele» (prima «nessuna uscita a tempo»)" in testo
+    assert "regola nuova «gap del weekend aperto»" in testo and "12000 → 11500" in testo
+    assert len(testo.splitlines()) <= 8
+    fermo = breve("2026-S39", 20, 16, [], [], oggi, oggi, [("«x» di Gap", NS(media=0.001, anni=0.47)),
+                                                           ("«y» di Bias", NS(media=-0.01, anni=0.2))])
+    assert "Nessuna ha superato l'esame" in fermo and "La più vicina: «x» di Gap, meglio in 47% degli anni" in fermo

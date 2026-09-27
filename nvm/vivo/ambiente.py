@@ -20,6 +20,9 @@ class Impostazioni:
     chat_equipe: tuple[str, ...] = ()
     # Alcuni broker chiamano i simboli con un suffisso ("EURUSD.a", "EURUSD+").
     suffisso: str = ""
+    # Un bot Telegram per agente, se l'utente li ha creati: nome dell'agente -> token.
+    # Nel .env: TELEGRAM_TOKEN_GRILLETTO=..., TELEGRAM_TOKEN_KEY_LEVEL=... Mai stampati.
+    voci: dict = field(default_factory=dict, repr=False)
 
     @property
     def telegram(self) -> bool:
@@ -55,4 +58,14 @@ def impostazioni(radice: Path, ambiente: Mapping[str, str] = os.environ) -> Impo
         chat_operativo=_chat(v.get("TELEGRAM_CHAT_ID", "")),
         chat_equipe=_chat(v.get("TELEGRAM_CHAT_EQUIPE", "")),
         suffisso=v.get("MT5_SUFFISSO_SIMBOLI", ""),
+        voci={a: v[_nome_voce(a)] for a in AGENTI_CON_VOCE if v.get(_nome_voce(a))},
     )
+
+
+# Gli agenti che possono avere un bot Telegram tutto loro.
+AGENTI_CON_VOCE = ("Cacciatore", "Grilletto", "Livelli", "Key level", "Orario", "Bias", "Allineamento", "Gap",
+                   "Rischio", "Capo")
+
+
+def _nome_voce(agente: str) -> str:
+    return "TELEGRAM_TOKEN_" + agente.upper().replace(" ", "_")

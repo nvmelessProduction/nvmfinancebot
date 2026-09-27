@@ -96,9 +96,12 @@ class Telegram:
         stampa: Callable[[str], None] = print, tentativi: int = 3,
         prendi: Optional[Callable[[int], list[dict]]] = None,
         intervallo: float = INTERVALLO, in_coda: Optional[bool] = None,
+        invia_come: Optional[Callable[[str, str, str], None]] = None,
     ):
         self._imp = imp
         self._invia = invia or self._http
+        # Per le voci degli agenti col loro bot: (token, chat, testo).
+        self._invia_come = invia_come or self._http_come
         self._prendi = prendi or self._aggiornamenti
         self._stampa = stampa
         self._tentativi = tentativi
@@ -133,24 +136,42 @@ class Telegram:
     def equipe(self, testo: str) -> None:
         self._manda("equipe", self._imp.chat_equipe, testo)
 
-    def _manda(self, canale: str, chat: tuple[str, ...], testo: str) -> None:
-        self._stampa(f"[{canale}] {testo}")
+    def voci(self, voci: list) -> None:
+        """Gli agenti che parlano in equipe (`conversazione.Voce`). Chi ha il suo bot parla con
+        quello, come un collega in una chat; senza bot propri, un messaggio solo con tutte le voci."""
+        if not voci:
+            return
+        if not any(v.chi in self._imp.voci for v in voci):
+            self.equipe("\n".join(v.riga() for v in voci))
+            return
+        for v in voci:
+            token = self._imp.voci.get(v.chi)
+            self._manda("equipe", self._imp.chat_equipe, v.testo if token else v.riga(), token, v.chi)
+
+    def _manda(self, canale: str, chat: tuple[str, ...], testo: str, token: Optional[str] = None,
+               chi: str = "") -> None:
+        self._stampa(f"[{canale}{' · ' + chi if token else ''}] {testo}")
         if not self._imp.token:
             return
         for c in chat:
             for pezzo in _pezzi(testo):
                 if self._in_coda:
-                    self._coda.put((canale, c, pezzo))
+                    self._coda.put((canale, c, pezzo, token))
                 else:
-                    self._spedisci(canale, c, pezzo)
+                    self._spedisci(canale, c, pezzo, token)
 
-    def _spedisci(self, canale: str, chat: str, pezzo: str) -> None:
-        attesa = self._ultimo.get(chat, -1e9) + self._intervallo - time.monotonic()
+    def _spedisci(self, canale: str, chat: str, pezzo: str, token: Optional[str] = None) -> None:
+        # Telegram conta i messaggi per bot e per gruppo: ogni bot ha il suo ritmo.
+        chiave = (token or "", chat)
+        attesa = self._ultimo.get(chiave, -1e9) + self._intervallo - time.monotonic()
         if attesa > 0:
             time.sleep(attesa)
         for n in range(self._tentativi):
             try:
-                self._invia(chat, pezzo)
+                if token:
+                    self._invia_come(token, chat, pezzo)
+                else:
+                    self._invia(chat, pezzo)
                 break
             except TroppiMessaggi as errore:
                 if n == self._tentativi - 1:
@@ -162,13 +183,13 @@ class Telegram:
                     self._stampa(f"[{canale}] messaggio non partito: {errore}")
                 else:
                     time.sleep(2 ** n)
-        self._ultimo[chat] = time.monotonic()
+        self._ultimo[chiave] = time.monotonic()
 
     def _lavora(self) -> None:
         while True:
-            canale, chat, pezzo = self._coda.get()
+            canale, chat, pezzo, token = self._coda.get()
             try:
-                self._spedisci(canale, chat, pezzo)
+                self._spedisci(canale, chat, pezzo, token)
             except Exception:
                 pass
             finally:
@@ -196,9 +217,12 @@ class Telegram:
         return risposta.get("result", [])
 
     def _http(self, chat: str, testo: str) -> None:
+        self._http_come(self._imp.token, chat, testo)
+
+    def _http_come(self, token: str, chat: str, testo: str) -> None:
         dati = json.dumps({"chat_id": chat, "text": testo, "disable_web_page_preview": True}).encode()
         richiesta = urllib.request.Request(
-            URL.format(token=self._imp.token), data=dati, headers={"Content-Type": "application/json"},
+            URL.format(token=token), data=dati, headers={"Content-Type": "application/json"},
         )
         try:
             with urllib.request.urlopen(richiesta, timeout=20, context=contesto()) as r:

@@ -353,6 +353,8 @@ class Esito:
     # Le domande inventate che entrano nel Capo, e tutte quelle provate (per la memoria).
     idee: list = field(default_factory=list)
     prove_idee: list = field(default_factory=list)
+    # Il rapporto corto, per l'equipe su Telegram: quello lungo resta nel registro.
+    breve: str = ""
 
 
 def _r(x: float) -> str:
@@ -536,7 +538,41 @@ def allena(basi: dict, impostazioni: dict, memoria: list[dict], adesso: int,
     else:
         righe.append(f"Capo: questa settimana nessuna modifica ha migliorato la squadra di oggi (qualità {_r(oggi.qualita)}, "
                      f"{_r(oggi.r_medio)} R a operazione sui vent'anni). Si resta così, e si riprova con altro.")
-    return Esito("\n".join(righe), finali, bool(tenute) or bool(nuove_idee), registro, nuove_idee, registro_idee)
+    corto = breve(etichetta, len(elenco), len(idee), [elenco[i] for i in sorted(tenute)], nuove_idee, oggi, finale,
+                  [(f"«{d.nome}» di {d.agente}", e) for d, e in zip(idee, esami_idee)]
+                  + [(f"«{scelta(nome, v)}» di {a}", e) for (a, nome, _, v), e in zip(elenco, esami)])
+    return Esito("\n".join(righe), finali, bool(tenute) or bool(nuove_idee), registro, nuove_idee, registro_idee, corto)
+
+
+def _volte(x: float) -> str:
+    return f"{x:+.3f}".replace(".", ",").replace("-", "−") + " volte il rischio"
+
+
+def scelta(nome: str, v: Any) -> str:
+    from nvm.vivo.autoanalisi import scelta as in_parole
+    return in_parole(nome, _v(v) if isinstance(v, list) else v)
+
+
+def breve(etichetta: str, ritocchi: int, nuove: int, tenute: list, idee_tenute: list, oggi, finale, provate: list) -> str:
+    """Il rapporto della palestra per l'equipe: cosa si e' provato, cosa cambia e perche', in poche righe."""
+    righe = [f"🏋️ Palestra della settimana {etichetta.split('-S')[-1]}",
+             f"Sui vent'anni di dati abbiamo provato {ritocchi} ritocchi alle regole e {nuove} regole nuove. "
+             "Resta solo quello che migliora la qualità delle operazioni (quanto rendono rispetto a quanto "
+             "oscillano) nella maggior parte degli anni, non per fortuna."]
+    if tenute or idee_tenute:
+        righe += ["", "Da oggi cambia:"]
+        righe += [f"• {a}: «{scelta(nome, v)}» (prima «{scelta(nome, da)}»)" for a, nome, da, v in tenute]
+        righe += [f"• {d.agente}: regola nuova «{d.nome}»" for d in idee_tenute]
+        righe += ["", f"Sui vent'anni: {_volte(oggi.r_medio)} → {_volte(finale.r_medio)} a operazione, "
+                      f"operazioni {oggi.n} → {finale.n}."]
+    else:
+        righe += ["", f"Nessuna ha superato l'esame: la squadra resta com'è ({_volte(oggi.r_medio)} a operazione "
+                      "sui vent'anni)."]
+        vicine = [(nome, e) for nome, e in provate if e.media > 0]
+        if vicine:
+            nome, e = max(vicine, key=lambda a: a[1].media)
+            righe.append(f"La più vicina: {nome}, meglio in {e.anni:.0%} degli anni. Si riprova con una variante.")
+    return "\n".join(righe)
 
 
 # --- Le entrate di Romeo ritrovate (nel rapporto) ----------------------------------------------------------------

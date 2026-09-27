@@ -14,7 +14,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
-from nvm.agenti.rischio import USCITE, crescita, esiti, kelly
+from nvm.agenti import portafoglio
+from nvm.agenti.rischio import USCITE, crescita_creduta, esiti, kelly
 from nvm.dati.minuti import CHIUSURA
 from nvm.vivo import messaggi
 from nvm.vivo.giro import Decisione
@@ -55,6 +56,14 @@ class Viva:
     invalida_candele: int = 0
     tempo_candele: int = 0
     uscita_anticipata: str = ""
+    # Il Rischio sul conto intero: quanto avrebbe rischiato da sola (in frazione del conto) e gli
+    # strumenti aperti che vanno insieme a lei, per cui ha rischiato meno.
+    da_sola: float = 0.0
+    legate: list[str] = field(default_factory=list)
+
+    @property
+    def gambe(self) -> dict[str, float]:
+        return portafoglio.gambe(self.strumento, -1 if self.short else 1)
 
     @property
     def short(self) -> bool:
@@ -67,6 +76,10 @@ class Fatto:
 
     testo: str
     equipe: bool = False
+    # Il Capo voleva entrare ma non si e' aperto: il perche' in breve. Non fa messaggi, si conta la sera.
+    saltata: str = ""
+    # Un'operazione chiusa sul conto: il risultato vero, in R (per il riepilogo della sera).
+    erre: Optional[float] = None
 
 
 def _giu(x: float, passo: float) -> float:
@@ -74,12 +87,21 @@ def _giu(x: float, passo: float) -> float:
 
 
 class Esecutore:
-    def __init__(self, terminale: Terminale, parte: float = 1.0):
+    def __init__(self, terminale: Terminale, parte: float = 1.0, correlazioni: Optional[dict] = None,
+                 minimo: float = 0.0):
         self.t = terminale
+        # Il Kelly pieno sotto cui un'operazione non prende soldi: il Rischio l'ha imparato sul conto
+        # intero (le operazioni di poca fiducia, nei vent'anni, hanno perso).
+        self.minimo = minimo
         # Quanta parte del Kelly usa il Rischio: la impara, sullo storico e dal vivo.
         self.parte = parte
+        # Quanto vanno insieme le operazioni aperte nello stesso momento, per quello che hanno in
+        # comune (`nvm/agenti/portafoglio.py`): senza, ogni operazione si punta come se fosse sola.
+        self.correlazioni = {float(c): float(r) for c, r in correlazioni.items()} if correlazioni else None
 
-    def apri(self, d: Decisione, conto: Conto) -> tuple[Optional[Viva], Fatto]:
+    def apri(self, d: Decisione, conto: Conto, aperte: list = ()) -> tuple[Optional[Viva], Fatto]:
+        """Apre la decisione sul conto. `aperte`: le operazioni gia' aperte (`Viva`), perche' il
+        Rischio punti sul conto intero e non su un'operazione alla volta."""
         k, op, verso = d.r.strumento, d.op, d.r.verso
         if not conto.demo:
             return None, Fatto(messaggi.allarme(f"il conto {conto.login} non è un demo: non apro {k}."))
@@ -90,13 +112,13 @@ class Esecutore:
         prezzo = bid if verso is Verso.SHORT else ask
         segno = -1 if verso is Verso.SHORT else 1
         if segno * (prezzo - op.stop) <= 0:
-            return None, Fatto(messaggi.saltata(d, "il prezzo è già oltre lo stop"), equipe=True)
+            return None, Fatto(messaggi.saltata(d, "il prezzo è già oltre lo stop"), equipe=True, saltata="il prezzo era già oltre lo stop")
         if segno * (op.tp1 - prezzo) <= 0:
-            return None, Fatto(messaggi.saltata(d, "il prezzo è già oltre il primo target"), equipe=True)
+            return None, Fatto(messaggi.saltata(d, "il prezzo è già oltre il primo target"), equipe=True, saltata="il prezzo era già oltre il primo obiettivo")
         distanza = abs(prezzo - op.stop)
         minima = self.t.distanza_minima(k)
         if distanza <= minima or abs(op.tp1 - prezzo) <= minima:
-            return None, Fatto(messaggi.saltata(d, "stop o target troppo vicini: il broker non li accetta"), equipe=True)
+            return None, Fatto(messaggi.saltata(d, "stop o target troppo vicini: il broker non li accetta"), equipe=True, saltata="stop troppo vicino per il broker")
 
         # Il Rischio: la puntata di Kelly con le stime del Capo, al prezzo vero.
         rr1, rr2 = abs(op.tp1 - prezzo) / distanza, abs(op.tp2 - prezzo) / distanza
@@ -104,22 +126,39 @@ class Esecutore:
         per_lotto = self.t.perdita_per_lotto(k, verso, prezzo, op.stop)
         minimo, passo, massimo = self.t.lotti(k)
         pieno = kelly(esiti(d.p1, d.q, rr1, rr2, costi))
-        f = pieno * self.parte
+        gamba = portafoglio.gambe(k, segno)
+        # Quelle a pareggio non rischiano piu' niente.
+        in_corso = [(v.gambe, v.rischio / conto.saldo) for v in aperte if not v.pareggio_fatto and conto.saldo > 0]
+        togli = portafoglio.riduzione(gamba, in_corso, self.correlazioni)
+        da_sola = pieno * self.parte
+        f = max(da_sola - togli, 0.0)
+        legate = portafoglio.legate(gamba, [(v.strumento, v.gambe) for v in aperte if not v.pareggio_fatto],
+                                    self.correlazioni)
+        if pieno < self.minimo:
+            return None, Fatto(messaggi.saltata(d, "le stime sono troppo deboli per metterci soldi"), equipe=True,
+                               saltata="fiducia troppo bassa per metterci soldi")
+        if pieno > 0 and f <= 0:
+            return None, Fatto(messaggi.saltata(d, "siamo già troppo esposti con " + ", ".join(legate or ["le altre aperte"])),
+                               equipe=True, saltata="già troppo esposti su operazioni legate")
         volume = min(_giu(conto.saldo * f / per_lotto, passo), massimo)
         if volume >= 2 * minimo:
             meta = _giu(volume / 2, passo)
             parti = [(meta, op.tp1), (meta, op.tp2)]
             uscita = USCITE[0]
         else:
-            # Una posizione sola: l'uscita che fa crescere di piu' il conto.
+            # Una posizione sola: l'uscita che fa crescere di piu' il conto, con la fiducia nelle stime
+            # che il Rischio ha imparato (non con le stime prese per buone: il lotto minimo puo' essere
+            # molte volte la puntata giusta, e un conto piccolo si brucerebbe).
             v = max(volume, minimo)
             quota = v * per_lotto / conto.saldo
-            scelte = [(crescita(esiti(d.p1, d.q, rr1, rr2, costi, u), quota), u) for u in USCITE[1:]]
+            scelte = [(crescita_creduta(esiti(d.p1, d.q, rr1, rr2, costi, u), quota, self.parte, togli), u)
+                      for u in USCITE[1:]]
             migliore, uscita = max(scelte)
             if migliore <= 0:
                 return None, Fatto(messaggi.saltata(
-                    d, f"anche il lotto minimo ({minimo:g}) rischierebbe {v * per_lotto:.2f} {conto.valuta}: "
-                       "con queste stime il conto crescerebbe meno che non entrando"), equipe=True)
+                    d, f"anche il lotto minimo ({minimo:g}) rischierebbe {v * per_lotto:.2f} {conto.valuta} "
+                       f"({quota:.1%} del conto): troppo per quanto valgono le stime"), equipe=True,
+                    saltata="conto troppo piccolo per il lotto minimo")
             parti = [(v, op.tp1 if uscita == USCITE[1] else op.tp2)]
         commento = f"nvm {k} {d.r.alto_tf.value}{d.r.basso_tf.value} {d.r.colpo}"
         tickets, prezzi, messi = [], [], 0.0
@@ -138,10 +177,11 @@ class Esecutore:
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
                     tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a, basso=d.r.basso_tf.value,
                     livello=float(op.livello_model1 or 0.0), invalida_candele=op.invalida_candele,
-                    tempo_candele=op.tempo_candele)
-        testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0])
-        testo += (f"\nPuntata del Rischio: {f:.2%} del conto (Kelly {pieno:.1%} × {self.parte:.2f})".replace(".", ",")
-                  + (": è sotto il lotto minimo, apro il minimo." if volume < minimo else "."))
+                    tempo_candele=op.tempo_candele, da_sola=da_sola, legate=legate if togli > 0 else [])
+        testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0],
+                                  rischio / conto.saldo if conto.saldo else None)
+        if volume < minimo:
+            testo += f"\nLa dimensione giusta era sotto il lotto minimo: apro il minimo ({minimo:g})."
         return viva, Fatto(testo)
 
     def sorveglia(self, vive: list[Viva]) -> tuple[list[Viva], list[Fatto]]:
@@ -162,7 +202,7 @@ class Esecutore:
                     motivo = v.uscita_anticipata
                 elif v.pareggio_fatto and r > 0.1:
                     motivo = "primo target e poi " + ("secondo target" if r > 0.5 * abs(v.tp1 - v.ingresso) / abs(v.ingresso - v.stop) + 0.1 else "pareggio")
-                fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo)))
+                fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo), erre=r))
                 continue
             bid, ask = self.t.prezzo(v.strumento)
             # Il primo target: la meta' al primo target e' stata incassata, o il prezzo ci e' arrivato.

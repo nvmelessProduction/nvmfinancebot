@@ -32,6 +32,43 @@ prepara Python (qualche minuto). Poi, sul canale operativo, arriva
 Lascia aperta la finestra nera: se la chiudi, il bot si ferma (le posizioni
 aperte restano protette sul broker con i loro stop).
 
+## Facoltativo: un bot Telegram per ogni agente
+
+Senza questo passo l'équipe parla lo stesso, tutta da un bot solo (ogni riga
+col nome dell'agente). Con un bot per agente, nel gruppo équipe ognuno scrive
+col suo nome e la sua foto, come colleghi in una chat.
+
+Per ogni agente che vuoi (anche solo alcuni: gli altri parlano dal bot
+principale):
+
+1. Su Telegram apri **@BotFather**, scrivi `/newbot`. Come nome metti quello
+   dell'agente (per esempio `Capo`), come nome utente uno libero che finisce
+   in `bot` (per esempio `nvm_capo_bot`). BotFather ti dà un **token**: non
+   mandarlo a nessuno, nemmeno in chat con Claude.
+2. Aggiungi il bot nuovo al gruppo **équipe**. Se l'équipe è un *canale*,
+   aggiungilo come amministratore con il permesso di pubblicare.
+3. Apri il file `.env` sulla VPS con Blocco note e aggiungi una riga col
+   token, con il nome giusto:
+
+   | Agente | Riga nel `.env` |
+   |---|---|
+   | Capo | `TELEGRAM_TOKEN_CAPO=...` |
+   | Grilletto | `TELEGRAM_TOKEN_GRILLETTO=...` |
+   | Rischio | `TELEGRAM_TOKEN_RISCHIO=...` |
+   | Cacciatore | `TELEGRAM_TOKEN_CACCIATORE=...` |
+   | Livelli | `TELEGRAM_TOKEN_LIVELLI=...` |
+   | Key level | `TELEGRAM_TOKEN_KEY_LEVEL=...` |
+   | Orario | `TELEGRAM_TOKEN_ORARIO=...` |
+   | Bias | `TELEGRAM_TOKEN_BIAS=...` |
+   | Allineamento | `TELEGRAM_TOKEN_ALLINEAMENTO=...` |
+   | Gap | `TELEGRAM_TOKEN_GAP=...` |
+
+4. Salva, chiudi la finestra nera e fai doppio clic su `avvia.bat`.
+
+In un *canale* Telegram i messaggi compaiono col nome del canale, non del
+bot: per vedere ogni agente col suo nome serve un **gruppo**. Se l'équipe
+oggi è un canale e vuoi passare a un gruppo, chiedimelo e ti guido.
+
 ## Se qualcosa non va
 
 | Cosa vedi | Cosa fare |

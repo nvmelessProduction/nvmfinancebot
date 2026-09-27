@@ -94,6 +94,14 @@ class Stato:
     telegram_dal: int = 0
     # L'ultimo allenamento degli agenti gia' raccontato in equipe (`nvm/vivo/allenamento.json`).
     ultimo_allenamento: str = ""
+    # Il giorno (a New York) dell'ultimo riepilogo della sera, e le lezioni raccolte da allora:
+    # "agente: «scelta»" -> quante volte avrebbe fatto meglio.
+    ultimo_riepilogo: str = ""
+    lezioni: dict = field(default_factory=dict)
+    # Le operazioni che il Capo voleva ma non si sono aperte, dall'ultimo riepilogo: perche' -> quante.
+    saltate: dict = field(default_factory=dict)
+    # Le operazioni chiuse sul conto dall'ultimo riepilogo: [quando, R vero].
+    chiuse: list = field(default_factory=list)
 
     @classmethod
     def carica(cls, cartella: Path) -> "Stato":
@@ -109,6 +117,8 @@ class Stato:
             pagelle=d.get("pagelle", {}), diario=d.get("diario", {}), ultimo_quarto=d.get("ultimo_quarto"),
             romeo=[EntrataDiRomeo(**e) for e in d.get("romeo", [])], telegram_dal=d.get("telegram_dal", 0),
             ultimo_allenamento=d.get("ultimo_allenamento", ""),
+            ultimo_riepilogo=d.get("ultimo_riepilogo", ""), lezioni=d.get("lezioni", {}),
+            saltate=d.get("saltate", {}), chiuse=d.get("chiuse", []),
         )
 
     def salva(self, cartella: Path) -> None:

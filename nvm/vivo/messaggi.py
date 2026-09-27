@@ -144,16 +144,20 @@ def _perche(d: Decisione) -> str:
     return testo
 
 
-def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, singola: bool) -> str:
+def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, singola: bool,
+             quota: Optional[float] = None) -> str:
+    """Il canale operativo: solo i fatti dell'operazione, sempre nello stesso ordine. Il perche'
+    lo discute l'equipe."""
     k, op, r = d.r.strumento, d.op, d.r
-    freccia = "📉" if r.verso is Verso.SHORT else "📈"
+    freccia = "📉 VENDITA" if r.verso is Verso.SHORT else "📈 ACQUISTO"
     obiettivi = prezzo(k, op.tp1) if singola else f"{prezzo(k, op.tp1)} (metà) e {prezzo(k, op.tp2)}"
+    parte = f" ({quota:.1%} del conto)".replace(".", ",") if quota else ""
     return "\n".join([
-        f"{freccia} {fa(r.verso)} {k} · {coppia(d)}",
-        f"Ingresso {prezzo(k, prezzo_vero)} · stop {prezzo(k, op.stop)} · obiettivi {obiettivi}",
-        f"{_it(volume, 2)} lotti · rischio {_it(rischio)} {valuta}",
-        f"Perché: {_perche(d)}",
-        f"Il Capo: {d.p1:.0%} di arrivare al primo obiettivo, {_capo(d)}.",
+        f"{freccia} · {k}",
+        f"Ingresso {prezzo(k, prezzo_vero)} · Stop {prezzo(k, op.stop)}",
+        f"Obiettivi {obiettivi}",
+        f"{_it(volume, 2)} lotti · rischio {_it(rischio)} {valuta}{parte}",
+        f"Probabilità di arrivare al primo obiettivo: {d.p1:.0%}",
     ])
 
 

@@ -22,6 +22,8 @@ import numpy as np
 from nvm.agenti import inventate, manopole
 from nvm.agenti.cacciatore import Variante
 from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
+from nvm.agenti import portafoglio
+from nvm.agenti.portafoglio import Operazioni
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.strumenti import BASE
@@ -64,7 +66,10 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
             + f"-{manopole.impronta()}{inventate.impronta(INVENTATE)}{impronta_quarti(quarti)}.npz")
     percorso = RADICE / "dati" / "tabelle" / nome
     if percorso.exists():
-        return Tabella.carica(percorso)
+        t = Tabella.carica(percorso)
+        # Le tabelle di prima del 27/09/2026 non hanno strumento e verso: si rifanno.
+        if t.strumento is not None:
+            return t
     variante, stretto = CONFIGURAZIONI[numero]
     if numero == 1:
         variante = None     # la configurazione del bot: la variante e' quella della manopola del Cacciatore
@@ -163,33 +168,68 @@ def salva_per_il_vivo(t: Tabella) -> None:
         t.x = np.c_[t.x, np.zeros((len(t), len(COLONNE) - t.x.shape[1]))]
     fine = int(t.chiusa.max())
     capo = Capo.allena(t.x, t.tp1, t.tp2, pesi=pesi_per_eta(t.chiusa, fine))
-    anni = t.anno
-    f_tutte, r_tutte, q_tutte = [], [], []
-    for a in range(PRIMO_GIUDICATO, AL + 1):
-        oggi = anni == a
-        passato = t.chiusa < _istante(a)
-        c = Capo.allena(t.x[passato], t.tp1[passato], t.tp2[passato], pesi=pesi_per_eta(t.chiusa[passato], _istante(a)))
-        p1, q = c.probabilita(t.x[oggi])
-        prese = c.entra(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
-        for k in np.flatnonzero(prese):
-            i = np.flatnonzero(oggi)[k]
-            f_tutte.append(kelly(esiti(p1[k], q[k], t.rr1[i], t.rr2[i], t.costi[i])))
-            r_tutte.append(t.erre[i])
-            q_tutte.append(t.quando[i])
-    ordine = np.argsort(q_tutte)
-    kelly_f, kelly_r = np.array(f_tutte)[ordine], np.array(r_tutte)[ordine]
-    parte = impara_parte(kelly_f, kelly_r)
-    (cartella / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
+    op = operazioni_del_capo(t)
+    kelly_f, kelly_r = op.kelly, op.erre
+    rischio = impara_il_conto(op)
+    parte = rischio["parte"]
+    (cartella / "rischio.json").write_text(json.dumps(rischio), encoding="utf-8")
     romeo = candidati_di_romeo()
     capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"]).impara_fiducia(romeo["romeo_x"], romeo["romeo_tp1"])
     (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
     np.savez_compressed(cartella / "storico.npz", x=t.x, tp1=t.tp1, tp2=t.tp2, erre=t.erre, quando=t.chiusa,
-                        kelly_f=kelly_f, kelly_r=kelly_r, **romeo)
+                        kelly_f=kelly_f, kelly_r=kelly_r, k_entrata=op.entrata, k_chiusa=op.chiusa,
+                        k_strumento=op.strumento, k_verso=op.verso, **romeo)
     print(f"Capo allenato su {len(t)} operazioni; il Rischio usa {parte:.2f} del Kelly "
           f"(imparato su {len(kelly_f)} puntate 2008-2023). Somiglianza a Romeo imparata su "
           f"{len(romeo['romeo_y'])} candidati del 2023, {int(romeo['romeo_y'].sum())} le sue scelte; "
           f"fiducia in Romeo imparata dai risultati {capo.fiducia_in_romeo:+.3f}. "
           f"Salvati in {cartella}")
+
+
+def operazioni_del_capo(t: Tabella) -> Operazioni:
+    """Le operazioni che il Capo avrebbe preso nel 2008-2023, ogni anno allenato solo sugli anni
+    prima, con la sua puntata di Kelly piena e il risultato vero."""
+    anni = t.anno
+    scelte, f = [], []
+    for a in range(PRIMO_GIUDICATO, AL + 1):
+        oggi = np.flatnonzero(anni == a)
+        if not len(oggi):
+            continue
+        passato = t.chiusa < _istante(a)
+        c = Capo.allena(t.x[passato], t.tp1[passato], t.tp2[passato], pesi=pesi_per_eta(t.chiusa[passato], _istante(a)))
+        p1, q = c.probabilita(t.x[oggi])
+        prese = c.entra(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
+        for k in np.flatnonzero(prese):
+            i = oggi[k]
+            scelte.append(i)
+            f.append(kelly(esiti(p1[k], q[k], t.rr1[i], t.rr2[i], t.costi[i])))
+    i = np.array(scelte, int)
+    return Operazioni(t.quando[i], t.chiusa[i], t.strumento[i], t.verso[i], np.array(f), t.erre[i])
+
+
+def impara_il_conto(op: Operazioni, dire=print) -> dict:
+    """Il Rischio sul conto intero (`nvm/agenti/portafoglio.py`): la fiducia minima per metterci
+    soldi, la parte del Kelly e se guardare le operazioni legate, scelte simulando il conto con
+    tutte le operazioni dei vent'anni, aperte insieme, anche nelle storie sfortunate. Scrive il
+    confronto col modo di prima (ogni operazione come se fosse sola)."""
+    corr = portafoglio.correlazioni(op)
+    s = portafoglio.scegli(op, corr)
+    vecchia = impara_parte(op.kelly, op.erre)
+    prima = portafoglio.simula(op, vecchia, None)
+
+    def riga(nome, c):
+        return (f"  {nome}: {c.prese} operazioni, crescita {np.expm1(c.crescita):+.1%} l'anno, calo peggiore "
+                f"{c.peggior_calo:.0%}, giornata peggiore {-c.peggior_giorno:+.1%}, al massimo "
+                f"{c.massimo_a_rischio:.0%} del conto a rischio insieme")
+    dire("Il conto intero 2008-2023, con le operazioni aperte insieme:")
+    dire(riga(f"prima (parte {vecchia:.2f} del Kelly, ognuna da sola)", prima))
+    dire(riga(f"adesso (fiducia minima {s.minimo:g}, parte {s.parte:g}"
+              f"{', con le legate' if s.correlazioni else ''})", s.conto))
+    dire(f"  nelle storie sfortunate (anni rimescolati, il 10% peggiore): calo {s.calo_sfortunato:.0%}, crescita "
+         f"{np.expm1(s.crescita_sfortunata):+.1%} l'anno; profilo: calo massimo {portafoglio.CALO_MASSIMO:.0%}")
+    dire("  quanto vanno insieme, per quello che hanno in comune: "
+         + ", ".join(f"{c:+g} → {r:+.2f}" for c, r in corr.items()))
+    return portafoglio.come_dati(s, corr, prima=(vecchia, prima))
 
 
 def candidati_di_romeo(radice: Path = RADICE / "dati" / "grezzi") -> dict[str, np.ndarray]:

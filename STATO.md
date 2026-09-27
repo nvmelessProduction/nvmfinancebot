@@ -322,7 +322,7 @@ bloccano.
 
 - Ogni ora, la stessa catena delle prove sullo storico (una prova lo
   controlla ora per ora); il Capo decide, il Rischio sceglie la puntata
-  (Kelly, con la parte che ha imparato: 0,08), l'Esecutore apre due metà con
+  (Kelly sul conto intero: fiducia minima e parte imparate, `spec/rischio.md`), l'Esecutore apre due metà con
   stop e target sul broker e sposta a pareggio.
 - Canale **operativo**: avvio, aperture col perché, primo target, chiusure,
   allarmi. Canale **équipe**: dopo ogni decisione ogni agente dice quanto
@@ -340,6 +340,42 @@ bloccano.
   dal vivo contano, il sabato li ascolta di più.
 - Si aggiorna da solo da questo branch: quello che si aggiunge qui arriva al
   bot entro due minuti (dal 24/09; prima una volta l'ora).
+- **Telegram da professionisti (27/09).** L'utente: *"su telegram non si
+  capisce niente… voglio un'equipe di professionisti"*. Dal vivo erano ~57
+  decisioni al giorno, ~100 messaggi in équipe, di cui ~12 su operazioni
+  vere. Ora l'équipe parla solo quando serve: **operazione aperta**
+  (Grilletto dice il segnale e dove, parla l'agente che ha pesato di più a
+  favore e quello di più contro, con il numero dei vent'anni solo se
+  sostiene quello che dice, il Rischio dice quanto del conto è a rischio
+  in tutto, il Capo chiude), **operazione chiusa** (com'è finita, e chi con
+  una scelta vicina avrebbe fatto meglio), **riepilogo alle 17 di New
+  York** (un messaggio: occasioni, prese, lasciate e come sarebbero andate,
+  le operazioni che il Capo voleva ma non si sono aperte e perché, le
+  lezioni del giorno), **palestra** in poche righe (il rapporto lungo resta
+  nel registro), **riunione** del sabato. Le occasioni lasciate non fanno
+  messaggi. Ogni agente può avere il suo bot (`AVVIO.md`): nel gruppo
+  scrive col suo nome. Le frasi sono costruite dai dati, non da un modello
+  di linguaggio.
+- **Il conto intero (27/09).** La giornata di prova su 40 strumenti ha
+  mostrato puntate fino al 31% del conto sul lotto minimo e oltre metà del
+  conto a rischio insieme. Simulato il conto intero 2008-2023 (6 strumenti,
+  13.770 operazioni del Capo, aperte insieme come sarebbero state): **il
+  modo di puntare di prima avrebbe bruciato il conto** — calo peggiore 96%,
+  giornata peggiore −51%, fino al 129% del conto a rischio insieme. Ora il
+  Rischio impara sul conto intero (`nvm/agenti/portafoglio.py`,
+  `spec/rischio.md`): fiducia minima per metterci soldi (0,06 di Kelly
+  pieno), parte del Kelly (0,01), scelte perché il conto cresca di più
+  nelle storie sfortunate senza superare il 20% di calo. Nei vent'anni:
+  +3,0% l'anno, calo peggiore 11%, giornata peggiore −2,3%, al massimo 5% a
+  rischio insieme. **Fuori campione** (ogni anno deciso solo con gli anni
+  prima), 2011-2023: **+3,2% l'anno**, calo peggiore 22%. Il vantaggio c'è
+  ma è sottile: le operazioni sicure del Capo guadagnano (il quinto più
+  sicuro +0,07/+0,10 R), le incerte perdono (la metà meno sicura −0,028 R);
+  forte nel 2008-2014, debole nel 2015-2022. Guardare le operazioni legate
+  (correlazioni per valute in comune) nei dati **non** migliora il conto:
+  il codice c'è, il Rischio lo userà solo se i dati cambiano idea. Con
+  1.000 € le puntate giuste (0,1-0,3% del conto) stanno quasi sempre sotto
+  il lotto minimo: il bot aprirà poco.
 
 ## Numeri validi
 

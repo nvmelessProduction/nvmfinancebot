@@ -23,21 +23,22 @@ import traceback
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.dati.strumenti import STRUMENTI
-from nvm.tempo import TF
-from nvm.vivo import autoanalisi, messaggi
+from nvm.tempo import NEW_YORK, TF
+from nvm.vivo import autoanalisi, conversazione, messaggi
 from nvm.vivo.ambiente import impostazioni, leggi_env
 from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
-    aggiorna_diario, aggiorna_pagelle, presentazioni, resoconto, spinte,
+    aggiorna_diario, aggiorna_pagelle, resoconto, spinte,
 )
 from nvm.vivo.esecutore import MAGIC, Esecutore
-from nvm.vivo.giro import COPPIA_VELOCE, COPPIE, armati
+from nvm.vivo.giro import COPPIA_VELOCE, COPPIE
 from nvm.vivo.giro import giro as giro_orario
 from nvm.vivo.riunione import Storico, riunione
 from nvm.vivo.romeo_vivo import confronta as confronta_con_romeo
@@ -79,7 +80,14 @@ def _unisci(base: Minuti, nuove: Minuti, quante: int) -> Minuti:
 
 
 def _leggi(nome: str) -> dict:
-    """Prima quello riaddestrato dal vivo; se manca o e' di una versione vecchia, quello del repository."""
+    """Prima quello riaddestrato dal vivo; se manca o e' di una versione vecchia, quello del repository.
+    Per il Rischio vale il piu' recente dei due: si riallena sia qui il sabato sia in palestra."""
+    if nome == "rischio.json":
+        letti = [json.loads(p.read_text(encoding="utf-8")) for p in (CARTELLA / nome, RADICE / "nvm" / "vivo" / nome)
+                 if p.exists()]
+        if not letti:
+            raise FileNotFoundError(nome)
+        return max(letti, key=lambda d: d.get("quando", 0))
     for p in (CARTELLA / nome, RADICE / "nvm" / "vivo" / nome):
         if p.exists():
             d = json.loads(p.read_text(encoding="utf-8"))
@@ -134,10 +142,12 @@ class Bot:
         self.stato = Stato.carica(CARTELLA)
         self.capo = Capo.da_dati(_leggi("capo.json"))
         self.terminale = Terminale(self.imp.suffisso)
-        self.esecutore = Esecutore(self.terminale, float(_leggi("rischio.json")["parte"]))
+        rischio = _leggi("rischio.json")
+        self.esecutore = Esecutore(self.terminale, float(rischio["parte"]), rischio.get("correlazioni"),
+                                   float(rischio.get("minimo", 0.0)))
         self.storico = Storico.carica(RADICE / "nvm" / "vivo" / "storico.npz")
-        # Quanto vale ogni segnale di ogni agente sui vent'anni: si calcola alla prima autoanalisi.
-        self._storia = None
+        # Quante volte, per segnale, e' arrivato il primo obiettivo: le prove della conversazione.
+        self._prove = None
         self.versione = _versione()
         self.basi: dict[str, Minuti] = {}
         self.fini: dict[str, Minuti] = {}
@@ -198,20 +208,21 @@ class Bot:
             self.tg.operativo(messaggi.allarme(
                 "Il canale équipe non è impostato: nel file .env manca la riga TELEGRAM_CHAT_EQUIPE= con l'id del "
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
-        # Gli agenti si presentano a ogni avvio a mano, e la prima volta dopo un aggiornamento.
-        if not da_aggiornamento or not presentati.exists():
-            for testo in presentazioni(self.stato.pagelle, self.capo, self.esecutore.parte, self.storico.romeo_x):
-                self.tg.equipe(testo)
-            presentati.write_text("sì", encoding="utf-8")
+        # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
+        # un messaggio solo, non una presentazione per agente.
+        if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != "2":
+            self.tg.voci([conversazione.Voce("Capo", conversazione.benvenuto(len(self.strumenti)))])
+            presentati.write_text("2", encoding="utf-8")
         self.racconta_allenamento()
 
     def racconta_allenamento(self) -> None:
-        """Il rapporto dell'ultimo allenamento degli agenti, una volta sola, sul canale equipe."""
+        """Il rapporto corto dell'ultimo allenamento, una volta sola, sul canale equipe (quello
+        lungo resta nel registro). I rapporti di prima, solo lunghi, non si mandano piu'."""
         ultimo = leggi_memoria().get("ultimo", {})
         # Ogni allenamento ha il suo numero: due nella stessa settimana si raccontano tutti e due.
         chi = str(ultimo.get("id", ultimo.get("settimana", "")))
-        if chi and ultimo.get("rapporto") and chi != self.stato.ultimo_allenamento:
-            self.tg.equipe(ultimo["rapporto"])
+        if chi and ultimo.get("breve") and chi != self.stato.ultimo_allenamento:
+            self.tg.equipe(ultimo["breve"])
             self.stato.ultimo_allenamento = chi
             self.stato.salva(CARTELLA)
 
@@ -241,6 +252,8 @@ class Bot:
         for f in fatti:
             (self.tg.equipe if f.equipe else self.tg.operativo)(f.testo)
             registra(CARTELLA, "sorveglianza", testo=f.testo)
+            if f.erre is not None:
+                self.stato.chiuse.append([int(time.time()), float(f.erre)])
         adesso = time.time()
         quarto = _su(adesso, 900)
         if quarto > self.stato.ultimo_quarto and adesso - quarto >= RITARDO_GIRO:
@@ -249,6 +262,7 @@ class Bot:
         if ora > self.stato.ultimo_giro and adesso - ora >= RITARDO_GIRO:
             self.giro(ora)
             self.stato.salva(CARTELLA)
+        self.riepilogo(adesso)
         oggi = datetime.fromtimestamp(adesso, tz=timezone.utc)
         settimana = f"{oggi.isocalendar().year}-S{oggi.isocalendar().week:02d}"
         if oggi.weekday() == 5 and oggi.hour >= 8 and self.stato.ultima_riunione != settimana:
@@ -309,9 +323,6 @@ class Bot:
             self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
             self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE), ora, 3600)
         self.stato.scarto = self.terminale.scarto
-        nuovi = armati(self.basi, dal, ora, COPPIE) + armati(self.fini, dal, ora, (COPPIA_VELOCE,))
-        if nuovi:
-            self._equipe(messaggi.armati(nuovi))
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
             self._finita(s, ora)
@@ -326,6 +337,43 @@ class Bot:
 
     def _equipe(self, testo: str) -> None:
         self._da_dire.append(testo)
+
+    def _prove_dei_segnali(self) -> Optional[dict]:
+        """Per ogni agente e segnale, quante volte sui vent'anni e' arrivato il primo obiettivo (una volta sola)."""
+        if self._prove is None and self.storico.tp1 is not None:
+            self._prove = conversazione.prove(self.storico.x, self.storico.tp1)
+        return self._prove
+
+    def _esposizione(self, saldo: float) -> tuple[int, float]:
+        """Quante operazioni aperte, e che parte del conto rischiano insieme (quelle a pareggio non rischiano)."""
+        a_rischio = sum(v.rischio for v in self.stato.vive if not v.pareggio_fatto)
+        return len(self.stato.vive), (a_rischio / saldo if saldo else 0.0)
+
+    def riepilogo(self, adesso: float) -> None:
+        """A fine giornata (le 17 di New York, quando chiude la giornata del forex) un messaggio solo."""
+        ny = datetime.fromtimestamp(adesso, tz=NEW_YORK)
+        giorno = ny.strftime("%Y-%m-%d")
+        if ny.hour < 17 or self.stato.ultimo_riepilogo == giorno:
+            return
+        if not self.stato.ultimo_riepilogo:
+            # La prima sera: la giornata prima il bot non c'era, non c'e' niente da riassumere.
+            self.stato.ultimo_riepilogo = giorno
+            return
+        fine = int(ny.replace(hour=17, minute=0, second=0, microsecond=0).timestamp())
+        try:
+            saldo = self.terminale.conto().saldo
+        except ErroreMT5:
+            saldo = 0.0
+        lezioni = [f"{k} avrebbe fatto meglio {n} volt{'a' if n == 1 else 'e'}"
+                   for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
+        testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
+                                        self.stato.saltate, [r for _, r in self.stato.chiuse])
+        if testo:
+            self.tg.equipe(testo)
+        self.stato.lezioni = {}
+        self.stato.saltate = {}
+        self.stato.chiuse = []
+        self.stato.ultimo_riepilogo = giorno
 
     def parla(self) -> None:
         """I messaggi dell'equipe del giro, messi insieme: con tante coppie sarebbero troppi per Telegram."""
@@ -353,20 +401,30 @@ class Bot:
         aperte, da_dire = set(), []
         for d in decisioni:
             if d.entra and adesso - d.r.quando <= finestra:
-                viva, fatto = self.esecutore.apri(d, conto)
+                viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
                 da_dire.append(fatto)
                 if viva is not None:
                     self.stato.vive.append(viva)
                     aperte.add(d.chiave)
                     conto = self.terminale.conto()
         for fatto in da_dire:
-            (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
+            if fatto.saltata:
+                # Non fa rumore: si conta nel riepilogo della sera (e resta nel registro).
+                self.stato.saltate[fatto.saltata] = self.stato.saltate.get(fatto.saltata, 0) + 1
+                registra(CARTELLA, "saltata", testo=fatto.testo)
+            else:
+                (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
         for d in decisioni:
             per = spinte(self.capo, d.x)
-            self._equipe(messaggi.pareri(d, per))
             aperta = d.chiave in aperte
-            if d.entra and adesso - d.r.quando > finestra:
-                self._equipe(messaggi.saltata(d, "è scattata mentre il bot era spento"))
+            if aperta:
+                # In equipe parla solo chi ha qualcosa da dire, e solo sulle operazioni aperte davvero:
+                # le occasioni lasciate si contano nel riepilogo della sera.
+                viva = next(v for v in self.stato.vive if v.chiave == d.chiave)
+                saldo = conto.saldo if conto is not None else 0.0
+                self.tg.voci(conversazione.apertura(d, per, self._prove_dei_segnali(), viva.rischio / saldo if saldo else 0.0,
+                                                    *self._esposizione(saldo), ingresso=viva.ingresso,
+                                                    da_sola=viva.da_sola, legate=tuple(viva.legate)))
             op = d.op
             crt = d.r.scatto.crt if d.r.scatto is not None else None
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
@@ -383,37 +441,45 @@ class Bot:
                      atteso=d.atteso, qualita=d.qualita, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
 
     def _finita(self, s: Seguita, adesso: int) -> None:
-        testo, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
+        _, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
         aggiorna_pagelle(self.stato.pagelle, ragione, torto)
         aggiorna_diario(self.stato.diario, s.x, s.esito["erre"] > 0)
         # Ognuno si chiede dove ha sbagliato: rifa' l'operazione con le sue scelte vicine, guarda la sua storia.
-        alt, dove = {}, ""
+        alt = {}
         try:
             sorgente = self.fini if TF(s.basso) is TF.M15 else self.basi
             if s.strumento in sorgente:
                 alt = autoanalisi.alternative(s, costruisci(sorgente[s.strumento], TF(s.basso)).chiuse_entro(adesso))
                 autoanalisi.aggiorna(self.stato.diario, alt, float(s.esito["erre"]))
-            if self._storia is None and self.storico.erre is not None:
-                self._storia = autoanalisi.storia_dei_segnali(self.storico.x, self.storico.erre)
-            simili = autoanalisi.stime_simili(self.stato.seguite, s.p1)
-            dove = autoanalisi.rifletti(s, alt, torto, self.stato.diario, self._storia, "Capo" not in torto, simili)
         except Exception:
             # Un errore qui non deve mai fermare il giro: le operazioni vengono prima.
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        self._equipe(testo + ("\n\n" + dove if dove else ""))
+        if s.entrata:
+            self.tg.voci(conversazione.chiusura(s, alt, torto, self._prove_dei_segnali()))
+        # Le lezioni della giornata, per il riepilogo della sera: chi, con quale scelta, avrebbe fatto meglio.
+        for agente, voci_alt in alt.items():
+            nome, v, r = max(voci_alt, key=lambda a: a[2])
+            if r > float(s.esito["erre"]) + autoanalisi.POCO:
+                chiave = f"{agente}: «{autoanalisi.scelta(nome, v)}»"
+                self.stato.lezioni[chiave] = self.stato.lezioni.get(chiave, 0) + 1
         registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto,
                  alternative={a: [[n, v, r] for n, v, r in voci] for a, voci in alt.items()}, **s.esito)
 
     def riunione(self, settimana: str, adesso: int) -> None:
         tutte = archiviate(CARTELLA, adesso - 365 * 86400) + self.stato.seguite
-        testo, nuovo, parte = riunione(tutte, self.capo, self.storico, adesso - 7 * 86400, settimana,
-                                       self.stato.pagelle, self.esecutore.parte, self.stato.diario, self.stato.romeo)
+        testo, nuovo, rischio, verbale = riunione(tutte, self.capo, self.storico, adesso - 7 * 86400, settimana,
+                                                  self.stato.pagelle, self.esecutore.parte, self.stato.diario,
+                                                  self.stato.romeo, _leggi("rischio.json"))
         self.tg.equipe(testo)
-        self.capo, self.esecutore.parte = nuovo, parte
+        self.capo = nuovo
+        self.esecutore.parte = float(rischio["parte"])
+        self.esecutore.minimo = float(rischio.get("minimo", 0.0))
+        corr = rischio.get("correlazioni")
+        self.esecutore.correlazioni = {float(c): float(r) for c, r in corr.items()} if corr else None
         CARTELLA.mkdir(parents=True, exist_ok=True)
         (CARTELLA / "capo.json").write_text(json.dumps(nuovo.come_dati()), encoding="utf-8")
-        (CARTELLA / "rischio.json").write_text(json.dumps({"parte": parte}), encoding="utf-8")
-        registra(CARTELLA, "riunione", settimana=settimana, testo=testo)
+        (CARTELLA / "rischio.json").write_text(json.dumps(rischio), encoding="utf-8")
+        registra(CARTELLA, "riunione", settimana=settimana, testo=testo, verbale=verbale)
         self.stato.ultima_riunione = settimana
         self.stato.salva(CARTELLA)
         self.consegna()

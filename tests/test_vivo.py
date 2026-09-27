@@ -216,7 +216,8 @@ def test_apre_due_meta_sposta_a_pareggio_e_chiude():
     a, b = viva.tickets
     assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
     assert m.posizioni[a].sl == m.posizioni[b].sl == round(d.op.stop, 5)
-    assert ("COMPRO" in fatto.testo or "VENDO" in fatto.testo) and "Perché" in fatto.testo
+    assert ("ACQUISTO" in fatto.testo or "VENDITA" in fatto.testo) and "Probabilità" in fatto.testo
+    assert "del conto" in fatto.testo and "Model#1" not in fatto.testo and "Kelly" not in fatto.testo
 
     m.chiudi(a, d.op.tp1)  # il broker incassa il primo target
     vive, fatti = e.sorveglia([viva])
@@ -246,6 +247,25 @@ def test_se_il_prezzo_e_gia_oltre_lo_stop_non_apre():
     t = Terminale(mt5=m)
     viva, fatto = Esecutore(t).apri(d, t.conto())
     assert viva is None and m.richieste == [] and fatto.equipe
+
+
+def test_il_lotto_minimo_si_apre_solo_se_il_conto_lo_regge():
+    """Sotto il lotto minimo si apre il minimo solo se, con la fiducia nelle stime imparata dal
+    Rischio, fa ancora crescere il conto: su un conto minuscolo il minimo sarebbe un azzardo."""
+    from nvm.agenti.rischio import crescita_creduta, esiti, kelly
+    e = esiti(0.5, 0.3, 1.5, 3.0, 0.0)
+    k = kelly(e)
+    assert crescita_creduta(e, 0.2 * k, 0.2) > 0 and crescita_creduta(e, 0.39 * k, 0.2) > 0
+    assert crescita_creduta(e, 0.41 * k, 0.2) < 0 and crescita_creduta(e, 0.0, 0.2) == 0
+    d = _una_decisione()
+    for saldo, apre in ((1000.0, True), (5.0, False)):
+        m = MT5Finto(saldo=saldo)
+        m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+        t = Terminale(mt5=m)
+        viva, fatto = Esecutore(t, parte=0.2).apri(d, t.conto())
+        assert (viva is not None) == apre, fatto.testo
+        if not apre:
+            assert fatto.saltata == "conto troppo piccolo per il lotto minimo" and m.richieste == []
 
 
 # --- l'equipe e la riunione ---
@@ -283,10 +303,19 @@ def test_la_riunione_riaddestra_il_capo_con_i_dati_dal_vivo():
                 esito={"uscita": "stop", "erre": -1.0, "quando": 200 + i, "tp1": False, "tp2": False})
         for i in range(30)
     ]
-    testo, nuovo, parte = riunione(seguite, capo, storico, 0, "2026-S39")
+    testo, nuovo, rischio, verbale = riunione(seguite, capo, storico, 0, "2026-S39", rischio={"parte": 0.2, "quando": 1})
     assert "Riunione" in testo and "30 dal vivo" in testo
     assert not np.allclose(nuovo.primo.pesi, capo.primo.pesi)
-    assert 0 < parte <= 1
+    # Senza lo storico completo il Rischio resta com'era: non torna al modo che brucia il conto.
+    assert rischio == {"parte": 0.2, "quando": 1} and "resto com'ero" in verbale
+    # Con lo storico completo rigioca il conto intero, con le operazioni dal vivo.
+    n = 400
+    storico.kelly_f, storico.kelly_r = np.full(n, 0.1), np.where(rng.random(n) < 0.45, 2.0, -1.0)
+    storico.k_entrata = np.arange(n) * 86400
+    storico.k_chiusa = storico.k_entrata + 3600
+    storico.k_strumento, storico.k_verso = np.full(n, "EURUSD"), np.ones(n, np.int8)
+    _, _, rischio, verbale = riunione(seguite, capo, storico, 0, "2026-S39", rischio={"parte": 0.2, "quando": 1})
+    assert {"parte", "minimo", "calo_sfortunato", "quando"} <= set(rischio) and "rigiocato il conto intero su 430" in verbale
 
 
 def test_la_riunione_rifa_anche_la_somiglianza_a_romeo_e_le_decisioni_vecchie_non_la_rompono():
@@ -300,7 +329,7 @@ def test_la_riunione_rifa_anche_la_somiglianza_a_romeo_e_le_decisioni_vecchie_no
     vecchia = Seguita("k", "EURUSD", "D1", "H1", "short", 100, 1.1, 1.101, 1.099, 1.098, 10**9, False,
                       [0.0] * 22, 1.0, 2.0, 0.01, 0.5, 0.4, 0.1,
                       esito={"uscita": "stop", "erre": -1.0, "quando": 200, "tp1": False, "tp2": False})
-    testo, nuovo, _ = riunione([vecchia], capo, storico, 0, "2026-S39")
+    testo, nuovo, _, _ = riunione([vecchia], capo, storico, 0, "2026-S39")
     assert nuovo.romeo is not None
     assert "Romeo" in testo
     pesi = dict(nuovo.fiducia_romeo())
@@ -443,8 +472,8 @@ def test_la_riunione_impara_romeo_anche_dal_vivo_e_da_il_metro():
     # Romeo sceglie le decisioni nell'ora di New York.
     romeo_vivo = [leggi_comando(f"/romeo EURUSD compra {s.ingresso:.4f} stop {s.ingresso - 0.0010:.4f}", s.quando + ORA)
                   for s in seguite if s.x[COLONNE.index("ora di Romeo: New York")] == 1][:10]
-    testo, nuovo, _ = riunione(seguite, capo, storico, adesso - 7 * 86400, "2026-S39", romeo_vivo=romeo_vivo)
-    _, solo_2023, _ = riunione(seguite, capo, storico, adesso - 7 * 86400, "2026-S39")
+    testo, nuovo, _, _ = riunione(seguite, capo, storico, adesso - 7 * 86400, "2026-S39", romeo_vivo=romeo_vivo)
+    _, solo_2023, _, _ = riunione(seguite, capo, storico, adesso - 7 * 86400, "2026-S39")
     assert "Romeo dal vivo" in testo and "ritrovate 10" in testo and "prese. Io ho aperto" in testo
     ny_ = np.zeros((1, len(COLONNE)))
     ny_[0, COLONNE.index("ora di Romeo: New York")] = 1
@@ -455,7 +484,7 @@ def test_il_bot_racconta_l_allenamento_una_volta_sola(tmp_path, monkeypatch):
     import vivo
     from nvm.vivo.stato import Stato
     monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
-    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S40", "rapporto": "🏋️ Allenamento"}})
+    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S40", "rapporto": "lungo", "breve": "🏋️ Allenamento"}})
     mandati = []
     bot = object.__new__(vivo.Bot)
     bot.tg = Telegram(Impostazioni(token="x", chat_equipe=("-2",)), invia=lambda c, t: mandati.append(t), stampa=lambda _: None)
@@ -464,7 +493,11 @@ def test_il_bot_racconta_l_allenamento_una_volta_sola(tmp_path, monkeypatch):
     bot.racconta_allenamento()
     assert mandati == ["🏋️ Allenamento"] and Stato.carica(tmp_path).ultimo_allenamento == "2026-S40"
     # Un secondo allenamento nella stessa settimana si racconta anche lui.
-    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S40", "id": 99, "rapporto": "🏋️ Di nuovo"}})
+    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S40", "id": 99, "breve": "🏋️ Di nuovo"}})
+    bot.racconta_allenamento()
+    assert mandati[-1] == "🏋️ Di nuovo"
+    # I rapporti di prima, solo lunghi, non si mandano.
+    monkeypatch.setattr(vivo, "leggi_memoria", lambda: {"ultimo": {"settimana": "2026-S41", "id": 100, "rapporto": "lungo"}})
     bot.racconta_allenamento()
     assert mandati[-1] == "🏋️ Di nuovo"
 
@@ -529,3 +562,26 @@ def test_le_decisioni_vecchie_vanno_nell_archivio_e_la_riunione_le_rilegge(tmp_p
     assert [s.chiave for s in archiviate(tmp_path)] == ["k1", "k2"]
     assert [s.chiave for s in archiviate(tmp_path, dal=2000)] == ["k2"]
     assert archiviate(tmp_path / "vuota") == []
+
+
+def test_il_rischio_non_mette_soldi_sulle_stime_deboli():
+    d = _una_decisione()
+    m = MT5Finto(saldo=100000.0)
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    viva, fatto = Esecutore(t, parte=0.2, minimo=10.0).apri(d, t.conto())
+    assert viva is None and fatto.saltata == "fiducia troppo bassa per metterci soldi" and m.richieste == []
+
+
+def test_del_rischio_vale_il_piu_recente(tmp_path, monkeypatch):
+    import json
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path / "vivo")
+    monkeypatch.setattr(vivo, "RADICE", tmp_path)
+    (tmp_path / "vivo").mkdir()
+    (tmp_path / "nvm" / "vivo").mkdir(parents=True)
+    (tmp_path / "vivo" / "rischio.json").write_text(json.dumps({"parte": 0.2}))
+    (tmp_path / "nvm" / "vivo" / "rischio.json").write_text(json.dumps({"parte": 0.01, "minimo": 0.06, "quando": 5}))
+    assert vivo._leggi("rischio.json")["parte"] == 0.01      # quello vecchio del sabato non vince piu'
+    (tmp_path / "vivo" / "rischio.json").write_text(json.dumps({"parte": 0.02, "minimo": 0.06, "quando": 9}))
+    assert vivo._leggi("rischio.json")["parte"] == 0.02

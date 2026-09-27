@@ -60,6 +60,25 @@ def kelly(e: Esiti) -> float:
     return float(f[int(np.argmax(valori))])
 
 
+def crescita_creduta(e: Esiti, f: float, parte: float, riduzione: float = 0.0) -> float:
+    """La crescita attesa rischiando `f`, con la fiducia nelle stime che il Rischio ha imparato.
+
+    Sulle operazioni passate il conto e' cresciuto di piu' con `parte` del Kelly: le stime del
+    Capo valgono meno di quanto dicono. Vicino al massimo la crescita e' una parabola
+    (vantaggio per f, meno meta' del quadrato degli esiti per f^2): col vantaggio ridotto a
+    `parte`, ha il massimo a parte x Kelly e torna a zero al doppio. Oltre, rischiare fa
+    crescere il conto meno che non entrare: e' il caso del lotto minimo troppo grande per il conto.
+    Con altre operazioni aperte che vanno insieme a questa, il massimo si sposta indietro di
+    `riduzione` (`nvm/agenti/portafoglio.py`)."""
+    if f <= 0:
+        return 0.0
+    k = kelly(e)
+    if k <= 0:
+        return -np.inf
+    x, p = np.array(e.erre), np.array(e.probabilita)
+    return 0.5 * float(np.dot(p, x * x)) * f * (2 * (parte * k - riduzione) - f)
+
+
 # Le parti del Kelly che il Rischio prova quando si addestra.
 PARTI = np.round(np.arange(0.02, 1.0001, 0.02), 2)
 

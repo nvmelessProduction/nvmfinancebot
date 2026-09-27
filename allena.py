@@ -55,7 +55,7 @@ def main() -> None:
     settimana = datetime.fromtimestamp(adesso, tz=timezone.utc).strftime("%G-S%V")
     memoria["prove"] += esito.prove
     memoria["idee"] = memoria.get("idee", []) + esito.prove_idee
-    memoria["ultimo"] = {"settimana": settimana, "id": adesso, "rapporto": esito.rapporto, "cambiato": esito.cambiato}
+    memoria["ultimo"] = {"settimana": settimana, "id": adesso, "rapporto": esito.rapporto, "breve": esito.breve, "cambiato": esito.cambiato}
     allenamento.salva_memoria(memoria)
     manopole.applica(esito.valori)
     manopole.salva(manopole.attuali())

@@ -15,6 +15,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from nvm.agenti import capo as capo_mod
+from nvm.agenti.cacciatore import Verso
 from nvm.agenti.capo import COLONNE, Capo, esiti, riga
 from nvm.prova.base import SETTIMANA, Risultato
 from nvm.prova.campo import Uscita
@@ -48,6 +49,10 @@ class Tabella:
     # Le operazioni chiuse dal tetto di sicurezza invece che da stop o target:
     # l'allenamento degli agenti le tiene d'occhio (`spec/allenamento.md`).
     scaduta: Optional[np.ndarray] = None
+    # Lo strumento e il verso (+1 acquisto, -1 vendita) di ogni operazione: servono al Rischio
+    # per il conto intero, con le operazioni aperte insieme (`nvm/agenti/portafoglio.py`).
+    strumento: Optional[np.ndarray] = None
+    verso: Optional[np.ndarray] = None
 
     def __len__(self) -> int:
         return len(self.quando)
@@ -70,6 +75,8 @@ class Tabella:
             rr2=np.array([r.rr2 for r in risultati]),
             costi=np.array([r.costo_erre for r in risultati]),
             scaduta=np.array([r.uscita is Uscita.SCADUTA for r in risultati], bool),
+            strumento=np.array([r.strumento for r in risultati], str),
+            verso=np.array([-1 if r.verso is Verso.SHORT else 1 for r in risultati], np.int8),
         )
 
     def salva(self, percorso: Path) -> None:

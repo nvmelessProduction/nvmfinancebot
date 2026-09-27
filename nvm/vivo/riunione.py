@@ -18,7 +18,9 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti.capo import COLONNE, Capo, pesi_per_eta
-from nvm.agenti.rischio import esiti, impara_parte, kelly
+from nvm.agenti import portafoglio
+from nvm.agenti.portafoglio import Operazioni
+from nvm.agenti.rischio import esiti, kelly
 from nvm.vivo.autoanalisi import riassunto
 from nvm.vivo.dialogo import AGENTI, ascolto, chi_aveva_ragione, consigli, grado
 from nvm.vivo.messaggi import erre, qualita
@@ -41,6 +43,11 @@ class Storico:
     romeo_x: Optional[np.ndarray] = None
     romeo_y: Optional[np.ndarray] = None
     romeo_tp1: Optional[np.ndarray] = None
+    # Le stesse puntate con ingresso, uscita, strumento e verso: il Rischio le rigioca sul conto intero.
+    k_entrata: Optional[np.ndarray] = None
+    k_chiusa: Optional[np.ndarray] = None
+    k_strumento: Optional[np.ndarray] = None
+    k_verso: Optional[np.ndarray] = None
 
     @classmethod
     def carica(cls, percorso) -> "Storico":
@@ -48,7 +55,8 @@ class Storico:
             c = lambda k: f[k] if k in f.files else None
             return cls(f["x"], f["tp1"].astype(bool), f["tp2"].astype(bool), c("erre"), c("quando"), c("kelly_f"), c("kelly_r"),
                        c("romeo_x"), None if c("romeo_y") is None else f["romeo_y"].astype(bool),
-                       None if c("romeo_tp1") is None else f["romeo_tp1"].astype(bool))
+                       None if c("romeo_tp1") is None else f["romeo_tp1"].astype(bool),
+                       c("k_entrata"), c("k_chiusa"), c("k_strumento"), c("k_verso"))
 
 
 def _x(s: Seguita) -> list[float]:
@@ -104,8 +112,11 @@ def _romeo_dal_vivo(entrate: list[EntrataDiRomeo], seguite: list[Seguita], dal: 
 def riunione(
     seguite: list[Seguita], capo: Capo, storico: Storico, dal: int, settimana: str,
     pagelle: Optional[dict] = None, parte: float = 1.0, diario: Optional[dict] = None,
-    romeo_vivo: Optional[list[EntrataDiRomeo]] = None,
-) -> tuple[str, Capo, float]:
+    romeo_vivo: Optional[list[EntrataDiRomeo]] = None, rischio: Optional[dict] = None,
+) -> tuple[str, Capo, dict, str]:
+    """La riunione del sabato: il Capo e il Rischio si riaddestrano sui dati dal vivo.
+    Restituisce il resoconto breve per l'equipe, il Capo nuovo, quello che il Rischio ha
+    imparato (`rischio.json`) e il verbale completo (per il registro)."""
     finite = [s for s in seguite if s.esito is not None]
     di_questa = [s for s in finite if s.esito["quando"] >= dal]
     nuove = [s for s in seguite if s.quando >= dal]
@@ -191,12 +202,24 @@ def riunione(
     righe += ["", "Consigli fra agenti (da oggi li provo)"]
     righe += [f"• {testo}" for testo, _ in scelti] or ["• nessuna coppia che cambi davvero il risultato"]
 
-    # Il Rischio: quanta parte del Kelly, sulle puntate passate e su quelle dal vivo.
+    # Il Rischio: rigioca il conto intero con le puntate dei vent'anni e quelle dal vivo, aperte
+    # insieme (`nvm/agenti/portafoglio.py`). Senza lo storico completo resta com'era: la parte
+    # imparata una puntata alla volta non vede le operazioni aperte insieme, e brucerebbe il conto.
     dal_vivo = [s for s in finite if s.presa_dal_capo]
-    f = np.r_[storico.kelly_f if storico.kelly_f is not None else [],
-              [kelly(esiti(s.p1, s.q, s.rr1, s.rr2, s.costi)) for s in dal_vivo]]
-    r = np.r_[storico.kelly_r if storico.kelly_r is not None else [], [s.esito["erre"] for s in dal_vivo]]
-    nuova_parte = impara_parte(f, r) if len(f) else parte
+    rischio = dict(rischio or {"parte": parte})
+    nuovo_rischio, n_puntate = rischio, 0
+    if storico.k_entrata is not None and storico.kelly_f is not None:
+        op = Operazioni(
+            np.r_[storico.k_entrata, [s.quando for s in dal_vivo]],
+            np.r_[storico.k_chiusa, [s.esito["quando"] for s in dal_vivo]],
+            np.r_[storico.k_strumento, [s.strumento for s in dal_vivo]],
+            np.r_[storico.k_verso, [-1 if s.verso == "short" else 1 for s in dal_vivo]],
+            np.r_[storico.kelly_f, [kelly(esiti(s.p1, s.q, s.rr1, s.rr2, s.costi)) for s in dal_vivo]],
+            np.r_[storico.kelly_r, [s.esito["erre"] for s in dal_vivo]])
+        corr = portafoglio.correlazioni(op)
+        nuovo_rischio = portafoglio.come_dati(portafoglio.scegli(op, corr), corr)
+        n_puntate = len(op)
+    parte, nuova_parte = float(rischio["parte"]), float(nuovo_rischio["parte"])
     if romeo:
         pesi_romeo = sorted(nuovo.fiducia_romeo(), key=lambda a: -a[1])
         righe += ["", "Romeo",
@@ -211,12 +234,70 @@ def riunione(
                          f"{np.mean(scartate_simili):.1%}".replace(".", ","))
     if romeo_vivo:
         righe += ["", "Romeo dal vivo"] + _romeo_dal_vivo(romeo_vivo, seguite, dal)
+    rischio_riga = (f"Rischio: ho rigiocato il conto intero su {n_puntate} operazioni, {len(dal_vivo)} dal vivo: "
+                    f"fiducia minima {nuovo_rischio.get('minimo', 0):g}, uso {_peso(nuova_parte)[1:]} del Kelly "
+                    f"(era {_peso(parte)[1:]})."
+                    + (f" Nelle storie sfortunate il conto cala al massimo del {nuovo_rischio['calo_sfortunato']:.0%}."
+                       if "calo_sfortunato" in nuovo_rischio else "")
+                    if n_puntate else "Rischio: senza lo storico completo resto com'ero.")
     righe += [
         "",
-        f"Rischio: uso {_peso(nuova_parte)[1:]} del Kelly (era {_peso(parte)[1:]}), rifatto su {len(f)} puntate, "
-        f"{len(dal_vivo)} dal vivo.",
+        rischio_riga,
         "",
         f"Capo: mi sono riaddestrato su {len(storico.x)} operazioni dello storico e {len(finite)} dal vivo. "
         "Da adesso lavoro così. Buon fine settimana.",
     ]
-    return "\n".join(righe), nuovo, nuova_parte
+    breve = _breve(settimana, nuove, prese, scartate, finite, settimanali, prima, dopo, scelti, parte, nuova_parte,
+                   len(storico.x), diario, capo, nuovo, romeo)
+    if romeo_vivo:
+        breve += "\n\nRomeo dal vivo\n" + "\n".join(_romeo_dal_vivo(romeo_vivo, seguite, dal))
+    return breve, nuovo, nuovo_rischio, "\n".join(righe)
+
+
+def _volte(x: float) -> str:
+    return (f"{x:+.2f}".replace(".", ",").replace("-", "−")) + " volte il rischio"
+
+
+def _breve(settimana, nuove, prese, scartate, finite, settimanali, prima, dopo, scelti, parte, nuova_parte,
+           storici, diario, capo, nuovo, romeo) -> str:
+    """Il resoconto della settimana per l'equipe: com'e' andata, chi ha lavorato meglio e peggio,
+    cosa cambia da lunedi'. In parole semplici; i dettagli restano nel verbale."""
+    aperte = sum(s.entrata for s in nuove)
+    righe = [f"📊 Riunione del sabato · settimana {settimana}", "", "Com'è andata",
+             f"• Operazioni aperte: {aperte} · chiuse: {len(prese)}"
+             + (f" · risultato {_volte(sum(prese))}" if prese else "")]
+    if scartate:
+        giudizio = "bene averle lasciate" if sum(scartate) <= 0 else "qualcuna andava presa"
+        righe.append(f"• Occasioni lasciate: {len(nuove) - aperte}; se prese avrebbero fatto {_volte(sum(scartate))}: {giudizio}")
+    if finite:
+        stimato = float(np.mean([s.p1 for s in finite]))
+        vero = float(np.mean([s.esito["tp1"] for s in finite]))
+        giudizio = ("era ottimista, si corregge" if stimato > vero + 0.05 else
+                    ("era prudente, si corregge" if vero > stimato + 0.05 else "ci ha preso"))
+        righe.append(f"• Il Capo stimava il primo obiettivo nel {stimato:.0%} dei casi, è arrivato nel {vero:.0%}: {giudizio}")
+    giudicati = [(n, g, t) for n, (g, t) in settimanali.items() if t >= 5 and n in AGENTI]
+    if giudicati:
+        righe += ["", "La squadra"]
+        meglio = max(giudicati, key=lambda a: a[1] / a[2])
+        peggio = min(giudicati, key=lambda a: a[1] / a[2])
+        righe.append(f"• Più affidabile: {meglio[0]} ({meglio[1]} giuste su {meglio[2]})")
+        if peggio[0] != meglio[0]:
+            meno = dopo.get(peggio[0], 0) < prima.get(peggio[0], 0)
+            righe.append(f"• Meno affidabile: {peggio[0]} ({peggio[1]} giuste su {peggio[2]})"
+                         + (": da lunedì il Capo lo ascolta meno" if meno else ""))
+    righe += ["", "Cosa cambia da lunedì",
+              f"• Il Capo si è riallenato su {storici} operazioni dei vent'anni e {len(finite)} dal vivo."]
+    if nuova_parte < parte * 0.95:
+        righe.append("• Il Rischio abbassa la dimensione delle operazioni.")
+    elif nuova_parte > parte * 1.05:
+        righe.append("• Il Rischio alza la dimensione delle operazioni.")
+    else:
+        righe.append("• La dimensione delle operazioni resta la stessa.")
+    if scelti:
+        righe.append(f"• {len(scelti)} nuov{'a' if len(scelti) == 1 else 'e'} regol{'a' if len(scelti) == 1 else 'e'} "
+                     "di squadra: quando certi segnali arrivano insieme, il Capo se ne fida meno.")
+    solide = [r for r in riassunto(diario or {}) if "solida" in r]
+    righe += solide
+    if romeo:
+        righe.append(f"• La voce di Romeo: fiducia {_peso(capo.fiducia_in_romeo)} → {_peso(nuovo.fiducia_in_romeo)}.")
+    return "\n".join(righe)

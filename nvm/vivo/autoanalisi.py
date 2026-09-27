@@ -73,8 +73,8 @@ def scelta(nome: str, v) -> str:
     if nome == "tempo":
         return "nessuna uscita a tempo" if not v else f"fuori se il primo obiettivo non arriva in {v} candele"
     if nome == "invalidazione":
-        return "nessuna uscita per invalidazione" if not v else f"fuori dopo {v} chiusure oltre il livello del Model#1"
-    return f"{nome} {v}"
+        return "nessuna uscita per invalidazione" if not v else f"fuori dopo {v} chiusur{'a' if v == 1 else 'e'} oltre il livello della conferma"
+    return f"{nome} {_numero(v) if isinstance(v, float) else v}"
 
 
 def alternative(s, basse: Candele) -> dict[str, list[tuple[str, float, float]]]:
