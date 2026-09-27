@@ -146,7 +146,11 @@ class Esecutore:
             return None, Fatto(messaggi.saltata(d, "siamo già troppo esposti con " + ", ".join(legate or ["le altre aperte"])),
                                equipe=True, saltata="già troppo esposti su operazioni legate")
         volume = min(_giu(conto.saldo * f / per_lotto, passo), massimo)
-        if volume >= 2 * minimo:
+        if op.parziale in (0.0, 1.0) and volume >= minimo:
+            # Il piano scelto dai cervelli: tutto al primo obiettivo, o tutto al secondo col pareggio.
+            uscita = USCITE[1] if op.parziale == 1.0 else USCITE[2]
+            parti = [(volume, op.tp1 if op.parziale == 1.0 else op.tp2)]
+        elif volume >= 2 * minimo:
             meta = _giu(volume / 2, passo)
             parti = [(meta, op.tp1), (meta, op.tp2)]
             uscita = USCITE[0]
@@ -158,7 +162,8 @@ class Esecutore:
             quota = v * per_lotto / conto.saldo
             if dei_cervelli:
                 # La crescita torna a zero al doppio della puntata giusta (`crescita_creduta`).
-                migliore, uscita = (1.0 if quota < 2 * (da_sola - togli) else -1.0), USCITE[1]
+                migliore = 1.0 if quota < 2 * (da_sola - togli) else -1.0
+                uscita = USCITE[2] if op.parziale == 0.0 else USCITE[1]
             else:
                 scelte = [(crescita_creduta(esiti(d.p1, d.q, rr1, rr2, costi, u), quota, parte, togli), u)
                           for u in USCITE[1:]]

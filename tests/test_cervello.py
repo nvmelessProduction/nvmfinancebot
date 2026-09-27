@@ -78,3 +78,21 @@ def test_dal_vivo_giudicano_si_confrontano_imparano_e_ricordano(tmp_path):
     # La gara della sera: cervelli contro Capo sulle occasioni finite.
     s = NS(esito={"erre": 1.5, "quando": 100}, cervelli={"fiducia": 0.7}, presa_dal_capo=False)
     assert "i cervelli ne avrebbero prese 1 (+1,50 volte il rischio), il Capo 0" in dal_vivo.gara([s], 0, 200, 0.5)
+
+
+def test_livelli_scelgono_il_piano_migliore_fra_quelli_possibili():
+    from nvm.cervello import dal_vivo
+    from nvm.cervello.piani import PIANI
+    from nvm.cervello.rete import ReteValori
+    rng = np.random.default_rng(3)
+    n = 2000
+    v = {a: rng.normal(size=(n, 2)) for a in AGENTI}
+    valori = np.tile(np.linspace(-0.5, 0.3, len(PIANI)), (n, 1)) + rng.normal(0, 0.1, (n, len(PIANI)))
+    rete = ReteValori.allena(np.hstack([v[a] for a in AGENTI]), valori)
+    caso = {a: v[a][0] for a in AGENTI}
+    j, stime = dal_vivo.scegli_piano(rete, caso, [object()] * len(PIANI))
+    assert j == len(PIANI) - 1
+    # L'ultimo piano non si puo' fare: sceglie il migliore fra gli altri.
+    j, _ = dal_vivo.scegli_piano(rete, caso, [object()] * (len(PIANI) - 1) + [None])
+    assert j == len(PIANI) - 2
+    assert "Scelgo" in dal_vivo.voce_livelli(j, stime)

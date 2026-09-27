@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 import traceback
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -429,6 +429,20 @@ class Bot:
             return g["fiducia"] > self.cervelli_info.get("soglia", 0.5)
         return d.entra
 
+    def _con_piano(self, d, g: Optional[dict]):
+        if not self._decidono_i_cervelli or g is None or not d.piani:
+            return d
+        try:
+            scelta = dal_vivo.scegli_piano(self.cervelli_info.get("piani"), d.viste, d.piani)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+            return d
+        if scelta is None:
+            return d
+        j, valori = scelta
+        g["piano"], g["valori"] = j, valori
+        return replace(d, op=d.piani[j])
+
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
         conto = self.terminale.conto() if decisioni else None
         giudizi = {d.chiave: self._giudizio(d) for d in decisioni}
@@ -436,6 +450,8 @@ class Bot:
             if giudizi[d.chiave] is not None:
                 # Cosa avrebbe fatto il Capo di prima: serve alla gara della sera.
                 giudizi[d.chiave]["capo"] = bool(d.entra)
+        # Quando decidono i cervelli, i Livelli scelgono anche il piano: dove lo stop, come il profitto.
+        decisioni = [self._con_piano(d, giudizi[d.chiave]) for d in decisioni]
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
         aperte, da_dire = set(), []
         for d in decisioni:
@@ -477,6 +493,13 @@ class Bot:
                         g, self.cervelli_info.get("soglia", 0.5), self._decidono_i_cervelli)))
                     if self._decidono_i_cervelli:
                         voci[-1] = conversazione.Voce("Capo", dal_vivo.capo_quando_decidono(d.p1, g["capo"]))
+                    if "piano" in g:
+                        testo = dal_vivo.voce_livelli(g["piano"], g["valori"])
+                        k = next((i for i, v in enumerate(voci) if v.chi == "Livelli"), None)
+                        if k is None:
+                            voci.insert(1, conversazione.Voce("Livelli", testo))
+                        else:
+                            voci[k] = conversazione.Voce("Livelli", voci[k].testo + " " + testo)
                 self.tg.voci(voci)
             op = d.op
             crt = d.r.scatto.crt if d.r.scatto is not None else None
@@ -489,7 +512,8 @@ class Bot:
                         crt_alto=None if crt is None else crt.crt_high, crt_basso=None if crt is None else crt.crt_low,
                         estremo=None if crt is None else crt.estremo_a(d.r.quando),
                         stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE, qualita=d.qualita,
-                        decisa=self._entra(d, giudizi[d.chiave]), cervelli=giudizi[d.chiave])
+                        decisa=self._entra(d, giudizi[d.chiave]), cervelli=giudizi[d.chiave],
+                        parziale=op.parziale, pareggio=op.pareggio)
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
                      atteso=d.atteso, qualita=d.qualita, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
@@ -511,7 +535,8 @@ class Bot:
         if s.cervelli and self.cervelli is not None:
             # Ogni risultato vero insegna qualcosa ai cervelli: imparano subito, e lo ricordano.
             try:
-                dal_vivo.impara(self.cervelli, CARTELLA, s.cervelli, float(s.esito["erre"]))
+                dal_vivo.impara(self.cervelli, CARTELLA, s.cervelli, float(s.esito["erre"]),
+                                self.cervelli_info.get("piani"))
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
         if s.entrata:

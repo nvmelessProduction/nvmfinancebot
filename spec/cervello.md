@@ -47,6 +47,26 @@ ragionamento e la gara di ogni sera con il Capo.
 Prima di questi è stata provata una memoria dei casi simili (`memoria.py`: sfogliare lo
 storico a ogni occasione): peggiorava le decisioni in tutte le varianti. Scartata.
 
+## I piani: i cervelli scelgono stop e obiettivi (`piani.py`)
+
+Su ogni occasione ci sono nove piani: lo stop *stretto* (oltre il livello della conferma),
+*all'estremo* (il manuale) o *largo* (un quarto di range più in là), e il profitto *tutto al
+primo obiettivo*, *metà e metà* (il manuale) o *tutto al secondo* col pareggio. Sui vent'anni
+ogni operazione è rifatta con tutti e nove sugli stessi prezzi. Il cervello dei Livelli
+(`ReteValori`) guarda quello che vedono lui e i colleghi e stima quanto vale ogni piano nella
+situazione; quando decidono i cervelli apre il piano che vale di più, e lo dice in équipe
+("Scelgo stop largo, tutto al secondo obiettivo: in casi così vale +0,12 volte il rischio, il
+piano di sempre +0,03"). Dal vivo impara il valore vero del piano seguito.
+
+Nessun limite scritto: lo stop lontanissimo non conviene perché si misura quanto si guadagna
+rispetto a quanto si rischia (una vincita piccola su un rischio grande vale poco), e le
+operazioni hanno comunque un tempo massimo.
+
+Prima prova anno per anno (2010-2023): il piano scelto rende più di quello di sempre nel
+2010-2016 (+0,03/+0,05 R contro −0,03), non nel 2017-2023 (−0,04/−0,07 contro −0,06). Sui
+vent'anni, in media, lo stop stretto perde molto (−0,34 R: i costi su uno stop piccolo) e il
+largo col secondo obiettivo è il migliore (−0,016).
+
 ## Cosa manca
 
 - Più dati: con 40 strumenti gli esempi diventano circa sei volte tanti, e le reti ne hanno

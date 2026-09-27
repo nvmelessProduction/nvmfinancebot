@@ -17,6 +17,7 @@ import numpy as np
 from nvm.agenti import portafoglio
 from nvm.agenti.capo import pesi_per_eta
 from nvm.agenti.portafoglio import Operazioni
+from nvm.cervello.rete import ReteValori
 from nvm.cervello.squadra import Squadra
 from nvm.cervello.viste import AGENTI
 
@@ -103,6 +104,22 @@ def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print) -
     # (2p - 1) al posto del Kelly del Capo, con parte e fiducia minima imparate sul conto intero.
     dal = t.anno >= PRIMO_ESAME - 2
     s = portafoglio.scegli(_operazioni(t, dal & (p > SOGLIA), np.clip(2 * p - 1, 0, None)), None)
-    return {"quando": int(time.time()), "squadra": squadra.come_dati(), "esame": risultato,
+    dati = {"quando": int(time.time()), "squadra": squadra.come_dati(), "esame": risultato,
             "decidono": bool(risultato["decidono"]), "soglia": SOGLIA,
             "rischio": {"parte": s.parte, "minimo": s.minimo}}
+    if t.piani is not None:
+        dati["piani"] = allena_piani(t, int(t.chiusa.max()) + 1).come_dati()
+    return dati
+
+
+def vista_dei_piani(viste: dict) -> np.ndarray:
+    """Cosa guarda Livelli per scegliere stop e obiettivi: quello che vede lui e i colleghi."""
+    return np.hstack([np.atleast_2d(viste[a]) for a in AGENTI])
+
+
+def allena_piani(t, fino_a: int) -> ReteValori:
+    """Il cervello dei Livelli che stima quanto vale ogni piano (`piani.py`) nella situazione."""
+    tr = np.flatnonzero(t.chiusa < fino_a)
+    tr = tr[np.argsort(t.quando[tr], kind="stable")]
+    return ReteValori.allena(vista_dei_piani({a: t.viste[a][tr] for a in AGENTI}), t.piani[tr],
+                             pesi_per_eta(t.chiusa[tr], fino_a))

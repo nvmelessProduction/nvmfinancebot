@@ -71,6 +71,9 @@ class Seguita:
     # I cervelli degli agenti su questa occasione: cosa vedevano, il primo giudizio, quello dopo
     # il confronto, chi ha convinto chi, e la fiducia della squadra (`nvm/cervello/`).
     cervelli: Optional[dict] = None
+    # Quanta parte al primo obiettivo (1 tutto, 0 niente: tutto al secondo) e se c'e' il pareggio.
+    parziale: float = 0.5
+    pareggio: bool = True
 
     @property
     def presa_dal_capo(self) -> bool:

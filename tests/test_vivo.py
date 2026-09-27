@@ -585,3 +585,16 @@ def test_del_rischio_vale_il_piu_recente(tmp_path, monkeypatch):
     assert vivo._leggi("rischio.json")["parte"] == 0.01      # quello vecchio del sabato non vince piu'
     (tmp_path / "vivo" / "rischio.json").write_text(json.dumps({"parte": 0.02, "minimo": 0.06, "quando": 9}))
     assert vivo._leggi("rischio.json")["parte"] == 0.02
+
+
+def test_il_piano_scelto_dai_cervelli_si_apre_com_e():
+    from dataclasses import replace
+    d = _una_decisione()
+    for parziale, target in ((1.0, "tp1"), (0.0, "tp2")):
+        m = MT5Finto(saldo=100000.0)
+        m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+        t = Terminale(mt5=m)
+        dd = replace(d, op=replace(d.op, parziale=parziale))
+        viva, fatto = Esecutore(t, parte=0.2).apri(dd, t.conto(), pieno=0.3, parte=0.2, fiducia_minima=0.0)
+        assert viva is not None and len(viva.tickets) == 1, fatto.testo
+        assert m.posizioni[viva.tickets[0]].tp == round(getattr(d.op, target), 5)

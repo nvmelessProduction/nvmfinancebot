@@ -140,3 +140,104 @@ class Rete:
     def da_dati(cls, d: dict) -> "Rete":
         return cls(np.array(d["media"]), np.array(d["scala"]), np.array(d["w1"]), np.array(d["b1"]),
                    np.array(d["w2"]), float(d["b2"]))
+
+
+@dataclass
+class ReteValori:
+    """Un cervello che stima quanto vale ogni scelta possibile (per esempio ogni piano di stop e
+    obiettivi), in R: una uscita per scelta. Impara anche quando per un esempio alcune scelte non
+    si potevano fare (valori mancanti)."""
+
+    media: np.ndarray
+    scala: np.ndarray
+    w1: np.ndarray
+    b1: np.ndarray
+    w2: np.ndarray
+    b2: np.ndarray
+
+    def _z(self, x):
+        return (_entra(x) - self.media) / self.scala
+
+    def valori(self, x: np.ndarray) -> np.ndarray:
+        h = np.tanh(self._z(np.atleast_2d(x)) @ self.w1 + self.b1)
+        return h @ self.w2 + self.b2
+
+    @classmethod
+    def allena(cls, x: np.ndarray, v: np.ndarray, pesi: Optional[np.ndarray] = None, nascosti: int = 24,
+               seme: int = 0, controllo: float = 0.15, tetto: tuple = (-2.0, 4.0)) -> "ReteValori":
+        x = np.asarray(x, float)
+        v = np.asarray(v, float)
+        m = ~np.isnan(v)
+        v = np.clip(np.nan_to_num(v), *tetto)
+        w = np.ones(len(v)) if pesi is None else np.asarray(pesi, float)
+        rng = np.random.default_rng(seme)
+        z = _entra(x)
+        media, s = z.mean(axis=0), z.std(axis=0)
+        k = v.shape[1]
+        r = cls(media, np.where(s > 1e-9, s, 1.0), rng.normal(0, 1 / np.sqrt(x.shape[1]), (x.shape[1], nascosti)),
+                np.zeros(nascosti), rng.normal(0, 0.01, (nascosti, k)),
+                np.array([v[m[:, j], j].mean() if m[:, j].any() else 0.0 for j in range(k)]))
+        taglio = int(len(v) * (1 - controllo))
+        zz = r._z(x)
+        par = [r.w1, r.b1, r.w2, r.b2]
+        mom = [np.zeros_like(p) for p in par]
+        vel = [np.zeros_like(p) for p in par]
+
+        def gradiente(i):
+            h = np.tanh(zz[i] @ r.w1 + r.b1)
+            d = (h @ r.w2 + r.b2 - v[i]) * m[i] * w[i, None] / max(np.sum(w[i]), 1e-12)
+            g_w2 = h.T @ d + PENALITA * r.w2
+            dh = (d @ r.w2.T) * (1 - h ** 2)
+            return [zz[i].T @ dh + PENALITA * r.w1, dh.sum(axis=0), g_w2, d.sum(axis=0)]
+
+        def perdita(i):
+            e = (r.valori(x[i]) - v[i]) * m[i]
+            return float(np.sum(w[i, None] * e * e) / max(np.sum(w[i]), 1e-12))
+        controllo_i = np.arange(taglio, len(v))
+        migliore, copia, fermo, t = np.inf, None, 0, 0
+        for _ in range(GIRI):
+            ordine = rng.permutation(taglio)
+            for a in range(0, taglio, LOTTO):
+                g = gradiente(ordine[a:a + LOTTO])
+                t += 1
+                for j in range(4):
+                    mom[j] = 0.9 * mom[j] + 0.1 * g[j]
+                    vel[j] = 0.999 * vel[j] + 0.001 * g[j] * g[j]
+                    par[j] -= PASSO * (mom[j] / (1 - 0.9 ** t)) / (np.sqrt(vel[j] / (1 - 0.999 ** t)) + 1e-8)
+            if len(controllo_i):
+                p = perdita(controllo_i)
+                if p < migliore - 1e-6:
+                    migliore, copia, fermo = p, [q.copy() for q in par], 0
+                else:
+                    fermo += 1
+                    if fermo >= PAZIENZA:
+                        break
+        if copia is not None:
+            r.w1, r.b1, r.w2, r.b2 = copia
+        else:
+            r.w1, r.b1, r.w2, r.b2 = par
+        return r
+
+    def aggiorna(self, x: np.ndarray, v: np.ndarray, passi: int = 3, passo: float = PASSO / 3,
+                 tetto: tuple = (-2.0, 4.0)) -> "ReteValori":
+        """Dal vivo: dopo un'operazione, i valori veri dei piani (quelli che si possono rifare)."""
+        x, v = np.atleast_2d(np.asarray(x, float)), np.atleast_2d(np.asarray(v, float))
+        m = ~np.isnan(v)
+        v = np.clip(np.nan_to_num(v), *tetto)
+        z = self._z(x)
+        for _ in range(passi):
+            h = np.tanh(z @ self.w1 + self.b1)
+            d = (h @ self.w2 + self.b2 - v) * m / len(v)
+            dh = (d @ self.w2.T) * (1 - h ** 2)
+            self.w2 -= passo * h.T @ d
+            self.b2 -= passo * d.sum(axis=0)
+            self.w1 -= passo * z.T @ dh
+            self.b1 -= passo * dh.sum(axis=0)
+        return self
+
+    def come_dati(self) -> dict:
+        return {k: getattr(self, k).tolist() for k in ("media", "scala", "w1", "b1", "w2", "b2")}
+
+    @classmethod
+    def da_dati(cls, d: dict) -> "ReteValori":
+        return cls(*(np.array(d[k]) for k in ("media", "scala", "w1", "b1", "w2", "b2")))

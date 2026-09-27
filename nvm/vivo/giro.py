@@ -23,6 +23,7 @@ from nvm.prova.base import Risultato, opera
 from nvm.prova.campo import Operazione
 from nvm.agenti import capo as capo_mod, inventate, manopole, panorama
 from nvm.agenti.conferme import Grandi
+from nvm.cervello.piani import tutti as piani_di
 from nvm.cervello.viste import viste
 from nvm.tempo import TF
 
@@ -59,6 +60,8 @@ class Decisione:
     qualita: Optional[float] = None
     # Cosa vedeva ogni agente (`nvm/cervello/viste.py`): lo giudicano i loro cervelli.
     viste: Optional[dict] = None
+    # Le operazioni di tutti i piani fra cui i cervelli scelgono (`nvm/cervello/piani.py`).
+    piani: Optional[list] = None
 
     @property
     def entra(self) -> bool:
@@ -118,6 +121,13 @@ def _viste(r, alte, basse, sopra, settimane, x) -> Optional[dict]:
         return None
 
 
+def _piani(r, basse) -> Optional[list]:
+    try:
+        return piani_di(r.scatto, basse)
+    except Exception:
+        return None
+
+
 def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
          orarie: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
@@ -155,7 +165,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq,
                     panorama.sguardo(r, ctx_idee),
                     float(capo_mod.qualita_attesa(p1[0], q[0], r.rr1, r.rr2, r.costo_erre)),
-                    _viste(r, alte, basse, sopra, settimane, x[0])))
+                    _viste(r, alte, basse, sopra, settimane, x[0]), _piani(r, basse)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

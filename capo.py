@@ -70,7 +70,7 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
         t = Tabella.carica(percorso)
         # Le tabelle di prima del 27/09/2026 non hanno strumento e verso, ne' (quella del bot)
         # cosa vedeva ogni agente: si rifanno.
-        if t.strumento is not None and (numero != 1 or t.viste is not None):
+        if t.strumento is not None and (numero != 1 or (t.viste is not None and t.piani is not None)):
             return t
     variante, stretto = CONFIGURAZIONI[numero]
     if numero == 1:

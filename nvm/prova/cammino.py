@@ -55,6 +55,9 @@ class Tabella:
     verso: Optional[np.ndarray] = None
     # Cosa vedeva ogni agente all'ingresso (`nvm/cervello/viste.py`), per allenare i cervelli.
     viste: Optional[dict] = None
+    # Come sarebbe finita ogni operazione con ognuno dei piani fra cui i cervelli scelgono
+    # (`nvm/cervello/piani.py`), in R: una colonna per piano.
+    piani: Optional[np.ndarray] = None
 
     def __len__(self) -> int:
         return len(self.quando)
@@ -121,7 +124,7 @@ def costruisci_tabella(
     from nvm.prova.romeo import grandi
     from nvm.tempo import TF
 
-    risultati, pareri, occhi = [], [], {}
+    risultati, pareri, occhi, piani = [], [], {}, []
     for strumento, base in basi.items():
         fine = int(base.t[-1]) + base.passo
         g = grandi(base, fine)
@@ -144,14 +147,17 @@ def costruisci_tabella(
             if con_viste:
                 from nvm.agenti.capo import riga as riga_capo
                 from nvm.cervello.viste import viste
+                from nvm.cervello.piani import risultati as dei_piani
                 for x, p in zip(r, nuovi):
                     for a, v in viste(x, alte, basse, sopra, settimane, riga_capo(x, *p)).items():
                         occhi.setdefault(a, []).append(v)
+                    piani.append(dei_piani(x.scatto, basse))
             if dire:
                 dire(f"{strumento} {alto.value}-{basso.value}: {len(r)} operazioni")
     t = Tabella.da(risultati, pareri)
     if con_viste:
         t.viste = {a: np.array(v) for a, v in occhi.items()}
+        t.piani = np.array(piani).reshape(len(risultati), -1)
     return t
 
 

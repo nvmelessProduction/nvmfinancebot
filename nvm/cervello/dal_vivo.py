@@ -14,25 +14,63 @@ from typing import Optional
 
 import numpy as np
 
+from nvm.cervello.piani import PIANI, nome
+from nvm.cervello.rete import ReteValori
+from nvm.cervello.scuola import vista_dei_piani
 from nvm.cervello.squadra import Squadra
 from nvm.cervello.viste import AGENTI
 
 ESEMPI = "cervelli_esempi.jsonl"
+# I risultati si imparano dentro questa misura, in R.
+TETTO = (-3.0, 5.0)
 
 
 def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
-    """La squadra di scuola, con tutte le operazioni vere gia' imparate. Senza file: nessuna."""
+    """La squadra di scuola, con tutte le operazioni vere gia' imparate. Senza file: nessuna.
+    Nelle informazioni, sotto "piani", il cervello dei Livelli che sceglie stop e obiettivi."""
     if not file.exists():
         return None, {}
     dati = json.loads(file.read_text(encoding="utf-8"))
     squadra = Squadra.da_dati(dati["squadra"])
+    info = {k: v for k, v in dati.items() if k not in ("squadra", "piani")}
+    info["piani"] = ReteValori.da_dati(dati["piani"]) if dati.get("piani") else None
     esempi = cartella / ESEMPI
     if esempi.exists():
         for riga in esempi.read_text(encoding="utf-8").splitlines():
             if riga.strip():
                 e = json.loads(riga)
-                squadra.aggiorna({a: np.array([e["viste"][a]]) for a in AGENTI}, e["y"], e["w"])
-    return squadra, {k: v for k, v in dati.items() if k != "squadra"}
+                v = {a: np.array([e["viste"][a]]) for a in AGENTI}
+                if np.isfinite(e["w"]):
+                    squadra.aggiorna(v, e["y"], min(e["w"], -TETTO[0]) if e["y"] == 0 else min(e["w"], TETTO[1]))
+                _impara_piano(info["piani"], v, e.get("piano"), e.get("erre"))
+    return squadra, info
+
+
+def _impara_piano(rete: Optional[ReteValori], v: dict, piano: Optional[int], erre: Optional[float]) -> None:
+    """Il cervello dei piani impara il valore vero del piano seguito (gli altri non si sanno)."""
+    if rete is None or piano is None or erre is None:
+        return
+    if not np.isfinite(erre):
+        return
+    valori = np.full((1, len(PIANI)), np.nan)
+    valori[0, piano] = float(np.clip(erre, *TETTO))
+    prima = rete.come_dati()
+    rete.aggiorna(vista_dei_piani(v), valori)
+    if not np.all(np.isfinite(rete.valori(vista_dei_piani(v)))):
+        tornata = ReteValori.da_dati(prima)
+        rete.w1, rete.b1, rete.w2, rete.b2 = tornata.w1, tornata.b1, tornata.w2, tornata.b2
+
+
+def scegli_piano(rete: Optional[ReteValori], viste: dict, fattibili: Optional[list]) -> Optional[tuple[int, list]]:
+    """Il piano che il cervello dei Livelli stima migliore, fra quelli che si possono fare."""
+    if rete is None or not fattibili:
+        return None
+    valori = rete.valori(vista_dei_piani({a: np.atleast_2d(viste[a]) for a in AGENTI}))[0]
+    possibili = [j for j, op in enumerate(fattibili) if op is not None]
+    if not possibili:
+        return None
+    j = max(possibili, key=lambda k: valori[k])
+    return j, [float(x) for x in valori]
 
 
 def _cento(logit: float) -> int:
@@ -51,13 +89,37 @@ def giudica(squadra: Squadra, viste: dict) -> dict:
             "fiducia": float(p[0]), "viste": {a: [round(float(x), 5) for x in viste[a]] for a in AGENTI}}
 
 
-def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float) -> None:
+def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, piani: Optional[ReteValori] = None) -> None:
     """Un risultato vero: ogni cervello impara, e l'esempio resta per le prossime volte."""
-    y, w = float(erre > 0), abs(float(erre))
-    squadra.aggiorna({a: np.array([giudizio["viste"][a]]) for a in AGENTI}, y, w)
+    if not np.isfinite(erre):
+        return
+    # Un risultato fuori misura (uno stop quasi nullo fa R enormi) non deve travolgere quello che sanno.
+    erre = float(np.clip(erre, *TETTO))
+    y, w = float(erre > 0), abs(erre)
+    v = {a: np.array([giudizio["viste"][a]]) for a in AGENTI}
+    prima = squadra.come_dati()
+    squadra.aggiorna(v, y, w)
+    if not np.all(np.isfinite(squadra.giudica(v)[2])):
+        # Se un passo li rompe, si torna indietro: meglio non imparare che impazzire.
+        ripristino = Squadra.da_dati(prima)
+        squadra.primi, squadra.secondi, squadra.capo = ripristino.primi, ripristino.secondi, ripristino.capo
+    piano = giudizio.get("piano")
+    _impara_piano(piani, v, piano, erre)
     cartella.mkdir(parents=True, exist_ok=True)
     with (cartella / ESEMPI).open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"viste": giudizio["viste"], "y": y, "w": w}) + "\n")
+        f.write(json.dumps({"viste": giudizio["viste"], "y": y, "w": w, "piano": piano, "erre": float(erre)}) + "\n")
+
+
+def voce_livelli(piano: int, valori: list) -> str:
+    """Livelli dice quale piano sceglie e perche': quanto vale, contro il piano di sempre."""
+    solito = PIANI.index(("estremo", "meta"))
+
+    def r(x):
+        return f"{x:+.2f}".replace(".", ",").replace("-", "−")
+    testo = f"Scelgo {nome(PIANI[piano])}: in casi così vale {r(valori[piano])} volte il rischio"
+    if piano != solito:
+        testo += f", il piano di sempre {r(valori[solito])}"
+    return testo + "."
 
 
 # Da quanti punti su 100 un cambio d'idea si racconta.
