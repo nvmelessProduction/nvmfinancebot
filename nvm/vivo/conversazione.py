@@ -246,7 +246,8 @@ def benvenuto(strumenti: int) -> str:
 # --- Il riepilogo della sera ------------------------------------------------------------------
 
 def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: float, lezioni: list[str],
-              saltate: Optional[dict] = None, chiuse: Optional[list] = None, altre: tuple = ()) -> str:
+              saltate: Optional[dict] = None, chiuse: Optional[list] = None, altre: tuple = (),
+              cervelli: bool = False) -> str:
     """Un messaggio solo, a fine giornata: cosa si e' deciso, com'e' andata, cosa ricordare.
     Vuoto se non e' successo niente (il fine settimana, per esempio): niente messaggio."""
     decise = [s for s in seguite if dal <= s.quando < al]
@@ -263,7 +264,8 @@ def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: flo
     if saltate:
         quante = sum(saltate.values())
         perche = ", ".join(f"{n} {m}" for m, n in sorted(saltate.items(), key=lambda a: -a[1]))
-        righe.append(f"• Il Capo ne voleva altr{'a' if quante == 1 else 'e'} {quante}, non apert{'a' if quante == 1 else 'e'}: {perche}")
+        chi = "I cervelli ne volevano" if cervelli else "Il Capo ne voleva"
+        righe.append(f"• {chi} altr{'a' if quante == 1 else 'e'} {quante}, non apert{'a' if quante == 1 else 'e'}: {perche}")
     if vere:
         vinte = sum(r > 0.05 for r in vere)
         righe.append(f"• Operazioni chiuse: {len(vere)} ({vinte} in guadagno) · in tutto {_volte(sum(vere))}")
@@ -271,7 +273,10 @@ def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: flo
         righe.append("• Nessuna operazione chiusa oggi")
     if carta:
         giudizio = ("ha fatto bene a lasciarle" if sum(carta) <= 0 else "avrebbe fatto meglio a prenderne qualcuna")
-        righe.append(f"• Le occasioni lasciate, se prese, avrebbero fatto {_volte(sum(carta))}: il Capo {giudizio}")
+        if cervelli:
+            giudizio = giudizio.replace("ha fatto", "hanno fatto").replace("avrebbe fatto", "avrebbero fatto")
+        righe.append(f"• Le occasioni lasciate, se prese, avrebbero fatto {_volte(sum(carta))}: "
+                     f"{'i cervelli' if cervelli else 'il Capo'} {giudizio}")
     righe.append(f"• Aperte adesso: {aperte} · {_pct(rischio_totale)} del conto a rischio")
     righe += list(altre)
     if lezioni:

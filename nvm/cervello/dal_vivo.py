@@ -77,10 +77,21 @@ def voce(g: dict, soglia: float, decidono: bool) -> str:
     entra = g["fiducia"] > soglia
     righe = [f"Quanto ci crediamo, su 100: {primi}."]
     righe.append("Dopo il confronto: " + ("; ".join(cambi) + "." if cambi else "nessuno ha cambiato idea."))
-    righe.append(f"Pesando i nostri giudizi (quanto ognuno ha avuto ragione a scuola): {fiducia} su 100, "
-                 + ("entreremmo." if entra else "non entreremmo.")
-                 + ("" if decidono else " Siamo in prova: decidiamo solo quando all'esame battiamo il Capo."))
+    if decidono:
+        righe.append(f"Pesando i nostri giudizi (quanto ognuno ha avuto ragione a scuola): {fiducia} su 100: "
+                     + ("entriamo." if entra else "non entriamo."))
+    else:
+        righe.append(f"Pesando i nostri giudizi (quanto ognuno ha avuto ragione a scuola): {fiducia} su 100, "
+                     + ("entreremmo." if entra else "non entreremmo.")
+                     + " Siamo in prova: decidiamo solo quando all'esame battiamo il Capo.")
     return "\n".join(righe)
+
+
+def capo_quando_decidono(p1: float, capo_entrava: bool) -> str:
+    """Il Capo quando decidono i cervelli: lo dice, e dice cosa avrebbe fatto lui."""
+    return (f"Decidono i cervelli, scelta del proprietario. Io, col mio vecchio calcolo, "
+            f"{'sarei entrato anch' + chr(39) + 'io' if capo_entrava else 'non sarei entrato'} "
+            f"({round(100 * p1)} possibilità su 100 di arrivare al primo obiettivo).")
 
 
 def gara(seguite: list, dal: int, al: int, soglia: float) -> Optional[str]:
@@ -89,7 +100,7 @@ def gara(seguite: list, dal: int, al: int, soglia: float) -> Optional[str]:
     if not finite:
         return None
     loro = [float(s.esito["erre"]) for s in finite if s.cervelli["fiducia"] > soglia]
-    capo = [float(s.esito["erre"]) for s in finite if s.presa_dal_capo]
+    capo = [float(s.esito["erre"]) for s in finite if s.cervelli.get("capo", s.presa_dal_capo)]
 
     def v(x):
         return f"{sum(x):+.2f}".replace(".", ",").replace("-", "−") + " volte il rischio"

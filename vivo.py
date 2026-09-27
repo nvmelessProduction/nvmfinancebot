@@ -147,6 +147,9 @@ class Bot:
         self.esecutore = Esecutore(self.terminale, float(rischio["parte"]), rischio.get("correlazioni"),
                                    float(rischio.get("minimo", 0.0)))
         self.storico = Storico.carica(RADICE / "nvm" / "vivo" / "storico.npz")
+        # Le scelte del proprietario (per esempio: sul demo decidono i cervelli).
+        scelte = RADICE / "nvm" / "vivo" / "scelte.json"
+        self.scelte = json.loads(scelte.read_text(encoding="utf-8")) if scelte.exists() else {}
         # I cervelli degli agenti (`nvm/cervello/`): usciti da scuola, con tutto quello che hanno
         # imparato dal vivo. Se qualcosa non va, il bot lavora come prima, col Capo.
         try:
@@ -376,7 +379,8 @@ class Bot:
                    for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
         gara = dal_vivo.gara(self.stato.seguite, fine - 86400, fine, self.cervelli_info.get("soglia", 0.5))
         testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
-                                        self.stato.saltate, [r for _, r in self.stato.chiuse], [gara] if gara else [])
+                                        self.stato.saltate, [r for _, r in self.stato.chiuse], [gara] if gara else [],
+                                        cervelli=self._decidono_i_cervelli)
         if testo:
             self.tg.equipe(testo)
         self.stato.lezioni = {}
@@ -416,7 +420,8 @@ class Bot:
 
     @property
     def _decidono_i_cervelli(self) -> bool:
-        return bool(self.cervelli is not None and self.cervelli_info.get("decidono"))
+        """Decidono i cervelli se hanno vinto l'esame, o se l'ha scelto il proprietario (`scelte.json`)."""
+        return bool(self.cervelli is not None and (self.cervelli_info.get("decidono") or self.scelte.get("decidono_i_cervelli")))
 
     def _entra(self, d, g: Optional[dict]) -> bool:
         """Chi decide: i cervelli, se all'esame hanno battuto il Capo; altrimenti il Capo."""
@@ -427,6 +432,10 @@ class Bot:
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
         conto = self.terminale.conto() if decisioni else None
         giudizi = {d.chiave: self._giudizio(d) for d in decisioni}
+        for d in decisioni:
+            if giudizi[d.chiave] is not None:
+                # Cosa avrebbe fatto il Capo di prima: serve alla gara della sera.
+                giudizi[d.chiave]["capo"] = bool(d.entra)
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
         aperte, da_dire = set(), []
         for d in decisioni:
@@ -466,6 +475,8 @@ class Bot:
                     # Il ragionamento dei cervelli, prima che il Capo chiuda.
                     voci.insert(len(voci) - 1, conversazione.Voce("Cervelli", dal_vivo.voce(
                         g, self.cervelli_info.get("soglia", 0.5), self._decidono_i_cervelli)))
+                    if self._decidono_i_cervelli:
+                        voci[-1] = conversazione.Voce("Capo", dal_vivo.capo_quando_decidono(d.p1, g["capo"]))
                 self.tg.voci(voci)
             op = d.op
             crt = d.r.scatto.crt if d.r.scatto is not None else None
