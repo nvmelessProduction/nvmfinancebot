@@ -90,3 +90,10 @@ def test_una_prova_si_cita_solo_se_sostiene_quello_che_si_dice():
     storia = conversazione.prove(x, tp1)
     assert "60 volte su 100" in conversazione._prova("Orario", "09–13 NY", storia, True)
     assert conversazione._prova("Orario", "09–13 NY", storia, False) == ""
+
+
+def test_il_grilletto_non_parla_due_volte():
+    d = _una_decisione()
+    voci = conversazione.apertura(d, {"Grilletto": -0.08, "Orario": 0.05}, None, 0.004, 1, 0.004)
+    assert [v.chi for v in voci].count("Grilletto") == 1
+    assert "Attenzione." in voci[0].testo and voci[-1].chi == "Capo"

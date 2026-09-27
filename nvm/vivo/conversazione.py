@@ -174,8 +174,12 @@ def apertura(d, per: dict[str, float], storia: Optional[dict], rischio: float, a
     if contro:
         f = firma(contro[0], x)
         prova = _prova(contro[0], f, storia, False)
-        voci.append(Voce(contro[0], "Attenzione. " + parole(contro[0], f)
-                         + (prova or " Nei vent'anni, però, casi così sono andati peggio del solito.")))
+        dubbio = "Attenzione. " + parole(contro[0], f) + (prova or " Nei vent'anni, però, casi così sono andati peggio del solito.")
+        if contro[0] == "Grilletto":
+            # Il Grilletto ha gia' parlato: il suo dubbio va nello stesso messaggio, senza ripetere il tentativo.
+            voci[0] = Voce("Grilletto", voci[0].testo.replace(colpo, "") + " " + dubbio)
+        else:
+            voci.append(Voce(contro[0], dubbio))
     if aperte <= 1:
         insieme_a = "È l'unica operazione aperta."
     else:
