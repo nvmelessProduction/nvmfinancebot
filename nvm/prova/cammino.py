@@ -53,6 +53,8 @@ class Tabella:
     # per il conto intero, con le operazioni aperte insieme (`nvm/agenti/portafoglio.py`).
     strumento: Optional[np.ndarray] = None
     verso: Optional[np.ndarray] = None
+    # Cosa vedeva ogni agente all'ingresso (`nvm/cervello/viste.py`), per allenare i cervelli.
+    viste: Optional[dict] = None
 
     def __len__(self) -> int:
         return len(self.quando)
@@ -81,12 +83,15 @@ class Tabella:
 
     def salva(self, percorso: Path) -> None:
         percorso.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(percorso, **{k: v for k, v in self.__dict__.items() if v is not None})
+        dati = {k: v for k, v in self.__dict__.items() if v is not None and k != "viste"}
+        dati |= {f"vista {a}": v for a, v in (self.viste or {}).items()}
+        np.savez_compressed(percorso, **dati)
 
     @classmethod
     def carica(cls, percorso: Path) -> "Tabella":
         with np.load(percorso) as f:
-            return cls(**{k: f[k] for k in f.files})
+            viste = {k[len("vista "):]: f[k] for k in f.files if k.startswith("vista ")}
+            return cls(**{k: f[k] for k in f.files if not k.startswith("vista ")}, viste=viste or None)
 
 
 def coppie_di(base, quarti, coppie) -> list:
@@ -100,7 +105,7 @@ def coppie_di(base, quarti, coppie) -> list:
 
 def costruisci_tabella(
     basi: dict, coppie, dal: int, al: int, variante=None, stretto: bool = False, spread: float = 1.0,
-    dire: Optional[Callable[[str], None]] = None, quarti: Optional[dict] = None,
+    dire: Optional[Callable[[str], None]] = None, quarti: Optional[dict] = None, con_viste: bool = False,
 ) -> Tabella:
     """Tutte le operazioni delle coppie con ingresso in [dal, al), con le risposte degli agenti.
 
@@ -116,7 +121,7 @@ def costruisci_tabella(
     from nvm.prova.romeo import grandi
     from nvm.tempo import TF
 
-    risultati, pareri = [], []
+    risultati, pareri, occhi = [], [], {}
     for strumento, base in basi.items():
         fine = int(base.t[-1]) + base.passo
         g = grandi(base, fine)
@@ -133,11 +138,21 @@ def costruisci_tabella(
                 basse = allarga(basse, spread)
             r = opera(alte, basse, dal, al, variante, stretto)
             risultati += r
-            pareri += [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) + (inventate.rispondi_tutte(idee, x, ctx),)
-                       for x in r]
+            nuovi = [tutti_i_pareri(x.scatto, alte, basse, sopra, settimane, g) + (inventate.rispondi_tutte(idee, x, ctx),)
+                     for x in r]
+            pareri += nuovi
+            if con_viste:
+                from nvm.agenti.capo import riga as riga_capo
+                from nvm.cervello.viste import viste
+                for x, p in zip(r, nuovi):
+                    for a, v in viste(x, alte, basse, sopra, settimane, riga_capo(x, *p)).items():
+                        occhi.setdefault(a, []).append(v)
             if dire:
                 dire(f"{strumento} {alto.value}-{basso.value}: {len(r)} operazioni")
-    return Tabella.da(risultati, pareri)
+    t = Tabella.da(risultati, pareri)
+    if con_viste:
+        t.viste = {a: np.array(v) for a, v in occhi.items()}
+    return t
 
 
 @dataclass
