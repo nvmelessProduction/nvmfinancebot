@@ -46,3 +46,35 @@ def test_la_squadra_giudica_si_confronta_e_il_capo_decide():
     assert np.mean((p > 0.5) == y[2500:]) > 0.8
     # Dopo il confronto l'Orario, che vede solo rumore, ha imparato ad ascoltare chi vede giusto.
     assert np.corrcoef(dopo["Orario"], y[2500:])[0, 1] > np.corrcoef(primo["Orario"], y[2500:])[0, 1]
+
+
+def test_dal_vivo_giudicano_si_confrontano_imparano_e_ricordano(tmp_path):
+    import json
+    from types import SimpleNamespace as NS
+    from nvm.cervello import dal_vivo
+    rng = np.random.default_rng(2)
+    n = 1500
+    y = (rng.random(n) < 0.4).astype(float)
+    v = {a: rng.normal(size=(n, 3)) + y[:, None] * (0.8 if a == "Orario" else 0.0) for a in AGENTI}
+    sq = Squadra.allena(v, y)
+    file = tmp_path / "cervelli.json"
+    file.write_text(json.dumps({"squadra": sq.come_dati(), "decidono": False, "soglia": 0.5}))
+    cartella = tmp_path / "vivo"
+    squadra, info = dal_vivo.carica(file, cartella)
+    assert info["decidono"] is False
+    caso = {a: v[a][0] for a in AGENTI}
+    g = dal_vivo.giudica(squadra, caso)
+    assert set(g["primo"]) == set(AGENTI) and 0 <= g["fiducia"] <= 1
+    testo = dal_vivo.voce(g, 0.5, False)
+    assert "Quanto ci crediamo" in testo and "Siamo in prova" in testo
+    # Impara da un risultato vero e lo ricorda: ricaricata, la squadra ha gia' imparato.
+    prima = dal_vivo.giudica(squadra, caso)["fiducia"]
+    for _ in range(30):
+        dal_vivo.impara(squadra, cartella, g, -1.0)
+    dopo = dal_vivo.giudica(squadra, caso)["fiducia"]
+    assert dopo < prima
+    ricaricata, _ = dal_vivo.carica(file, cartella)
+    assert abs(dal_vivo.giudica(ricaricata, caso)["fiducia"] - dopo) < 1e-6
+    # La gara della sera: cervelli contro Capo sulle occasioni finite.
+    s = NS(esito={"erre": 1.5, "quando": 100}, cervelli={"fiducia": 0.7}, presa_dal_capo=False)
+    assert "i cervelli ne avrebbero prese 1 (+1,50 volte il rischio), il Capo 0" in dal_vivo.gara([s], 0, 200, 0.5)

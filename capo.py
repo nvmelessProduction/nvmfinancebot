@@ -24,6 +24,7 @@ from nvm.agenti.cacciatore import Variante
 from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti import portafoglio
 from nvm.agenti.portafoglio import Operazioni
+from nvm.cervello import scuola
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.strumenti import BASE
@@ -67,15 +68,16 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
     percorso = RADICE / "dati" / "tabelle" / nome
     if percorso.exists():
         t = Tabella.carica(percorso)
-        # Le tabelle di prima del 27/09/2026 non hanno strumento e verso: si rifanno.
-        if t.strumento is not None:
+        # Le tabelle di prima del 27/09/2026 non hanno strumento e verso, ne' (quella del bot)
+        # cosa vedeva ogni agente: si rifanno.
+        if t.strumento is not None and (numero != 1 or t.viste is not None):
             return t
     variante, stretto = CONFIGURAZIONI[numero]
     if numero == 1:
         variante = None     # la configurazione del bot: la variante e' quella della manopola del Cacciatore
     t = costruisci_tabella(ore_storiche(radice), GRADINO if numero > 4 else COPPIE, _istante(DAL), _istante(AL + 1),
                            variante, stretto, spread, dire=lambda testo: print(f"  conf {numero} {testo}", flush=True),
-                           quarti=quarti)
+                           quarti=quarti, con_viste=numero == 1)
     t.salva(percorso)
     return t
 
@@ -173,6 +175,11 @@ def salva_per_il_vivo(t: Tabella) -> None:
     rischio = impara_il_conto(op)
     parte = rischio["parte"]
     (cartella / "rischio.json").write_text(json.dumps(rischio), encoding="utf-8")
+    if t.viste is not None:
+        # I cervelli degli agenti: a scuola sui vent'anni, e l'esame contro il Capo di oggi.
+        kelly_capo, entra_capo = stime_del_capo(t)
+        cervelli = scuola.per_il_vivo(t, kelly_capo, entra_capo)
+        (cartella / "cervelli.json").write_text(json.dumps(cervelli), encoding="utf-8")
     romeo = candidati_di_romeo()
     capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"]).impara_fiducia(romeo["romeo_x"], romeo["romeo_tp1"])
     (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")
@@ -184,6 +191,23 @@ def salva_per_il_vivo(t: Tabella) -> None:
           f"{len(romeo['romeo_y'])} candidati del 2023, {int(romeo['romeo_y'].sum())} le sue scelte; "
           f"fiducia in Romeo imparata dai risultati {capo.fiducia_in_romeo:+.3f}. "
           f"Salvati in {cartella}")
+
+
+def stime_del_capo(t: Tabella) -> tuple[np.ndarray, np.ndarray]:
+    """Per ogni operazione del 2008-2023: la puntata di Kelly piena e la scelta del Capo,
+    allenato ogni anno solo sugli anni prima. Fuori da quegli anni: zero e no."""
+    anni = t.anno
+    k, entra = np.zeros(len(t)), np.zeros(len(t), bool)
+    for a in range(PRIMO_GIUDICATO, AL + 1):
+        oggi = np.flatnonzero(anni == a)
+        if not len(oggi):
+            continue
+        passato = t.chiusa < _istante(a)
+        c = Capo.allena(t.x[passato], t.tp1[passato], t.tp2[passato], pesi=pesi_per_eta(t.chiusa[passato], _istante(a)))
+        p1, q = c.probabilita(t.x[oggi])
+        entra[oggi] = c.entra(t.x[oggi], t.rr1[oggi], t.rr2[oggi], t.costi[oggi])
+        k[oggi] = [kelly(esiti(p1[j], q[j], t.rr1[i], t.rr2[i], t.costi[i])) for j, i in enumerate(oggi)]
+    return k, entra
 
 
 def operazioni_del_capo(t: Tabella) -> Operazioni:

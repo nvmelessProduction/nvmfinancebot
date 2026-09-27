@@ -82,11 +82,13 @@ class Rete:
         rete._impara(x[:taglio], y[:taglio], w[:taglio], x[taglio:], y[taglio:], w[taglio:], seme)
         return rete
 
-    def aggiorna(self, x: np.ndarray, y: np.ndarray, passi: int = 1, passo: float = PASSO / 3) -> "Rete":
+    def aggiorna(self, x: np.ndarray, y: np.ndarray, passi: int = 1, passo: float = PASSO / 3,
+                 pesi: Optional[np.ndarray] = None) -> "Rete":
         """Dal vivo: impara da poche operazioni nuove, senza dimenticare la scuola (passi piccoli)."""
         x, y = np.atleast_2d(np.asarray(x, float)), np.atleast_1d(np.asarray(y, float))
+        w = np.ones(len(y)) if pesi is None else np.atleast_1d(np.asarray(pesi, float))
         for _ in range(passi):
-            g = self._gradiente(self._z(x), y, np.ones(len(y)))
+            g = self._gradiente(self._z(x), y, w)
             for nome, dg in zip(("w1", "b1", "w2", "b2"), g):
                 setattr(self, nome, getattr(self, nome) - passo * dg)
         return self

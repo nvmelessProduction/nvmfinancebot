@@ -26,7 +26,7 @@ from nvm.tempo import NEW_YORK
 from nvm.vivo.dialogo import BINARIE, firma
 
 VOLTI = {"Cacciatore": "🔭", "Grilletto": "🎯", "Livelli": "📏", "Key level": "🧱", "Orario": "🕐", "Bias": "🧭",
-         "Allineamento": "🪜", "Gap": "🕳", "Rischio": "🛡", "Capo": "👔", "Romeo": "🎓"}
+         "Allineamento": "🪜", "Gap": "🕳", "Rischio": "🛡", "Capo": "👔", "Romeo": "🎓", "Cervelli": "🧠"}
 # Sotto questa spinta (sulla qualita' attesa) un agente non ha pesato davvero: non parla.
 PESO = 0.03
 # Da quanti casi sui vent'anni un numero si dice.
@@ -246,7 +246,7 @@ def benvenuto(strumenti: int) -> str:
 # --- Il riepilogo della sera ------------------------------------------------------------------
 
 def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: float, lezioni: list[str],
-              saltate: Optional[dict] = None, chiuse: Optional[list] = None) -> str:
+              saltate: Optional[dict] = None, chiuse: Optional[list] = None, altre: tuple = ()) -> str:
     """Un messaggio solo, a fine giornata: cosa si e' deciso, com'e' andata, cosa ricordare.
     Vuoto se non e' successo niente (il fine settimana, per esempio): niente messaggio."""
     decise = [s for s in seguite if dal <= s.quando < al]
@@ -273,6 +273,7 @@ def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: flo
         giudizio = ("ha fatto bene a lasciarle" if sum(carta) <= 0 else "avrebbe fatto meglio a prenderne qualcuna")
         righe.append(f"• Le occasioni lasciate, se prese, avrebbero fatto {_volte(sum(carta))}: il Capo {giudizio}")
     righe.append(f"• Aperte adesso: {aperte} · {_pct(rischio_totale)} del conto a rischio")
+    righe += list(altre)
     if lezioni:
         righe += ["", "Da ricordare"] + [f"• {x}" for x in lezioni[:3]]
     return "\n".join(righe)

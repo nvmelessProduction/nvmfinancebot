@@ -68,6 +68,9 @@ class Seguita:
     # La qualita' attesa e la decisione del Capo (entrare o no), anche se poi l'ordine non e' partito.
     qualita: Optional[float] = None
     decisa: Optional[bool] = None
+    # I cervelli degli agenti su questa occasione: cosa vedevano, il primo giudizio, quello dopo
+    # il confronto, chi ha convinto chi, e la fiducia della squadra (`nvm/cervello/`).
+    cervelli: Optional[dict] = None
 
     @property
     def presa_dal_capo(self) -> bool:

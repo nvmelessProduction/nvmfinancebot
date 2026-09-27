@@ -99,7 +99,8 @@ class Esecutore:
         # comune (`nvm/agenti/portafoglio.py`): senza, ogni operazione si punta come se fosse sola.
         self.correlazioni = {float(c): float(r) for c, r in correlazioni.items()} if correlazioni else None
 
-    def apri(self, d: Decisione, conto: Conto, aperte: list = ()) -> tuple[Optional[Viva], Fatto]:
+    def apri(self, d: Decisione, conto: Conto, aperte: list = (), pieno: Optional[float] = None,
+             parte: Optional[float] = None, fiducia_minima: Optional[float] = None) -> tuple[Optional[Viva], Fatto]:
         """Apre la decisione sul conto. `aperte`: le operazioni gia' aperte (`Viva`), perche' il
         Rischio punti sul conto intero e non su un'operazione alla volta."""
         k, op, verso = d.r.strumento, d.op, d.r.verso
@@ -125,16 +126,20 @@ class Esecutore:
         costi = d.r.costo_erre
         per_lotto = self.t.perdita_per_lotto(k, verso, prezzo, op.stop)
         minimo, passo, massimo = self.t.lotti(k)
-        pieno = kelly(esiti(d.p1, d.q, rr1, rr2, costi))
+        # Il Kelly pieno del Capo; se decidono i cervelli, la loro fiducia (con parte e minimo loro).
+        dei_cervelli = pieno is not None
+        pieno = kelly(esiti(d.p1, d.q, rr1, rr2, costi)) if pieno is None else pieno
+        parte = self.parte if parte is None else parte
+        fiducia_minima = self.minimo if fiducia_minima is None else fiducia_minima
         gamba = portafoglio.gambe(k, segno)
         # Quelle a pareggio non rischiano piu' niente.
         in_corso = [(v.gambe, v.rischio / conto.saldo) for v in aperte if not v.pareggio_fatto and conto.saldo > 0]
         togli = portafoglio.riduzione(gamba, in_corso, self.correlazioni)
-        da_sola = pieno * self.parte
+        da_sola = pieno * parte
         f = max(da_sola - togli, 0.0)
         legate = portafoglio.legate(gamba, [(v.strumento, v.gambe) for v in aperte if not v.pareggio_fatto],
                                     self.correlazioni)
-        if pieno < self.minimo:
+        if pieno < fiducia_minima:
             return None, Fatto(messaggi.saltata(d, "le stime sono troppo deboli per metterci soldi"), equipe=True,
                                saltata="fiducia troppo bassa per metterci soldi")
         if pieno > 0 and f <= 0:
@@ -151,9 +156,13 @@ class Esecutore:
             # molte volte la puntata giusta, e un conto piccolo si brucerebbe).
             v = max(volume, minimo)
             quota = v * per_lotto / conto.saldo
-            scelte = [(crescita_creduta(esiti(d.p1, d.q, rr1, rr2, costi, u), quota, self.parte, togli), u)
-                      for u in USCITE[1:]]
-            migliore, uscita = max(scelte)
+            if dei_cervelli:
+                # La crescita torna a zero al doppio della puntata giusta (`crescita_creduta`).
+                migliore, uscita = (1.0 if quota < 2 * (da_sola - togli) else -1.0), USCITE[1]
+            else:
+                scelte = [(crescita_creduta(esiti(d.p1, d.q, rr1, rr2, costi, u), quota, parte, togli), u)
+                          for u in USCITE[1:]]
+                migliore, uscita = max(scelte)
             if migliore <= 0:
                 return None, Fatto(messaggi.saltata(
                     d, f"anche il lotto minimo ({minimo:g}) rischierebbe {v * per_lotto:.2f} {conto.valuta} "
