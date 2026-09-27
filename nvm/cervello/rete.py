@@ -43,6 +43,10 @@ class Rete:
     b1: np.ndarray
     w2: np.ndarray
     b2: float
+    # Come e' fatto il cervello, che lui stesso puo' cambiare (`genoma.py`): quanto frena i pesi,
+    # e quali numeri della sua vista guarda (None = tutti).
+    penalita: float = PENALITA
+    colonne: Optional[np.ndarray] = None
 
     @classmethod
     def nuova(cls, entrate: int, nascosti: int = NASCOSTI, seme: int = 0) -> "Rete":
@@ -50,8 +54,12 @@ class Rete:
         return cls(np.zeros(entrate), np.ones(entrate), rng.normal(0, 1 / np.sqrt(entrate), (entrate, nascosti)),
                    np.zeros(nascosti), rng.normal(0, 1 / np.sqrt(nascosti), nascosti), 0.0)
 
+    def _scegli(self, x: np.ndarray) -> np.ndarray:
+        x = np.atleast_2d(x)
+        return x if self.colonne is None else x[:, self.colonne]
+
     def _z(self, x: np.ndarray) -> np.ndarray:
-        return (_entra(x) - self.media) / self.scala
+        return (_entra(self._scegli(x)) - self.media) / self.scala
 
     def nascosto(self, x: np.ndarray) -> np.ndarray:
         """Cosa "pensa" dentro: l'attivita' dei neuroni nascosti."""
@@ -65,21 +73,28 @@ class Rete:
 
     @classmethod
     def allena(cls, x: np.ndarray, y: np.ndarray, pesi: Optional[np.ndarray] = None, nascosti: int = NASCOSTI,
-               seme: int = 0, controllo: float = 0.15) -> "Rete":
+               seme: int = 0, controllo: float = 0.15, penalita: float = PENALITA,
+               colonne: Optional[np.ndarray] = None) -> "Rete":
         """A scuola: impara da `x` (una riga per esempio) a prevedere `y` (0/1). Gli ultimi
         `controllo` esempi (i piu' recenti, se sono in ordine di tempo) non li usa per imparare
         ma per capire quando fermarsi."""
         x = np.asarray(x, float)
         y = np.asarray(y, float)
         w = np.ones(len(y)) if pesi is None else np.asarray(pesi, float)
-        rete = cls.nuova(x.shape[1], nascosti, seme)
+        colonne = None if colonne is None else np.asarray(colonne, int)
+        entrate = x.shape[1] if colonne is None else len(colonne)
+        rete = cls.nuova(entrate, nascosti, seme)
+        rete.penalita, rete.colonne = penalita, colonne
+        x = rete._scegli(x)
         z = _entra(x)
         rete.media = z.mean(axis=0)
         s = z.std(axis=0)
         rete.scala = np.where(s > 1e-9, s, 1.0)
         taglio = int(len(y) * (1 - controllo))
         rete.b2 = float(np.log(max(y[:taglio].mean(), 1e-3) / max(1 - y[:taglio].mean(), 1e-3)))
+        colonne, rete.colonne = rete.colonne, None     # x e' gia' ristretta alle colonne scelte
         rete._impara(x[:taglio], y[:taglio], w[:taglio], x[taglio:], y[taglio:], w[taglio:], seme)
+        rete.colonne = colonne
         return rete
 
     def aggiorna(self, x: np.ndarray, y: np.ndarray, passi: int = 1, passo: float = PASSO / 3,
@@ -97,10 +112,10 @@ class Rete:
         h = np.tanh(z @ self.w1 + self.b1)
         logit = h @ self.w2 + self.b2
         d = w * (1 / (1 + np.exp(-logit)) - y) / np.sum(w)
-        g_w2 = h.T @ d + PENALITA * self.w2
+        g_w2 = h.T @ d + self.penalita * self.w2
         g_b2 = float(d.sum())
         dh = np.outer(d, self.w2) * (1 - h ** 2)
-        g_w1 = z.T @ dh + PENALITA * self.w1
+        g_w1 = z.T @ dh + self.penalita * self.w1
         g_b1 = dh.sum(axis=0)
         return g_w1, g_b1, g_w2, g_b2
 
@@ -134,12 +149,14 @@ class Rete:
 
     def come_dati(self) -> dict:
         return {"media": self.media.tolist(), "scala": self.scala.tolist(), "w1": self.w1.tolist(),
-                "b1": self.b1.tolist(), "w2": self.w2.tolist(), "b2": float(self.b2)}
+                "b1": self.b1.tolist(), "w2": self.w2.tolist(), "b2": float(self.b2), "penalita": self.penalita,
+                "colonne": None if self.colonne is None else self.colonne.tolist()}
 
     @classmethod
     def da_dati(cls, d: dict) -> "Rete":
         return cls(np.array(d["media"]), np.array(d["scala"]), np.array(d["w1"]), np.array(d["b1"]),
-                   np.array(d["w2"]), float(d["b2"]))
+                   np.array(d["w2"]), float(d["b2"]), float(d.get("penalita", PENALITA)),
+                   None if d.get("colonne") is None else np.array(d["colonne"], int))
 
 
 @dataclass

@@ -1,0 +1,90 @@
+{
+ "attuali": {
+  "Cacciatore": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  },
+  "Grilletto": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  },
+  "Livelli": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  },
+  "Key level": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  },
+  "Orario": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  },
+  "Bias": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  }
+ },
+ "provate": [
+  {
+   "settimana": "2026-S39",
+   "agente": "Cacciatore",
+   "da": "[16, 0.001, []]",
+   "modifica": "meno freno sui pesi (regole più fini)",
+   "esito": "scartata",
+   "di_quanto": 0.0027117374667407386,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S39",
+   "agente": "Grilletto",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «tentativo»",
+   "esito": "scartata",
+   "di_quanto": 0.009401300858518414,
+   "anni_meglio": 8
+  },
+  {
+   "settimana": "2026-S39",
+   "agente": "Livelli",
+   "da": "[16, 0.001, []]",
+   "modifica": "più freno sui pesi (regole più semplici)",
+   "esito": "scartata",
+   "di_quanto": 0.003226999715433887,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S39",
+   "agente": "Key level",
+   "da": "[16, 0.001, []]",
+   "modifica": "meno freno sui pesi (regole più fini)",
+   "esito": "scartata",
+   "di_quanto": -0.002675791318342084,
+   "anni_meglio": 4
+  },
+  {
+   "settimana": "2026-S39",
+   "agente": "Orario",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «giorno»",
+   "esito": "scartata",
+   "di_quanto": 0.0027871176835084707,
+   "anni_meglio": 5
+  },
+  {
+   "settimana": "2026-S39",
+   "agente": "Bias",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «risposte»",
+   "esito": "scartata",
+   "di_quanto": -0.004396476240257092,
+   "anni_meglio": 9
+  }
+ ]
+}

@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 import numpy as np
 
 from nvm.agenti import portafoglio
 from nvm.agenti.capo import pesi_per_eta
 from nvm.agenti.portafoglio import Operazioni
+from nvm.cervello.genoma import modifiche
 from nvm.cervello.rete import ReteValori
 from nvm.cervello.squadra import Squadra
 from nvm.cervello.viste import AGENTI
@@ -38,13 +40,14 @@ def obiettivo(erre: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return (erre > 0).astype(float), np.abs(erre)
 
 
-def allena(t, fino_a: int, confronto: bool = True) -> Squadra:
+def allena(t, fino_a: int, confronto: bool = True, genomi: Optional[dict] = None) -> Squadra:
     """La squadra a scuola sulle operazioni chiuse prima di `fino_a`, in ordine di tempo, con le
-    piu' recenti che pesano di piu'."""
+    piu' recenti che pesano di piu'. `genomi`: com'e' fatto il cervello di ognuno."""
     tr = np.flatnonzero(t.chiusa < fino_a)
     tr = tr[np.argsort(t.quando[tr], kind="stable")]
     y, w = obiettivo(t.erre[tr])
-    return Squadra.allena({a: t.viste[a][tr] for a in AGENTI}, y, w * pesi_per_eta(t.chiusa[tr], fino_a), confronto)
+    return Squadra.allena({a: t.viste[a][tr] for a in AGENTI}, y, w * pesi_per_eta(t.chiusa[tr], fino_a), confronto,
+                          genomi=genomi)
 
 
 def _operazioni(t, scelte: np.ndarray, fiducia: np.ndarray) -> Operazioni:
@@ -68,15 +71,102 @@ def _conto(op: Operazioni, primo: int, ultimo: int) -> dict:
     return {"crescita": float(np.expm1(totale / (ultimo - primo + 1))), "calo": float(calo)}
 
 
-def fiducia_anno_per_anno(t) -> np.ndarray:
+def fiducia_anno_per_anno(t, genomi: Optional[dict] = None) -> np.ndarray:
     """La fiducia della squadra su ogni operazione dal 2010, allenata ogni anno sugli anni prima."""
     anni = t.anno
     p = np.full(len(t), np.nan)
     for a in range(PRIMO_ESAME - 2, ULTIMO_ESAME + 1):
         oggi = np.flatnonzero(anni == a)
         if len(oggi):
-            p[oggi] = allena(t, _istante(a)).giudica({k: t.viste[k][oggi] for k in AGENTI})[2]
+            p[oggi] = allena(t, _istante(a), genomi=genomi).giudica({k: t.viste[k][oggi] for k in AGENTI})[2]
     return p
+
+
+# --- I cervelli si modificano da soli (`genoma.py`) -------------------------------------------
+
+# Una modifica resta se la squadra va meglio nel complesso, in almeno questa parte degli anni,
+# e con un miglioramento almeno pari alla sua incertezza anno per anno.
+ANNI_MEGLIO = 0.6
+
+
+def resa(t, p: np.ndarray) -> tuple[float, dict]:
+    """Quanto rende quello su cui la squadra scommetterebbe: il R medio pesato per la sua fiducia
+    (2p - 1, solo sopra la soglia), nel complesso e anno per anno."""
+    w = np.clip(2 * np.nan_to_num(p) - 1, 0, None)
+    anni = t.anno
+    per_anno = {}
+    for a in range(PRIMO_ESAME - 2, ULTIMO_ESAME + 1):
+        m = (anni == a) & (w > 0)
+        per_anno[a] = float((w[m] * t.erre[m]).sum() / w[m].sum()) if w[m].sum() > 0 else 0.0
+    return (float((w * t.erre).sum() / w.sum()) if w.sum() > 0 else 0.0), per_anno
+
+
+def _passa(nuova: tuple, vecchia: tuple) -> tuple[bool, float, int, int]:
+    d = np.array([nuova[1][a] - vecchia[1][a] for a in vecchia[1]])
+    meglio = int((d > 0).sum())
+    incertezza = d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else np.inf
+    passa = nuova[0] > vecchia[0] and meglio >= ANNI_MEGLIO * len(d) and d.mean() >= incertezza
+    return bool(passa), float(nuova[0] - vecchia[0]), meglio, len(d)
+
+
+def evolvi(t, genomi: dict, provate: list, settimana: str, dire=print) -> tuple[dict, list, str, np.ndarray]:
+    """Ogni agente prova su se stesso una modifica mai provata; la squadra rifa' l'esame anno per
+    anno; restano le modifiche che la migliorano (insieme, se insieme vanno ancora meglio).
+    Restituisce i genomi nuovi, le prove (per la memoria), il racconto e la fiducia della
+    squadra finale anno per anno (per l'esame sul conto)."""
+    t0 = time.time()
+    rng = np.random.default_rng(int.from_bytes(settimana.encode(), "little") % (2 ** 32))
+    gia = {(x["agente"], x["da"], x["modifica"]) for x in provate}
+    p_oggi = fiducia_anno_per_anno(t, genomi)
+    oggi = resa(t, p_oggi)
+    prove, righe, buone = [], [], []
+    for a in AGENTI:
+        nuove = [(testo, g) for testo, g in modifiche(a, genomi[a]) if (a, genomi[a].chiave(), testo) not in gia]
+        if not nuove:
+            continue
+        testo, g = nuove[int(rng.integers(len(nuove)))]
+        prova = dict(genomi)
+        prova[a] = g
+        p = fiducia_anno_per_anno(t, prova)
+        passa, di_quanto, meglio, anni = _passa(resa(t, p), oggi)
+        prove.append({"settimana": settimana, "agente": a, "da": genomi[a].chiave(), "modifica": testo,
+                      "esito": "tenuta" if passa else "scartata", "di_quanto": di_quanto, "anni_meglio": meglio})
+        righe.append((a, testo, passa, di_quanto, meglio, anni))
+        if passa:
+            buone.append((di_quanto, a, g, p))
+        dire(f"  {a}: {testo} → {'tenuta' if passa else 'scartata'} ({di_quanto:+.4f} R, meglio in {meglio}/{anni} anni)")
+    nuovi, p_finale = dict(genomi), p_oggi
+    if buone:
+        buone.sort(key=lambda x: -x[0])
+        insieme = dict(genomi)
+        for _, a, g, _ in buone:
+            insieme[a] = g
+        if len(buone) > 1:
+            p_insieme = fiducia_anno_per_anno(t, insieme)
+            if _passa(resa(t, p_insieme), oggi)[0]:
+                nuovi, p_finale = insieme, p_insieme
+            else:
+                _, a, g, p_finale = buone[0]
+                nuovi[a] = g
+                righe = [(x[0], x[1], x[2] and x[0] == a, *x[3:]) for x in righe]
+        else:
+            _, a, g, p_finale = buone[0]
+            nuovi[a] = g
+    racconto = [f"🧬 I cervelli si sono messi alla prova (settimana {settimana.split('-S')[-1]})",
+                "Ognuno ha provato a cambiare se stesso; resta solo quello che migliora la squadra nella maggior "
+                "parte degli anni."]
+
+    def r(x):
+        return f"{x:+.3f}".replace(".", ",").replace("-", "−")
+    for a, testo, passa, di_quanto, meglio, anni in righe:
+        racconto.append(f"• {a} {testo}: " + (f"la squadra va meglio ({r(di_quanto)} volte il rischio a scommessa, "
+                                              f"meglio in {meglio} anni su {anni}). La tiene."
+                                              if passa else f"non migliora ({r(di_quanto)}, meglio in {meglio} anni su "
+                                                            f"{anni}). Torna com'era."))
+    if not righe:
+        racconto.append("• Nessuno aveva modifiche nuove da provare.")
+    dire(f"Evoluzione dei cervelli: {round(time.time() - t0)} s")
+    return nuovi, prove, "\n".join(racconto), p_finale
 
 
 def esame(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, p: np.ndarray, dire=print) -> dict:
@@ -95,11 +185,13 @@ def esame(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, p: np.ndarray, dire
             and cervelli["calo"] <= portafoglio.CALO_MASSIMO + 0.05}
 
 
-def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print) -> dict:
-    """La squadra allenata su tutto, con l'esito dell'esame, per il bot dal vivo (`cervelli.json`)."""
-    p = fiducia_anno_per_anno(t)
+def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print, genomi: Optional[dict] = None,
+                p: Optional[np.ndarray] = None) -> dict:
+    """La squadra allenata su tutto, con l'esito dell'esame, per il bot dal vivo (`cervelli.json`).
+    `p`: la fiducia anno per anno gia' calcolata con questi genomi (per non rifarla)."""
+    p = fiducia_anno_per_anno(t, genomi) if p is None else p
     risultato = esame(t, kelly_capo, entra_capo, p, dire)
-    squadra = allena(t, int(t.chiusa.max()) + 1)
+    squadra = allena(t, int(t.chiusa.max()) + 1, genomi=genomi)
     # Il Rischio per le scelte dei cervelli, se un giorno decideranno loro: la loro fiducia
     # (2p - 1) al posto del Kelly del Capo, con parte e fiducia minima imparate sul conto intero.
     dal = t.anno >= PRIMO_ESAME - 2

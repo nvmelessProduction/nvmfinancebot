@@ -67,9 +67,22 @@ Prima prova anno per anno (2010-2023): il piano scelto rende più di quello di s
 vent'anni, in media, lo stop stretto perde molto (−0,34 R: i costi su uno stop piccolo) e il
 largo col secondo obiettivo è il migliore (−0,016).
 
+## Si modificano da soli (`genoma.py`)
+
+Il genoma di ogni agente è la forma del suo cervello: quanti neuroni (8, 16, 24, 32), quanto
+frena i pesi (regole più semplici o più fini), quali parti della sua vista guarda (per esempio
+il Grilletto: tentativo, manipolazione, liquidità, distanza dell'obiettivo, candele piccole).
+Ogni settimana, dentro `capo.py --vivo`, ogni agente prova su se stesso una modifica mai provata
+prima; la squadra modificata rifà l'esame anno per anno (2010-2023) e la modifica resta solo se
+la squadra rende di più nel complesso, in almeno 6 anni su 10 e di almeno la sua incertezza.
+Se più modifiche passano, restano insieme solo se insieme passano ancora. Le prove restano in
+`nvm/vivo/genomi.json` (mai la stessa due volte); il racconto va in équipe. Cambiano i
+cervelli, non il programma che li fa girare.
+
+Prima settimana (S39): sei modifiche provate, nessuna tenuta (la migliore, il Grilletto che
+smette di guardare il tentativo, +0,009 R ma meglio solo in 8 anni su 14).
+
 ## Cosa manca
 
 - Più dati: con 40 strumenti gli esempi diventano circa sei volte tanti, e le reti ne hanno
   bisogno più di una formula semplice.
-- Che cambino da soli la propria forma (quanti neuroni, cosa guardano) in palestra, tenendo
-  solo quello che passa l'esame.

@@ -100,6 +100,8 @@ class Stato:
     telegram_dal: int = 0
     # L'ultimo allenamento degli agenti gia' raccontato in equipe (`nvm/vivo/allenamento.json`).
     ultimo_allenamento: str = ""
+    # L'ultima volta che i cervelli si sono modificati da soli, gia' raccontata in equipe.
+    ultima_evoluzione: str = ""
     # Il giorno (a New York) dell'ultimo riepilogo della sera, e le lezioni raccolte da allora:
     # "agente: «scelta»" -> quante volte avrebbe fatto meglio.
     ultimo_riepilogo: str = ""
@@ -122,7 +124,7 @@ class Stato:
             ultima_riunione=d.get("ultima_riunione", ""),
             pagelle=d.get("pagelle", {}), diario=d.get("diario", {}), ultimo_quarto=d.get("ultimo_quarto"),
             romeo=[EntrataDiRomeo(**e) for e in d.get("romeo", [])], telegram_dal=d.get("telegram_dal", 0),
-            ultimo_allenamento=d.get("ultimo_allenamento", ""),
+            ultimo_allenamento=d.get("ultimo_allenamento", ""), ultima_evoluzione=d.get("ultima_evoluzione", ""),
             ultimo_riepilogo=d.get("ultimo_riepilogo", ""), lezioni=d.get("lezioni", {}),
             saltate=d.get("saltate", {}), chiuse=d.get("chiuse", []),
         )

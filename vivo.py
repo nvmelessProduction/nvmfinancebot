@@ -225,6 +225,16 @@ class Bot:
             self.tg.voci([conversazione.Voce("Capo", conversazione.benvenuto(len(self.strumenti)))])
             presentati.write_text("2", encoding="utf-8")
         self.racconta_allenamento()
+        self.racconta_evoluzione()
+
+    def racconta_evoluzione(self) -> None:
+        """Come i cervelli hanno provato a cambiare se stessi in settimana: una volta sola, in equipe."""
+        ev = (self.cervelli_info or {}).get("evoluzione") or {}
+        chi = str(ev.get("id", ""))
+        if chi and ev.get("testo") and chi != self.stato.ultima_evoluzione:
+            self.tg.equipe(ev["testo"])
+            self.stato.ultima_evoluzione = chi
+            self.stato.salva(CARTELLA)
 
     def racconta_allenamento(self) -> None:
         """Il rapporto corto dell'ultimo allenamento, una volta sola, sul canale equipe (quello

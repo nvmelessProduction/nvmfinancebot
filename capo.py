@@ -24,7 +24,7 @@ from nvm.agenti.cacciatore import Variante
 from nvm.agenti.capo import COLONNE, INVENTATE, Capo, pesi_per_eta
 from nvm.agenti import portafoglio
 from nvm.agenti.portafoglio import Operazioni
-from nvm.cervello import scuola
+from nvm.cervello import genoma, scuola
 from nvm.agenti.rischio import esiti, impara_parte, kelly
 from nvm.dati.minuti import PUNTO, Minuti, carica_periodo
 from nvm.dati.strumenti import BASE
@@ -178,7 +178,18 @@ def salva_per_il_vivo(t: Tabella) -> None:
     if t.viste is not None:
         # I cervelli degli agenti: a scuola sui vent'anni, e l'esame contro il Capo di oggi.
         kelly_capo, entra_capo = stime_del_capo(t)
-        cervelli = scuola.per_il_vivo(t, kelly_capo, entra_capo)
+        # Prima i cervelli provano a modificarsi da soli (`nvm/cervello/genoma.py`).
+        file_genomi = cartella / "genomi.json"
+        memoria = json.loads(file_genomi.read_text(encoding="utf-8")) if file_genomi.exists() else {}
+        adesso = datetime.now(timezone.utc)
+        settimana = adesso.strftime("%G-S%V")
+        genomi, prove, racconto, p = scuola.evolvi(t, genoma.da_dati(memoria.get("attuali")), memoria.get("provate", []),
+                                                   settimana)
+        memoria = {"attuali": genoma.come_dati(genomi), "provate": memoria.get("provate", []) + prove}
+        file_genomi.write_text(json.dumps(memoria, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(racconto, flush=True)
+        cervelli = scuola.per_il_vivo(t, kelly_capo, entra_capo, genomi=genomi, p=p)
+        cervelli["evoluzione"] = {"id": int(adesso.timestamp()), "testo": racconto}
         (cartella / "cervelli.json").write_text(json.dumps(cervelli), encoding="utf-8")
     romeo = candidati_di_romeo()
     capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"]).impara_fiducia(romeo["romeo_x"], romeo["romeo_tp1"])

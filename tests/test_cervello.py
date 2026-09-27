@@ -96,3 +96,42 @@ def test_livelli_scelgono_il_piano_migliore_fra_quelli_possibili():
     j, _ = dal_vivo.scegli_piano(rete, caso, [object()] * (len(PIANI) - 1) + [None])
     assert j == len(PIANI) - 2
     assert "Scelgo" in dal_vivo.voce_livelli(j, stime)
+
+
+def test_ogni_cervello_puo_cambiare_la_sua_forma():
+    from nvm.cervello.genoma import BLOCCHI, Genoma, da_dati, come_dati, modifiche
+    from nvm.cervello.viste import dimensioni
+    for a, blocchi in BLOCCHI.items():
+        assert max(b for _, b in blocchi.values()) == dimensioni()[a]      # i blocchi coprono tutta la vista
+    g = Genoma()
+    mosse = modifiche("Grilletto", g)
+    testi = [t for t, _ in mosse]
+    assert "più neuroni (16 → 24)" in testi and "smette di guardare «candele piccole»" in testi
+    senza = dict(mosse)["smette di guardare «candele piccole»"]
+    assert len(senza.colonne("Grilletto")) == 8
+    assert any(t == "torna a guardare «candele piccole»" for t, _ in modifiche("Grilletto", senza))
+    assert da_dati(come_dati({"Grilletto": senza}))["Grilletto"] == senza
+
+
+def test_una_modifica_resta_solo_se_la_squadra_va_meglio_negli_anni():
+    from nvm.cervello.scuola import _passa
+    vecchia = (0.01, {a: 0.01 for a in range(2010, 2024)})
+    meglio = (0.03, {a: 0.03 for a in range(2010, 2024)})
+    fortuna = (0.02, {a: (0.2 if a == 2010 else 0.0) for a in range(2010, 2024)})
+    assert _passa(meglio, vecchia)[0] and not _passa(fortuna, vecchia)[0]
+
+
+def test_la_squadra_si_allena_con_la_forma_di_ognuno():
+    from nvm.cervello.genoma import Genoma
+    x, y = _esempi(1500)
+    rng = np.random.default_rng(4)
+    v = {a: rng.normal(size=(len(y), 3)) for a in AGENTI}
+    v["Livelli"] = np.c_[x[:, [0]], rng.normal(size=(len(y), 5))]
+    genomi = {a: Genoma() for a in AGENTI}
+    genomi["Livelli"] = Genoma(neuroni=8, freno=1e-2, spenti=("stop",))      # guarda solo obiettivi e costi
+    sq = Squadra.allena(v, y, genomi=genomi)
+    assert sq.primi["Livelli"].w1.shape == (4, 8) and sq.primi["Livelli"].penalita == 1e-2
+    assert sq.secondi["Livelli"].w1.shape[0] == 4 + 5          # e nel confronto i giudizi dei 5 colleghi
+    copia = Squadra.da_dati(sq.come_dati())
+    caso = {a: m[:3] for a, m in v.items()}
+    assert np.allclose(copia.giudica(caso)[2], sq.giudica(caso)[2])

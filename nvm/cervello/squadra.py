@@ -21,6 +21,7 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti.capo import Logistica
+from nvm.cervello.genoma import Genoma
 from nvm.cervello.rete import Rete
 from nvm.cervello.viste import AGENTI
 
@@ -47,8 +48,22 @@ def _fuori(v: dict, y, pesi, parti, allena):
     return fuori
 
 
-def _primi(v, y, pesi):
-    reti = {a: Rete.allena(v[a], y, pesi, seme=i) for i, a in enumerate(AGENTI)}
+def _rete_prima(v, y, pesi, a, i, genomi):
+    g = (genomi or {}).get(a, Genoma())
+    return Rete.allena(v[a], y, pesi, nascosti=g.neuroni, seme=i, penalita=g.freno, colonne=g.colonne(a))
+
+
+def _rete_seconda(x, y, pesi, a, i, genomi, n_vista):
+    """Il cervello del confronto: la sua vista (le parti che guarda) piu' i giudizi dei colleghi."""
+    g = (genomi or {}).get(a, Genoma())
+    colonne = g.colonne(a)
+    if colonne is not None:
+        colonne = np.r_[colonne, np.arange(n_vista, x.shape[1])]
+    return Rete.allena(x, y, pesi, nascosti=g.neuroni, seme=10 + i, penalita=g.freno, colonne=colonne)
+
+
+def _primi(v, y, pesi, genomi=None):
+    reti = {a: _rete_prima(v, y, pesi, a, i, genomi) for i, a in enumerate(AGENTI)}
     return {a: (lambda vv, a=a: reti[a].logit(vv[a])) for a in AGENTI}
 
 
@@ -66,19 +81,20 @@ class Squadra:
 
     @classmethod
     def allena(cls, v: dict, y: np.ndarray, pesi: Optional[np.ndarray] = None, confronto: bool = True,
-               parti: int = PARTI) -> "Squadra":
+               parti: int = PARTI, genomi: Optional[dict] = None) -> "Squadra":
         """`v`: per agente, le sue viste (una riga per esempio, in ordine di tempo); `y`: primo
-        obiettivo preso (0/1)."""
+        obiettivo preso (0/1); `genomi`: com'e' fatto il cervello di ognuno (`genoma.py`)."""
         y = np.asarray(y, float)
         pesi = np.ones(len(y)) if pesi is None else np.asarray(pesi, float)
-        primi_fuori = _fuori(v, y, pesi, parti, _primi)
-        primi = {a: Rete.allena(v[a], y, pesi, seme=i) for i, a in enumerate(AGENTI)}
+        primi_fuori = _fuori(v, y, pesi, parti, lambda vv, yy, ww: _primi(vv, yy, ww, genomi))
+        primi = {a: _rete_prima(v, y, pesi, a, i, genomi) for i, a in enumerate(AGENTI)}
         if not confronto:
             capo = Logistica(1.0).allena(np.column_stack([primi_fuori[a] for a in AGENTI]), y, pesi=pesi)
             return cls(primi, {}, capo, False)
 
         def secondi_su(vv, yy, ww, gg):
-            return {a: Rete.allena(_con_colleghi(vv[a], gg, a), yy, ww, seme=10 + i) for i, a in enumerate(AGENTI)}
+            return {a: _rete_seconda(_con_colleghi(vv[a], gg, a), yy, ww, a, i, genomi, vv[a].shape[1])
+                    for i, a in enumerate(AGENTI)}
 
         # Il confronto a scuola: ogni agente sente i giudizi dei colleghi su esempi che loro non avevano visto.
         n = len(y)
