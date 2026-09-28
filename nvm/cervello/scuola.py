@@ -182,7 +182,7 @@ def esame(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, p: np.ndarray, dire
          f"{cervelli['crescita']:+.1%} l'anno (calo {cervelli['calo']:.0%}), Capo di oggi {capo['crescita']:+.1%} "
          f"(calo {capo['calo']:.0%}). {round(time.time() - t0)} s")
     return {"cervelli": cervelli, "capo": capo, "decidono": cervelli["crescita"] > capo["crescita"]
-            and cervelli["calo"] <= portafoglio.CALO_MASSIMO + 0.05}
+            and (portafoglio.CALO_MASSIMO is None or cervelli["calo"] <= portafoglio.CALO_MASSIMO + 0.05)}
 
 
 def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print, genomi: Optional[dict] = None,

@@ -135,3 +135,12 @@ def test_la_squadra_si_allena_con_la_forma_di_ognuno():
     copia = Squadra.da_dati(sq.come_dati())
     caso = {a: m[:3] for a, m in v.items()}
     assert np.allclose(copia.giudica(caso)[2], sq.giudica(caso)[2])
+
+
+def test_la_sera_si_vede_perche_i_cervelli_sono_stati_fermi():
+    from types import SimpleNamespace as NS
+    from nvm.cervello import dal_vivo
+    seguite = [NS(cervelli={"fiducia": 0.58}, quando=100, strumento="EURUSD", verso="long"),
+               NS(cervelli={"fiducia": 0.41}, quando=150, strumento="GBPUSD", verso="short")]
+    testo = dal_vivo.la_migliore(seguite, 0, 200, 0.25)
+    assert "EURUSD in acquisto, ci credevano 58 su 100; per rischiare ne serve almeno 62: non abbastanza" in testo

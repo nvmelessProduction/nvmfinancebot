@@ -44,10 +44,22 @@ Impara tre cose:
   Se conviene lo decidono i dati: finora **no** (vedi sotto).
 
 Sceglie la combinazione che fa crescere di più il conto **nelle storie
-sfortunate** — gli stessi anni rimescolati a caso 500 volte, il 10%
-peggiore — senza superare, nemmeno in quelle, il **calo massimo** del
-profilo di rischio (`CALO_MASSIMO`, 20%). Il profilo è una scelta
-dell'utente: quanto è disposto a veder scendere il conto.
+sfortunate**: gli stessi mesi rimescolati a caso 500 volte (anche quelli
+senza operazioni), il 10% peggiore. Una storia in cui il conto scende sotto
+l'1% di quello di partenza è una **rovina** e vale meno infinito: così
+puntate enormi su poche operazioni fortunate non convincono (la prima volta,
+a storie per anni e senza rovina, il Rischio aveva scelto il Kelly intero su
+40 operazioni, e il conto vero si azzerava).
+
+**Nessun tetto al calo** (l'utente, 28/09/2026: *"il profilo di rischio deve
+essere anche quello intelligente"*). Il Rischio accetta il calo che serve a
+far crescere di più il conto, e lo dice. Sui vent'anni, con le operazioni del
+Capo, sceglie fiducia minima 0,06 e parte 0,07 del Kelly: +16,6% l'anno ma
+calo peggiore 59%, giornata peggiore −16%, fino al 36% del conto a rischio
+insieme; nelle storie sfortunate +4,3% l'anno e calo 71%. Un tetto
+(`scegli(..., calo=…)`) resta possibile per un prodotto destinato a clienti:
+è una scelta commerciale, non del bot. Fino al 28/09 il tetto era il 20%
+(parte 0,01, +3% l'anno, calo 11%).
 
 Si riallena ogni settimana: in palestra (`capo.py --vivo`, con i vent'anni)
 e il sabato dal vivo (`riunione`, con i vent'anni e le operazioni vere). Il

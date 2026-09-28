@@ -85,6 +85,60 @@
    "esito": "scartata",
    "di_quanto": -0.004396476240257092,
    "anni_meglio": 9
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Cacciatore",
+   "da": "[16, 0.001, []]",
+   "modifica": "più freno sui pesi (regole più semplici)",
+   "esito": "scartata",
+   "di_quanto": -0.013978176729145515,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Grilletto",
+   "da": "[16, 0.001, []]",
+   "modifica": "più freno sui pesi (regole più semplici)",
+   "esito": "scartata",
+   "di_quanto": -0.0006858995667476941,
+   "anni_meglio": 8
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Livelli",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «obiettivi»",
+   "esito": "scartata",
+   "di_quanto": 0.0017046374327151712,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Key level",
+   "da": "[16, 0.001, []]",
+   "modifica": "più freno sui pesi (regole più semplici)",
+   "esito": "scartata",
+   "di_quanto": -0.006520052321741403,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Orario",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «ora»",
+   "esito": "scartata",
+   "di_quanto": -0.013563606997598168,
+   "anni_meglio": 5
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Bias",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «candela del range»",
+   "esito": "scartata",
+   "di_quanto": -0.003748588488262353,
+   "anni_meglio": 7
   }
  ]
 }

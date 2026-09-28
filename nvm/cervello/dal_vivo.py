@@ -168,3 +168,18 @@ def gara(seguite: list, dal: int, al: int, soglia: float) -> Optional[str]:
         return f"{sum(x):+.2f}".replace(".", ",").replace("-", "−") + " volte il rischio"
     return (f"• Cervelli contro Capo, sulle {len(finite)} occasioni finite oggi: i cervelli ne avrebbero prese "
             f"{len(loro)} ({v(loro)}), il Capo {len(capo)} ({v(capo)})")
+
+
+def la_migliore(seguite: list, dal: int, al: int, fiducia_minima: float) -> Optional[str]:
+    """L'occasione di oggi in cui i cervelli hanno creduto di piu', e quanto serviva per metterci
+    soldi: cosi' si vede perche' sono stati fermi (o perche' sono entrati)."""
+    oggi = [s for s in seguite if s.cervelli and dal <= s.quando < al]
+    if not oggi:
+        return None
+    s = max(oggi, key=lambda x: x.cervelli["fiducia"])
+    ci_credono = round(100 * s.cervelli["fiducia"])
+    serve = round(100 * (1 + fiducia_minima) / 2)
+    verso = "acquisto" if s.verso == "long" else "vendita"
+    esito = "abbastanza per metterci soldi" if ci_credono >= serve else "non abbastanza per metterci soldi"
+    return (f"• L'occasione più convincente per i cervelli: {s.strumento} in {verso}, ci credevano {ci_credono} su "
+            f"100; per rischiare ne serve almeno {serve}: {esito}")

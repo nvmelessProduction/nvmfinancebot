@@ -497,4 +497,11 @@ sarebbe finita. Trovato, corretto e provato (`registro/tentativi.md`).
 
 Idee fuori dalla fase attuale. Si annotano qui e si fanno quando tocca.
 
+- **Il Rischio senza tetto (28/09).** L'utente: *"il profilo di rischio deve
+  essere anche quello intelligente"*. Tolto il tetto del 20%: il Rischio
+  sceglie da solo la puntata che fa crescere di più il conto nelle storie
+  sfortunate (mesi rimescolati; sotto l'1% del conto di partenza è rovina).
+  Sceglie fiducia minima 0,06 e parte 0,07: nei vent'anni +16,6% l'anno ma
+  calo peggiore 59%, giornata −16%. È la scelta che massimizza la crescita:
+  i cali grandi sono il suo prezzo, e l'utente lo sa.
 - _(vuoto)_

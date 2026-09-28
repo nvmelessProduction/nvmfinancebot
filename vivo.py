@@ -397,9 +397,12 @@ class Bot:
             saldo = 0.0
         lezioni = [f"{k} avrebbe fatto meglio {n} volt{'a' if n == 1 else 'e'}"
                    for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
-        gara = dal_vivo.gara(self.stato.seguite, fine - 86400, fine, self.cervelli_info.get("soglia", 0.5))
+        gara = [x for x in (dal_vivo.gara(self.stato.seguite, fine - 86400, fine, self.cervelli_info.get("soglia", 0.5)),
+                            dal_vivo.la_migliore(self.stato.seguite, fine - 86400, fine,
+                                                 float(self.cervelli_info.get("rischio", {}).get("minimo", 0.0))))
+                if x]
         testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
-                                        self.stato.saltate, [r for _, r in self.stato.chiuse], [gara] if gara else [],
+                                        self.stato.saltate, [r for _, r in self.stato.chiuse], gara,
                                         cervelli=self._decidono_i_cervelli)
         if testo:
             self.tg.equipe(testo)

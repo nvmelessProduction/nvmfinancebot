@@ -129,8 +129,9 @@ class Conto:
     massimo_a_rischio: float  # la parte del conto piu' alta mai a rischio insieme
     prese: int
     anni: dict               # anno -> crescita di quell'anno, in logaritmo
-    # anno -> il conto (in logaritmo, da inizio anno) a ogni chiusura: per rimescolare gli anni.
+    # mese -> il conto (in logaritmo, da inizio mese) a ogni chiusura: per rimescolare la storia.
     percorsi: dict = field(default_factory=dict, repr=False)
+    mesi: int = 0            # quanti mesi copre la storia
 
 
 def simula(op: Operazioni, parte: float, corr: Optional[dict[float, float]], minimo: float = 0.0) -> Conto:
@@ -141,6 +142,7 @@ def simula(op: Operazioni, parte: float, corr: Optional[dict[float, float]], min
     aperte: list = []           # (uscita, n, soldi a rischio, gambe, R)
     per_giorno: dict[int, list] = {}
     anni: dict[int, list] = {}
+    mesi: dict[int, list] = {}
     percorsi: dict[int, list] = {}
     prese, n = 0, 0
 
@@ -150,15 +152,17 @@ def simula(op: Operazioni, parte: float, corr: Optional[dict[float, float]], min
             uscita, _, soldi, _, r = heapq.heappop(aperte)
             prima = conto
             conto += soldi * r
-            if conto <= 0:
-                conto = 0.0
+            if conto < ROVINA:
+                conto = 0.0          # sotto l'1% del conto di partenza non si opera piu': e' la rovina
             giorno = int(uscita // 86400)
             g = per_giorno.setdefault(giorno, [prima, conto])
             g[1] = conto
-            a = datetime.fromtimestamp(int(uscita), tz=timezone.utc).year
-            inizio = anni.setdefault(a, [prima, conto])
+            data = datetime.fromtimestamp(int(uscita), tz=timezone.utc)
+            anni.setdefault(data.year, [prima, conto])[1] = conto
+            mese = data.year * 12 + data.month - 1
+            inizio = mesi.setdefault(mese, [prima, conto])
             inizio[1] = conto
-            percorsi.setdefault(a, []).append(np.log(conto / inizio[0]) if conto > 0 and inizio[0] > 0 else -np.inf)
+            percorsi.setdefault(mese, []).append(np.log(conto / inizio[0]) if conto > 0 and inizio[0] > 0 else -np.inf)
             massimo = max(massimo, conto)
             calo = max(calo, 1 - conto / massimo)
 
@@ -183,42 +187,52 @@ def simula(op: Operazioni, parte: float, corr: Optional[dict[float, float]], min
     durata = (float(op.chiusa.max()) - float(op.entrata.min())) / (365.25 * 86400) if len(op) else 1.0
     crescita = (np.log(conto) / max(durata, 1e-9)) if conto > 0 else -np.inf
     per_anno = {a: (np.log(f / i) if i > 0 and f > 0 else -np.inf) for a, (i, f) in sorted(anni.items())}
+    n_mesi = int(round(durata * 12)) if len(op) else 0
     return Conto(float(crescita), conto, calo, -peggiore, a_rischio_max, prese, per_anno,
-                 {a: np.array(v) for a, v in percorsi.items()})
+                 {a: np.array(v) for a, v in percorsi.items()}, max(n_mesi, len(percorsi)))
 
 
 # --- Le storie sfortunate -----------------------------------------------------------------------
 
-# Il profilo di rischio: il calo dal massimo che il conto non deve superare nemmeno nelle storie
-# sfortunate. E' una scelta dell'utente (quanto e' disposto a vedere scendere il conto), non
-# un'opinione del bot: il Rischio cerca la crescita piu' alta che la rispetta.
-CALO_MASSIMO = 0.20
-# Quante storie e quale sfortuna: gli anni rimescolati a caso, e il 10% peggiore.
+# Nessun tetto al calo scritto da noi (l'utente, 28/09/2026: "il profilo di rischio deve essere
+# anche quello intelligente"): il Rischio sceglie da solo la puntata che fa crescere di piu' il
+# conto anche nelle storie sfortunate, e il calo che ne viene lo dice. Un tetto si puo' ancora
+# passare a `scegli` (per esempio nelle prove), ma il bot non ne usa.
+CALO_MASSIMO: Optional[float] = None
+# Quante storie e quale sfortuna: i mesi rimescolati a caso, e il 10% peggiore.
 STORIE = 500
 SFORTUNA = 0.9
+# Sotto questa parte del conto di partenza non si opera piu' (il lotto minimo non ci sta): rovina.
+ROVINA = 0.01
 
 
 def sfortuna(c: Conto, rng: np.random.Generator, storie: int = STORIE, q: float = SFORTUNA) -> tuple[float, float]:
-    """Il calo dal massimo e la crescita all'anno nelle storie sfortunate: gli stessi anni presi
-    a caso, `storie` volte, come se il passato fosse andato in un altro ordine e con altri anni
-    ripetuti. Il calo che si supera solo nel 10% delle storie, la crescita che si fa almeno nel 90%."""
-    anni = sorted(a for a in c.percorsi if len(c.percorsi[a]))
-    if not anni:
+    """Il calo dal massimo e la crescita all'anno nelle storie sfortunate: gli stessi mesi presi a
+    caso (anche quelli senza operazioni), `storie` volte, come se il passato fosse andato in un
+    altro ordine e con altri mesi ripetuti. Il calo che si supera solo nel 10% delle storie, la
+    crescita che si fa almeno nel 90%. Una storia che porta il conto sotto l'1% di quello di
+    partenza e' una rovina: crescita meno infinito. Cosi' poche operazioni fortunate con puntate
+    enormi non convincono nessuno: basta ripescare i mesi sbagliati."""
+    pieni = sorted(a for a in c.percorsi if len(c.percorsi[a]))
+    if not pieni:
         return 0.0, 0.0
-    scelte = rng.integers(0, len(anni), size=(storie, len(anni)))
-    fine = np.array([c.percorsi[a][-1] for a in anni])
-    cali = np.empty(storie)
+    n = max(c.mesi, len(pieni))
+    blocchi = [c.percorsi[a] for a in pieni] + [np.zeros(0)] * (n - len(pieni))
+    fine = np.array([b[-1] if len(b) else 0.0 for b in blocchi])
+    scelte = rng.integers(0, n, size=(storie, n))
+    cali, crescite = np.empty(storie), np.empty(storie)
     for k, riga in enumerate(scelte):
         pezzi, base = [], 0.0
         for j in riga:
-            pezzi.append(base + c.percorsi[anni[j]])
-            base += fine[j]
+            if len(blocchi[j]):
+                pezzi.append(base + blocchi[j])
+                base += fine[j]
         cammino = np.concatenate([[0.0]] + pezzi)
-        if not np.isfinite(cammino).all():
-            cali[k] = 1.0
+        if not np.isfinite(cammino).all() or cammino.min() < np.log(ROVINA):
+            cali[k], crescite[k] = 1.0, -np.inf
             continue
         cali[k] = 1 - np.exp((cammino - np.maximum.accumulate(cammino)).min())
-    crescite = fine[scelte].sum(axis=1) / len(anni)
+        crescite[k] = cammino[-1] / (n / 12)
     return float(np.quantile(cali, q)), float(np.quantile(crescite, 1 - q))
 
 
@@ -234,15 +248,17 @@ class Scelta:
     crescita_sfortunata: float
 
 
-SOGLIE = (0.0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.13, 0.16)
-PARTI_CONTO = (0.005, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1, 0.15, 0.2)
+SOGLIE = (0.0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.13, 0.16, 0.2, 0.25)
+PARTI_CONTO = (0.005, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1.0)
 
 
-def scegli(op: Operazioni, corr: Optional[dict[float, float]], calo: float = CALO_MASSIMO,
+def scegli(op: Operazioni, corr: Optional[dict[float, float]], calo: Optional[float] = CALO_MASSIMO,
            soglie=SOGLIE, parti=PARTI_CONTO, seme: int = 0) -> Scelta:
     """La fiducia minima, la parte del Kelly e se guardare le operazioni legate: la combinazione
-    che fa crescere di piu' il conto nelle storie sfortunate senza superare `calo` nemmeno in
-    quelle. Se nessuna ci sta, la meno rischiosa. Con e senza correlazioni: decidono i dati."""
+    che fa crescere di piu' il conto nelle storie sfortunate (gli anni rimescolati, il 10% peggiore).
+    Puntare troppo non conviene da solo: nelle storie sfortunate una puntata troppo grande fa
+    crescere il conto meno, o lo brucia. Con `calo`, solo le combinazioni che non lo superano nemmeno
+    in quelle storie (se nessuna ci sta, la meno rischiosa). Con e senza correlazioni: decidono i dati."""
     migliore, prudente = None, None
     for usa in ((False, True) if corr else (False,)):
         for m in soglie:
@@ -250,7 +266,7 @@ def scegli(op: Operazioni, corr: Optional[dict[float, float]], calo: float = CAL
                 c = simula(op, float(p), corr if usa else None, float(m))
                 cs, gs = sfortuna(c, np.random.default_rng(seme))
                 s = Scelta(float(m), float(p), usa, c, cs, gs)
-                if cs <= calo and (migliore is None or gs > migliore.crescita_sfortunata):
+                if (calo is None or cs <= calo) and (migliore is None or gs > migliore.crescita_sfortunata):
                     migliore = s
                 if prudente is None or cs < prudente.calo_sfortunato:
                     prudente = s

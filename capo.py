@@ -260,8 +260,8 @@ def impara_il_conto(op: Operazioni, dire=print) -> dict:
     dire(riga(f"prima (parte {vecchia:.2f} del Kelly, ognuna da sola)", prima))
     dire(riga(f"adesso (fiducia minima {s.minimo:g}, parte {s.parte:g}"
               f"{', con le legate' if s.correlazioni else ''})", s.conto))
-    dire(f"  nelle storie sfortunate (anni rimescolati, il 10% peggiore): calo {s.calo_sfortunato:.0%}, crescita "
-         f"{np.expm1(s.crescita_sfortunata):+.1%} l'anno; profilo: calo massimo {portafoglio.CALO_MASSIMO:.0%}")
+    dire(f"  nelle storie sfortunate (mesi rimescolati, il 10% peggiore): calo {s.calo_sfortunato:.0%}, crescita "
+         f"{np.expm1(s.crescita_sfortunata):+.1%} l'anno (nessun tetto al calo: lo sceglie il Rischio)")
     dire("  quanto vanno insieme, per quello che hanno in comune: "
          + ", ".join(f"{c:+g} → {r:+.2f}" for c, r in corr.items()))
     return portafoglio.come_dati(s, corr, prima=(vecchia, prima))

@@ -87,8 +87,10 @@ bot non può toccare.
 abbastanza, e mai più di quanto il conto regge. Su conti piccoli il lotto minimo del broker
 può essere troppo grande per la puntata giusta: in quel caso l'operazione si lascia.
 
-**Posso cambiare quanto rischia?** Il profilo di rischio è il calo massimo che accetti di
-vedere sul conto: di base il 20%. Il Rischio sceglie da solo le puntate per restarci dentro.
+**Quanto rischia?** Lo decide il Rischio da solo, simulando il conto intero su vent'anni e su
+migliaia di storie sfortunate: sceglie le puntate che fanno crescere di più il conto senza
+portarlo alla rovina. Questo vuol dire accettare cali anche grandi: nei vent'anni, con le
+scelte di oggi, il calo peggiore è stato di circa il 60%.
 
 **Un messaggio dice "il simbolo non c'è su questo conto".** Il broker chiama i simboli con un
 suffisso: scrivilo in `MT5_SUFFISSO_SIMBOLI` nel file `.env`.
