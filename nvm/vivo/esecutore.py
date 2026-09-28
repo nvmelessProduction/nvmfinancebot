@@ -19,7 +19,7 @@ from nvm.agenti.rischio import USCITE, crescita_creduta, esiti, kelly
 from nvm.dati.minuti import CHIUSURA
 from nvm.vivo import messaggi
 from nvm.vivo.giro import Decisione
-from nvm.vivo.terminale import Conto, Terminale
+from nvm.vivo.terminale import Conto, ErroreMT5, Terminale
 
 # Il numero che MT5 attacca alle posizioni del bot, per riconoscerle.
 MAGIC = 24092026
@@ -56,6 +56,8 @@ class Viva:
     invalida_candele: int = 0
     tempo_candele: int = 0
     uscita_anticipata: str = ""
+    # Le chiusure che MT5 non ha ancora dato: ticket -> minuti di attesa.
+    attese_chiusura: dict = field(default_factory=dict)
     # Il Rischio sul conto intero: quanto avrebbe rischiato da sola (in frazione del conto) e gli
     # strumenti aperti che vanno insieme a lei, per cui ha rischiato meno.
     da_sola: float = 0.0
@@ -82,6 +84,10 @@ class Fatto:
     erre: Optional[float] = None
     # Per il libro delle operazioni vere (`libro.py`): i dati dell'evento.
     libro: Optional[dict] = None
+
+
+# Quanti minuti si aspetta lo storico di una chiusura prima di darla per chiusa senza risultato.
+ATTESA_CHIUSURA = 60
 
 
 def _giu(x: float, passo: float) -> float:
@@ -207,9 +213,25 @@ class Esecutore:
         for v in vive:
             for ticket in v.tickets:
                 if ticket not in aperte and ticket not in v.chiusi:
-                    netto, _ = self.t.chiusura(ticket)
+                    try:
+                        netto, _ = self.t.chiusura(ticket)
+                    except ErroreMT5:
+                        # MT5 a volte non ha ancora lo storico della chiusura: si riprova al minuto dopo.
+                        # Dopo un'ora si da' per chiusa senza il risultato, e lo si dice: un ticket
+                        # perso non deve fermare il bot.
+                        v.attese_chiusura[str(ticket)] = v.attese_chiusura.get(str(ticket), 0) + 1
+                        if v.attese_chiusura[str(ticket)] < ATTESA_CHIUSURA:
+                            continue
+                        netto = 0.0
+                        fatti.append(Fatto(messaggi.allarme(
+                            f"{v.strumento}: la posizione {ticket} non è più aperta ma MT5 non ne dà il risultato. "
+                            "La conto chiusa a zero: controlla nella cronologia di MT5.")))
                     v.chiusi.append(ticket)
                     v.incassato += netto
+            if any(x not in aperte and x not in v.chiusi for x in v.tickets):
+                # Una parte e' chiusa ma MT5 non ne da' ancora il risultato: si aspetta, senza toccarla.
+                restano.append(v)
+                continue
             ancora = [x for x in v.tickets if x not in v.chiusi]
             if not ancora:
                 r = v.incassato / v.rischio if v.rischio else 0.0

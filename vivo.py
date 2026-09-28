@@ -271,7 +271,13 @@ class Bot:
 
     def minuto(self) -> None:
         self.ascolta()
-        self.stato.vive, fatti = self.esecutore.sorveglia(self.stato.vive)
+        try:
+            self.stato.vive, fatti = self.esecutore.sorveglia(self.stato.vive)
+        except ErroreMT5:
+            # Senza le posizioni da MT5 si salta la sorveglianza di questo minuto, non il resto:
+            # il bot deve continuare a guardare il mercato.
+            fatti = []
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
         for f in fatti:
             (self.tg.equipe if f.equipe else self.tg.operativo)(f.testo)
             registra(CARTELLA, "sorveglianza", testo=f.testo)

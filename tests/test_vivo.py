@@ -598,3 +598,22 @@ def test_il_piano_scelto_dai_cervelli_si_apre_com_e():
         viva, fatto = Esecutore(t, parte=0.2).apri(dd, t.conto(), pieno=0.3, parte=0.2, fiducia_minima=0.0)
         assert viva is not None and len(viva.tickets) == 1, fatto.testo
         assert m.posizioni[viva.tickets[0]].tp == round(getattr(d.op, target), 5)
+
+
+def test_una_chiusura_che_mt5_non_trova_non_ferma_il_bot():
+    from nvm.vivo.esecutore import ATTESA_CHIUSURA
+    d = _una_decisione()
+    m = MT5Finto(saldo=100000.0)
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    for ticket in viva.tickets:          # sparite dal conto, senza storico della chiusura
+        del m.posizioni[ticket]
+    m.history_deals_get = lambda **k: None
+    vive = [viva]
+    for _ in range(ATTESA_CHIUSURA - 1):
+        vive, fatti = e.sorveglia(vive)
+        assert vive == [viva] and fatti == []           # aspetta, senza errori e senza rumore
+    vive, fatti = e.sorveglia(vive)
+    assert vive == [] and any("non ne dà il risultato" in f.testo for f in fatti)
