@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,10 @@ NOTI = ["T7udbrWlARI", "FYr6J5pIDB4", "_oiwm8_id8c", "n2GF8kCpgVg", "p8UYOgVn1-g
 
 
 def _ytdlp(*argomenti: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "-m", "yt_dlp", *argomenti], capture_output=True, text=True)
+    # YouTube vuole un motore JavaScript per dare i video: deno, installato col pip accanto a python.
+    percorso = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
+    return subprocess.run([sys.executable, "-m", "yt_dlp", *argomenti], capture_output=True, text=True,
+                          env={**os.environ, "PATH": percorso})
 
 
 def elenco() -> list[tuple[str, str]]:
@@ -75,12 +79,14 @@ def uno(identita: str, titolo: str) -> str:
     r = _ytdlp("-f", "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b", "--write-auto-subs",
                "--sub-langs", "en", "--sub-format", "vtt", "-o", str(LAVORO / "v.%(ext)s"), "--", identita)
     video = next((f for f in LAVORO.glob("v.*") if f.suffix in (".mp4", ".webm", ".mkv")), None)
+    for s in LAVORO.glob("*.vtt"):
+        # Le parole si tengono anche se il video non arriva: il video si riprova la volta dopo.
+        fine.mkdir(parents=True, exist_ok=True)
+        shutil.copy(s, fine / "parole.vtt")
     if video is None:
         errore = (r.stderr.strip().splitlines() or ["sconosciuto"])[-1]
         return f"non scaricato ({errore[:120]})"
     n = fotogrammi(video, fine)
-    for s in LAVORO.glob("*.vtt"):
-        shutil.copy(s, fine / "parole.vtt")
     (fine / "fatto.json").write_text(json.dumps({"id": identita, "titolo": titolo, "url": url, "fotogrammi": n,
                                                  "ogni_secondi": OGNI}, ensure_ascii=False), encoding="utf-8")
     shutil.rmtree(LAVORO, ignore_errors=True)

@@ -8,7 +8,7 @@ if not exist ".venv\Scripts\python.exe" (
   ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt
 )
 echo Preparo gli strumenti per i video...
-".venv\Scripts\python.exe" -m pip install -q -U yt-dlp imageio-ffmpeg
+".venv\Scripts\python.exe" -m pip install -q -U "yt-dlp[default]" deno imageio-ffmpeg
 ".venv\Scripts\python.exe" video.py
 echo.
 pause
