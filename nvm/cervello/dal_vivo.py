@@ -6,6 +6,12 @@ subito dall'esperienza (`esperienza.py`) e la squadra cosi' com'e' diventata si 
 (`dati/vivo/cervelli_vivi.json`): quando il bot riparte riprende da li'. Se la scuola cambia (un
 nuovo `cervelli.json`), la squadra nuova rivive una per una tutte le esperienze vere di prima
 (`cervelli_esempi.jsonl`): quello che hanno imparato dal vivo non si perde mai.
+
+Accanto alla squadra vivono le sfidanti: per ogni agente una versione diversa di se' (preparata
+in palestra, `scuola.scegli_sfidanti`). Giudicano ogni occasione e imparano come la squadra; a
+ogni esperienza si segna chi ha sbagliato meno. Appena una sfidante sbaglia chiaramente meno di
+quella di adesso (almeno `SFIDA_MINIMO` esperienze, differenza oltre `SFIDA_Z` errori standard),
+prende il suo posto subito: l'agente ha cambiato se stesso perche' l'esperienza gli ha dato ragione.
 """
 
 from __future__ import annotations
@@ -29,19 +35,29 @@ VIVI = "cervelli_vivi.json"
 RICORDI = "ricordi.npz"
 # I risultati si imparano dentro questa misura, in R.
 TETTO = (-3.0, 5.0)
+# Quante esperienze vere servono, e quanto chiara deve essere la differenza (in errori standard,
+# severa perche' si guarda dopo ogni esperienza), perche' una sfidante prenda il posto.
+SFIDA_MINIMO = 100
+SFIDA_Z = 3.0
+# Con una scuola nuova le sfidanti rivivono solo le ultime esperienze (il bot riparte prima).
+SFIDANTI_RIVISSUTE = 300
 
 
 def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
     """La squadra con tutte le esperienze vere gia' imparate. Senza file: nessuna. Nelle
     informazioni: sotto "piani" il cervello dei Livelli che sceglie stop e obiettivi, sotto
-    "memoria" i ricordi di scuola e le esperienze vissute."""
+    "memoria" i ricordi di scuola e le esperienze vissute, sotto "sfidanti" le versioni diverse
+    degli agenti che si mettono alla prova, sotto "cambi" quelle che hanno preso il posto."""
     if not file.exists():
         return None, {}
     testo = file.read_text(encoding="utf-8")
     dati = json.loads(testo)
     squadra = Squadra.da_dati(dati["squadra"])
-    info = {k: v for k, v in dati.items() if k not in ("squadra", "piani")}
+    info = {k: v for k, v in dati.items() if k not in ("squadra", "piani", "sfidanti")}
     info["piani"] = ReteValori.da_dati(dati["piani"]) if dati.get("piani") else None
+    info["sfidanti"] = [{"agente": s["agente"], "modifica": s["modifica"], "genomi": s.get("genomi"),
+                         "squadra": Squadra.da_dati(s["squadra"]), "confronto": []} for s in dati.get("sfidanti", [])]
+    info["cambi"] = []
     scuola = hashlib.sha256(testo.encode("utf-8")).hexdigest()[:16]
     memoria = {"ricordi": esperienza.Memoria.carica(file.parent / RICORDI), "vissute": esperienza.Memoria.vuota(),
                "scuola": scuola}
@@ -52,16 +68,63 @@ def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
     for k, e in enumerate(esempi):
         v = squadra.adatta({a: np.array([e["viste"][a]]) for a in AGENTI})
         if salvata is None and np.isfinite(e["w"]):
-            esperienza.impara(squadra, v, e["y"], e["w"], memoria["ricordi"], memoria["vissute"], seme=k)
+            _esperienza(squadra, info, v, e["y"], e["w"], seme=k, sfide=k >= len(esempi) - SFIDANTI_RIVISSUTE)
             _impara_piano(info["piani"], v, e.get("piano"), e.get("erre"))
-        memoria["vissute"].aggiungi(v, e["y"], e["w"] if np.isfinite(e["w"]) else 0.0)
+        else:
+            memoria["vissute"].aggiungi(v, e["y"], e["w"] if np.isfinite(e["w"]) else 0.0)
     if salvata is not None:
         squadra = Squadra.da_dati(salvata["squadra"])
         if salvata.get("piani") and info["piani"] is not None:
             info["piani"] = ReteValori.da_dati(salvata["piani"])
+        info["sfidanti"] = [{**s, "squadra": Squadra.da_dati(s["squadra"])} for s in salvata.get("sfidanti", [])]
+        info["cambi"] = salvata.get("cambi", [])
     elif esempi:
         _salva(cartella, squadra, info)
     return squadra, info
+
+
+def _perdita_una(squadra: Squadra, v: dict, y: float) -> float:
+    p = float(np.clip(squadra.giudica(v)[2][0], 1e-6, 1 - 1e-6))
+    return -(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+
+def _esperienza(squadra: Squadra, info: dict, v: dict, y: float, w: float, seme: int, sfide: bool = True) -> dict:
+    """Un'esperienza finita per la squadra e per le sfidanti: prima si segna chi aveva giudicato
+    meglio, poi tutte imparano; se una sfidante ha dimostrato di essere migliore, prende il posto."""
+    m = info["memoria"]
+    sfidanti = info.get("sfidanti", []) if sfide else []
+    for s in sfidanti:
+        s["confronto"].append(float(w * (_perdita_una(squadra, v, y) - _perdita_una(s["squadra"], v, y))))
+    lezione = esperienza.impara(squadra, v, y, w, m["ricordi"], m["vissute"], seme)
+    for s in sfidanti:
+        esperienza.impara(s["squadra"], v, y, w, m["ricordi"], m["vissute"], seme)
+    m["vissute"].aggiungi(v, y, w)
+    cambio = _chi_vince(squadra, info) if sfidanti else None
+    if cambio:
+        lezione["cambio"] = cambio
+    return lezione
+
+
+def _chi_vince(squadra: Squadra, info: dict) -> Optional[dict]:
+    """Se una sfidante sbaglia chiaramente meno di quella di adesso sulle esperienze vere, prende
+    il suo posto (la squadra resta lo stesso oggetto: il bot non se ne accorge, se non dai giudizi)."""
+    for s in list(info.get("sfidanti", [])):
+        d = np.asarray(s["confronto"], float)
+        if len(d) < SFIDA_MINIMO:
+            continue
+        errore = d.std(ddof=1) / np.sqrt(len(d))
+        if errore > 0 and d.mean() / errore > SFIDA_Z:
+            nuova = s["squadra"]
+            squadra.primi, squadra.secondi, squadra.capo, squadra.confronto = (nuova.primi, nuova.secondi, nuova.capo,
+                                                                               nuova.confronto)
+            info["sfidanti"].remove(s)
+            for altra in info["sfidanti"]:
+                altra["confronto"] = []      # si riparte alla pari contro la squadra nuova
+            cambio = {"agente": s["agente"], "modifica": s["modifica"], "esperienze": len(d), "meglio": float(d.mean()),
+                      "genoma": (s.get("genomi") or {}).get(s["agente"])}
+            info.setdefault("cambi", []).append(cambio)
+            return cambio
+    return None
 
 
 def _salvata(file: Path, scuola: str, esperienze: int) -> Optional[dict]:
@@ -79,10 +142,11 @@ def _salva(cartella: Path, squadra: Squadra, info: dict) -> None:
     m = info.get("memoria") or {}
     cartella.mkdir(parents=True, exist_ok=True)
     provvisorio = cartella / (VIVI + ".nuovo")
-    provvisorio.write_text(json.dumps({"scuola": m.get("scuola"), "esperienze": len(m.get("vissute") or []),
-                                       "squadra": squadra.come_dati(),
-                                       "piani": info["piani"].come_dati() if info.get("piani") is not None else None}),
-                           encoding="utf-8")
+    provvisorio.write_text(json.dumps({
+        "scuola": m.get("scuola"), "esperienze": len(m.get("vissute") or []), "squadra": squadra.come_dati(),
+        "piani": info["piani"].come_dati() if info.get("piani") is not None else None,
+        "sfidanti": [{**s, "squadra": s["squadra"].come_dati()} for s in info.get("sfidanti", [])],
+        "cambi": info.get("cambi", [])}), encoding="utf-8")
     provvisorio.replace(cartella / VIVI)
 
 
@@ -154,8 +218,7 @@ def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, info: 
     erre = float(np.clip(erre, *TETTO))
     y, w = float(erre > 0), abs(erre)
     v = squadra.adatta({a: np.array([giudizio["viste"][a]]) for a in AGENTI})
-    lezione = esperienza.impara(squadra, v, y, w, m["ricordi"], m["vissute"], seme=len(m["vissute"]))
-    m["vissute"].aggiungi(v, y, w)
+    lezione = _esperienza(squadra, info, v, y, w, seme=len(m["vissute"]))
     piano = giudizio.get("piano")
     _impara_piano(info.get("piani"), v, piano, erre)
     cartella.mkdir(parents=True, exist_ok=True)
@@ -163,6 +226,26 @@ def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, info: 
         f.write(json.dumps({"viste": giudizio["viste"], "y": y, "w": w, "piano": piano, "erre": float(erre)}) + "\n")
     _salva(cartella, squadra, info)
     return lezione
+
+
+def voce_della_lezione(lezione: dict, erre: float) -> str:
+    """Cosa hanno imparato i cervelli da un'operazione vera appena chiusa."""
+    prima, dopo = round(100 * lezione["prima"]), round(100 * lezione["dopo"])
+    com_e_andata = "è andata bene" if erre > 0 else "è andata male"
+    if not lezione["tenuta"]:
+        return (f"🧠 Eravamo al {prima}% e {com_e_andata}. Abbiamo provato a impararlo, ma ci faceva sbagliare "
+                f"di più su quello che sapevamo già: per ora lo teniamo solo come esperienza.")
+    if abs(dopo - prima) < 1:
+        return f"🧠 Eravamo al {prima}% e {com_e_andata}: ce lo aspettavamo, lo ricordiamo e non cambia quasi niente."
+    return (f"🧠 Eravamo al {prima}% e {com_e_andata}. Lezione imparata: su casi così adesso siamo al {dopo}%. "
+            f"Lo ricordiamo insieme a tutto il resto.")
+
+
+def voce_del_cambio(cambio: dict) -> str:
+    """L'agente racconta in equipe come ha cambiato se stesso dal vivo."""
+    return (f"🧬 {cambio['agente']} ha cambiato se stesso: {cambio['modifica']}. Per {cambio['esperienze']} "
+            f"occasioni vere la versione nuova ha giudicato insieme alla vecchia, e ha sbagliato chiaramente meno. "
+            f"Da adesso ragiono così.")
 
 
 def voce_livelli(piano: int, valori: list) -> str:

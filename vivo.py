@@ -577,7 +577,14 @@ class Bot:
                 lezione = dal_vivo.impara(self.cervelli, CARTELLA, s.cervelli, float(s.esito["erre"]),
                                           self.cervelli_info)
                 if lezione:
+                    cambio = lezione.pop("cambio", None)
                     registra(CARTELLA, "lezione", chiave=s.chiave, **{k: round(float(x), 4) for k, x in lezione.items()})
+                    if s.entrata:
+                        self.tg.equipe(dal_vivo.voce_della_lezione(lezione, float(s.esito["erre"])))
+                    if cambio:
+                        # Un agente ha cambiato se stesso perche' l'esperienza gli ha dato ragione.
+                        registra(CARTELLA, "cambio", **cambio)
+                        self.tg.equipe(dal_vivo.voce_del_cambio(cambio))
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
         if s.entrata:

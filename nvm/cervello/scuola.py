@@ -18,7 +18,7 @@ import numpy as np
 from nvm.agenti import portafoglio
 from nvm.agenti.capo import pesi_per_eta
 from nvm.agenti.portafoglio import Operazioni
-from nvm.cervello.genoma import modifiche
+from nvm.cervello.genoma import come_dati as genomi_come_dati, modifiche
 from nvm.cervello.rete import ReteValori
 from nvm.cervello.squadra import Squadra
 from nvm.cervello.viste import AGENTI
@@ -185,10 +185,25 @@ def esame(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, p: np.ndarray, dire
             and (portafoglio.CALO_MASSIMO is None or cervelli["calo"] <= portafoglio.CALO_MASSIMO + 0.05)}
 
 
+def scegli_sfidanti(genomi: dict, provate: list, seme: int = 0) -> list[tuple[str, str, dict]]:
+    """Per ogni agente una versione diversa di se', mai provata, da mettere alla prova dal vivo
+    contro quella di adesso (`dal_vivo.py`): (agente, modifica, genomi della squadra sfidante)."""
+    rng = np.random.default_rng(seme)
+    gia = {(x["agente"], x["da"], x["modifica"]) for x in provate}
+    fuori = []
+    for a in AGENTI:
+        nuove = [(testo, g) for testo, g in modifiche(a, genomi[a]) if (a, genomi[a].chiave(), testo) not in gia]
+        if nuove:
+            testo, g = nuove[int(rng.integers(len(nuove)))]
+            fuori.append((a, testo, {**genomi, a: g}))
+    return fuori
+
+
 def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print, genomi: Optional[dict] = None,
-                p: Optional[np.ndarray] = None) -> dict:
+                p: Optional[np.ndarray] = None, sfidanti: Optional[list] = None) -> dict:
     """La squadra allenata su tutto, con l'esito dell'esame, per il bot dal vivo (`cervelli.json`).
-    `p`: la fiducia anno per anno gia' calcolata con questi genomi (per non rifarla)."""
+    `p`: la fiducia anno per anno gia' calcolata con questi genomi (per non rifarla). `sfidanti`:
+    le versioni diverse di se' che gli agenti mettono alla prova dal vivo (`scegli_sfidanti`)."""
     p = fiducia_anno_per_anno(t, genomi) if p is None else p
     risultato = esame(t, kelly_capo, entra_capo, p, dire)
     squadra = allena(t, int(t.chiusa.max()) + 1, genomi=genomi)
@@ -201,6 +216,10 @@ def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print, g
             "rischio": {"parte": s.parte, "minimo": s.minimo}}
     if t.piani is not None:
         dati["piani"] = allena_piani(t, int(t.chiusa.max()) + 1).come_dati()
+    if sfidanti:
+        dati["sfidanti"] = [{"agente": a, "modifica": testo, "genomi": genomi_come_dati(g),
+                             "squadra": allena(t, int(t.chiusa.max()) + 1, genomi=g).come_dati()}
+                            for a, testo, g in sfidanti]
     return dati
 
 

@@ -158,6 +158,23 @@ def main() -> None:
             print(f"    {nome:28} {w1:+.3f} / {w2:+.3f}")
 
 
+def cambi_dal_vivo(memoria: dict, registro: Path) -> dict:
+    """Gli agenti che dal vivo hanno cambiato se stessi (una sfidante ha preso il posto): la scuola
+    riparte dalla loro forma nuova. Si applicano solo i cambi non ancora visti."""
+    if not registro.exists():
+        return memoria
+    cambi = [json.loads(r) for r in registro.read_text(encoding="utf-8").splitlines() if '"cambio"' in r]
+    cambi = [c for c in cambi if c.get("evento") == "cambio" and c.get("genoma")]
+    visti = int(memoria.get("cambi_dal_vivo", 0))
+    if len(cambi) <= visti:
+        return memoria
+    attuali = dict(memoria.get("attuali") or genoma.come_dati(genoma.iniziali()))
+    for c in cambi[visti:]:
+        attuali[c["agente"]] = c["genoma"]
+        print(f"  dal vivo: {c['agente']} {c['modifica']} (in {c['esperienze']} esperienze vere)", flush=True)
+    return {**memoria, "attuali": attuali, "cambi_dal_vivo": len(cambi)}
+
+
 def salva_per_il_vivo(t: Tabella) -> None:
     """Il Capo e il Rischio di partenza del bot dal vivo, e lo storico su cui si
     riaddestrano ogni fine settimana.
@@ -184,14 +201,18 @@ def salva_per_il_vivo(t: Tabella) -> None:
         # Prima i cervelli provano a modificarsi da soli (`nvm/cervello/genoma.py`).
         file_genomi = cartella / "genomi.json"
         memoria = json.loads(file_genomi.read_text(encoding="utf-8")) if file_genomi.exists() else {}
+        memoria = cambi_dal_vivo(memoria, RADICE / "dati" / "vps" / "vivo" / "registro.jsonl")
         adesso = datetime.now(timezone.utc)
         settimana = adesso.strftime("%G-S%V")
         genomi, prove, racconto, p = scuola.evolvi(t, genoma.da_dati(memoria.get("attuali")), memoria.get("provate", []),
                                                    settimana)
-        memoria = {"attuali": genoma.come_dati(genomi), "provate": memoria.get("provate", []) + prove}
+        memoria = {"attuali": genoma.come_dati(genomi), "provate": memoria.get("provate", []) + prove,
+                   "cambi_dal_vivo": memoria.get("cambi_dal_vivo", 0)}
         file_genomi.write_text(json.dumps(memoria, ensure_ascii=False, indent=1), encoding="utf-8")
         print(racconto, flush=True)
-        cervelli = scuola.per_il_vivo(t, kelly_capo, entra_capo, genomi=genomi, p=p)
+        # E per ognuno una versione diversa di se' mai provata, che si mette alla prova dal vivo.
+        sfidanti = scuola.scegli_sfidanti(genomi, memoria["provate"], seme=int(adesso.timestamp()))
+        cervelli = scuola.per_il_vivo(t, kelly_capo, entra_capo, genomi=genomi, p=p, sfidanti=sfidanti)
         cervelli["evoluzione"] = {"id": int(adesso.timestamp()), "testo": racconto}
         (cartella / "cervelli.json").write_text(json.dumps(cervelli), encoding="utf-8")
         scuola.ricordi(t).salva(cartella / "ricordi.npz")

@@ -115,6 +115,19 @@ prima una lezione sola peggiorava del 23% i ricordi). Prova su un mondo che dopo
 rovescia una regola: chi impara passa da 1,10 a 0,52 di errore in 600 esperienze, chi resta
 fermo resta a 1,10; 592 lezioni su 600 restano.
 
+## Si modificano anche dal vivo, di continuo (le sfidanti, 29/09/2026)
+
+Una volta a settimana non basta. Ogni volta che si riallenano, in palestra per ogni agente si
+prepara una versione diversa di se' mai provata (`scuola.scegli_sfidanti`: un occhio in meno o
+in piu', piu' o meno neuroni, piu' o meno freno), allenata su tutti i vent'anni. Dal vivo le
+sfidanti giudicano ogni occasione e imparano da ogni esperienza come la squadra; per ognuna si
+segna, esperienza dopo esperienza, chi aveva giudicato meglio. Appena una sfidante sbaglia
+chiaramente meno (almeno 100 esperienze vere e una differenza oltre 3 errori standard: severa
+perche' si guarda dopo ogni esperienza) prende subito il posto di quella di prima, e l'agente
+lo racconta in equipe. La palestra lo legge dal registro (`capo.cambi_dal_vivo`) e riparte da
+li'. Prova su un gruppo finto: una versione di adesso che non ha capito niente contro una
+sfidante buona: dopo 136 esperienze vere la sfidante prende il posto.
+
 ## Cosa manca
 
 - Più dati: con 40 strumenti gli esempi diventano circa sei volte tanti, e le reti ne hanno

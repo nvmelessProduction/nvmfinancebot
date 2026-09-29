@@ -35,6 +35,8 @@ TOLLERANZA = 0.01
 # La parte di ogni passo che va alla lezione nuova: da meta' (nessuna sorpresa) al doppio.
 QUOTA = 0.1
 CONTROLLO = 400
+# Con meno ricordi di cosi' da ripassare si impara piano: pochi esempi ripetuti si imparano a memoria.
+POCHI = 500
 # Quanto del ripasso va alle esperienze vissute: cresce con quante sono, fino a VISSUTE_MAX.
 VISSUTE_MAX = 0.7
 VISSUTE_PIENE = 500
@@ -110,7 +112,8 @@ def impara(squadra: Squadra, vista: dict, y: float, w: float, ricordi: Memoria, 
     quota = min(0.5, QUOTA * (0.5 + sorpresa) * np.sqrt(min(max(w, 0.05), 4.0)))
     stato = squadra.come_dati()
     tenuta = False
-    for passo in (PASSO, PASSO / 3):
+    piano = 1.0 if len(ricordi) + len(vissute) >= POCHI else 0.1
+    for passo in (PASSO * piano, PASSO * piano / 3):
         for _ in range(PASSI):
             lotto, yy, ww = _lotto(rng, ricordi, vissute, quanto_vissute)
             lotto = {a: np.vstack([v[a], lotto[a]]) for a in AGENTI} if len(yy) else v

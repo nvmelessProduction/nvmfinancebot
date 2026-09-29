@@ -59,21 +59,27 @@ def test_dal_vivo_giudicano_si_confrontano_imparano_e_ricordano(tmp_path):
     sq = Squadra.allena(v, y)
     file = tmp_path / "cervelli.json"
     file.write_text(json.dumps({"squadra": sq.come_dati(), "decidono": False, "soglia": 0.5}))
+    from nvm.cervello.esperienza import Memoria
+    Memoria(v, y, np.ones(n)).salva(tmp_path / dal_vivo.RICORDI)       # i ricordi di scuola da ripassare
     cartella = tmp_path / "vivo"
     squadra, info = dal_vivo.carica(file, cartella)
     assert info["decidono"] is False
-    caso = {a: v[a][0] for a in AGENTI}
+    # Un caso su cui la squadra e' sicura che guadagni: poi va male.
+    k = int(np.argmax(squadra.giudica({a: v[a][:300] for a in AGENTI})[2]))
+    caso = {a: v[a][k] for a in AGENTI}
     g = dal_vivo.giudica(squadra, caso)
     assert set(g["primo"]) == set(AGENTI) and 0 <= g["fiducia"] <= 1
     testo = dal_vivo.voce(g, 0.5, False)
     assert "Quanto ci crediamo" in testo and "Siamo in prova" in testo
     # Impara da un risultato vero e lo ricorda: ricaricata, la squadra ha gia' imparato.
     prima = dal_vivo.giudica(squadra, caso)["fiducia"]
+    tenute = 0
     for _ in range(5):
         lezione = dal_vivo.impara(squadra, cartella, g, -1.0, info)
-        assert lezione["tenuta"] and lezione["dopo"] < lezione["prima"]
+        assert lezione["dopo"] <= lezione["prima"] + 1e-9      # una lezione tenuta o niente: mai peggio
+        tenute += lezione["tenuta"]
     dopo = dal_vivo.giudica(squadra, caso)["fiducia"]
-    assert dopo < prima - 0.02
+    assert tenute >= 1 and dopo < prima - 0.01
     # Ricaricata riparte da com'era diventata; e senza il salvataggio rivive le esperienze una per una.
     ricaricata, info2 = dal_vivo.carica(file, cartella)
     assert abs(dal_vivo.giudica(ricaricata, caso)["fiducia"] - dopo) < 1e-6 and len(info2["memoria"]["vissute"]) == 5
@@ -203,3 +209,57 @@ def test_vera_rottura_di_struttura_e_tempo_della_finta():
     crt = NS(estremo_istanti=np.array([t0 + 3600, t0 + 16200]), estremo_valori=np.array([1.2, 1.3]))
     frazione, dopo = _tempo_della_finta(crt, alte, t0 + 18000)
     assert abs(frazione - 1800 / 14400) < 1e-9 and dopo == 0.0
+
+
+def test_una_sfidante_migliore_prende_il_posto_dal_vivo(tmp_path):
+    import json
+    from nvm.cervello import dal_vivo, esperienza
+    rng = np.random.default_rng(11)
+    n = 3000
+    x = rng.normal(size=(n, 3))
+    y = (x[:, 0] + rng.normal(0, 0.5, n) > 0).astype(float)
+    v = {a: x.copy() for a in AGENTI}
+    scuola = {a: m[:1500] for a, m in v.items()}
+    buona = Squadra.allena(scuola, y[:1500])
+    confusa = Squadra.allena(scuola, rng.permutation(y[:1500]))     # la versione di adesso non ha capito niente
+    file = tmp_path / "cervelli.json"
+    file.write_text(json.dumps({"squadra": confusa.come_dati(), "decidono": False, "soglia": 0.5,
+                                "sfidanti": [{"agente": "Grilletto", "modifica": "smette di guardare «x»",
+                                              "genomi": None, "squadra": buona.come_dati()}]}))
+    esperienza.Memoria(scuola, y[:1500], np.ones(1500)).salva(tmp_path / dal_vivo.RICORDI)
+    cartella = tmp_path / "vivo"
+    squadra, info = dal_vivo.carica(file, cartella)
+    cambio = None
+    for k in range(1500, 1500 + dal_vivo.SFIDA_MINIMO + 100):
+        g = dal_vivo.giudica(squadra, {a: v[a][k] for a in AGENTI})
+        lezione = dal_vivo.impara(squadra, cartella, g, 1.0 if y[k] else -1.0, info)
+        cambio = cambio or lezione.get("cambio")
+    assert cambio and cambio["agente"] == "Grilletto" and cambio["esperienze"] >= dal_vivo.SFIDA_MINIMO
+    assert info["sfidanti"] == [] and len(info["cambi"]) == 1
+    assert "ha cambiato se stesso" in dal_vivo.voce_del_cambio(cambio)
+    # Adesso giudica come la sfidante che ha vinto, e ricaricata resta cosi'.
+    caso = {a: v[a][2800:] for a in AGENTI}
+    p = squadra.giudica(caso)[2]
+    assert np.mean((p > 0.5) == y[2800:]) > 0.75
+    ricaricata, info2 = dal_vivo.carica(file, cartella)
+    assert np.allclose(ricaricata.giudica(caso)[2], p) and len(info2["cambi"]) == 1
+
+
+def test_la_palestra_tiene_i_cambi_fatti_dal_vivo(tmp_path):
+    import json
+    from capo import cambi_dal_vivo
+    registro = tmp_path / "registro.jsonl"
+    nuovo = {"neuroni": 24, "freno": 0.001, "spenti": []}
+    registro.write_text(json.dumps({"evento": "lezione", "prima": 0.5}) + "\n" +
+                        json.dumps({"evento": "cambio", "agente": "Bias", "modifica": "più neuroni (16 → 24)",
+                                    "esperienze": 120, "meglio": 0.01, "genoma": nuovo}) + "\n")
+    memoria = cambi_dal_vivo({"provate": []}, registro)
+    assert memoria["attuali"]["Bias"] == nuovo and memoria["cambi_dal_vivo"] == 1
+    assert cambi_dal_vivo(memoria, registro) == memoria          # lo stesso cambio non si applica due volte
+
+
+def test_i_cervelli_dicono_cosa_hanno_imparato():
+    from nvm.cervello.dal_vivo import voce_della_lezione
+    assert "adesso siamo al 64%" in voce_della_lezione({"prima": 0.8, "dopo": 0.64, "tenuta": True}, -1.0)
+    assert "è andata bene" in voce_della_lezione({"prima": 0.7, "dopo": 0.702, "tenuta": True}, 2.0)
+    assert "solo come esperienza" in voce_della_lezione({"prima": 0.8, "dopo": 0.8, "tenuta": False}, -1.0)
