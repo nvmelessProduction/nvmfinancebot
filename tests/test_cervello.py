@@ -69,12 +69,17 @@ def test_dal_vivo_giudicano_si_confrontano_imparano_e_ricordano(tmp_path):
     assert "Quanto ci crediamo" in testo and "Siamo in prova" in testo
     # Impara da un risultato vero e lo ricorda: ricaricata, la squadra ha gia' imparato.
     prima = dal_vivo.giudica(squadra, caso)["fiducia"]
-    for _ in range(30):
-        dal_vivo.impara(squadra, cartella, g, -1.0)
+    for _ in range(5):
+        lezione = dal_vivo.impara(squadra, cartella, g, -1.0, info)
+        assert lezione["tenuta"] and lezione["dopo"] < lezione["prima"]
     dopo = dal_vivo.giudica(squadra, caso)["fiducia"]
-    assert dopo < prima
-    ricaricata, _ = dal_vivo.carica(file, cartella)
-    assert abs(dal_vivo.giudica(ricaricata, caso)["fiducia"] - dopo) < 1e-6
+    assert dopo < prima - 0.02
+    # Ricaricata riparte da com'era diventata; e senza il salvataggio rivive le esperienze una per una.
+    ricaricata, info2 = dal_vivo.carica(file, cartella)
+    assert abs(dal_vivo.giudica(ricaricata, caso)["fiducia"] - dopo) < 1e-6 and len(info2["memoria"]["vissute"]) == 5
+    (cartella / dal_vivo.VIVI).unlink()
+    rivissuta, _ = dal_vivo.carica(file, cartella)
+    assert abs(dal_vivo.giudica(rivissuta, caso)["fiducia"] - dopo) < 1e-6
     # La gara della sera: cervelli contro Capo sulle occasioni finite.
     s = NS(esito={"erre": 1.5, "quando": 100}, cervelli={"fiducia": 0.7}, presa_dal_capo=False)
     assert "i cervelli ne avrebbero prese 1 (+1,50 volte il rischio), il Capo 0" in dal_vivo.gara([s], 0, 200, 0.5)

@@ -204,6 +204,15 @@ def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print, g
     return dati
 
 
+def ricordi(t, quanti: int = 2000):
+    """I ricordi di scuola che il bot porta con se' per ripassare mentre impara dal vivo
+    (`esperienza.py`): casi dei vent'anni, piu' spesso i recenti e quelli che pesano."""
+    from nvm.cervello.esperienza import ricordi_di_scuola
+    fino_a = int(t.chiusa.max()) + 1
+    y, w = obiettivo(t.erre)
+    return ricordi_di_scuola(t.viste, y, w * pesi_per_eta(t.chiusa, fino_a), quanti)
+
+
 def vista_dei_piani(viste: dict) -> np.ndarray:
     """Cosa guarda Livelli per scegliere stop e obiettivi: quello che vede lui e i colleghi."""
     return np.hstack([np.atleast_2d(viste[a]) for a in AGENTI])

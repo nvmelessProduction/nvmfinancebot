@@ -93,6 +93,28 @@ squadra e uno alla volta nessuno supera l'esame. Ogni settimana l'evoluzione pu�
 uno ("torna a guardare «SMT»") e lo tiene solo se passa. La tabella del bot si rifà da sola
 quando cambiano le viste.
 
+## Imparano da ogni esperienza (`esperienza.py`, 29/09/2026)
+
+Una persona non migliora un giorno alla settimana: sbaglia, capisce, la volta dopo fa meglio.
+Dal vivo, appena un'occasione finisce (presa o no), la squadra impara subito:
+
+- **la lezione pesa di più quando erano sicuri e hanno sbagliato** (la sorpresa) e quando
+  l'operazione ha mosso tanto;
+- **ripassano mentre imparano**: ogni passo mescola la lezione con 2000 ricordi di scuola
+  (`nvm/vivo/ricordi.npz`) e con le esperienze vissute prima. Più esperienze vive hanno, più
+  contano (fino al 70% del ripasso): un errore che si ripete si somma e li cambia davvero;
+- **si controllano**: se dopo la lezione sbagliano di più su quello che sapevano (oltre l'1%),
+  tornano indietro e riprovano più piano; se ancora peggio, la lezione non resta;
+- **ricordano**: dopo ogni esperienza la squadra si salva (`dati/vivo/cervelli_vivi.json`) e
+  riparte da lì. Con una scuola nuova rivive una per una tutte le esperienze vere di prima.
+
+Perché non di più: nei mercati un risultato solo è in gran parte caso. Prova su un gruppo
+finto: spostare molto un caso "sicuro e sbagliato" rovinava fino al +30% di quello che
+sapevano. Il Capo, che mette insieme giudizi grandi, dal vivo si sposta piano (con i passi di
+prima una lezione sola peggiorava del 23% i ricordi). Prova su un mondo che dopo la scuola
+rovescia una regola: chi impara passa da 1,10 a 0,52 di errore in 600 esperienze, chi resta
+fermo resta a 1,10; 592 lezioni su 600 restano.
+
 ## Cosa manca
 
 - Più dati: con 40 strumenti gli esempi diventano circa sei volte tanti, e le reti ne hanno

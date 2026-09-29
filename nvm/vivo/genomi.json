@@ -14,6 +14,7 @@
     "SMT",
     "SMT col grafico sopra",
     "candela 2 o 3",
+    "distanza dell'obiettivo",
     "forza della conferma",
     "tempo della finta",
     "vera rottura di struttura"
@@ -205,6 +206,60 @@
    "esito": "scartata",
    "di_quanto": -0.004507180374421636,
    "anni_meglio": 8
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Cacciatore",
+   "da": "[16, 0.001, [\"candele interne e ora del range\"]]",
+   "modifica": "meno freno sui pesi (regole più fini)",
+   "esito": "scartata",
+   "di_quanto": 0.0027117374667430024,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Grilletto",
+   "da": "[16, 0.001, [\"SMT\", \"SMT col grafico sopra\", \"candela 2 o 3\", \"forza della conferma\", \"tempo della finta\", \"vera rottura di struttura\"]]",
+   "modifica": "smette di guardare «distanza dell'obiettivo»",
+   "esito": "tenuta",
+   "di_quanto": 0.002812898468067865,
+   "anni_meglio": 9
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Livelli",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «costi»",
+   "esito": "scartata",
+   "di_quanto": -0.004141630463224837,
+   "anni_meglio": 5
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Key level",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «livelli trovati»",
+   "esito": "scartata",
+   "di_quanto": -0.03350183147817123,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Orario",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «sessioni di Romeo»",
+   "esito": "scartata",
+   "di_quanto": -0.006877385013697904,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Bias",
+   "da": "[16, 0.001, [\"obiettivi dei grafici grandi\", \"posizione nella settimana\"]]",
+   "modifica": "smette di guardare «distanza dell'obiettivo»",
+   "esito": "scartata",
+   "di_quanto": -0.014264535642853656,
+   "anni_meglio": 4
   }
  ]
 }

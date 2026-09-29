@@ -194,6 +194,7 @@ def salva_per_il_vivo(t: Tabella) -> None:
         cervelli = scuola.per_il_vivo(t, kelly_capo, entra_capo, genomi=genomi, p=p)
         cervelli["evoluzione"] = {"id": int(adesso.timestamp()), "testo": racconto}
         (cartella / "cervelli.json").write_text(json.dumps(cervelli), encoding="utf-8")
+        scuola.ricordi(t).salva(cartella / "ricordi.npz")
     romeo = candidati_di_romeo()
     capo = capo.impara_romeo(romeo["romeo_x"], romeo["romeo_y"]).impara_fiducia(romeo["romeo_x"], romeo["romeo_tp1"])
     (cartella / "capo.json").write_text(json.dumps(capo.come_dati()), encoding="utf-8")

@@ -1,19 +1,23 @@
 """I cervelli nel mondo reale.
 
-Il bot carica la squadra uscita da scuola (`nvm/vivo/cervelli.json`, rifatta ogni settimana in
-palestra) e le rifa' imparare tutte le operazioni vere viste finora (`dati/vivo/
-cervelli_esempi.jsonl`): cosi' quello che hanno imparato dal vivo non si perde quando tornano
-a scuola. A ogni occasione giudicano e si confrontano; a ogni risultato imparano.
+Il bot carica la squadra uscita da scuola (`nvm/vivo/cervelli.json`) coi suoi ricordi di scuola
+(`ricordi.npz`). A ogni occasione giudicano e si confrontano; a ogni occasione finita imparano
+subito dall'esperienza (`esperienza.py`) e la squadra cosi' com'e' diventata si salva
+(`dati/vivo/cervelli_vivi.json`): quando il bot riparte riprende da li'. Se la scuola cambia (un
+nuovo `cervelli.json`), la squadra nuova rivive una per una tutte le esperienze vere di prima
+(`cervelli_esempi.jsonl`): quello che hanno imparato dal vivo non si perde mai.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
+from nvm.cervello import esperienza
 from nvm.cervello.piani import PIANI, nome
 from nvm.cervello.rete import ReteValori
 from nvm.cervello.scuola import vista_dei_piani
@@ -21,29 +25,65 @@ from nvm.cervello.squadra import Squadra
 from nvm.cervello.viste import AGENTI
 
 ESEMPI = "cervelli_esempi.jsonl"
+VIVI = "cervelli_vivi.json"
+RICORDI = "ricordi.npz"
 # I risultati si imparano dentro questa misura, in R.
 TETTO = (-3.0, 5.0)
 
 
 def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
-    """La squadra di scuola, con tutte le operazioni vere gia' imparate. Senza file: nessuna.
-    Nelle informazioni, sotto "piani", il cervello dei Livelli che sceglie stop e obiettivi."""
+    """La squadra con tutte le esperienze vere gia' imparate. Senza file: nessuna. Nelle
+    informazioni: sotto "piani" il cervello dei Livelli che sceglie stop e obiettivi, sotto
+    "memoria" i ricordi di scuola e le esperienze vissute."""
     if not file.exists():
         return None, {}
-    dati = json.loads(file.read_text(encoding="utf-8"))
+    testo = file.read_text(encoding="utf-8")
+    dati = json.loads(testo)
     squadra = Squadra.da_dati(dati["squadra"])
     info = {k: v for k, v in dati.items() if k not in ("squadra", "piani")}
     info["piani"] = ReteValori.da_dati(dati["piani"]) if dati.get("piani") else None
-    esempi = cartella / ESEMPI
-    if esempi.exists():
-        for riga in esempi.read_text(encoding="utf-8").splitlines():
-            if riga.strip():
-                e = json.loads(riga)
-                v = squadra.adatta({a: np.array([e["viste"][a]]) for a in AGENTI})
-                if np.isfinite(e["w"]):
-                    squadra.aggiorna(v, e["y"], min(e["w"], -TETTO[0]) if e["y"] == 0 else min(e["w"], TETTO[1]))
-                _impara_piano(info["piani"], v, e.get("piano"), e.get("erre"))
+    scuola = hashlib.sha256(testo.encode("utf-8")).hexdigest()[:16]
+    memoria = {"ricordi": esperienza.Memoria.carica(file.parent / RICORDI), "vissute": esperienza.Memoria.vuota(),
+               "scuola": scuola}
+    info["memoria"] = memoria
+    esempi = [json.loads(r) for r in (cartella / ESEMPI).read_text(encoding="utf-8").splitlines() if r.strip()] \
+        if (cartella / ESEMPI).exists() else []
+    salvata = _salvata(cartella / VIVI, scuola, len(esempi))
+    for k, e in enumerate(esempi):
+        v = squadra.adatta({a: np.array([e["viste"][a]]) for a in AGENTI})
+        if salvata is None and np.isfinite(e["w"]):
+            esperienza.impara(squadra, v, e["y"], e["w"], memoria["ricordi"], memoria["vissute"], seme=k)
+            _impara_piano(info["piani"], v, e.get("piano"), e.get("erre"))
+        memoria["vissute"].aggiungi(v, e["y"], e["w"] if np.isfinite(e["w"]) else 0.0)
+    if salvata is not None:
+        squadra = Squadra.da_dati(salvata["squadra"])
+        if salvata.get("piani") and info["piani"] is not None:
+            info["piani"] = ReteValori.da_dati(salvata["piani"])
+    elif esempi:
+        _salva(cartella, squadra, info)
     return squadra, info
+
+
+def _salvata(file: Path, scuola: str, esperienze: int) -> Optional[dict]:
+    """La squadra salvata dopo l'ultima esperienza, se viene dalla stessa scuola e le ha tutte."""
+    if not file.exists():
+        return None
+    try:
+        d = json.loads(file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return d if d.get("scuola") == scuola and d.get("esperienze") == esperienze else None
+
+
+def _salva(cartella: Path, squadra: Squadra, info: dict) -> None:
+    m = info.get("memoria") or {}
+    cartella.mkdir(parents=True, exist_ok=True)
+    provvisorio = cartella / (VIVI + ".nuovo")
+    provvisorio.write_text(json.dumps({"scuola": m.get("scuola"), "esperienze": len(m.get("vissute") or []),
+                                       "squadra": squadra.come_dati(),
+                                       "piani": info["piani"].come_dati() if info.get("piani") is not None else None}),
+                           encoding="utf-8")
+    provvisorio.replace(cartella / VIVI)
 
 
 def _per_i_piani(rete: ReteValori, v: dict) -> Optional[np.ndarray]:
@@ -102,25 +142,27 @@ def giudica(squadra: Squadra, viste: dict) -> dict:
             "fiducia": float(p[0]), "viste": {a: [round(float(x), 5) for x in viste[a]] for a in AGENTI}}
 
 
-def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, piani: Optional[ReteValori] = None) -> None:
-    """Un risultato vero: ogni cervello impara, e l'esempio resta per le prossime volte."""
+def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, info: Optional[dict] = None) -> Optional[dict]:
+    """Un'occasione finita: la squadra impara subito dall'esperienza, la ricorda, e si salva.
+    Restituisce com'e' andata la lezione (`esperienza.impara`)."""
     if not np.isfinite(erre):
-        return
+        return None
+    info = info if info is not None else {}
+    m = info.setdefault("memoria", {"ricordi": esperienza.Memoria.vuota(), "vissute": esperienza.Memoria.vuota(),
+                                    "scuola": None})
     # Un risultato fuori misura (uno stop quasi nullo fa R enormi) non deve travolgere quello che sanno.
     erre = float(np.clip(erre, *TETTO))
     y, w = float(erre > 0), abs(erre)
-    v = {a: np.array([giudizio["viste"][a]]) for a in AGENTI}
-    prima = squadra.come_dati()
-    squadra.aggiorna(v, y, w)
-    if not np.all(np.isfinite(squadra.giudica(v)[2])):
-        # Se un passo li rompe, si torna indietro: meglio non imparare che impazzire.
-        ripristino = Squadra.da_dati(prima)
-        squadra.primi, squadra.secondi, squadra.capo = ripristino.primi, ripristino.secondi, ripristino.capo
+    v = squadra.adatta({a: np.array([giudizio["viste"][a]]) for a in AGENTI})
+    lezione = esperienza.impara(squadra, v, y, w, m["ricordi"], m["vissute"], seme=len(m["vissute"]))
+    m["vissute"].aggiungi(v, y, w)
     piano = giudizio.get("piano")
-    _impara_piano(piani, squadra.adatta(v), piano, erre)
+    _impara_piano(info.get("piani"), v, piano, erre)
     cartella.mkdir(parents=True, exist_ok=True)
     with (cartella / ESEMPI).open("a", encoding="utf-8") as f:
         f.write(json.dumps({"viste": giudizio["viste"], "y": y, "w": w, "piano": piano, "erre": float(erre)}) + "\n")
+    _salva(cartella, squadra, info)
+    return lezione
 
 
 def voce_livelli(piano: int, valori: list) -> str:

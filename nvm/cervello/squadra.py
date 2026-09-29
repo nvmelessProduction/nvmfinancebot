@@ -22,7 +22,7 @@ import numpy as np
 
 from nvm.agenti.capo import Logistica
 from nvm.cervello.genoma import Genoma
-from nvm.cervello.rete import Rete
+from nvm.cervello.rete import PASSO, Rete
 from nvm.cervello.viste import AGENTI
 
 # In quante parti si divide la scuola per avere giudizi su esempi mai visti.
@@ -164,17 +164,18 @@ class Squadra:
             fuori[a] = (chi, effetti[chi])
         return fuori
 
-    def aggiorna(self, v: dict, y: np.ndarray, pesi: Optional[np.ndarray] = None, passi: int = 3) -> "Squadra":
-        """Dal vivo, dopo ogni operazione finita: ogni cervello impara un poco dal risultato vero
-        (i pesi piccoli: una operazione sola non deve cancellare la scuola)."""
+    def aggiorna(self, v: dict, y: np.ndarray, pesi: Optional[np.ndarray] = None, passi: int = 3,
+                 passo: float = PASSO / 3) -> "Squadra":
+        """Dal vivo, dopo ogni operazione finita: ogni cervello impara dal risultato vero, di
+        `passo` in `passo` (`esperienza.py` mescola la lezione con i ricordi da ripassare)."""
         y = np.atleast_1d(np.asarray(y, float))
         w = np.ones(len(y)) if pesi is None else np.atleast_1d(np.asarray(pesi, float))
         v = self.adatta(v)
         primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
         for a in AGENTI:
-            self.primi[a].aggiorna(v[a], y, passi=passi, pesi=w)
+            self.primi[a].aggiorna(v[a], y, passi=passi, passo=passo, pesi=w)
             if self.confronto:
-                self.secondi[a].aggiorna(_con_colleghi(v[a], primo, a), y, passi=passi, pesi=w)
+                self.secondi[a].aggiorna(_con_colleghi(v[a], primo, a), y, passi=passi, passo=passo, pesi=w)
         # Anche il Capo impara quanto fidarsi di ognuno, dal risultato della squadra.
         for _ in range(passi):
             primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
@@ -182,7 +183,8 @@ class Squadra:
                        if self.confronto else primo)
             z = np.column_stack([giudizi[a] for a in AGENTI])
             d = w * (self.capo.probabilita(z) - y) / np.sum(w)
-            self.capo.pesi = self.capo.pesi - PASSO_CAPO * np.r_[d.sum(), z.T @ d]
+            # Il Capo mette insieme giudizi grandi: si sposta piano, o rovina quello che la squadra sa.
+            self.capo.pesi = self.capo.pesi - min(PASSO_CAPO, passo / 15) * np.r_[d.sum(), z.T @ d]
         return self
 
     def come_dati(self) -> dict:

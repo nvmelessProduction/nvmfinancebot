@@ -572,10 +572,12 @@ class Bot:
             # Un errore qui non deve mai fermare il giro: le operazioni vengono prima.
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         if s.cervelli and self.cervelli is not None:
-            # Ogni risultato vero insegna qualcosa ai cervelli: imparano subito, e lo ricordano.
+            # Ogni esperienza insegna qualcosa ai cervelli: imparano subito, ripassando, e lo ricordano.
             try:
-                dal_vivo.impara(self.cervelli, CARTELLA, s.cervelli, float(s.esito["erre"]),
-                                self.cervelli_info.get("piani"))
+                lezione = dal_vivo.impara(self.cervelli, CARTELLA, s.cervelli, float(s.esito["erre"]),
+                                          self.cervelli_info)
+                if lezione:
+                    registra(CARTELLA, "lezione", chiave=s.chiave, **{k: round(float(x), 4) for k, x in lezione.items()})
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
         if s.entrata:
