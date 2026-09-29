@@ -78,6 +78,16 @@ ha finito:
 2. Quando le ore sono finite, e poi di nuovo quando sono finiti i minuti,
    **doppio clic su `consegna.bat`**: spedisce quello che c'è di nuovo.
 
+## 5. I video di Romeo
+
+Claude studia i video di Romeo guardando i grafici mentre legge le sue
+parole. YouTube non lascia scaricare a Claude, alla VPS sì.
+
+1. **Doppio clic su `scarica_video.bat`.** Per ogni video prende un
+   fotogramma ogni 15 secondi e i sottotitoli, poi cancella il video. Ci
+   mette circa un'ora; puoi chiudere e riprendere quando vuoi.
+2. Quando scrive `Fatti ... video`, **doppio clic su `consegna.bat`**.
+
 ## Se qualcosa va storto
 
 | Cosa vedi | Cosa vuol dire |

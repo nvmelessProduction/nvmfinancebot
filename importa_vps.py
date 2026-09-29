@@ -30,7 +30,7 @@ def main() -> None:
         sys.exit(f"Il ramo {RAMO} non c'e' ancora: la VPS non ha spedito niente (VPS.md).")
     elenco = subprocess.run(["git", "ls-tree", "-r", "--name-only", f"origin/{RAMO}"], cwd=RADICE,
                             capture_output=True, text=True, check=True).stdout.split()
-    quarti = vivi = mesi = 0
+    quarti = vivi = mesi = video = 0
     for nome in elenco:
         contenuto = lambda: subprocess.run(["git", "show", f"origin/{RAMO}:{nome}"], cwd=RADICE, capture_output=True,
                                            check=True).stdout
@@ -48,11 +48,18 @@ def main() -> None:
         elif nome.startswith("vivo/"):
             destinazione = RADICE / "dati" / "vps" / nome
             vivi += 1
+        elif nome.startswith("video/"):
+            # I fotogrammi e le parole dei video di Romeo (`video.py`): solo quelli nuovi.
+            destinazione = RADICE / "dati" / "vps" / nome
+            if destinazione.exists():
+                continue
+            video += 1
         else:
             continue
         destinazione.parent.mkdir(parents=True, exist_ok=True)
         destinazione.write_bytes(contenuto())
-    print(f"Dalla VPS: {quarti} file di quarti d'ora, {mesi} mesi di ore nuovi, {vivi} file del bot dal vivo.")
+    print(f"Dalla VPS: {quarti} file di quarti d'ora, {mesi} mesi di ore nuovi, {vivi} file del bot dal vivo, "
+          f"{video} file dei video di Romeo.")
 
 
 def salva_mesi_nuovi(ore: Minuti, cartella: Path) -> int:

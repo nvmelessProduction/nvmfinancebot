@@ -22,3 +22,6 @@ dati/vivo/
 dati/consegna/
 # I dati arrivati dalla VPS (importa_vps.py): restano sulla macchina
 dati/vps/
+
+# I video di Romeo mentre si lavorano sulla VPS (video.py)
+dati/video_tmp/
