@@ -109,8 +109,30 @@ class Squadra:
         capo = Logistica(1.0).allena(np.column_stack([secondi_fuori[a] for a in AGENTI]), y, pesi=pesi)
         return cls(primi, secondi, capo, True)
 
+    def larghezza(self, a: str) -> int:
+        """Quanti numeri della vista di `a` conoscono i suoi cervelli: quelli della vista con cui
+        sono nati."""
+        altri = len(AGENTI) - 1
+        s = self.secondi.get(a) if self.confronto else None
+        if s is not None:
+            # Nel confronto, dopo la vista vengono i giudizi dei colleghi.
+            return int(s.colonne[-altri]) if s.colonne is not None else len(s.media) - altri
+        p = self.primi[a]
+        return len(p.media) if p.colonne is None else int(p.colonne.max()) + 1
+
+    def adatta(self, v: dict) -> dict:
+        """Gli occhi nuovi si aggiungono in fondo alla vista: cervelli nati prima guardano solo i
+        numeri che conoscono, e in un esempio salvato prima, piu' corto, quelli che mancano valgono
+        zero."""
+        fuori = {}
+        for a in AGENTI:
+            x, n = np.atleast_2d(np.asarray(v[a], float)), self.larghezza(a)
+            fuori[a] = x[:, :n] if x.shape[1] >= n else np.pad(x, ((0, 0), (0, n - x.shape[1])))
+        return fuori
+
     def giudica(self, v: dict) -> tuple[dict, dict, np.ndarray]:
         """Il primo giro, il confronto e la probabilita' del primo obiettivo per il Capo."""
+        v = self.adatta(v)
         primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
         if not self.confronto:
             return primo, primo, self.capo.probabilita(np.column_stack([primo[a] for a in AGENTI]))
@@ -126,6 +148,7 @@ class Squadra:
         del suo parere, un parere neutro) meno quello vero."""
         if not self.confronto:
             return {}
+        v = self.adatta(v)
         primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
         fuori = {}
         for a in AGENTI:
@@ -146,6 +169,7 @@ class Squadra:
         (i pesi piccoli: una operazione sola non deve cancellare la scuola)."""
         y = np.atleast_1d(np.asarray(y, float))
         w = np.ones(len(y)) if pesi is None else np.atleast_1d(np.asarray(pesi, float))
+        v = self.adatta(v)
         primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
         for a in AGENTI:
             self.primi[a].aggiorna(v[a], y, passi=passi, pesi=w)

@@ -51,6 +51,57 @@ def _log(x: float) -> float:
     return float(np.log(max(x, 1e-9)))
 
 
+def _ritorno(c: Candele, indietro: int, scala: float, zero: float, segno: int) -> float:
+    """Di quanto il prezzo d'ingresso e' andato, nel verso dell'operazione, dalla chiusura di
+    `indietro` candele fa (0 = l'ultima chiusa), in unita' di `scala`."""
+    if len(c) <= indietro or not np.isfinite(scala) or scala <= 0:
+        return 0.0
+    return float(segno * (zero - c.bid[-1 - indietro, 3]) / scala)
+
+
+def _rottura(basse: Candele, da: int, segno: int, ampiezza: float) -> tuple[float, float]:
+    """La vera rottura di struttura di Romeo sulle candele basse, per l'acquisto: un minimo, un
+    massimo, un minimo piu' basso, poi una chiusura sopra quel massimo (per la vendita lo specchio).
+    Il minimo piu' basso e' il punto piu' lontano dalla manipolazione in poi. C'e' stata (1)? E di
+    quanto la chiusura migliore dopo il minimo e' oltre quel massimo (+) o sotto (-), in ampiezze
+    del range."""
+    i = int(np.searchsorted(basse.inizio, da))
+    i0 = max(0, i - BASSE)
+    b = basse.bid[i0:]
+    if i >= len(basse.bid) or len(b) < 3:
+        return 0.0, 0.0
+    # Nel verso dell'acquisto: per la vendita i massimi diventano minimi e il prezzo si rovescia.
+    bassi, alti, chiuse = (b[:, 2], b[:, 1], b[:, 3]) if segno > 0 else (-b[:, 1], -b[:, 2], -b[:, 3])
+    k = (i - i0) + int(np.argmin(bassi[i - i0:]))
+    if k == 0 or k + 1 >= len(b):
+        return 0.0, 0.0
+    primo = int(np.argmin(bassi[:k]))
+    if bassi[k] >= bassi[primo]:
+        return 0.0, 0.0
+    alto = float(alti[primo:k].max())
+    oltre = (float(chiuse[k + 1:].max()) - alto) / ampiezza
+    return float(oltre > 0), float(np.clip(oltre, -3, 3))
+
+
+def _tempo_della_finta(crt, alte: Candele, quando: int) -> tuple[float, float]:
+    """A che punto della sua candela grande la manipolazione ha fatto il suo estremo (0 = appena
+    aperta, 1 = alla chiusura), e se si entra in una candela grande successiva (1)."""
+    j = int(np.searchsorted(crt.estremo_istanti, quando, side="right"))
+    if j == 0 or not len(alte):
+        return 0.5, 0.0
+    valori = crt.estremo_valori[:j]
+    t = int(crt.estremo_istanti[int(np.flatnonzero(valori == valori[-1])[0])])
+    m = int(np.searchsorted(alte.inizio, t - 1, side="right")) - 1
+    if m < 0:
+        return 0.5, 0.0
+    if t > int(alte.fine[m]):
+        # L'estremo e' nella candela grande ancora aperta: si entra nella stessa candela.
+        inizio, durata, dopo = int(alte.fine[-1]), int(alte.fine[-1] - alte.inizio[-1]), 0.0
+    else:
+        inizio, durata, dopo = int(alte.inizio[m]), int(alte.fine[m] - alte.inizio[m]), float(quando > alte.fine[m])
+    return float(np.clip((t - inizio) / max(durata, 1), 0.0, 1.0)), dopo
+
+
 def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, x: np.ndarray,
           grandi=None, compagno=None) -> dict[str, np.ndarray]:
     """Le viste dei sei agenti su un'operazione `r` (un `Risultato` con lo scatto), dalle candele
@@ -113,10 +164,18 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
         gap = (b[-1, 2] - b[-3, 1]) if segno > 0 else (b[-3, 2] - b[-1, 1])
         fvg = max(float(gap), 0.0) / ampiezza
     smt, smt_quanto = _smt(crt, alte, k, quando, segno, compagno)
+    # Romeo (CRT secrets 6 e 9): l'ingresso e' un Model#1 o una vera rottura di struttura; se la finta
+    # arriva alla fine della sua candela, la candela dopo distribuisce subito; l'SMT conta solo a
+    # favore del grafico sopra.
+    media_sopra = _ampiezza_media(sopra)
+    sopra_a_favore = _ritorno(sopra, 4, media_sopra, zero, segno) > 0
     grilletto = np.r_[colpo, profondita, np.log1p(dall_inizio), x[26], x[27], rr[0],
                       _candele(basse, BASSE, zero, ampiezza, segno),
                       float(dopo == 0), np.log1p(dopo), apertura_corrente, np.log1p(max(spessore, 0.0)), fvg,
-                      smt, smt_quanto]
+                      smt, smt_quanto,
+                      _rottura(basse, crt.manipolazione_inizio, segno, ampiezza),
+                      _tempo_della_finta(crt, alte, quando),
+                      smt * float(sopra_a_favore), smt * float(not sopra_a_favore)]
 
     # I Livelli: dove sono stop e obiettivi, rispetto al range e alla candela piccola media.
     stop = abs(zero - r.stop) if r.stop else ampiezza * max(r.stop_su_ampiezza, 1e-6)
@@ -125,7 +184,6 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
                     _log(stop / media_basse) if np.isfinite(media_basse) else 0.0, _log(stop / ampiezza)]
 
     # Key level: il grafico sopra, con i suoi massimi e minimi recenti.
-    media_sopra = _ampiezza_media(sopra)
     if len(sopra) and np.isfinite(media_sopra):
         b = sopra.bid[-MEDIA:]
         alto, basso = float(b[:, 1].max()), float(b[:, 2].min())
@@ -142,9 +200,7 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
 
     # Il Bias: dove e' andato il prezzo, sul grafico sopra e sulla settimana.
     def ritorno(c: Candele, indietro: int, scala: float) -> float:
-        if len(c) <= indietro or not np.isfinite(scala) or scala <= 0:
-            return 0.0
-        return float(segno * (zero - c.bid[-1 - indietro, 3]) / scala)
+        return _ritorno(c, indietro, scala, zero, segno)
     media_sett = _ampiezza_media(settimane, 13)
     # Romeo: la posizione nella settimana in corso (i massimi e minimi della settimana hanno i loro
     # giorni), e l'obiettivo del grafico grande ancora da prendere: contro di lui si ignora tutto.
@@ -172,7 +228,7 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
 
 def dimensioni() -> dict[str, int]:
     """Quanti numeri vede ogni agente."""
-    return {"Cacciatore": 4 + 5 + ALTE * 4 + 3, "Grilletto": 3 + 5 + BASSE * 4 + 7, "Livelli": 6,
+    return {"Cacciatore": 4 + 5 + ALTE * 4 + 3, "Grilletto": 3 + 5 + BASSE * 4 + 7 + 6, "Livelli": 6,
             "Key level": 5 + 3 + SOPRA * 4, "Orario": 2 + 5 + 3, "Bias": 3 + 3 + 1 + 5 + 1 + 3}
 
 

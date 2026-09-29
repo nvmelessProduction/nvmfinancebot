@@ -39,11 +39,18 @@ def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
         for riga in esempi.read_text(encoding="utf-8").splitlines():
             if riga.strip():
                 e = json.loads(riga)
-                v = {a: np.array([e["viste"][a]]) for a in AGENTI}
+                v = squadra.adatta({a: np.array([e["viste"][a]]) for a in AGENTI})
                 if np.isfinite(e["w"]):
                     squadra.aggiorna(v, e["y"], min(e["w"], -TETTO[0]) if e["y"] == 0 else min(e["w"], TETTO[1]))
                 _impara_piano(info["piani"], v, e.get("piano"), e.get("erre"))
     return squadra, info
+
+
+def _per_i_piani(rete: ReteValori, v: dict) -> Optional[np.ndarray]:
+    """Quello che vede il cervello dei piani; None se e' nato con viste di un'altra misura (per
+    esempio prima degli occhi nuovi): allora si segue il piano di sempre finche' non si riallena."""
+    x = vista_dei_piani({a: np.atleast_2d(v[a]) for a in AGENTI})
+    return x if x.shape[1] == len(rete.media) else None
 
 
 def _impara_piano(rete: Optional[ReteValori], v: dict, piano: Optional[int], erre: Optional[float]) -> None:
@@ -54,9 +61,12 @@ def _impara_piano(rete: Optional[ReteValori], v: dict, piano: Optional[int], err
         return
     valori = np.full((1, len(PIANI)), np.nan)
     valori[0, piano] = float(np.clip(erre, *TETTO))
+    x = _per_i_piani(rete, v)
+    if x is None:
+        return
     prima = rete.come_dati()
-    rete.aggiorna(vista_dei_piani(v), valori)
-    if not np.all(np.isfinite(rete.valori(vista_dei_piani(v)))):
+    rete.aggiorna(x, valori)
+    if not np.all(np.isfinite(rete.valori(x))):
         tornata = ReteValori.da_dati(prima)
         rete.w1, rete.b1, rete.w2, rete.b2 = tornata.w1, tornata.b1, tornata.w2, tornata.b2
 
@@ -65,7 +75,10 @@ def scegli_piano(rete: Optional[ReteValori], viste: dict, fattibili: Optional[li
     """Il piano che il cervello dei Livelli stima migliore, fra quelli che si possono fare."""
     if rete is None or not fattibili:
         return None
-    valori = rete.valori(vista_dei_piani({a: np.atleast_2d(viste[a]) for a in AGENTI}))[0]
+    x = _per_i_piani(rete, viste)
+    if x is None:
+        return None
+    valori = rete.valori(x)[0]
     possibili = [j for j, op in enumerate(fattibili) if op is not None]
     if not possibili:
         return None
@@ -104,7 +117,7 @@ def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, piani:
         ripristino = Squadra.da_dati(prima)
         squadra.primi, squadra.secondi, squadra.capo = ripristino.primi, ripristino.secondi, ripristino.capo
     piano = giudizio.get("piano")
-    _impara_piano(piani, v, piano, erre)
+    _impara_piano(piani, squadra.adatta(v), piano, erre)
     cartella.mkdir(parents=True, exist_ok=True)
     with (cartella / ESEMPI).open("a", encoding="utf-8") as f:
         f.write(json.dumps({"viste": giudizio["viste"], "y": y, "w": w, "piano": piano, "erre": float(erre)}) + "\n")

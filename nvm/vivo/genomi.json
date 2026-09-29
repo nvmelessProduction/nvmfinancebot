@@ -12,8 +12,11 @@
    "freno": 0.001,
    "spenti": [
     "SMT",
+    "SMT col grafico sopra",
     "candela 2 o 3",
-    "forza della conferma"
+    "forza della conferma",
+    "tempo della finta",
+    "vera rottura di struttura"
    ]
   },
   "Livelli": {

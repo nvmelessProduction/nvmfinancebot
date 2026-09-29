@@ -108,7 +108,7 @@ def test_ogni_cervello_puo_cambiare_la_sua_forma():
     testi = [t for t, _ in mosse]
     assert "più neuroni (16 → 24)" in testi and "smette di guardare «candele piccole»" in testi
     senza = dict(mosse)["smette di guardare «candele piccole»"]
-    assert len(senza.colonne("Grilletto")) == 8 + 7
+    assert len(senza.colonne("Grilletto")) == 8 + 13
     assert any(t == "torna a guardare «candele piccole»" for t, _ in modifiche("Grilletto", senza))
     assert da_dati(come_dati({"Grilletto": senza}))["Grilletto"] == senza
 
@@ -144,3 +144,57 @@ def test_la_sera_si_vede_perche_i_cervelli_sono_stati_fermi():
                NS(cervelli={"fiducia": 0.41}, quando=150, strumento="GBPUSD", verso="short")]
     testo = dal_vivo.la_migliore(seguite, 0, 200, 0.25)
     assert "EURUSD in acquisto, ci credevano 58 su 100; per rischiare ne serve almeno 62: non abbastanza" in testo
+
+
+def test_occhi_nuovi_in_fondo_non_rompono_i_cervelli_nati_prima():
+    rng = np.random.default_rng(5)
+    n = 800
+    y = (rng.random(n) < 0.5).astype(float)
+    v = {a: rng.normal(size=(n, 3)) + y[:, None] * 0.5 for a in AGENTI}
+    sq = Squadra.allena(v, y)
+    caso = {a: v[a][:5] for a in AGENTI}
+    _, _, p = sq.giudica(caso)
+    # Una vista piu' lunga (occhi nuovi in fondo): i cervelli guardano solo i numeri che conoscono.
+    lunga = dict(caso, Grilletto=np.c_[caso["Grilletto"], rng.normal(size=(5, 4))])
+    assert np.allclose(sq.giudica(lunga)[2], p)
+    # Un esempio salvato prima, piu' corto: quello che manca vale zero.
+    corta = dict(caso, Grilletto=caso["Grilletto"][:, :2])
+    zero = dict(caso, Grilletto=np.c_[caso["Grilletto"][:, :2], np.zeros(5)])
+    assert np.allclose(sq.giudica(corta)[2], sq.giudica(zero)[2])
+    assert sq.larghezza("Grilletto") == 3
+
+
+def test_vera_rottura_di_struttura_e_tempo_della_finta():
+    from types import SimpleNamespace as NS
+    from nvm.cervello.viste import _rottura, _tempo_della_finta
+    from nvm.dati.candele import Candele
+    from nvm.tempo import TF
+
+    def fatte(tf, passo, righe, t0=1_704_700_000):
+        inizi = np.arange(len(righe), dtype=np.int64) * passo + t0
+        p = np.array(righe, float)
+        return Candele("EURUSD", tf, inizi, inizi + passo, p, p.copy(), np.ones(len(righe)))
+
+    # Un minimo, un massimo, un minimo piu' basso (la manipolazione), poi una chiusura sopra quel massimo.
+    righe = [(1.1000, 1.1010, 1.0990, 1.1005), (1.1005, 1.1008, 1.0980, 1.0985), (1.0985, 1.1050, 1.0984, 1.1040),
+             (1.1040, 1.1042, 1.0990, 1.0995), (1.0995, 1.0998, 1.0950, 1.0960), (1.0960, 1.1030, 1.0958, 1.1020),
+             (1.1020, 1.1070, 1.1015, 1.1060)]
+    basse = fatte(TF.M15, 900, righe)
+    da = int(basse.inizio[3])
+    assert np.allclose(_rottura(basse, da, +1, 0.01), (1.0, 0.1))
+    senza = fatte(TF.M15, 900, righe[:-1])
+    assert np.allclose(_rottura(senza, da, +1, 0.01), (0.0, -0.3))
+    # Per la vendita e' lo specchio.
+    specchio = fatte(TF.M15, 900, [(2.2 - o, 2.2 - l, 2.2 - h, 2.2 - c) for o, h, l, c in righe])
+    assert np.allclose(_rottura(specchio, da, -1, 0.01), (1.0, 0.1))
+
+    # La finta fatta a 3,5 ore della candela di 4 ore: tardi; si entra nella candela dopo.
+    t0 = 1_704_700_000
+    alte = fatte(TF.H4, 14400, [(1.1, 1.11, 1.09, 1.1)])
+    crt = NS(estremo_istanti=np.array([t0 + 3600, t0 + 12600, t0 + 16200]), estremo_valori=np.array([1.2, 1.3, 1.3]))
+    frazione, dopo = _tempo_della_finta(crt, alte, t0 + 18000)
+    assert abs(frazione - 12600 / 14400) < 1e-9 and dopo == 1.0
+    # L'estremo nella candela ancora aperta: si entra nella stessa candela.
+    crt = NS(estremo_istanti=np.array([t0 + 3600, t0 + 16200]), estremo_valori=np.array([1.2, 1.3]))
+    frazione, dopo = _tempo_della_finta(crt, alte, t0 + 18000)
+    assert abs(frazione - 1800 / 14400) < 1e-9 and dopo == 0.0
