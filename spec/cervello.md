@@ -82,6 +82,17 @@ cervelli, non il programma che li fa girare.
 Prima settimana (S39): sei modifiche provate, nessuna tenuta (la migliore, il Grilletto che
 smette di guardare il tentativo, +0,009 R ma meglio solo in 8 anni su 14).
 
+## Gli occhi nuovi da Romeo (29/09/2026)
+
+Dalle trascrizioni dei suoi video (`spec/FONTI-ROMEO.md`, "Dai video") sette cose nuove nelle
+viste: candele interne e ora del range (Cacciatore); entrata nella candela 2 o 3 e distanza
+dall'apertura, spessore della candela del turtle soup, FVG, SMT col gemello (Grilletto);
+posizione nella settimana e CRT dei grafici grandi armati a favore o contro (Bias). Sono
+blocchi del genoma: partono **chiusi**, perché nei cervelli interi tutti insieme peggiorano la
+squadra e uno alla volta nessuno supera l'esame. Ogni settimana l'evoluzione può riaprirne
+uno ("torna a guardare «SMT»") e lo tiene solo se passa. La tabella del bot si rifà da sola
+quando cambiano le viste.
+
 ## Cosa manca
 
 - Più dati: con 40 strumenti gli esempi diventano circa sei volte tanti, e le reti ne hanno

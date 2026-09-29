@@ -141,6 +141,35 @@ nostri; dal catalogo):
   hanno fatto l'ultima spinta verso l'alto. Quando il prezzo chiude sotto
   quella linea, si scende verso il CRT low.
 
+### Dai video (trascrizioni automatiche, 29/09/2026)
+
+Il 24/09 i video non si potevano vedere; il 29/09 si sono lette le trascrizioni automatiche di
+YouTube (non i disegni). Canale: 17 video (CRT secrets 1-10, CRTology, due sessioni di
+"tape reading", "What is CRT?", "What is turtle soup?"). Lette: ep. 1, 2, 4, 5, 7, 8, 10 e le
+due sessioni dal vivo; le altre (ep. 3, 6 SMT, 9, CRTology, le due introduzioni) YouTube le ha
+bloccate e si riprovano. Le trascrizioni restano fuori dal repository. Le regole nuove:
+
+| Video | Regola (parole sue fra virgolette) |
+|---|---|
+| ep.1 One CRT model for life | Model#1: una candela **spessa** che buca il vecchio massimo; si entra alla chiusura oltre la sua apertura; *"if model number one comes with an FVG, it becomes a higher probability trade"*; *"time is more important than price"*: il massimo della settimana lun-mer, l'altro estremo gio-ven |
+| ep.2 The kiss of death | il KOD è *"the final turtle soup before the target is hit"*, spesso nel 25% del range più vicino all'obiettivo; *"before any large price move there is a turtle soup"* |
+| ep.4 Candle anatomy | prima di tutto *"which candle am I trading?"*: 4 ore, giornaliera, settimanale; *"open, turtle soup of a CRT, dump"* |
+| ep.5 Key level | prima del key level *"they give you a fake bottom always"*, poi il KOD e la vera inversione |
+| ep.7 Candle 3 | *"trading CRT with no key level is a beginner mistake"*; aspettare che la **candela 2 chiuda** e operare la **candela 3** *"below the open"* (se ribassista), obiettivo il 50% e poi l'estremo della candela 1 |
+| ep.8 When does CRT fail? | tre motivi: **SMT** (*"SMT will stop the target from being hit"*, col gemello: BTC/ETH), ha già preso il 50% (e allora non è fallito), si opera contro il CRT del timeframe alto (*"avoid picking bearish CRTs in a bullish market"*) |
+| tape reading 1 | *"we ignore all bullish patterns on the way down to a bearish target"*; l'unica eccezione è l'SMT confermato |
+
+**Cosa ne hanno fatto i cervelli (29/09).** Sette occhi nuovi nelle viste (`nvm/cervello/viste.py`):
+candele interne e ora del range (Cacciatore); candela 2 o 3 e distanza dall'apertura, spessore
+della candela del turtle soup e FVG, SMT col gemello (Grilletto); posizione nella settimana e
+CRT dei grafici grandi armati a favore o contro (Bias). Da soli, sui vent'anni: con almeno una
+candela interna +0,022 R contro −0,051; turtle soup spesso −0,021 contro −0,071; entrata nella
+candela 3 −0,024 contro −0,052. Nei cervelli interi, anno per anno: **tutti insieme peggio**
+(resa pesata da +0,015 a −0,004), **uno alla volta nessuno supera l'esame** (la candela 3 +0,019
+in 8 anni su 14; l'SMT migliora le operazioni sicure del 2017-2023, +0,09 R su 528, ma non la
+resa complessiva). Partono chiusi: ogni settimana i cervelli possono riaprirli uno alla volta e
+li tengono solo se passano l'esame.
+
 ### La serie "CRT secrets" su YouTube
 
 Titoli, da [@Romeotpt](https://www.youtube.com/@Romeotpt). I contenuti da

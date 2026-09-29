@@ -24,15 +24,18 @@ from nvm.cervello.viste import AGENTI
 
 # Le parti della vista di ogni agente (colonne da..a), che il suo cervello puo' spegnere o riaccendere.
 BLOCCHI: dict[str, dict[str, tuple[int, int]]] = {
-    "Cacciatore": {"coppia di grafici": (0, 4), "misure del range": (4, 9), "candele grandi": (9, 29)},
+    "Cacciatore": {"coppia di grafici": (0, 4), "misure del range": (4, 9), "candele grandi": (9, 29),
+                   "candele interne e ora del range": (29, 32)},
     "Grilletto": {"tentativo": (0, 3), "manipolazione": (3, 5), "liquidità": (5, 7), "distanza dell'obiettivo": (7, 8),
-                  "candele piccole": (8, 56)},
+                  "candele piccole": (8, 56), "candela 2 o 3": (56, 59), "forza della conferma": (59, 61),
+                  "SMT": (61, 63)},
     "Livelli": {"obiettivi": (0, 2), "costi": (2, 4), "stop": (4, 6)},
     "Key level": {"livelli trovati": (0, 5), "distanze dai massimi": (5, 7), "distanza dell'obiettivo": (7, 8),
                   "candele del grafico sopra": (8, 48)},
     "Orario": {"ora": (0, 2), "giorno": (2, 7), "sessioni di Romeo": (7, 9), "distanza dell'obiettivo": (9, 10)},
     "Bias": {"grafico sopra": (0, 3), "settimane": (3, 6), "candela del range": (6, 7), "risposte": (7, 12),
-             "distanza dell'obiettivo": (12, 13)},
+             "distanza dell'obiettivo": (12, 13), "posizione nella settimana": (13, 14),
+             "obiettivi dei grafici grandi": (14, 16)},
 }
 NEURONI = (8, 16, 24, 32)
 FRENI = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)

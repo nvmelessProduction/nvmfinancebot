@@ -341,7 +341,8 @@ class Bot:
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
         for s in self.strumenti:
             self.fini[s] = _unisci(self.fini[s], self.terminale.barre(s, 20, 900), QUARTI)
-            self._decidi(giro_orario({s: self.fini[s]}, dal, quarto, self.capo, (COPPIA_VELOCE,), {s: self.basi[s]}),
+            self._decidi(giro_orario({s: self.fini[s]}, dal, quarto, self.capo, (COPPIA_VELOCE,), {s: self.basi[s]},
+                                     gemelli=self.basi),
                          quarto, 900)
         self.uscite(quarto)
         self.stato.ultimo_quarto = quarto
@@ -352,7 +353,7 @@ class Bot:
         # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini.
         for s in self.strumenti:
             self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
-            self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE), ora, 3600)
+            self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi), ora, 3600)
         self.stato.scarto = self.terminale.scarto
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):

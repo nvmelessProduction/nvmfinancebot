@@ -108,7 +108,7 @@ def test_ogni_cervello_puo_cambiare_la_sua_forma():
     testi = [t for t, _ in mosse]
     assert "più neuroni (16 → 24)" in testi and "smette di guardare «candele piccole»" in testi
     senza = dict(mosse)["smette di guardare «candele piccole»"]
-    assert len(senza.colonne("Grilletto")) == 8
+    assert len(senza.colonne("Grilletto")) == 8 + 7
     assert any(t == "torna a guardare «candele piccole»" for t, _ in modifiche("Grilletto", senza))
     assert da_dati(come_dati({"Grilletto": senza}))["Grilletto"] == senza
 

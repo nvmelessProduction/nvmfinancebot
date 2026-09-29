@@ -3,12 +3,18 @@
   "Cacciatore": {
    "neuroni": 16,
    "freno": 0.001,
-   "spenti": []
+   "spenti": [
+    "candele interne e ora del range"
+   ]
   },
   "Grilletto": {
    "neuroni": 16,
    "freno": 0.001,
-   "spenti": []
+   "spenti": [
+    "SMT",
+    "candela 2 o 3",
+    "forza della conferma"
+   ]
   },
   "Livelli": {
    "neuroni": 16,
@@ -28,7 +34,10 @@
   "Bias": {
    "neuroni": 16,
    "freno": 0.001,
-   "spenti": []
+   "spenti": [
+    "obiettivi dei grafici grandi",
+    "posizione nella settimana"
+   ]
   }
  },
  "provate": [
@@ -139,6 +148,60 @@
    "esito": "scartata",
    "di_quanto": -0.003748588488262353,
    "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Cacciatore",
+   "da": "[16, 0.001, [\"candele interne e ora del range\"]]",
+   "modifica": "più freno sui pesi (regole più semplici)",
+   "esito": "scartata",
+   "di_quanto": -0.013978176729145912,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Grilletto",
+   "da": "[16, 0.001, [\"SMT\", \"candela 2 o 3\", \"forza della conferma\"]]",
+   "modifica": "smette di guardare «manipolazione»",
+   "esito": "scartata",
+   "di_quanto": 0.0038390758376547086,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Livelli",
+   "da": "[16, 0.001, []]",
+   "modifica": "meno freno sui pesi (regole più fini)",
+   "esito": "scartata",
+   "di_quanto": -9.449460391877142e-05,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Key level",
+   "da": "[16, 0.001, []]",
+   "modifica": "più neuroni (16 → 24)",
+   "esito": "scartata",
+   "di_quanto": -0.04074636081020344,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Orario",
+   "da": "[16, 0.001, []]",
+   "modifica": "più freno sui pesi (regole più semplici)",
+   "esito": "scartata",
+   "di_quanto": -0.005799256669520244,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Bias",
+   "da": "[16, 0.001, [\"obiettivi dei grafici grandi\", \"posizione nella settimana\"]]",
+   "modifica": "torna a guardare «posizione nella settimana»",
+   "esito": "scartata",
+   "di_quanto": -0.004507180374421636,
+   "anni_meglio": 8
   }
  ]
 }

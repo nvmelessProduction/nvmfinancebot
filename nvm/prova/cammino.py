@@ -148,8 +148,11 @@ def costruisci_tabella(
                 from nvm.agenti.capo import riga as riga_capo
                 from nvm.cervello.viste import viste
                 from nvm.cervello.piani import risultati as dei_piani
+                from nvm.cervello.viste import COMPAGNI
+                gemello = COMPAGNI.get(strumento)
+                compagno = (basi.get(gemello[0]), gemello[1]) if gemello else None
                 for x, p in zip(r, nuovi):
-                    for a, v in viste(x, alte, basse, sopra, settimane, riga_capo(x, *p)).items():
+                    for a, v in viste(x, alte, basse, sopra, settimane, riga_capo(x, *p), g, compagno).items():
                         occhi.setdefault(a, []).append(v)
                     piani.append(dei_piani(x.scatto, basse))
             if dire:

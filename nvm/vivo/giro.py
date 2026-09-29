@@ -24,7 +24,7 @@ from nvm.prova.campo import Operazione
 from nvm.agenti import capo as capo_mod, inventate, manopole, panorama
 from nvm.agenti.conferme import Grandi
 from nvm.cervello.piani import tutti as piani_di
-from nvm.cervello.viste import viste
+from nvm.cervello.viste import COMPAGNI, viste
 from nvm.tempo import TF
 
 # Le coppie che si guardano con le orarie, ogni ora.
@@ -113,12 +113,21 @@ def _grandi(ore: Minuti, adesso: int):
                     lambda: Grandi.da([c for alto, basso in COPPIE for c in _crt(ore, alto, basso, adesso)]))
 
 
-def _viste(r, alte, basse, sopra, settimane, x) -> Optional[dict]:
+def _viste(r, alte, basse, sopra, settimane, x, grandi=None, compagno=None) -> Optional[dict]:
     """Quello che vede ogni agente; se qualcosa non torna, niente viste (decide il Capo come sempre)."""
     try:
-        return viste(r, alte, basse, sopra, settimane, x)
+        return viste(r, alte, basse, sopra, settimane, x, grandi, compagno)
     except Exception:
         return None
+
+
+def _compagno(strumento: str, gemelli: Optional[dict], orarie: dict):
+    """Le ore dello strumento gemello per l'SMT (`viste.COMPAGNI`), se il bot le ha."""
+    gemello = COMPAGNI.get(strumento)
+    if not gemello:
+        return None
+    ore = (gemelli or orarie).get(gemello[0])
+    return (ore, gemello[1]) if ore is not None else None
 
 
 def _piani(r, basse) -> Optional[list]:
@@ -129,7 +138,7 @@ def _piani(r, basse) -> Optional[list]:
 
 
 def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
-         orarie: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
+         orarie: Optional[dict[str, Minuti]] = None, gemelli: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
 
     `orarie` sono le ore di ogni strumento, se `basi` sono i quarti d'ora: da
@@ -165,7 +174,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq,
                     panorama.sguardo(r, ctx_idee),
                     float(capo_mod.qualita_attesa(p1[0], q[0], r.rr1, r.rr2, r.costo_erre)),
-                    _viste(r, alte, basse, sopra, settimane, x[0]), _piani(r, basse)))
+                    _viste(r, alte, basse, sopra, settimane, x[0], g, _compagno(strumento, gemelli, orarie)),
+                    _piani(r, basse)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 
