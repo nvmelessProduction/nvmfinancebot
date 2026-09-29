@@ -42,6 +42,16 @@
     "obiettivi dei grafici grandi",
     "posizione nella settimana"
    ]
+  },
+  "Allineamento": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
+  },
+  "Gap": {
+   "neuroni": 16,
+   "freno": 0.001,
+   "spenti": []
   }
  },
  "provate": [
@@ -260,6 +270,79 @@
    "esito": "scartata",
    "di_quanto": -0.014264535642853656,
    "anni_meglio": 4
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Cacciatore",
+   "da": "[16, 0.001, [\"candele interne e ora del range\"]]",
+   "modifica": "smette di guardare «coppia di grafici»",
+   "esito": "scartata",
+   "di_quanto": 0.013601377975156386,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Grilletto",
+   "da": "[16, 0.001, [\"SMT\", \"SMT col grafico sopra\", \"candela 2 o 3\", \"distanza dell'obiettivo\", \"forza della conferma\", \"tempo della finta\", \"vera rottura di struttura\"]]",
+   "modifica": "torna a guardare «distanza dell'obiettivo»",
+   "esito": "scartata",
+   "di_quanto": 0.0014849513341223114,
+   "anni_meglio": 7
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Livelli",
+   "da": "[16, 0.001, []]",
+   "modifica": "più neuroni (16 → 24)",
+   "esito": "scartata",
+   "di_quanto": -0.008528804166486093,
+   "anni_meglio": 2
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Key level",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «distanze dai massimi»",
+   "esito": "scartata",
+   "di_quanto": 0.015708334553106676,
+   "anni_meglio": 9
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Orario",
+   "da": "[16, 0.001, []]",
+   "modifica": "meno freno sui pesi (regole più fini)",
+   "esito": "scartata",
+   "di_quanto": -0.006608478719696279,
+   "anni_meglio": 5
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Bias",
+   "da": "[16, 0.001, [\"obiettivi dei grafici grandi\", \"posizione nella settimana\"]]",
+   "modifica": "smette di guardare «risposte»",
+   "esito": "scartata",
+   "di_quanto": 0.006265497949837526,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Allineamento",
+   "da": "[16, 0.001, []]",
+   "modifica": "smette di guardare «settimana»",
+   "esito": "scartata",
+   "di_quanto": 0.008130397590522958,
+   "anni_meglio": 6
+  },
+  {
+   "settimana": "2026-S40",
+   "agente": "Gap",
+   "da": "[16, 0.001, []]",
+   "modifica": "più neuroni (16 → 24)",
+   "esito": "scartata",
+   "di_quanto": 0.02042685538415666,
+   "anni_meglio": 9
   }
- ]
+ ],
+ "cambi_dal_vivo": 0
 }
