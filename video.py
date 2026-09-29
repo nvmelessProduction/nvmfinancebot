@@ -31,24 +31,36 @@ LARGHEZZA = 960
 NOTI = ["T7udbrWlARI", "FYr6J5pIDB4", "_oiwm8_id8c", "n2GF8kCpgVg", "p8UYOgVn1-g", "3IWgc52Dqsg", "h7NCST2wPw8",
         "-mWYppebugo", "2sxdsgcIeYA", "af7ECe4HBjc", "1EK-LMwgJ3c", "Pmmx41M7KhA", "8LblVvGZaGY", "4DZWbCzEvhM",
         "wkSiy27a8ps", "UUq_wKQ61Wo", "U-gNCwbGtTI"]
-# Le porte di YouTube che non chiedono "Sign in to confirm you're not a bot" a un server (provato il 29/09/2026).
-CLIENTI = "youtube:player_client=web_embedded,mweb"
+# Le porte (client) di YouTube da provare in ordine: a un server spesso chiedono "Sign in to confirm
+# you're not a bot", ma non tutte e non a tutti i server (qui il 29/09/2026 passavano le prime due).
+# Si ricorda quella che ha funzionato. "firefox" = con l'accesso a YouTube fatto in Firefox, se c'e'.
+PORTE = ("web_embedded,mweb", "tv_simply", "tv", "android_vr", "ios", "web_safari", "default")
 # Il browser con cui `yt-dlp-getpot-wpc` fa il gettone che YouTube chiede per i video da `mweb`.
 BROWSER = [Path(os.environ[v]) / c for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA") if os.environ.get(v)
            for c in ("Google/Chrome/Application/chrome.exe", "Microsoft/Edge/Application/msedge.exe")]
+FIREFOX = [Path(os.environ[v]) / "Mozilla" / "Firefox" / "Profiles" for v in ("APPDATA",) if os.environ.get(v)]
+_buona: str = ""
 
 
 def browser() -> str:
     return next((str(b) for b in BROWSER if b.is_file()), "")
 
 
-def _ytdlp(*argomenti: str) -> subprocess.CompletedProcess:
+def porte() -> list[str]:
+    return [*PORTE, *(["firefox"] if any(f.is_dir() for f in FIREFOX) else [])]
+
+
+def _ytdlp(*argomenti: str, porta: str = "") -> subprocess.CompletedProcess:
     # YouTube vuole un motore JavaScript per dare i video: deno, installato col pip accanto a python.
     percorso = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
-    porte = ["--extractor-args", CLIENTI]
-    if browser():
-        porte += ["--extractor-args", f"youtubepot-wpc:browser_path={browser()}"]
-    return subprocess.run([sys.executable, "-m", "yt_dlp", *porte, *argomenti], capture_output=True, text=True,
+    extra = []
+    if porta == "firefox":
+        extra = ["--cookies-from-browser", "firefox"]
+    elif porta:
+        extra = ["--extractor-args", f"youtube:player_client={porta}"]
+    if porta and browser():
+        extra += ["--extractor-args", f"youtubepot-wpc:browser_path={browser()}"]
+    return subprocess.run([sys.executable, "-m", "yt_dlp", *extra, *argomenti], capture_output=True, text=True,
                           env={**os.environ, "PATH": percorso})
 
 
@@ -82,28 +94,37 @@ def fotogrammi(video: Path, cartella: Path) -> int:
 
 
 def uno(identita: str, titolo: str) -> str:
+    global _buona
     fine = USCITA / identita
     if (fine / "fatto.json").exists():
         return "già fatto"
-    shutil.rmtree(LAVORO, ignore_errors=True)
-    LAVORO.mkdir(parents=True, exist_ok=True)
     url = f"https://www.youtube.com/watch?v={identita}"
-    # -i: se YouTube rifiuta i sottotitoli (429) il video si scarica lo stesso.
-    r = _ytdlp("-i", "-f", "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b", "--write-auto-subs",
-               "--sub-langs", "en", "--sub-format", "vtt", "-o", str(LAVORO / "v.%(ext)s"), "--", identita)
-    video = next((f for f in LAVORO.glob("v.*") if f.suffix in (".mp4", ".webm", ".mkv")), None)
-    for s in LAVORO.glob("*.vtt"):
-        # Le parole si tengono anche se il video non arriva: il video si riprova la volta dopo.
-        fine.mkdir(parents=True, exist_ok=True)
-        shutil.copy(s, fine / "parole.vtt")
-    if video is None:
+    errore, video = "sconosciuto", None
+    # Prima la porta che ha gia' funzionato, poi le altre.
+    for porta in sorted(porte(), key=lambda p: p != _buona):
+        shutil.rmtree(LAVORO, ignore_errors=True)
+        LAVORO.mkdir(parents=True, exist_ok=True)
+        # -i: se YouTube rifiuta i sottotitoli (429) il video si scarica lo stesso.
+        r = _ytdlp("-i", "-f", "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b", "--write-auto-subs",
+                   "--sub-langs", "en", "--sub-format", "vtt", "-o", str(LAVORO / "v.%(ext)s"), "--", identita,
+                   porta=porta)
+        for s in LAVORO.glob("*.vtt"):
+            # Le parole si tengono anche se il video non arriva: il video si riprova la volta dopo.
+            fine.mkdir(parents=True, exist_ok=True)
+            shutil.copy(s, fine / "parole.vtt")
+        video = next((f for f in LAVORO.glob("v.*") if f.suffix in (".mp4", ".webm", ".mkv")), None)
+        if video is not None:
+            _buona = porta
+            break
         errore = (r.stderr.strip().splitlines() or ["sconosciuto"])[-1]
+        time.sleep(5)
+    if video is None:
         return f"non scaricato ({errore[:120]})"
     n = fotogrammi(video, fine)
     (fine / "fatto.json").write_text(json.dumps({"id": identita, "titolo": titolo, "url": url, "fotogrammi": n,
                                                  "ogni_secondi": OGNI}, ensure_ascii=False), encoding="utf-8")
     shutil.rmtree(LAVORO, ignore_errors=True)
-    return f"{n} fotogrammi"
+    return f"{n} fotogrammi (porta {_buona})"
 
 
 def main() -> None:
@@ -112,13 +133,22 @@ def main() -> None:
     a = parser.parse_args()
     video = elenco()
     print(f"{len(video)} video sul canale di Romeo.", flush=True)
+    print(f"Porte di YouTube da provare: {', '.join(porte())}. Browser per il gettone: {browser() or 'nessuno'}.",
+          flush=True)
+    di_fila = 0
     for i, (identita, titolo) in enumerate(video, start=1):
         esito = uno(identita, titolo)
         print(f"[{i}/{len(video)}] {titolo or identita}: {esito}", flush=True)
+        di_fila = di_fila + 1 if esito.startswith("non scaricato") else 0
+        if di_fila >= (4 if _buona else 2):
+            # Nessuna porta si apre: insistere peggiora solo il blocco.
+            print("\nYouTube chiude tutte le porte a questa VPS. Mi fermo qui: dillo a Claude.", flush=True)
+            break
         if esito != "già fatto":
             time.sleep(a.pausa)
     fatti = sum(1 for _ in USCITA.glob("*/fatto.json"))
-    print(f"\nFatti {fatti} video su {len(video)}. Adesso doppio clic su consegna.bat per mandarli.", flush=True)
+    if fatti:
+        print(f"\nFatti {fatti} video su {len(video)}. Adesso doppio clic su consegna.bat per mandarli.", flush=True)
 
 
 if __name__ == "__main__":

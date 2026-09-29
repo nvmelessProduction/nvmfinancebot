@@ -97,6 +97,6 @@ parole. YouTube non lascia scaricare i video a Claude: servono dalla VPS.
 | `TroppeRichieste` | Dukascopy ha smesso di rispondere per un po'. Aspetta mezz'ora e rilancia `scarica.bat` |
 | `Manca GITHUB_TOKEN nel file .env` | manca la riga del punto 2.9, o il file non si chiama `.env` |
 | `GitHub non accetta i dati` | la chiave è sbagliata, scaduta o senza **Contents: Read and write**: rifai il punto 2 |
-| `Sign in to confirm you're not a bot` o `403: Forbidden` | YouTube ha bloccato anche la VPS per un po'. Riprova `scarica_video.bat` il giorno dopo; se si ripete, manda la foto a Claude |
+| `YouTube chiude tutte le porte a questa VPS` | YouTube blocca la VPS. Mandane la foto a Claude |
 | `python non è riconosciuto` | manca Python. Installalo da python.org, spuntando "Add Python to PATH" |
 | qualsiasi altro errore | manda a Claude una foto della finestra (senza la chiave in vista) |
