@@ -131,7 +131,8 @@ def costruisci_tabella(
         settimane = costruisci(base, TF.W1).chiuse_entro(fine)
         # Per le domande inventate dagli agenti e tenute dalla palestra.
         idee = il_capo.INVENTATE
-        ctx = inventate.Contesto.da(base, fine, g) if idee else None
+        # Le candele grandi: per le domande inventate e per i cervelli di Allineamento e Gap.
+        ctx = inventate.Contesto.da(base, fine, g) if idee or con_viste else None
         for alto, basso, dati in coppie_di(base, (quarti or {}).get(strumento), coppie):
             fine_dati = int(dati.t[-1]) + dati.passo
             alte = costruisci(dati, alto).chiuse_entro(fine_dati)
@@ -152,7 +153,7 @@ def costruisci_tabella(
                 gemello = COMPAGNI.get(strumento)
                 compagno = (basi.get(gemello[0]), gemello[1]) if gemello else None
                 for x, p in zip(r, nuovi):
-                    for a, v in viste(x, alte, basse, sopra, settimane, riga_capo(x, *p), g, compagno).items():
+                    for a, v in viste(x, alte, basse, sopra, settimane, riga_capo(x, *p), g, compagno, ctx).items():
                         occhi.setdefault(a, []).append(v)
                     piani.append(dei_piani(x.scatto, basse))
             if dire:

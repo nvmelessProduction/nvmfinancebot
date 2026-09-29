@@ -494,7 +494,9 @@ class Bot:
             if self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
-                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=max(2 * g["fiducia"] - 1, 0.0),
+                    # Quanto puntare lo dice il cervello del Rischio.
+                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive,
+                                                      pieno=dal_vivo.puntata(self.cervelli_info, g, d.viste),
                                                       parte=r.get("parte"), fiducia_minima=r.get("minimo"))
                 else:
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
@@ -578,6 +580,10 @@ class Bot:
                                           self.cervelli_info)
                 if lezione:
                     cambio = lezione.pop("cambio", None)
+                    prudenza = lezione.pop("prudenza", None)
+                    if prudenza:
+                        registra(CARTELLA, "prudenza", **prudenza)
+                        self.tg.equipe(dal_vivo.voce_della_prudenza(prudenza))
                     registra(CARTELLA, "lezione", chiave=s.chiave, **{k: round(float(x), 4) for k, x in lezione.items()})
                     if s.entrata:
                         self.tg.equipe(dal_vivo.voce_della_lezione(lezione, float(s.esito["erre"])))

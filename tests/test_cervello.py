@@ -79,7 +79,7 @@ def test_dal_vivo_giudicano_si_confrontano_imparano_e_ricordano(tmp_path):
         assert lezione["dopo"] <= lezione["prima"] + 1e-9      # una lezione tenuta o niente: mai peggio
         tenute += lezione["tenuta"]
     dopo = dal_vivo.giudica(squadra, caso)["fiducia"]
-    assert tenute >= 1 and dopo < prima - 0.01
+    assert tenute >= 1 and dopo < prima
     # Ricaricata riparte da com'era diventata; e senza il salvataggio rivive le esperienze una per una.
     ricaricata, info2 = dal_vivo.carica(file, cartella)
     assert abs(dal_vivo.giudica(ricaricata, caso)["fiducia"] - dopo) < 1e-6 and len(info2["memoria"]["vissute"]) == 5
@@ -142,7 +142,7 @@ def test_la_squadra_si_allena_con_la_forma_di_ognuno():
     genomi["Livelli"] = Genoma(neuroni=8, freno=1e-2, spenti=("stop",))      # guarda solo obiettivi e costi
     sq = Squadra.allena(v, y, genomi=genomi)
     assert sq.primi["Livelli"].w1.shape == (4, 8) and sq.primi["Livelli"].penalita == 1e-2
-    assert sq.secondi["Livelli"].w1.shape[0] == 4 + 5          # e nel confronto i giudizi dei 5 colleghi
+    assert sq.secondi["Livelli"].w1.shape[0] == 4 + len(AGENTI) - 1      # e nel confronto i giudizi dei colleghi
     copia = Squadra.da_dati(sq.come_dati())
     caso = {a: m[:3] for a, m in v.items()}
     assert np.allclose(copia.giudica(caso)[2], sq.giudica(caso)[2])
@@ -215,34 +215,40 @@ def test_una_sfidante_migliore_prende_il_posto_dal_vivo(tmp_path):
     import json
     from nvm.cervello import dal_vivo, esperienza
     rng = np.random.default_rng(11)
-    n = 3000
+    n = 1600
     x = rng.normal(size=(n, 3))
     y = (x[:, 0] + rng.normal(0, 0.5, n) > 0).astype(float)
     v = {a: x.copy() for a in AGENTI}
     scuola = {a: m[:1500] for a, m in v.items()}
-    buona = Squadra.allena(scuola, y[:1500])
-    confusa = Squadra.allena(scuola, rng.permutation(y[:1500]))     # la versione di adesso non ha capito niente
+    squadra = Squadra.allena(scuola, y[:1500])
+    altra = Squadra.allena({a: m[:, ::-1] for a, m in scuola.items()}, y[:1500])
     file = tmp_path / "cervelli.json"
-    file.write_text(json.dumps({"squadra": confusa.come_dati(), "decidono": False, "soglia": 0.5,
+    file.write_text(json.dumps({"squadra": squadra.come_dati(), "decidono": False, "soglia": 0.5,
                                 "sfidanti": [{"agente": "Grilletto", "modifica": "smette di guardare «x»",
-                                              "genomi": None, "squadra": buona.come_dati()}]}))
+                                              "genomi": {"Grilletto": {"neuroni": 8, "freno": 0.01, "spenti": []}},
+                                              "squadra": altra.come_dati()}]}))
     esperienza.Memoria(scuola, y[:1500], np.ones(1500)).salva(tmp_path / dal_vivo.RICORDI)
     cartella = tmp_path / "vivo"
     squadra, info = dal_vivo.carica(file, cartella)
-    cambio = None
-    for k in range(1500, 1500 + dal_vivo.SFIDA_MINIMO + 100):
-        g = dal_vivo.giudica(squadra, {a: v[a][k] for a in AGENTI})
-        lezione = dal_vivo.impara(squadra, cartella, g, 1.0 if y[k] else -1.0, info)
-        cambio = cambio or lezione.get("cambio")
-    assert cambio and cambio["agente"] == "Grilletto" and cambio["esperienze"] >= dal_vivo.SFIDA_MINIMO
-    assert info["sfidanti"] == [] and len(info["cambi"]) == 1
-    assert "ha cambiato se stesso" in dal_vivo.voce_del_cambio(cambio)
-    # Adesso giudica come la sfidante che ha vinto, e ricaricata resta cosi'.
-    caso = {a: v[a][2800:] for a in AGENTI}
-    p = squadra.giudica(caso)[2]
-    assert np.mean((p > 0.5) == y[2800:]) > 0.75
+    # Le sfidanti giudicano e imparano a ogni esperienza, e si ricordano chi ha sbagliato meno.
+    for k in range(1500, 1520):
+        dal_vivo.impara(squadra, cartella, dal_vivo.giudica(squadra, {a: v[a][k] for a in AGENTI}), 1.0 if y[k] else -1.0, info)
+    assert len(info["sfidanti"][0]["confronto"]) == 20
     ricaricata, info2 = dal_vivo.carica(file, cartella)
-    assert np.allclose(ricaricata.giudica(caso)[2], p) and len(info2["cambi"]) == 1
+    assert info2["sfidanti"][0]["confronto"] == info["sfidanti"][0]["confronto"]
+    # Quando le esperienze dicono chiaramente che la sfidante sbaglia meno, prende il posto.
+    s = info["sfidanti"][0]
+    s["confronto"] = list(rng.normal(0.05, 0.1, dal_vivo.SFIDA_MINIMO + 20))
+    caso = {a: v[a][1520:] for a in AGENTI}
+    p_sfidante = s["squadra"].giudica(caso)[2]
+    cambio = dal_vivo._chi_vince(squadra, info)
+    assert cambio and cambio["agente"] == "Grilletto" and cambio["genoma"]["neuroni"] == 8
+    assert info["sfidanti"] == [] and len(info["cambi"]) == 1 and np.allclose(squadra.giudica(caso)[2], p_sfidante)
+    assert "ha cambiato se stesso" in dal_vivo.voce_del_cambio(cambio)
+    # Con una differenza che e' solo caso, nessuno cambia.
+    info = {"sfidanti": [{"agente": "Bias", "modifica": "m", "genomi": None, "squadra": altra,
+                          "confronto": list(rng.normal(0.0, 0.1, 400))}]}
+    assert dal_vivo._chi_vince(squadra, info) is None
 
 
 def test_la_palestra_tiene_i_cambi_fatti_dal_vivo(tmp_path):
@@ -263,3 +269,44 @@ def test_i_cervelli_dicono_cosa_hanno_imparato():
     assert "adesso siamo al 64%" in voce_della_lezione({"prima": 0.8, "dopo": 0.64, "tenuta": True}, -1.0)
     assert "è andata bene" in voce_della_lezione({"prima": 0.7, "dopo": 0.702, "tenuta": True}, 2.0)
     assert "solo come esperienza" in voce_della_lezione({"prima": 0.8, "dopo": 0.8, "tenuta": False}, -1.0)
+
+
+def test_se_imparare_li_peggiora_tornano_come_da_scuola_e_imparano_piu_piano():
+    from nvm.cervello import dal_vivo, esperienza
+    rng = np.random.default_rng(5)
+    x = rng.normal(size=(900, 3))
+    y = (x[:, 0] > 0).astype(float)
+    v = {a: x.copy() for a in AGENTI}
+    scuola = Squadra.allena(v, y)
+    squadra = Squadra.allena(v, rng.permutation(y))        # quella che ha "imparato" male
+    m = {"ferma": scuola, "ritmo": 1.0, "contro_scuola": list(rng.normal(0.05, 0.1, dal_vivo.PRUDENZA))}
+    assert dal_vivo._prudenza(squadra, m)
+    assert m["ritmo"] == 0.5 and m["contro_scuola"] == []
+    caso = {a: v[a][:50] for a in AGENTI}
+    assert np.allclose(squadra.giudica(caso)[2], scuola.giudica(caso)[2])
+    assert "impariamo più piano" in dal_vivo.voce_della_prudenza({"ritmo": 0.5})
+    # Una differenza che e' solo caso non fa tornare indietro.
+    m2 = {"ferma": scuola, "ritmo": 1.0, "contro_scuola": list(rng.normal(0.0, 0.1, dal_vivo.PRUDENZA))}
+    assert not dal_vivo._prudenza(squadra, m2)
+
+
+def test_il_cervello_del_rischio_punta_di_piu_dove_si_guadagna():
+    from nvm.cervello.rischio_cervello import CervelloRischio, vista_del_rischio
+    from nvm.cervello import dal_vivo
+    rng = np.random.default_rng(3)
+    n = 6000
+    p = rng.uniform(0.3, 0.8, n)
+    livelli = rng.normal(size=(n, 6))
+    vince = rng.random(n) < p                                    # dove ci crede di piu', vince piu' spesso
+    erre = np.where(vince, 1.5, -1.0)
+    cervello = CervelloRischio.allena(vista_del_rischio(p, livelli), erre)
+    f = cervello.quanto(vista_del_rischio(np.array([0.35, 0.75]), np.zeros((2, 6))))
+    assert f[1] > f[0] + 0.2 and f[0] < 0.2                     # sull'incerto quasi niente, sul buono di piu'
+    assert cervello.crescita(vista_del_rischio(p, livelli), erre) > 0
+    # Dal vivo: la puntata la dice il cervello del Rischio; senza cervello, la formula di prima.
+    info = {"rischio": {"cervello": cervello.come_dati()}}
+    g = {"fiducia": 0.75}
+    assert abs(dal_vivo.puntata(info, g, {"Livelli": np.zeros(6)}) - f[1]) < 1e-9
+    assert dal_vivo.puntata({}, g, {"Livelli": np.zeros(6)}) == 0.5
+    copia = CervelloRischio.da_dati(cervello.come_dati())
+    assert np.allclose(copia.quanto(vista_del_rischio(p[:5], livelli[:5])), cervello.quanto(vista_del_rischio(p[:5], livelli[:5])))

@@ -8,9 +8,10 @@ Quando un'occasione finisce e si sa com'e' andata, la squadra impara subito:
    (`ricordi.npz`, casi dei vent'anni) e con le esperienze vissute prima, cosi' impara la cosa
    nuova senza dimenticare il resto. Piu' esperienze vive ha, piu' contano rispetto alla scuola
    (fino al 70% del ripasso): un errore che si ripete si somma e cambia davvero il cervello;
-3. **si controlla**: se dopo la lezione sbaglia di piu' sui ricordi di controllo, torna indietro
-   e riprova piu' piano; se sbaglia ancora, la lezione non resta (meglio non imparare che
-   impazzire).
+3. **si controlla**: se dopo la lezione sbaglia sui ricordi di controllo piu' di quanto
+   sbagliava uscita da scuola (`base`, oltre l'1%), torna indietro e riprova piu' piano; se sbaglia
+   ancora, la lezione non resta. Il confronto e' sempre con la scuola, mai con la lezione prima:
+   cosi' tanti piccoli peggioramenti non si possono sommare (sui vent'anni sommati facevano danni).
 
 La squadra dopo ogni esperienza si salva (`dal_vivo.py`), e non si perde quando il bot riparte.
 """
@@ -52,15 +53,15 @@ class Memoria:
 
     @classmethod
     def vuota(cls) -> "Memoria":
-        return cls({a: np.zeros((0, 0)) for a in AGENTI}, np.zeros(0), np.zeros(0))
+        return cls({}, np.zeros(0), np.zeros(0))
 
     def __len__(self) -> int:
         return len(self.y)
 
     def aggiungi(self, v: dict, y: float, w: float) -> None:
-        for a in AGENTI:
-            x = np.atleast_2d(np.asarray(v[a], float))
-            self.viste[a] = x if not len(self.viste[a]) else np.vstack([self.viste[a], x])
+        for a, x in v.items():
+            x = np.atleast_2d(np.asarray(x, float))
+            self.viste[a] = np.vstack([self.viste[a], x]) if a in self.viste and len(self.viste[a]) else x
         self.y = np.r_[self.y, float(y)]
         self.w = np.r_[self.w, float(w)]
 
@@ -69,14 +70,15 @@ class Memoria:
 
     def salva(self, file: Path) -> None:
         file.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(file, y=self.y, w=self.w, **{f"vista {a}": self.viste[a].astype(np.float32) for a in AGENTI})
+        np.savez_compressed(file, y=self.y, w=self.w, **{f"vista {a}": x.astype(np.float32) for a, x in self.viste.items()})
 
     @classmethod
     def carica(cls, file: Path) -> "Memoria":
         if not file.exists():
             return cls.vuota()
         d = np.load(file)
-        return cls({a: d[f"vista {a}"].astype(float) for a in AGENTI}, d["y"].astype(float), d["w"].astype(float))
+        return cls({k[6:]: d[k].astype(float) for k in d.files if k.startswith("vista ")}, d["y"].astype(float),
+                   d["w"].astype(float))
 
 
 def ricordi_di_scuola(viste: dict, y: np.ndarray, w: np.ndarray, quanti: int = 2000, seme: int = 0) -> Memoria:
@@ -96,27 +98,39 @@ def perdita(squadra: Squadra, m: Memoria) -> float:
     return float(-np.sum(m.w * (m.y * np.log(p) + (1 - m.y) * np.log(1 - p))) / np.sum(m.w))
 
 
+def controllo_di_scuola(squadra: Squadra, ricordi: Memoria) -> Memoria:
+    """I ricordi di scuola su cui la squadra si controlla dopo ogni lezione."""
+    return _pezzo(ricordi.adattata(squadra), slice(0, CONTROLLO))
+
+
 def impara(squadra: Squadra, vista: dict, y: float, w: float, ricordi: Memoria, vissute: Memoria,
-           seme: int) -> dict:
-    """Una esperienza finita: la squadra impara la lezione ripassando, e si controlla. Restituisce
-    com'e' andata: la sorpresa, la fiducia prima e dopo sullo stesso caso, se la lezione e' rimasta."""
+           seme: int, base: Optional[float] = None, ritmo: float = 1.0) -> dict:
+    """Una esperienza finita: la squadra impara la lezione ripassando, e si controlla. `base`:
+    quanto sbagliava uscita da scuola sui ricordi di controllo (`controllo_di_scuola`); `ritmo`:
+    quanto velocemente impara (piu' piano dopo che imparare in fretta l'aveva peggiorata).
+    Restituisce com'e' andata: la sorpresa, la fiducia prima e dopo sullo stesso caso, se la
+    lezione e' rimasta."""
     rng = np.random.default_rng(seme)
     v = squadra.adatta(vista)
     ricordi, vissute = ricordi.adattata(squadra), vissute.adattata(squadra)
     prima = float(squadra.giudica(v)[2][0])
     sorpresa = abs(float(y) - prima)
     quanto_vissute = VISSUTE_MAX * min(len(vissute) / VISSUTE_PIENE, 1.0) if len(ricordi) else 1.0
-    controlli = [(1 - quanto_vissute, _pezzo(ricordi, slice(0, CONTROLLO))),
-                 (quanto_vissute, _pezzo(vissute, slice(max(0, len(vissute) - CONTROLLO), len(vissute))))]
-    sbagli = _perdita_mista(squadra, controlli)
+    if len(ricordi):
+        controlli = [(1.0, _pezzo(ricordi, slice(0, CONTROLLO)))]
+        sbagli = base if base is not None else _perdita_mista(squadra, controlli)
+    else:
+        # Senza ricordi di scuola ci si controlla sulle ultime esperienze.
+        controlli = [(1.0, _pezzo(vissute, slice(max(0, len(vissute) - CONTROLLO), len(vissute))))]
+        sbagli = _perdita_mista(squadra, controlli)
     quota = min(0.5, QUOTA * (0.5 + sorpresa) * np.sqrt(min(max(w, 0.05), 4.0)))
     stato = squadra.come_dati()
     tenuta = False
-    piano = 1.0 if len(ricordi) + len(vissute) >= POCHI else 0.1
+    piano = (1.0 if len(ricordi) + len(vissute) >= POCHI else 0.1) * ritmo
     for passo in (PASSO * piano, PASSO * piano / 3):
         for _ in range(PASSI):
             lotto, yy, ww = _lotto(rng, ricordi, vissute, quanto_vissute)
-            lotto = {a: np.vstack([v[a], lotto[a]]) for a in AGENTI} if len(yy) else v
+            lotto = {a: np.vstack([v[a], lotto[a]]) for a in v} if len(yy) else v
             yy = np.r_[float(y), yy]
             ww = np.r_[quota, ww * (1 - quota)] if len(ww) else np.array([1.0])
             squadra.aggiorna(lotto, yy, ww, passi=1, passo=passo)
@@ -144,10 +158,10 @@ def _lotto(rng, ricordi: Memoria, vissute: Memoria, quanto_vissute: float) -> tu
         k = int(round(LOTTO * parte))
         if k and len(m):
             i = rng.integers(0, len(m), k)
-            pezzi.append(({a: m.viste[a][i] for a in AGENTI}, m.y[i], m.w[i] / max(m.w[i].sum(), 1e-12) * parte))
+            pezzi.append(({a: x[i] for a, x in m.viste.items()}, m.y[i], m.w[i] / max(m.w[i].sum(), 1e-12) * parte))
     if not pezzi:
-        return {a: np.zeros((0, 0)) for a in AGENTI}, np.zeros(0), np.zeros(0)
-    viste = {a: np.vstack([p[0][a] for p in pezzi]) for a in AGENTI}
+        return {}, np.zeros(0), np.zeros(0)
+    viste = {a: np.vstack([p[0][a] for p in pezzi]) for a in pezzi[0][0]}
     ww = np.concatenate([p[2] for p in pezzi])
     return viste, np.concatenate([p[1] for p in pezzi]), ww / ww.sum()
 

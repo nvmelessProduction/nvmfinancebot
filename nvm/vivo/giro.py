@@ -113,10 +113,10 @@ def _grandi(ore: Minuti, adesso: int):
                     lambda: Grandi.da([c for alto, basso in COPPIE for c in _crt(ore, alto, basso, adesso)]))
 
 
-def _viste(r, alte, basse, sopra, settimane, x, grandi=None, compagno=None) -> Optional[dict]:
+def _viste(r, alte, basse, sopra, settimane, x, grandi=None, compagno=None, quadro=None) -> Optional[dict]:
     """Quello che vede ogni agente; se qualcosa non torna, niente viste (decide il Capo come sempre)."""
     try:
-        return viste(r, alte, basse, sopra, settimane, x, grandi, compagno)
+        return viste(r, alte, basse, sopra, settimane, x, grandi, compagno, quadro)
     except Exception:
         return None
 
@@ -174,7 +174,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     float(1 / (1 + np.exp(-capo.romeo_logit_media))) if capo.romeo is not None else None, liq,
                     panorama.sguardo(r, ctx_idee),
                     float(capo_mod.qualita_attesa(p1[0], q[0], r.rr1, r.rr2, r.costo_erre)),
-                    _viste(r, alte, basse, sopra, settimane, x[0], g, _compagno(strumento, gemelli, orarie)),
+                    _viste(r, alte, basse, sopra, settimane, x[0], g, _compagno(strumento, gemelli, orarie), ctx_idee),
                     _piani(r, basse)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni

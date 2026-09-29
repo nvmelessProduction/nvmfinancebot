@@ -71,8 +71,9 @@ def tabella(numero: int, spread: float, radice: Path) -> Tabella:
         # Le tabelle di prima del 27/09/2026 non hanno strumento e verso, ne' (quella del bot)
         # cosa vedeva ogni agente: si rifanno.
         from nvm.cervello.viste import dimensioni
-        viste_giuste = t.viste is not None and all(t.viste[a].shape[1] == n for a, n in dimensioni().items()
-                                                   if a in t.viste)
+        # Anche un agente nuovo, che nella tabella non c'e', la fa rifare.
+        viste_giuste = t.viste is not None and all(a in t.viste and t.viste[a].shape[1] == n
+                                                   for a, n in dimensioni().items())
         if t.strumento is not None and (numero != 1 or (viste_giuste and t.piani is not None)):
             return t
     variante, stretto = CONFIGURAZIONI[numero]

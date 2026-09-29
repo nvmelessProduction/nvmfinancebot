@@ -21,7 +21,7 @@ from nvm.dati.candele import Candele
 from nvm.tempo import NEW_YORK, TF
 
 # Gli agenti con un cervello, e quante candele guardano.
-AGENTI = ("Cacciatore", "Grilletto", "Livelli", "Key level", "Orario", "Bias")
+AGENTI = ("Cacciatore", "Grilletto", "Livelli", "Key level", "Orario", "Bias", "Allineamento", "Gap")
 ALTE = 5
 BASSE = 12
 SOPRA = 10
@@ -103,13 +103,14 @@ def _tempo_della_finta(crt, alte: Candele, quando: int) -> tuple[float, float]:
 
 
 def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, x: np.ndarray,
-          grandi=None, compagno=None) -> dict[str, np.ndarray]:
-    """Le viste dei sei agenti su un'operazione `r` (un `Risultato` con lo scatto), dalle candele
+          grandi=None, compagno=None, quadro=None) -> dict[str, np.ndarray]:
+    """Le viste degli agenti su un'operazione `r` (un `Risultato` con lo scatto), dalle candele
     chiuse entro l'ingresso. `x` sono le risposte di oggi al Capo: qualcuna resta come
     indizio, finche' i cervelli non imparano a farne a meno. `grandi`: i CRT dei grafici grandi
     (`conferme.Grandi`); `compagno`: (le ore dello strumento gemello, +1 se si muove insieme,
-    -1 se al contrario), per l'SMT. In fondo a ogni vista, le cose insegnate da Romeo nei suoi
-    video (`spec/FONTI-ROMEO.md`, "Dai video")."""
+    -1 se al contrario), per l'SMT; `quadro`: le candele grandi dello strumento
+    (`panorama.Contesto`), per Allineamento e Gap. In fondo a ogni vista, le cose insegnate da
+    Romeo nei suoi video (`spec/FONTI-ROMEO.md`, "Dai video")."""
     quando = r.quando
     alte, basse = alte.chiuse_entro(quando), basse.chiuse_entro(quando)
     sopra, settimane = sopra.chiuse_entro(quando), settimane.chiuse_entro(quando)
@@ -222,14 +223,71 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
                  [ritorno(settimane, k, media_sett) for k in (0, 3, 12)], corpo, x[10:14], x[25], rr[0],
                  settimana, stesso, contro]
 
+    # Allineamento: i timeframe grandi sono d'accordo? Gap: i buchi di prezzo ancora aperti.
+    obiettivo = crt.crt_low if segno < 0 else crt.crt_high
     return {"Cacciatore": cacciatore, "Grilletto": grilletto, "Livelli": livelli, "Key level": key,
-            "Orario": orario, "Bias": bias}
+            "Orario": orario, "Bias": bias, "Allineamento": _allineamento(quadro, quando, zero, segno, r.verso),
+            "Gap": _gap(quadro, quando, zero, segno, ampiezza, obiettivo)}
+
+
+def _allineamento(quadro, quando: int, zero: float, segno: int, verso) -> np.ndarray:
+    """Su 4 ore, giorno, settimana e mese: il bias di Romeo sulle ultime due candele chiuse (+1 a
+    favore, -1 contro, 0 neutro), il corpo dell'ultima candela e dove sta il prezzo nelle ultime
+    cinque, nel verso dell'operazione. Poi quanti timeframe sono a favore e quanti contro."""
+    from nvm.agenti.panorama import GRANDI, a_favore, bias_a
+    fuori, favore, contro = [], 0, 0
+    for tf in GRANDI:
+        c = quadro.candele[tf].chiuse_entro(quando) if quadro is not None else None
+        if c is None or len(c) < 2:
+            fuori += [0.0, 0.0, 0.5]
+            continue
+        f = a_favore(bias_a(c, quando), verso)
+        lato = 0.0 if f is None else (1.0 if f else -1.0)
+        favore, contro = favore + (lato > 0), contro + (lato < 0)
+        media = _ampiezza_media(c)
+        corpo = segno * float(c.bid[-1, 3] - c.bid[-1, 0]) / media if np.isfinite(media) and media > 0 else 0.0
+        b = c.bid[-5:]
+        alto, basso = float(b[:, 1].max()), float(b[:, 2].min())
+        dove = (zero - basso) / (alto - basso) if alto > basso else 0.5
+        fuori += [lato, float(np.clip(corpo, -3, 3)), float(np.clip(dove if segno > 0 else 1 - dove, -1, 2))]
+    return np.r_[fuori, favore, contro]
+
+
+def _gap(quadro, quando: int, zero: float, segno: int, ampiezza: float, obiettivo: float) -> np.ndarray:
+    """Per 1 ora, 4 ore, giorno e settimana: c'e' un fair value gap ancora aperto fra l'ingresso e
+    l'obiettivo (davanti), e uno alle spalle (fino a due ampiezze del range contro)? E quanto e'
+    vicino, in ampiezze del range. Poi il gap del weekend ancora aperto: chiuderlo va a favore (+1)
+    o contro (-1), quanto e' grande (in giorni medi) e dove sta rispetto all'ingresso."""
+    from nvm.agenti.panorama import aperti, gap_della_settimana
+    fuori = []
+    for tf in (TF.H1, TF.H4, TF.D1, TF.W1):
+        if quadro is None:
+            fuori += [0.0, 0.0, 0.0, 0.0]
+            continue
+        c, b = quadro.tf(tf), quadro.buchi(tf)
+        for fin_dove in (obiettivo, zero - segno * 2 * ampiezza):
+            trovati = aperti(b, c, quando, 100, zero, fin_dove)
+            if len(trovati):
+                distanza = np.abs((b.alto[trovati] + b.basso[trovati]) / 2 - zero).min() / ampiezza
+                fuori += [1.0, float(np.clip(distanza, 0, 5))]
+            else:
+                fuori += [0.0, 0.0]
+    settimana = [0.0, 0.0, 0.0]
+    if quadro is not None:
+        ap = quadro.aperture()
+        j = gap_della_settimana(ap, quando)
+        if j is not None and ap.chiuso[j] > quando and ap.giorno_medio[j] > 0:
+            chiuderlo = 1.0 if (ap.apertura[j] > ap.prima[j]) == (segno < 0) else -1.0
+            settimana = [chiuderlo, float(np.clip(abs(ap.apertura[j] - ap.prima[j]) / ap.giorno_medio[j], 0, 3)),
+                         float(np.clip(segno * (ap.prima[j] - zero) / ampiezza, -5, 5))]
+    return np.r_[fuori, settimana]
 
 
 def dimensioni() -> dict[str, int]:
     """Quanti numeri vede ogni agente."""
     return {"Cacciatore": 4 + 5 + ALTE * 4 + 3, "Grilletto": 3 + 5 + BASSE * 4 + 7 + 6, "Livelli": 6,
-            "Key level": 5 + 3 + SOPRA * 4, "Orario": 2 + 5 + 3, "Bias": 3 + 3 + 1 + 5 + 1 + 3}
+            "Key level": 5 + 3 + SOPRA * 4, "Orario": 2 + 5 + 3, "Bias": 3 + 3 + 1 + 5 + 1 + 3,
+            "Allineamento": 4 * 3 + 2, "Gap": 4 * 4 + 3}
 
 
 # Lo strumento gemello per l'SMT (Romeo: "when you trade Bitcoin, you have to watch Ethereum"),

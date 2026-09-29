@@ -5,8 +5,9 @@
 2. **Il confronto.** Ogni agente sente i giudizi dei colleghi e rivede il suo: il secondo
    cervello di ogni agente riceve quello che vede lui piu' quello che dicono gli altri, e ha
    imparato a scuola quando conviene cambiare idea e quando tenere il punto.
-3. **Il Capo** mette insieme i giudizi dopo il confronto: ha imparato quanto fidarsi di
-   ognuno.
+3. **Il Capo**, il comandante, e' anche lui un cervello: vede quello che ognuno pensava da solo
+   e dopo il confronto, e ha imparato come metterli insieme (quanto fidarsi di ognuno, e quando:
+   per esempio del Grilletto quando Bias e Allineamento sono d'accordo).
 
 A scuola ogni pezzo impara solo da esempi che non ha usato per allenare i pezzi prima di lui
 (i giudizi dei colleghi che un agente sente sono quelli su esempi che quei colleghi non
@@ -29,6 +30,9 @@ from nvm.cervello.viste import AGENTI
 PARTI = 3
 # Quanto si sposta il Capo dal vivo, a ogni risultato.
 PASSO_CAPO = 0.02
+# Il cervello del Capo: pochi neuroni e un freno forte (ha pochi numeri e deve generalizzare).
+NEURONI_CAPO = 8
+FRENO_CAPO = 1e-2
 
 
 def _logit(p: np.ndarray) -> np.ndarray:
@@ -67,8 +71,13 @@ def _primi(v, y, pesi, genomi=None):
     return {a: (lambda vv, a=a: reti[a].logit(vv[a])) for a in AGENTI}
 
 
+def _per_il_capo(dopo: dict, primo: dict, agenti) -> np.ndarray:
+    """Quello che vede il Capo: i giudizi di ognuno dopo il confronto e da solo."""
+    return np.column_stack([dopo[a] for a in agenti] + [primo[a] for a in agenti])
+
+
 def _con_colleghi(vista: np.ndarray, giudizi: dict, a: str) -> np.ndarray:
-    return np.c_[vista, np.column_stack([giudizi[b] for b in AGENTI if b != a])]
+    return np.c_[vista, np.column_stack([giudizi[b] for b in AGENTI if b != a and b in giudizi])]
 
 
 @dataclass
@@ -106,13 +115,19 @@ class Squadra:
             for a in AGENTI:
                 secondi_fuori[a][b] = reti[a].logit(_con_colleghi(v[a][b], {k: g[b] for k, g in primi_fuori.items()}, a))
         secondi = secondi_su(v, y, pesi, primi_fuori)
-        capo = Logistica(1.0).allena(np.column_stack([secondi_fuori[a] for a in AGENTI]), y, pesi=pesi)
+        capo = Rete.allena(_per_il_capo(secondi_fuori, primi_fuori, AGENTI), y, pesi, nascosti=NEURONI_CAPO, seme=99,
+                           penalita=FRENO_CAPO)
         return cls(primi, secondi, capo, True)
+
+    @property
+    def agenti(self) -> tuple:
+        """Gli agenti di questa squadra, nell'ordine di sempre."""
+        return tuple(a for a in AGENTI if a in self.primi)
 
     def larghezza(self, a: str) -> int:
         """Quanti numeri della vista di `a` conoscono i suoi cervelli: quelli della vista con cui
         sono nati."""
-        altri = len(AGENTI) - 1
+        altri = len(self.agenti) - 1
         s = self.secondi.get(a) if self.confronto else None
         if s is not None:
             # Nel confronto, dopo la vista vengono i giudizi dei colleghi.
@@ -124,20 +139,29 @@ class Squadra:
         """Gli occhi nuovi si aggiungono in fondo alla vista: cervelli nati prima guardano solo i
         numeri che conoscono, e in un esempio salvato prima, piu' corto, quelli che mancano valgono
         zero."""
+        righe = next((len(np.atleast_2d(x)) for x in v.values()), 1)
         fuori = {}
-        for a in AGENTI:
-            x, n = np.atleast_2d(np.asarray(v[a], float)), self.larghezza(a)
+        for a in self.agenti:
+            # Un esempio salvato prima che l'agente esistesse: la sua vista vale zero.
+            x = np.atleast_2d(np.asarray(v[a], float)) if a in v else np.zeros((righe, 0))
+            n = self.larghezza(a)
             fuori[a] = x[:, :n] if x.shape[1] >= n else np.pad(x, ((0, 0), (0, n - x.shape[1])))
         return fuori
 
     def giudica(self, v: dict) -> tuple[dict, dict, np.ndarray]:
         """Il primo giro, il confronto e la probabilita' del primo obiettivo per il Capo."""
         v = self.adatta(v)
-        primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
+        primo = {a: self.primi[a].logit(v[a]) for a in self.agenti}
         if not self.confronto:
-            return primo, primo, self.capo.probabilita(np.column_stack([primo[a] for a in AGENTI]))
-        dopo = {a: self.secondi[a].logit(_con_colleghi(v[a], primo, a)) for a in AGENTI}
-        return primo, dopo, self.capo.probabilita(np.column_stack([dopo[a] for a in AGENTI]))
+            return primo, primo, self.capo.probabilita(np.column_stack([primo[a] for a in self.agenti]))
+        dopo = {a: self.secondi[a].logit(_con_colleghi(v[a], primo, a)) for a in self.agenti}
+        return primo, dopo, self.capo.probabilita(self._capo_vede(dopo, primo))
+
+    def _capo_vede(self, dopo: dict, primo: dict) -> np.ndarray:
+        # Un Capo di prima (una somma pesata) vede solo i giudizi dopo il confronto.
+        if isinstance(self.capo, Logistica):
+            return np.column_stack([dopo[a] for a in self.agenti])
+        return _per_il_capo(dopo, primo, self.agenti)
 
 
     # --- Dal vivo ------------------------------------------------------------------------------
@@ -149,12 +173,12 @@ class Squadra:
         if not self.confronto:
             return {}
         v = self.adatta(v)
-        primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
+        primo = {a: self.primi[a].logit(v[a]) for a in self.agenti}
         fuori = {}
-        for a in AGENTI:
+        for a in self.agenti:
             vero = self.secondi[a].logit(_con_colleghi(v[a], primo, a))
             effetti = {}
-            for b in AGENTI:
+            for b in self.agenti:
                 if b == a:
                     continue
                 neutro = dict(primo)
@@ -171,30 +195,37 @@ class Squadra:
         y = np.atleast_1d(np.asarray(y, float))
         w = np.ones(len(y)) if pesi is None else np.atleast_1d(np.asarray(pesi, float))
         v = self.adatta(v)
-        primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
-        for a in AGENTI:
+        primo = {a: self.primi[a].logit(v[a]) for a in self.agenti}
+        for a in self.agenti:
             self.primi[a].aggiorna(v[a], y, passi=passi, passo=passo, pesi=w)
             if self.confronto:
                 self.secondi[a].aggiorna(_con_colleghi(v[a], primo, a), y, passi=passi, passo=passo, pesi=w)
-        # Anche il Capo impara quanto fidarsi di ognuno, dal risultato della squadra.
+        # Anche il Capo impara quanto fidarsi di ognuno, dal risultato della squadra: si sposta piano,
+        # perche' mette insieme giudizi grandi e una lezione sola non deve rovinare quello che sa.
+        passo_capo = min(PASSO_CAPO, passo / 15)
         for _ in range(passi):
-            primo = {a: self.primi[a].logit(v[a]) for a in AGENTI}
-            giudizi = ({a: self.secondi[a].logit(_con_colleghi(v[a], primo, a)) for a in AGENTI}
+            primo = {a: self.primi[a].logit(v[a]) for a in self.agenti}
+            giudizi = ({a: self.secondi[a].logit(_con_colleghi(v[a], primo, a)) for a in self.agenti}
                        if self.confronto else primo)
-            z = np.column_stack([giudizi[a] for a in AGENTI])
-            d = w * (self.capo.probabilita(z) - y) / np.sum(w)
-            # Il Capo mette insieme giudizi grandi: si sposta piano, o rovina quello che la squadra sa.
-            self.capo.pesi = self.capo.pesi - min(PASSO_CAPO, passo / 15) * np.r_[d.sum(), z.T @ d]
+            z = self._capo_vede(giudizi, primo)
+            if isinstance(self.capo, Logistica):
+                d = w * (self.capo.probabilita(z) - y) / np.sum(w)
+                self.capo.pesi = self.capo.pesi - passo_capo * np.r_[d.sum(), z.T @ d]
+            else:
+                self.capo.aggiorna(z, y, passi=1, passo=passo_capo, pesi=w)
         return self
 
     def come_dati(self) -> dict:
         return {"confronto": self.confronto, "primi": {a: r.come_dati() for a, r in self.primi.items()},
                 "secondi": {a: r.come_dati() for a, r in self.secondi.items()},
-                "capo": self.capo.pesi.tolist()}
+                "capo": self.capo.pesi.tolist() if isinstance(self.capo, Logistica) else {"rete": self.capo.come_dati()}}
 
     @classmethod
     def da_dati(cls, d: dict) -> "Squadra":
-        capo = Logistica(1.0)
-        capo.pesi = np.array(d["capo"])
+        if isinstance(d["capo"], dict):
+            capo = Rete.da_dati(d["capo"]["rete"])
+        else:
+            capo = Logistica(1.0)
+            capo.pesi = np.array(d["capo"])
         return cls({a: Rete.da_dati(x) for a, x in d["primi"].items()},
                    {a: Rete.da_dati(x) for a, x in d["secondi"].items()}, capo, bool(d["confronto"]))

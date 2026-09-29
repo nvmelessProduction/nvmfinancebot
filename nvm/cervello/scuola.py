@@ -169,19 +169,56 @@ def evolvi(t, genomi: dict, provate: list, settimana: str, dire=print) -> tuple[
     return nuovi, prove, "\n".join(racconto), p_finale
 
 
-def esame(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, p: np.ndarray, dire=print) -> dict:
+def puntate_anno_per_anno(t, p: np.ndarray) -> np.ndarray:
+    """Quanto punterebbe il cervello del Rischio su ogni operazione (`rischio_cervello.py`), allenato
+    ogni anno sugli anni prima con la fiducia dei cervelli di quegli anni. Prima del primo anno
+    d'esame, quando non ha ancora anni da cui imparare, vale la formula di prima (2p - 1)."""
+    from nvm.cervello.rischio_cervello import CervelloRischio, vista_del_rischio
+    f = np.clip(2 * np.nan_to_num(p) - 1, 0, None)
+    valide = np.isfinite(p)
+    x = vista_del_rischio(np.nan_to_num(p, nan=0.5), t.viste["Livelli"])
+    for a in range(PRIMO_ESAME, ULTIMO_ESAME + 1):
+        tr = np.flatnonzero(valide & (t.chiusa < _istante(a)))
+        oggi = np.flatnonzero(valide & (t.anno == a))
+        if len(tr) < 500 or not len(oggi):
+            continue
+        tr = tr[np.argsort(t.quando[tr], kind="stable")]
+        cervello = CervelloRischio.allena(x[tr], t.erre[tr], pesi_per_eta(t.chiusa[tr], _istante(a)))
+        f[oggi] = cervello.quanto(x[oggi])
+    return f
+
+
+def cervello_del_rischio(t, p: np.ndarray):
+    """Il cervello del Rischio allenato su tutto, per il bot dal vivo."""
+    from nvm.cervello.rischio_cervello import CervelloRischio, vista_del_rischio
+    tr = np.flatnonzero(np.isfinite(p))
+    tr = tr[np.argsort(t.quando[tr], kind="stable")]
+    return CervelloRischio.allena(vista_del_rischio(p[tr], t.viste["Livelli"][tr]), t.erre[tr],
+                                  pesi_per_eta(t.chiusa[tr], int(t.chiusa.max()) + 1))
+
+
+def esame(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, p: np.ndarray, dire=print,
+          f: Optional[np.ndarray] = None) -> dict:
     """I cervelli contro il Capo di oggi, sul conto intero fuori campione. `kelly_capo` e
     `entra_capo`: le puntate e le scelte del Capo anno per anno (allenato sugli anni prima);
-    `p` la fiducia dei cervelli, anno per anno."""
+    `p` la fiducia dei cervelli, anno per anno; `f` quanto punterebbe il cervello del Rischio,
+    anno per anno (`puntate_anno_per_anno`)."""
     t0 = time.time()
     anni = t.anno
     dal = anni >= PRIMO_ESAME - 2
-    cervelli = _conto(_operazioni(t, dal & (p > SOGLIA), np.clip(2 * p - 1, 0, None)), PRIMO_ESAME, ULTIMO_ESAME)
+    formula = _conto(_operazioni(t, dal & (p > SOGLIA), np.clip(2 * p - 1, 0, None)), PRIMO_ESAME, ULTIMO_ESAME)
+    col_rischio = (_conto(_operazioni(t, dal & (p > SOGLIA), f), PRIMO_ESAME, ULTIMO_ESAME)
+                   if f is not None else None)
     capo = _conto(_operazioni(t, dal & entra_capo, kelly_capo), PRIMO_ESAME, ULTIMO_ESAME)
+    rischio_cervello = col_rischio is not None and col_rischio["crescita"] >= formula["crescita"]
+    cervelli = col_rischio if rischio_cervello else formula
     dire(f"Esame dei cervelli ({PRIMO_ESAME}-{ULTIMO_ESAME}, conto intero fuori campione): cervelli "
-         f"{cervelli['crescita']:+.1%} l'anno (calo {cervelli['calo']:.0%}), Capo di oggi {capo['crescita']:+.1%} "
-         f"(calo {capo['calo']:.0%}). {round(time.time() - t0)} s")
-    return {"cervelli": cervelli, "capo": capo, "decidono": cervelli["crescita"] > capo["crescita"]
+         f"{formula['crescita']:+.1%} l'anno (calo {formula['calo']:.0%}) con la puntata a formula"
+         + (f", {col_rischio['crescita']:+.1%} (calo {col_rischio['calo']:.0%}) col cervello del Rischio"
+            if col_rischio is not None else "")
+         + f"; Capo di oggi {capo['crescita']:+.1%} (calo {capo['calo']:.0%}). {round(time.time() - t0)} s")
+    return {"cervelli": cervelli, "formula": formula, "col_rischio": col_rischio, "rischio_cervello": rischio_cervello,
+            "capo": capo, "decidono": cervelli["crescita"] > capo["crescita"]
             and (portafoglio.CALO_MASSIMO is None or cervelli["calo"] <= portafoglio.CALO_MASSIMO + 0.05)}
 
 
@@ -205,15 +242,20 @@ def per_il_vivo(t, kelly_capo: np.ndarray, entra_capo: np.ndarray, dire=print, g
     `p`: la fiducia anno per anno gia' calcolata con questi genomi (per non rifarla). `sfidanti`:
     le versioni diverse di se' che gli agenti mettono alla prova dal vivo (`scegli_sfidanti`)."""
     p = fiducia_anno_per_anno(t, genomi) if p is None else p
-    risultato = esame(t, kelly_capo, entra_capo, p, dire)
+    f = puntate_anno_per_anno(t, p)
+    risultato = esame(t, kelly_capo, entra_capo, p, dire, f)
     squadra = allena(t, int(t.chiusa.max()) + 1, genomi=genomi)
-    # Il Rischio per le scelte dei cervelli, se un giorno decideranno loro: la loro fiducia
-    # (2p - 1) al posto del Kelly del Capo, con parte e fiducia minima imparate sul conto intero.
+    # Il Rischio per le scelte dei cervelli: quanto punta il cervello del Rischio (se all'esame fa
+    # crescere il conto almeno quanto la formula 2p - 1), con la dose e la puntata minima imparate
+    # sul conto intero.
     dal = t.anno >= PRIMO_ESAME - 2
-    s = portafoglio.scegli(_operazioni(t, dal & (p > SOGLIA), np.clip(2 * p - 1, 0, None)), None)
+    puntate = f if risultato["rischio_cervello"] else np.clip(2 * p - 1, 0, None)
+    s = portafoglio.scegli(_operazioni(t, dal & (p > SOGLIA), puntate), None)
+    rischio = {"parte": s.parte, "minimo": s.minimo}
+    if risultato["rischio_cervello"]:
+        rischio["cervello"] = cervello_del_rischio(t, p).come_dati()
     dati = {"quando": int(time.time()), "squadra": squadra.come_dati(), "esame": risultato,
-            "decidono": bool(risultato["decidono"]), "soglia": SOGLIA,
-            "rischio": {"parte": s.parte, "minimo": s.minimo}}
+            "decidono": bool(risultato["decidono"]), "soglia": SOGLIA, "rischio": rischio}
     if t.piani is not None:
         dati["piani"] = allena_piani(t, int(t.chiusa.max()) + 1).come_dati()
     if sfidanti:

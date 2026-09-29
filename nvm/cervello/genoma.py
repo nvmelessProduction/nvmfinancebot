@@ -37,6 +37,10 @@ BLOCCHI: dict[str, dict[str, tuple[int, int]]] = {
     "Bias": {"grafico sopra": (0, 3), "settimane": (3, 6), "candela del range": (6, 7), "risposte": (7, 12),
              "distanza dell'obiettivo": (12, 13), "posizione nella settimana": (13, 14),
              "obiettivi dei grafici grandi": (14, 16)},
+    "Allineamento": {"4 ore": (0, 3), "giorno": (3, 6), "settimana": (6, 9), "mese": (9, 12),
+                     "quanti d'accordo": (12, 14)},
+    "Gap": {"FVG di 1 ora": (0, 4), "FVG di 4 ore": (4, 8), "FVG del giorno": (8, 12), "FVG della settimana": (12, 16),
+            "gap del weekend": (16, 19)},
 }
 NEURONI = (8, 16, 24, 32)
 FRENI = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)

@@ -7,8 +7,17 @@
 
 ## Cosa sono
 
-Ogni agente (Cacciatore, Grilletto, Livelli, Key level, Orario, Bias) ha un cervello: una
-rete neurale piccola scritta da noi in numpy (`nvm/cervello/rete.py`), senza AI esterne.
+Un cervello grande fatto di cervelli specializzati, come una squadra d'élite: ognuno ha il suo
+mestiere, il Capo li comanda. Ogni agente (Cacciatore, Grilletto, Livelli, Key level, Orario,
+Bias, Allineamento, Gap) ha un cervello: una rete neurale piccola scritta da noi in numpy
+(`nvm/cervello/rete.py`), senza AI esterne. Anche il Capo e il Rischio sono cervelli (sotto).
+
+- **Allineamento** (dal 29/09/2026): su 4 ore, giorno, settimana e mese il bias di Romeo sulle
+  ultime due candele, il corpo dell'ultima, dove sta il prezzo nelle ultime cinque; quanti
+  timeframe sono a favore e contro (14 numeri).
+- **Gap** (dal 29/09/2026): i fair value gap ancora aperti di 1 ora, 4 ore, giorno e settimana
+  davanti all'operazione e alle spalle, e quanto sono vicini; il gap del weekend ancora aperto
+  (19 numeri).
 
 - **Vede** il mercato nel suo campo (`viste.py`): le candele e le misure del suo mestiere al
   momento dell'ingresso, nel verso dell'operazione e in unità del range (29-56 numeri).
@@ -18,7 +27,17 @@ rete neurale piccola scritta da noi in numpy (`nvm/cervello/rete.py`), senza AI 
 - **Si confronta** (`squadra.py`): un secondo cervello per agente riceve quello che vede lui
   più i giudizi dei colleghi e decide se cambiare idea. Quando qualcuno cambia idea si
   calcola chi l'ha convinto (il suo giudizio rifatto senza quel collega).
-- **Il Capo** mette insieme i giudizi dopo il confronto (regressione logistica).
+- **Il Capo, il comandante, è un cervello** (dal 29/09/2026; prima una regressione logistica):
+  vede quello che ognuno pensava da solo e dopo il confronto, e ha imparato come metterli
+  insieme, anche in modo non lineare (fidarsi di uno quando altri due sono d'accordo).
+- **Il Rischio è un cervello** (`rischio_cervello.py`, dal 29/09/2026; prima la formula
+  2 x fiducia - 1): vede quanto ci crede la squadra e com'è fatta l'operazione (obiettivi,
+  stop, costi) e dice quanto puntare, da 0 a 1. Impara a far crescere il conto: la media di
+  log(1 + puntata x R), dove una perdita grande pesa più di un guadagno uguale e perdere tutto
+  vale meno infinito. Prova su un caso finto: sull'incerto punta 1-6%, sul buono sempre di
+  più, vicino al Kelly che nessuno gli ha scritto. All'esame sui vent'anni si confronta con
+  la formula: dal vivo si usa se fa crescere il conto almeno quanto lei. La dose (quanta parte
+  del conto per ogni 1 del suo giudizio) la sceglie ancora la simulazione del conto intero.
 - **A scuola** sui vent'anni ogni pezzo impara solo da giudizi su esempi che i pezzi prima
   di lui non avevano visto. Quello che sanno sta nei pesi: dal vivo non rileggono lo storico.
 - **Dal vivo** (`dal_vivo.py`) giudicano ogni occasione; dopo ogni risultato vero (presa o
@@ -103,8 +122,13 @@ Dal vivo, appena un'occasione finisce (presa o no), la squadra impara subito:
 - **ripassano mentre imparano**: ogni passo mescola la lezione con 2000 ricordi di scuola
   (`nvm/vivo/ricordi.npz`) e con le esperienze vissute prima. Più esperienze vive hanno, più
   contano (fino al 70% del ripasso): un errore che si ripete si somma e li cambia davvero;
-- **si controllano**: se dopo la lezione sbagliano di più su quello che sapevano (oltre l'1%),
-  tornano indietro e riprovano più piano; se ancora peggio, la lezione non resta;
+- **si controllano**: se dopo la lezione sbagliano sui ricordi di controllo più di quanto
+  sbagliavano usciti da scuola (oltre l'1%), tornano indietro e riprovano più piano; se ancora
+  peggio, la lezione non resta. Il metro è sempre la scuola, mai la lezione prima;
+- **si accorgono se imparare li peggiora** (la prudenza): accanto tengono la squadra uscita da
+  scuola, ferma; su ogni esperienza, prima di impararla, si segna chi giudicava meglio. Se sulle
+  ultime 150 la squadra che impara sbaglia chiaramente di più (oltre 2 errori standard), torna
+  com'era uscita da scuola e da lì impara a metà ritmo, e lo dice in equipe;
 - **ricordano**: dopo ogni esperienza la squadra si salva (`dati/vivo/cervelli_vivi.json`) e
   riparte da lì. Con una scuola nuova rivive una per una tutte le esperienze vere di prima.
 
@@ -114,6 +138,15 @@ sapevano. Il Capo, che mette insieme giudizi grandi, dal vivo si sposta piano (c
 prima una lezione sola peggiorava del 23% i ricordi). Prova su un mondo che dopo la scuola
 rovescia una regola: chi impara passa da 1,10 a 0,52 di errore in 600 esperienze, chi resta
 fermo resta a 1,10; 592 lezioni su 600 restano.
+
+**Sui vent'anni veri la prima versione faceva danni** (ogni anno 2018-2023 come dal vivo, da
+scuola al 1° gennaio): errore 0,80 contro 0,68 della squadra ferma, e circa 650 operazioni
+l'anno sopra 55 su 100 in media a zero o in perdita. Ogni lezione poteva peggiorare dell'1%
+rispetto alla lezione prima, e su 2600 lezioni l'anno si sommava. Da qui il metro fisso della
+scuola e la prudenza. Con quelli, 2018: errore 0,6825 contro 0,6819 della squadra ferma (3 volte
+tornati indietro, ritmo finale 1/8): non fa più danni. Nota onesta: in quegli anni sia la
+squadra ferma sia quella che impara sbagliano più di chi dicesse sempre "41 su 100" (0,665):
+dal 2017 i cervelli non prevedono davvero.
 
 ## Si modificano anche dal vivo, di continuo (le sfidanti, 29/09/2026)
 

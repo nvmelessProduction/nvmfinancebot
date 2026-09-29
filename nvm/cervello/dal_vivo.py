@@ -41,6 +41,11 @@ SFIDA_MINIMO = 100
 SFIDA_Z = 3.0
 # Con una scuola nuova le sfidanti rivivono solo le ultime esperienze (il bot riparte prima).
 SFIDANTI_RIVISSUTE = 300
+# La prudenza: se sulle ultime PRUDENZA esperienze (giudicate prima di impararle) la squadra che
+# impara sbaglia chiaramente piu' di quella uscita da scuola e rimasta ferma, torna com'era uscita
+# da scuola e da li' impara piu' piano.
+PRUDENZA = 150
+PRUDENZA_Z = 2.0
 
 
 def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
@@ -60,13 +65,16 @@ def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
     info["cambi"] = []
     scuola = hashlib.sha256(testo.encode("utf-8")).hexdigest()[:16]
     memoria = {"ricordi": esperienza.Memoria.carica(file.parent / RICORDI), "vissute": esperienza.Memoria.vuota(),
-               "scuola": scuola}
+               "scuola": scuola, "ferma": Squadra.da_dati(dati["squadra"]), "ritmo": 1.0, "contro_scuola": []}
+    memoria["base"] = _base(squadra, memoria["ricordi"])
+    for s in info["sfidanti"]:
+        s["base"] = _base(s["squadra"], memoria["ricordi"])
     info["memoria"] = memoria
     esempi = [json.loads(r) for r in (cartella / ESEMPI).read_text(encoding="utf-8").splitlines() if r.strip()] \
         if (cartella / ESEMPI).exists() else []
     salvata = _salvata(cartella / VIVI, scuola, len(esempi))
     for k, e in enumerate(esempi):
-        v = squadra.adatta({a: np.array([e["viste"][a]]) for a in AGENTI})
+        v = squadra.adatta({a: np.array([x]) for a, x in e["viste"].items()})
         if salvata is None and np.isfinite(e["w"]):
             _esperienza(squadra, info, v, e["y"], e["w"], seme=k, sfide=k >= len(esempi) - SFIDANTI_RIVISSUTE)
             _impara_piano(info["piani"], v, e.get("piano"), e.get("erre"))
@@ -78,6 +86,10 @@ def carica(file: Path, cartella: Path) -> tuple[Optional[Squadra], dict]:
             info["piani"] = ReteValori.da_dati(salvata["piani"])
         info["sfidanti"] = [{**s, "squadra": Squadra.da_dati(s["squadra"])} for s in salvata.get("sfidanti", [])]
         info["cambi"] = salvata.get("cambi", [])
+        memoria["ritmo"] = float(salvata.get("ritmo", 1.0))
+        memoria["contro_scuola"] = list(salvata.get("contro_scuola", []))
+        if salvata.get("base") is not None:
+            memoria["base"] = float(salvata["base"])
     elif esempi:
         _salva(cartella, squadra, info)
     return squadra, info
@@ -88,21 +100,51 @@ def _perdita_una(squadra: Squadra, v: dict, y: float) -> float:
     return -(y * np.log(p) + (1 - y) * np.log(1 - p))
 
 
+def _base(squadra: Squadra, ricordi) -> Optional[float]:
+    """Quanto sbaglia la squadra sui ricordi di controllo: il metro fisso delle lezioni."""
+    return esperienza.perdita(squadra, esperienza.controllo_di_scuola(squadra, ricordi)) if len(ricordi) else None
+
+
 def _esperienza(squadra: Squadra, info: dict, v: dict, y: float, w: float, seme: int, sfide: bool = True) -> dict:
     """Un'esperienza finita per la squadra e per le sfidanti: prima si segna chi aveva giudicato
-    meglio, poi tutte imparano; se una sfidante ha dimostrato di essere migliore, prende il posto."""
+    meglio (anche la squadra uscita da scuola e rimasta ferma), poi tutte imparano; se una sfidante
+    ha dimostrato di essere migliore prende il posto; se imparare ha peggiorato la squadra, torna
+    com'era uscita da scuola e impara piu' piano."""
     m = info["memoria"]
     sfidanti = info.get("sfidanti", []) if sfide else []
     for s in sfidanti:
         s["confronto"].append(float(w * (_perdita_una(squadra, v, y) - _perdita_una(s["squadra"], v, y))))
-    lezione = esperienza.impara(squadra, v, y, w, m["ricordi"], m["vissute"], seme)
+    if m.get("ferma") is not None:
+        m.setdefault("contro_scuola", []).append(float(w * (_perdita_una(squadra, v, y) - _perdita_una(m["ferma"], v, y))))
+    ritmo = float(m.get("ritmo", 1.0))
+    lezione = esperienza.impara(squadra, v, y, w, m["ricordi"], m["vissute"], seme, base=m.get("base"), ritmo=ritmo)
     for s in sfidanti:
-        esperienza.impara(s["squadra"], v, y, w, m["ricordi"], m["vissute"], seme)
+        esperienza.impara(s["squadra"], v, y, w, m["ricordi"], m["vissute"], seme, base=s.get("base"), ritmo=ritmo)
     m["vissute"].aggiungi(v, y, w)
     cambio = _chi_vince(squadra, info) if sfidanti else None
     if cambio:
         lezione["cambio"] = cambio
+        m["ferma"] = Squadra.da_dati(squadra.come_dati())      # il nuovo metro: la squadra cambiata
+        m["base"], m["contro_scuola"] = _base(squadra, m["ricordi"]), []
+    elif _prudenza(squadra, m):
+        lezione["prudenza"] = {"ritmo": m["ritmo"]}
     return lezione
+
+
+def _prudenza(squadra: Squadra, m: dict) -> bool:
+    """Imparare dal vivo ha peggiorato la squadra? Sulle ultime esperienze (giudicate prima di
+    impararle) sbaglia chiaramente piu' di quella uscita da scuola: torna com'era, impara piu' piano."""
+    d = np.asarray(m.get("contro_scuola", [])[-PRUDENZA:], float)
+    if len(d) < PRUDENZA or m.get("ferma") is None:
+        return False
+    errore = d.std(ddof=1) / np.sqrt(len(d))
+    if not (errore > 0 and d.mean() / errore > PRUDENZA_Z):
+        return False
+    ferma = Squadra.da_dati(m["ferma"].come_dati())
+    squadra.primi, squadra.secondi, squadra.capo, squadra.confronto = ferma.primi, ferma.secondi, ferma.capo, ferma.confronto
+    m["ritmo"] = float(m.get("ritmo", 1.0)) / 2
+    m["contro_scuola"] = []
+    return True
 
 
 def _chi_vince(squadra: Squadra, info: dict) -> Optional[dict]:
@@ -146,13 +188,16 @@ def _salva(cartella: Path, squadra: Squadra, info: dict) -> None:
         "scuola": m.get("scuola"), "esperienze": len(m.get("vissute") or []), "squadra": squadra.come_dati(),
         "piani": info["piani"].come_dati() if info.get("piani") is not None else None,
         "sfidanti": [{**s, "squadra": s["squadra"].come_dati()} for s in info.get("sfidanti", [])],
-        "cambi": info.get("cambi", [])}), encoding="utf-8")
+        "cambi": info.get("cambi", []), "ritmo": m.get("ritmo", 1.0), "contro_scuola": m.get("contro_scuola", []),
+        "base": m.get("base")}), encoding="utf-8")
     provvisorio.replace(cartella / VIVI)
 
 
 def _per_i_piani(rete: ReteValori, v: dict) -> Optional[np.ndarray]:
     """Quello che vede il cervello dei piani; None se e' nato con viste di un'altra misura (per
     esempio prima degli occhi nuovi): allora si segue il piano di sempre finche' non si riallena."""
+    if any(a not in v for a in AGENTI):
+        return None
     x = vista_dei_piani({a: np.atleast_2d(v[a]) for a in AGENTI})
     return x if x.shape[1] == len(rete.media) else None
 
@@ -197,13 +242,13 @@ def _cento(logit: float) -> int:
 def giudica(squadra: Squadra, viste: dict) -> dict:
     """Il primo giudizio di ognuno, quello dopo il confronto, chi ha convinto chi, e la fiducia
     della squadra (su 100: quanto credono che l'operazione guadagni)."""
-    v = {a: np.atleast_2d(viste[a]) for a in AGENTI}
+    v = {a: np.atleast_2d(viste[a]) for a in AGENTI if a in viste}
     primo, dopo, p = squadra.giudica(v)
     convinti = squadra.chi_ha_convinto(v)
-    return {"primo": {a: _cento(float(primo[a][0])) for a in AGENTI},
-            "dopo": {a: _cento(float(dopo[a][0])) for a in AGENTI},
+    return {"primo": {a: _cento(float(primo[a][0])) for a in squadra.agenti},
+            "dopo": {a: _cento(float(dopo[a][0])) for a in squadra.agenti},
             "convinti": {a: [b, float(e)] for a, (b, e) in convinti.items()},
-            "fiducia": float(p[0]), "viste": {a: [round(float(x), 5) for x in viste[a]] for a in AGENTI}}
+            "fiducia": float(p[0]), "viste": {a: [round(float(x), 5) for x in viste[a]] for a in AGENTI if a in viste}}
 
 
 def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, info: Optional[dict] = None) -> Optional[dict]:
@@ -217,7 +262,7 @@ def impara(squadra: Squadra, cartella: Path, giudizio: dict, erre: float, info: 
     # Un risultato fuori misura (uno stop quasi nullo fa R enormi) non deve travolgere quello che sanno.
     erre = float(np.clip(erre, *TETTO))
     y, w = float(erre > 0), abs(erre)
-    v = squadra.adatta({a: np.array([giudizio["viste"][a]]) for a in AGENTI})
+    v = squadra.adatta({a: np.array([x]) for a, x in giudizio["viste"].items()})
     lezione = _esperienza(squadra, info, v, y, w, seme=len(m["vissute"]))
     piano = giudizio.get("piano")
     _impara_piano(info.get("piani"), v, piano, erre)
@@ -239,6 +284,30 @@ def voce_della_lezione(lezione: dict, erre: float) -> str:
         return f"🧠 Eravamo al {prima}% e {com_e_andata}: ce lo aspettavamo, lo ricordiamo e non cambia quasi niente."
     return (f"🧠 Eravamo al {prima}% e {com_e_andata}. Lezione imparata: su casi così adesso siamo al {dopo}%. "
             f"Lo ricordiamo insieme a tutto il resto.")
+
+
+def puntata(info: dict, giudizio: dict, viste: Optional[dict]) -> float:
+    """Quanto puntare su un'operazione quando decidono i cervelli, da 0 a 1: lo dice il cervello
+    del Rischio (se all'esame ha battuto la formula), se no la formula di prima (2 x fiducia - 1)."""
+    formula = max(2 * giudizio["fiducia"] - 1, 0.0)
+    dati = (info.get("rischio") or {}).get("cervello")
+    if not dati or not viste or "Livelli" not in viste:
+        return formula
+    if "_cervello_rischio" not in info:
+        from nvm.cervello.rischio_cervello import CervelloRischio
+        info["_cervello_rischio"] = CervelloRischio.da_dati(dati)
+    from nvm.cervello.rischio_cervello import vista_del_rischio
+    x = vista_del_rischio(giudizio["fiducia"], np.atleast_2d(viste["Livelli"]))
+    if x.shape[1] != len(info["_cervello_rischio"].media):
+        return formula
+    return float(info["_cervello_rischio"].quanto(x)[0])
+
+
+def voce_della_prudenza(prudenza: dict) -> str:
+    """I cervelli si sono accorti che imparare cosi' in fretta li faceva sbagliare di piu'."""
+    return (f"🧠 Ci siamo accorti che imparare così in fretta dalle ultime {PRUDENZA} occasioni ci faceva sbagliare "
+            f"più di come eravamo usciti da scuola. Torniamo a com'eravamo e da adesso impariamo più piano "
+            f"(ritmo {round(100 * prudenza['ritmo'])}%).")
 
 
 def voce_del_cambio(cambio: dict) -> str:
@@ -266,9 +335,9 @@ CAMBIO = 3
 
 def voce(g: dict, soglia: float, decidono: bool) -> str:
     """Il ragionamento dei cervelli su un'operazione, in un messaggio."""
-    primi = ", ".join(f"{a} {g['primo'][a]}" for a in AGENTI)
+    primi = ", ".join(f"{a} {x}" for a, x in g["primo"].items())
     cambi = []
-    for a in AGENTI:
+    for a in g["primo"]:
         prima, dopo = g["primo"][a], g["dopo"][a]
         if abs(dopo - prima) >= CAMBIO:
             chi = g["convinti"].get(a, [None])[0]
