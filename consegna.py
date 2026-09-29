@@ -106,13 +106,13 @@ def vivo(cartella_vivo: Path, uscita: Path, nascosti: list[str] = ()) -> list[st
 
 
 def video_da_casa(posti: list[Path], uscita: Path) -> int:
-    """Il pacco dei video di Romeo fatto sul computer di casa (`video.py`, `video_romeo.zip`), se
-    e' nella cartella del bot, sul Desktop o fra gli scaricati: si apre in `video/` (solo i file
-    nuovi) e si segna come importato."""
+    """I pacchi dei video di Romeo fatti sul computer di casa (`video.py`, `video_romeo_1.zip`, ...),
+    se sono nella cartella del bot, sul Desktop o fra gli scaricati: si aprono in `video/` (solo i
+    file nuovi) e si segnano come importati."""
     import zipfile
     fatti = 0
-    for pacco in (p / "video_romeo.zip" for p in posti):
-        if not pacco.is_file():
+    for pacco in (f for p in posti if p.is_dir() for f in sorted(p.glob("video_romeo*.zip"))):
+        if pacco.name.endswith(".importato.zip"):
             continue
         with zipfile.ZipFile(pacco) as z:
             for nome in z.namelist():
@@ -123,7 +123,7 @@ def video_da_casa(posti: list[Path], uscita: Path) -> int:
                     destinazione.parent.mkdir(parents=True, exist_ok=True)
                     destinazione.write_bytes(z.read(nome))
                     fatti += 1
-        pacco.replace(pacco.with_name("video_romeo.importato.zip"))
+        pacco.replace(pacco.with_name(pacco.stem + ".importato.zip"))
     return fatti
 
 

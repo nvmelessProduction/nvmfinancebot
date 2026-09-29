@@ -89,9 +89,11 @@ fanno dal **computer di casa**.
    `scarica_video.bat`**. La prima volta installa Python da solo. Per ogni
    video prende un fotogramma ogni 15 secondi e i sottotitoli, poi cancella
    il video. Circa un'ora; puoi chiudere e riprendere quando vuoi.
-2. Alla fine nella cartella c'è `video_romeo.zip`: copialo sulla VPS, nella
-   cartella del bot o sul Desktop, e sulla VPS **doppio clic su
-   `consegna.bat`**. Lo apre e lo spedisce.
+2. Alla fine prepara i file `video_romeo_1.zip`, `video_romeo_2.zip`, ... (ognuno sotto i
+   25 MB) e apre la pagina di GitHub per caricarli sul ramo dei dati
+   (https://github.com/nvmelessProduction/nvmfinancebot/upload/dati-vps): trascinali dentro
+   e premi **Commit changes**. Poi dillo a Claude. (In alternativa, se puoi copiarli sulla
+   VPS: nella cartella del bot o sul Desktop, e doppio clic su `consegna.bat`.)
 
 ## Se qualcosa va storto
 

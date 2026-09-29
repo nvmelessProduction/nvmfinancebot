@@ -23,6 +23,23 @@ RADICE = Path(__file__).resolve().parent
 RAMO = "dati-vps"
 
 
+def apri_pacco(dati: bytes, dove: Path) -> int:
+    """Un pacco dei video di Romeo (`video.py`): i file nuovi sotto `video/`."""
+    import io
+    import zipfile
+    fatti = 0
+    with zipfile.ZipFile(io.BytesIO(dati)) as z:
+        for nome in z.namelist():
+            if not nome.startswith("video/") or nome.endswith("/") or ".." in nome.split("/"):
+                continue
+            destinazione = dove / nome
+            if not destinazione.exists():
+                destinazione.parent.mkdir(parents=True, exist_ok=True)
+                destinazione.write_bytes(z.read(nome))
+                fatti += 1
+    return fatti
+
+
 def main() -> None:
     r = subprocess.run(["git", "fetch", "-q", "origin", f"{RAMO}:refs/remotes/origin/{RAMO}"], cwd=RADICE,
                        capture_output=True, text=True)
@@ -54,6 +71,10 @@ def main() -> None:
             if destinazione.exists():
                 continue
             video += 1
+        elif nome.startswith("video_romeo") and nome.endswith(".zip"):
+            # I pacchi fatti sul computer di casa e caricati dal sito di GitHub: si aprono in dati/vps/video.
+            video += apri_pacco(contenuto(), RADICE / "dati" / "vps")
+            continue
         else:
             continue
         destinazione.parent.mkdir(parents=True, exist_ok=True)

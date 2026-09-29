@@ -3,8 +3,10 @@
     python video.py            # tutti i video del canale @Romeotpt non ancora fatti
 
 YouTube blocca gli scaricamenti dai server (Claude, e anche la VPS); da una connessione di casa di
-solito no. Fuori dalla cartella del bot (sul computer di casa) alla fine fa `video_romeo.zip`, da
-copiare nella cartella del bot sulla VPS: `consegna.bat` lo apre e lo spedisce. Per ogni video: scarica il
+solito no. Fuori dalla cartella del bot (sul computer di casa) alla fine fa dei pacchi
+`video_romeo_1.zip`, `video_romeo_2.zip`... sotto i 25 MB che il sito di GitHub accetta, e apre la
+pagina per caricarli sul ramo `dati-vps` (`importa_vps.py` li apre in palestra); oppure si copiano
+nella cartella del bot sulla VPS e `consegna.bat` li apre e li spedisce. Per ogni video: scarica il
 video (senza audio, al massimo 720p) e i sottotitoli automatici in inglese, prende un
 fotogramma ogni `OGNI` secondi (i grafici che Romeo disegna mentre parla), cancella il video
 e lascia fotogrammi e sottotitoli in `dati/consegna/video/<id>/`. `consegna.bat` li spedisce
@@ -29,7 +31,10 @@ LAVORO = RADICE / "dati" / "video_tmp"
 CANALE = "https://www.youtube.com/@Romeotpt"
 OGNI = 15            # secondi fra un fotogramma e l'altro
 LARGHEZZA = 960
-PACCO = "video_romeo.zip"   # quello che il computer di casa prepara per la VPS
+# I pacchi che il computer di casa prepara: sotto i 25 MB che il sito di GitHub accetta per file.
+PACCO = "video_romeo_{}.zip"
+PACCO_MB = 20
+CARICA = "https://github.com/nvmelessProduction/nvmfinancebot/upload/dati-vps"
 # I video del canale al 29/09/2026, se l'elenco non si riesce a leggere.
 NOTI = ["T7udbrWlARI", "FYr6J5pIDB4", "_oiwm8_id8c", "n2GF8kCpgVg", "p8UYOgVn1-g", "3IWgc52Dqsg", "h7NCST2wPw8",
         "-mWYppebugo", "2sxdsgcIeYA", "af7ECe4HBjc", "1EK-LMwgJ3c", "Pmmx41M7KhA", "8LblVvGZaGY", "4DZWbCzEvhM",
@@ -155,19 +160,45 @@ def main() -> None:
     if (RADICE / "consegna.py").exists():
         print(f"\nFatti {fatti} video su {len(video)}. Adesso doppio clic su consegna.bat per mandarli.", flush=True)
     else:
-        pacco = impacchetta(USCITA, RADICE / PACCO)
-        print(f"\nFatti {fatti} video su {len(video)}. Pronto il file {pacco.name} ({pacco.stat().st_size // 2**20} MB) "
-              f"in {pacco.parent}.\nCopialo nella cartella del bot sulla VPS e fai doppio clic su consegna.bat.", flush=True)
+        pacchi = impacchetta(USCITA, RADICE)
+        print(f"\nFatti {fatti} video su {len(video)}. Pronti {len(pacchi)} file da caricare su GitHub "
+              f"({', '.join(p.name for p in pacchi)}), nella cartella {RADICE}.\n"
+              f"Si apre la pagina di GitHub: trascina dentro tutti i file video_romeo_... e premi «Commit changes». "
+              f"Poi dillo a Claude.", flush=True)
+        try:
+            import webbrowser
+            webbrowser.open(CARICA)
+            if hasattr(os, "startfile"):
+                os.startfile(RADICE)          # la cartella, per trascinare i file
+        except Exception:
+            print(f"Apri tu la pagina: {CARICA}", flush=True)
 
 
-def impacchetta(cartella: Path, pacco: Path) -> Path:
-    """I fotogrammi e le parole di tutti i video in un file solo, da portare sulla VPS."""
+def impacchetta(cartella: Path, dove: Path, massimo_mb: float = PACCO_MB) -> list[Path]:
+    """I fotogrammi e le parole di tutti i video in pacchi da `massimo_mb` al massimo (un video
+    non si divide), da caricare su GitHub o portare sulla VPS."""
     import zipfile
-    with zipfile.ZipFile(pacco, "w", zipfile.ZIP_STORED) as z:
-        for f in sorted(cartella.rglob("*")):
-            if f.is_file():
+    for vecchio in dove.glob(PACCO.format("*")):
+        vecchio.unlink()
+    pacchi, gruppo, peso = [], [], 0
+    for video in sorted(p for p in cartella.iterdir() if p.is_dir()):
+        file = [f for f in sorted(video.rglob("*")) if f.is_file()]
+        quanto = sum(f.stat().st_size for f in file)
+        if gruppo and peso + quanto > massimo_mb * 2 ** 20:
+            pacchi.append(gruppo)
+            gruppo, peso = [], 0
+        gruppo += file
+        peso += quanto
+    if gruppo:
+        pacchi.append(gruppo)
+    fuori = []
+    for n, file in enumerate(pacchi, start=1):
+        pacco = dove / PACCO.format(n)
+        with zipfile.ZipFile(pacco, "w", zipfile.ZIP_STORED) as z:
+            for f in file:
                 z.write(f, "video/" + f.relative_to(cartella).as_posix())
-    return pacco
+        fuori.append(pacco)
+    return fuori
 
 
 if __name__ == "__main__":
