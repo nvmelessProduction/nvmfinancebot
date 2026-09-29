@@ -81,14 +81,17 @@ ha finito:
 ## 5. I video di Romeo
 
 Claude studia i video di Romeo guardando i grafici mentre legge le sue
-parole. YouTube non lascia scaricare i video a Claude: servono dalla VPS.
+parole. YouTube blocca gli scaricamenti dai server (anche dalla VPS): si
+fanno dal **computer di casa**.
 
-1. **Doppio clic su `scarica_video.bat`.** Per ogni video prende un
-   fotogramma ogni 15 secondi e i sottotitoli, poi cancella il video. Ci
-   mette circa un'ora; puoi chiudere e riprendere quando vuoi.
-   Si apre da solo anche Edge (o Chrome) su YouTube: **non chiuderlo**, serve
-   a YouTube per dare i video. Si chiude da solo.
-2. Quando scrive `Fatti ... video`, **doppio clic su `consegna.bat`**.
+1. Sul computer di casa estrai `RomeoVideo.zip` (te lo manda Claude; dentro
+   ci sono `scarica_video.bat` e `video.py`) e fai **doppio clic su
+   `scarica_video.bat`**. La prima volta installa Python da solo. Per ogni
+   video prende un fotogramma ogni 15 secondi e i sottotitoli, poi cancella
+   il video. Circa un'ora; puoi chiudere e riprendere quando vuoi.
+2. Alla fine nella cartella c'è `video_romeo.zip`: copialo sulla VPS, nella
+   cartella del bot o sul Desktop, e sulla VPS **doppio clic su
+   `consegna.bat`**. Lo apre e lo spedisce.
 
 ## Se qualcosa va storto
 

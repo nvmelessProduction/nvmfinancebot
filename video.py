@@ -1,8 +1,10 @@
-"""I video di Romeo per i cervelli: fotogrammi e parole. Gira sulla VPS.
+"""I video di Romeo per i cervelli: fotogrammi e parole. Gira sulla VPS o su un computer di casa.
 
     python video.py            # tutti i video del canale @Romeotpt non ancora fatti
 
-Da Claude YouTube blocca gli scaricamenti; dalla VPS di solito no. Per ogni video: scarica il
+YouTube blocca gli scaricamenti dai server (Claude, e anche la VPS); da una connessione di casa di
+solito no. Fuori dalla cartella del bot (sul computer di casa) alla fine fa `video_romeo.zip`, da
+copiare nella cartella del bot sulla VPS: `consegna.bat` lo apre e lo spedisce. Per ogni video: scarica il
 video (senza audio, al massimo 720p) e i sottotitoli automatici in inglese, prende un
 fotogramma ogni `OGNI` secondi (i grafici che Romeo disegna mentre parla), cancella il video
 e lascia fotogrammi e sottotitoli in `dati/consegna/video/<id>/`. `consegna.bat` li spedisce
@@ -27,6 +29,7 @@ LAVORO = RADICE / "dati" / "video_tmp"
 CANALE = "https://www.youtube.com/@Romeotpt"
 OGNI = 15            # secondi fra un fotogramma e l'altro
 LARGHEZZA = 960
+PACCO = "video_romeo.zip"   # quello che il computer di casa prepara per la VPS
 # I video del canale al 29/09/2026, se l'elenco non si riesce a leggere.
 NOTI = ["T7udbrWlARI", "FYr6J5pIDB4", "_oiwm8_id8c", "n2GF8kCpgVg", "p8UYOgVn1-g", "3IWgc52Dqsg", "h7NCST2wPw8",
         "-mWYppebugo", "2sxdsgcIeYA", "af7ECe4HBjc", "1EK-LMwgJ3c", "Pmmx41M7KhA", "8LblVvGZaGY", "4DZWbCzEvhM",
@@ -147,8 +150,24 @@ def main() -> None:
         if esito != "già fatto":
             time.sleep(a.pausa)
     fatti = sum(1 for _ in USCITA.glob("*/fatto.json"))
-    if fatti:
+    if not fatti:
+        return
+    if (RADICE / "consegna.py").exists():
         print(f"\nFatti {fatti} video su {len(video)}. Adesso doppio clic su consegna.bat per mandarli.", flush=True)
+    else:
+        pacco = impacchetta(USCITA, RADICE / PACCO)
+        print(f"\nFatti {fatti} video su {len(video)}. Pronto il file {pacco.name} ({pacco.stat().st_size // 2**20} MB) "
+              f"in {pacco.parent}.\nCopialo nella cartella del bot sulla VPS e fai doppio clic su consegna.bat.", flush=True)
+
+
+def impacchetta(cartella: Path, pacco: Path) -> Path:
+    """I fotogrammi e le parole di tutti i video in un file solo, da portare sulla VPS."""
+    import zipfile
+    with zipfile.ZipFile(pacco, "w", zipfile.ZIP_STORED) as z:
+        for f in sorted(cartella.rglob("*")):
+            if f.is_file():
+                z.write(f, "video/" + f.relative_to(cartella).as_posix())
+    return pacco
 
 
 if __name__ == "__main__":

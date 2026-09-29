@@ -105,6 +105,28 @@ def vivo(cartella_vivo: Path, uscita: Path, nascosti: list[str] = ()) -> list[st
     return copiati
 
 
+def video_da_casa(posti: list[Path], uscita: Path) -> int:
+    """Il pacco dei video di Romeo fatto sul computer di casa (`video.py`, `video_romeo.zip`), se
+    e' nella cartella del bot, sul Desktop o fra gli scaricati: si apre in `video/` (solo i file
+    nuovi) e si segna come importato."""
+    import zipfile
+    fatti = 0
+    for pacco in (p / "video_romeo.zip" for p in posti):
+        if not pacco.is_file():
+            continue
+        with zipfile.ZipFile(pacco) as z:
+            for nome in z.namelist():
+                if not nome.startswith("video/") or nome.endswith("/") or ".." in nome.split("/"):
+                    continue
+                destinazione = uscita / nome
+                if not destinazione.exists():
+                    destinazione.parent.mkdir(parents=True, exist_ok=True)
+                    destinazione.write_bytes(z.read(nome))
+                    fatti += 1
+        pacco.replace(pacco.with_name("video_romeo.importato.zip"))
+    return fatti
+
+
 def _git(cartella: Path, *argomenti: str, ambiente: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *argomenti], cwd=cartella, capture_output=True, text=True,
                           env={**os.environ, "GIT_TERMINAL_PROMPT": "0", **(ambiente or {})})
@@ -165,6 +187,10 @@ def main() -> None:
         print(f"  {quarti(Path(a.grezzi), uscita)} anni nuovi o aggiornati", flush=True)
         print("Preparo le ore scaricate...", flush=True)
         print(f"  {ore(Path(a.grezzi), uscita)} anni nuovi o aggiornati", flush=True)
+    casa = Path(os.environ.get("USERPROFILE", str(Path.home())))
+    video = video_da_casa([RADICE, casa / "Desktop", casa / "Downloads"], uscita)
+    if video:
+        print(f"Video di Romeo dal computer di casa: {video} file nuovi", flush=True)
     env = leggi_env(RADICE / ".env")
     copiati = vivo(Path(a.vivo), uscita, segreti(env))
     print(f"Stato del bot dal vivo: {', '.join(copiati) or 'niente (il bot non ha ancora girato qui)'}", flush=True)
