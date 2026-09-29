@@ -31,12 +31,24 @@ LARGHEZZA = 960
 NOTI = ["T7udbrWlARI", "FYr6J5pIDB4", "_oiwm8_id8c", "n2GF8kCpgVg", "p8UYOgVn1-g", "3IWgc52Dqsg", "h7NCST2wPw8",
         "-mWYppebugo", "2sxdsgcIeYA", "af7ECe4HBjc", "1EK-LMwgJ3c", "Pmmx41M7KhA", "8LblVvGZaGY", "4DZWbCzEvhM",
         "wkSiy27a8ps", "UUq_wKQ61Wo", "U-gNCwbGtTI"]
+# Le porte di YouTube che non chiedono "Sign in to confirm you're not a bot" a un server (provato il 29/09/2026).
+CLIENTI = "youtube:player_client=web_embedded,mweb"
+# Il browser con cui `yt-dlp-getpot-wpc` fa il gettone che YouTube chiede per i video da `mweb`.
+BROWSER = [Path(os.environ[v]) / c for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA") if os.environ.get(v)
+           for c in ("Google/Chrome/Application/chrome.exe", "Microsoft/Edge/Application/msedge.exe")]
+
+
+def browser() -> str:
+    return next((str(b) for b in BROWSER if b.is_file()), "")
 
 
 def _ytdlp(*argomenti: str) -> subprocess.CompletedProcess:
     # YouTube vuole un motore JavaScript per dare i video: deno, installato col pip accanto a python.
     percorso = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
-    return subprocess.run([sys.executable, "-m", "yt_dlp", *argomenti], capture_output=True, text=True,
+    porte = ["--extractor-args", CLIENTI]
+    if browser():
+        porte += ["--extractor-args", f"youtubepot-wpc:browser_path={browser()}"]
+    return subprocess.run([sys.executable, "-m", "yt_dlp", *porte, *argomenti], capture_output=True, text=True,
                           env={**os.environ, "PATH": percorso})
 
 
@@ -76,7 +88,8 @@ def uno(identita: str, titolo: str) -> str:
     shutil.rmtree(LAVORO, ignore_errors=True)
     LAVORO.mkdir(parents=True, exist_ok=True)
     url = f"https://www.youtube.com/watch?v={identita}"
-    r = _ytdlp("-f", "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b", "--write-auto-subs",
+    # -i: se YouTube rifiuta i sottotitoli (429) il video si scarica lo stesso.
+    r = _ytdlp("-i", "-f", "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b", "--write-auto-subs",
                "--sub-langs", "en", "--sub-format", "vtt", "-o", str(LAVORO / "v.%(ext)s"), "--", identita)
     video = next((f for f in LAVORO.glob("v.*") if f.suffix in (".mp4", ".webm", ".mkv")), None)
     for s in LAVORO.glob("*.vtt"):

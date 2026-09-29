@@ -81,11 +81,13 @@ ha finito:
 ## 5. I video di Romeo
 
 Claude studia i video di Romeo guardando i grafici mentre legge le sue
-parole. YouTube non lascia scaricare a Claude, alla VPS sì.
+parole. YouTube non lascia scaricare i video a Claude: servono dalla VPS.
 
 1. **Doppio clic su `scarica_video.bat`.** Per ogni video prende un
    fotogramma ogni 15 secondi e i sottotitoli, poi cancella il video. Ci
    mette circa un'ora; puoi chiudere e riprendere quando vuoi.
+   Si apre da solo anche Edge (o Chrome) su YouTube: **non chiuderlo**, serve
+   a YouTube per dare i video. Si chiude da solo.
 2. Quando scrive `Fatti ... video`, **doppio clic su `consegna.bat`**.
 
 ## Se qualcosa va storto
@@ -95,6 +97,6 @@ parole. YouTube non lascia scaricare a Claude, alla VPS sì.
 | `TroppeRichieste` | Dukascopy ha smesso di rispondere per un po'. Aspetta mezz'ora e rilancia `scarica.bat` |
 | `Manca GITHUB_TOKEN nel file .env` | manca la riga del punto 2.9, o il file non si chiama `.env` |
 | `GitHub non accetta i dati` | la chiave è sbagliata, scaduta o senza **Contents: Read and write**: rifai il punto 2 |
-| `Sign in to confirm you're not a bot` | YouTube ha bloccato anche la VPS per un po'. Riprova `scarica_video.bat` il giorno dopo |
+| `Sign in to confirm you're not a bot` o `403: Forbidden` | YouTube ha bloccato anche la VPS per un po'. Riprova `scarica_video.bat` il giorno dopo; se si ripete, manda la foto a Claude |
 | `python non è riconosciuto` | manca Python. Installalo da python.org, spuntando "Add Python to PATH" |
 | qualsiasi altro errore | manda a Claude una foto della finestra (senza la chiave in vista) |
