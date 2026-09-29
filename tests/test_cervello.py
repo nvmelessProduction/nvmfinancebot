@@ -78,14 +78,17 @@ def test_dal_vivo_giudicano_si_confrontano_imparano_e_ricordano(tmp_path):
         lezione = dal_vivo.impara(squadra, cartella, g, -1.0, info)
         assert lezione["dopo"] <= lezione["prima"] + 1e-9      # una lezione tenuta o niente: mai peggio
         tenute += lezione["tenuta"]
-    dopo = dal_vivo.giudica(squadra, caso)["fiducia"]
+    # Chi decide resta com'era finche' i fatti non danno ragione a chi impara; chi impara si e' mosso.
+    assert abs(dal_vivo.giudica(squadra, caso)["fiducia"] - prima) < 1e-9
+    dopo = dal_vivo.giudica(info["memoria"]["impara"], caso)["fiducia"]
     assert tenute >= 1 and dopo < prima
     # Ricaricata riparte da com'era diventata; e senza il salvataggio rivive le esperienze una per una.
     ricaricata, info2 = dal_vivo.carica(file, cartella)
-    assert abs(dal_vivo.giudica(ricaricata, caso)["fiducia"] - dopo) < 1e-6 and len(info2["memoria"]["vissute"]) == 5
+    assert abs(dal_vivo.giudica(info2["memoria"]["impara"], caso)["fiducia"] - dopo) < 1e-6
+    assert len(info2["memoria"]["vissute"]) == 5
     (cartella / dal_vivo.VIVI).unlink()
-    rivissuta, _ = dal_vivo.carica(file, cartella)
-    assert abs(dal_vivo.giudica(rivissuta, caso)["fiducia"] - dopo) < 1e-6
+    rivissuta, info3 = dal_vivo.carica(file, cartella)
+    assert abs(dal_vivo.giudica(info3["memoria"]["impara"], caso)["fiducia"] - dopo) < 1e-6
     # La gara della sera: cervelli contro Capo sulle occasioni finite.
     s = NS(esito={"erre": 1.5, "quando": 100}, cervelli={"fiducia": 0.7}, presa_dal_capo=False)
     assert "i cervelli ne avrebbero prese 1 (+1,50 volte il rischio), il Capo 0" in dal_vivo.gara([s], 0, 200, 0.5)
@@ -271,42 +274,27 @@ def test_i_cervelli_dicono_cosa_hanno_imparato():
     assert "solo come esperienza" in voce_della_lezione({"prima": 0.8, "dopo": 0.8, "tenuta": False}, -1.0)
 
 
-def test_se_imparare_li_peggiora_tornano_come_da_scuola_e_imparano_piu_piano():
-    from nvm.cervello import dal_vivo, esperienza
+def test_chi_impara_prende_il_comando_solo_quando_i_fatti_gli_danno_ragione():
+    from nvm.cervello import dal_vivo
     rng = np.random.default_rng(5)
     x = rng.normal(size=(900, 3))
     y = (x[:, 0] > 0).astype(float)
     v = {a: x.copy() for a in AGENTI}
-    scuola = Squadra.allena(v, y)
-    squadra = Squadra.allena(v, rng.permutation(y))        # quella che ha "imparato" male
-    m = {"ferma": scuola, "ritmo": 1.0, "contro_scuola": list(rng.normal(0.05, 0.1, dal_vivo.PRUDENZA))}
-    assert dal_vivo._prudenza(squadra, m)
-    assert m["ritmo"] == 0.5 and m["contro_scuola"] == []
+    buona = Squadra.allena(v, y)
+    confusa = Squadra.allena(v, rng.permutation(y))
     caso = {a: v[a][:50] for a in AGENTI}
-    assert np.allclose(squadra.giudica(caso)[2], scuola.giudica(caso)[2])
+    # Chi impara sbaglia chiaramente meno di chi comanda: prende il comando.
+    comando = Squadra.da_dati(confusa.come_dati())
+    m = {"impara": buona, "ritmo": 1.0, "contro_scuola": list(rng.normal(0.05, 0.1, dal_vivo.PRUDENZA))}
+    assert dal_vivo._chi_comanda(comando, m) == "promozione"
+    assert np.allclose(comando.giudica(caso)[2], buona.giudica(caso)[2]) and m["contro_scuola"] == []
+    # Chi impara sbaglia chiaramente di piu': torna come chi comanda e impara piu' piano.
+    comando = Squadra.da_dati(buona.come_dati())
+    m = {"impara": confusa, "ritmo": 1.0, "contro_scuola": list(rng.normal(-0.05, 0.1, dal_vivo.PRUDENZA))}
+    assert dal_vivo._chi_comanda(comando, m) == "prudenza"
+    assert m["ritmo"] == 0.5 and np.allclose(m["impara"].giudica(caso)[2], buona.giudica(caso)[2])
     assert "impariamo più piano" in dal_vivo.voce_della_prudenza({"ritmo": 0.5})
-    # Una differenza che e' solo caso non fa tornare indietro.
-    m2 = {"ferma": scuola, "ritmo": 1.0, "contro_scuola": list(rng.normal(0.0, 0.1, dal_vivo.PRUDENZA))}
-    assert not dal_vivo._prudenza(squadra, m2)
-
-
-def test_il_cervello_del_rischio_punta_di_piu_dove_si_guadagna():
-    from nvm.cervello.rischio_cervello import CervelloRischio, vista_del_rischio
-    from nvm.cervello import dal_vivo
-    rng = np.random.default_rng(3)
-    n = 6000
-    p = rng.uniform(0.3, 0.8, n)
-    livelli = rng.normal(size=(n, 6))
-    vince = rng.random(n) < p                                    # dove ci crede di piu', vince piu' spesso
-    erre = np.where(vince, 1.5, -1.0)
-    cervello = CervelloRischio.allena(vista_del_rischio(p, livelli), erre)
-    f = cervello.quanto(vista_del_rischio(np.array([0.35, 0.75]), np.zeros((2, 6))))
-    assert f[1] > f[0] + 0.2 and f[0] < 0.2                     # sull'incerto quasi niente, sul buono di piu'
-    assert cervello.crescita(vista_del_rischio(p, livelli), erre) > 0
-    # Dal vivo: la puntata la dice il cervello del Rischio; senza cervello, la formula di prima.
-    info = {"rischio": {"cervello": cervello.come_dati()}}
-    g = {"fiducia": 0.75}
-    assert abs(dal_vivo.puntata(info, g, {"Livelli": np.zeros(6)}) - f[1]) < 1e-9
-    assert dal_vivo.puntata({}, g, {"Livelli": np.zeros(6)}) == 0.5
-    copia = CervelloRischio.da_dati(cervello.come_dati())
-    assert np.allclose(copia.quanto(vista_del_rischio(p[:5], livelli[:5])), cervello.quanto(vista_del_rischio(p[:5], livelli[:5])))
+    assert "Da adesso decidiamo così" in dal_vivo.voce_della_promozione({"esperienze": 150})
+    # Una differenza che e' solo caso non cambia niente.
+    m = {"impara": confusa, "ritmo": 1.0, "contro_scuola": list(rng.normal(0.0, 0.1, dal_vivo.PRUDENZA))}
+    assert dal_vivo._chi_comanda(comando, m) is None

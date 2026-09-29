@@ -125,10 +125,12 @@ Dal vivo, appena un'occasione finisce (presa o no), la squadra impara subito:
 - **si controllano**: se dopo la lezione sbagliano sui ricordi di controllo più di quanto
   sbagliavano usciti da scuola (oltre l'1%), tornano indietro e riprovano più piano; se ancora
   peggio, la lezione non resta. Il metro è sempre la scuola, mai la lezione prima;
-- **si accorgono se imparare li peggiora** (la prudenza): accanto tengono la squadra uscita da
-  scuola, ferma; su ogni esperienza, prima di impararla, si segna chi giudicava meglio. Se sulle
-  ultime 150 la squadra che impara sbaglia chiaramente di più (oltre 2 errori standard), torna
-  com'era uscita da scuola e da lì impara a metà ritmo, e lo dice in equipe;
+- **chi decide e chi impara** (dal 29/09/2026): decide la squadra in comando (all'inizio quella
+  uscita da scuola); accanto una copia impara da ogni esperienza. Su ogni esperienza, prima di
+  impararla, si segna chi giudicava meglio. Se sulle ultime 150 quella che impara sbaglia
+  chiaramente meno (oltre 2 errori standard) prende il comando; se sbaglia chiaramente di più
+  torna come quella in comando e impara a metà ritmo. Tutto lo dicono in equipe. Impara sempre,
+  cambia come decide solo quando i fatti gli danno ragione;
 - **ricordano**: dopo ogni esperienza la squadra si salva (`dati/vivo/cervelli_vivi.json`) e
   riparte da lì. Con una scuola nuova rivive una per una tutte le esperienze vere di prima.
 
@@ -146,7 +148,11 @@ rispetto alla lezione prima, e su 2600 lezioni l'anno si sommava. Da qui il metr
 scuola e la prudenza. Con quelli, 2018: errore 0,6825 contro 0,6819 della squadra ferma (3 volte
 tornati indietro, ritmo finale 1/8): non fa più danni. Nota onesta: in quegli anni sia la
 squadra ferma sia quella che impara sbagliano più di chi dicesse sempre "41 su 100" (0,665):
-dal 2017 i cervelli non prevedono davvero.
+dal 2017 i cervelli non prevedono davvero. Tutti gli anni 2018-2023, 8 cervelli e Capo cervello,
+metro fisso e prudenza: errore uguale alla squadra ferma nel 2018, 2019 e 2021, peggio nel 2020
+(0,718 contro 0,671), 2022 (0,675 contro 0,668) e 2023 (0,707 contro 0,682); chi impara diventa più
+sicuro e prende 230-740 operazioni l'anno, in perdita in 4 anni su 6. Per questo chi impara non
+decide finché i fatti non gli danno ragione (sopra).
 
 ## Si modificano anche dal vivo, di continuo (le sfidanti, 29/09/2026)
 

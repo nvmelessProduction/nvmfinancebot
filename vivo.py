@@ -581,9 +581,13 @@ class Bot:
                 if lezione:
                     cambio = lezione.pop("cambio", None)
                     prudenza = lezione.pop("prudenza", None)
+                    promozione = lezione.pop("promozione", None)
                     if prudenza:
                         registra(CARTELLA, "prudenza", **prudenza)
                         self.tg.equipe(dal_vivo.voce_della_prudenza(prudenza))
+                    if promozione:
+                        registra(CARTELLA, "promozione", **promozione)
+                        self.tg.equipe(dal_vivo.voce_della_promozione(promozione))
                     registra(CARTELLA, "lezione", chiave=s.chiave, **{k: round(float(x), 4) for k, x in lezione.items()})
                     if s.entrata:
                         self.tg.equipe(dal_vivo.voce_della_lezione(lezione, float(s.esito["erre"])))
