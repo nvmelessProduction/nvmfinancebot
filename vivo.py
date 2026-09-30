@@ -265,8 +265,10 @@ class Bot:
                 avvisato.write_text("1", encoding="utf-8")
             elif not fatto:
                 self.allarme(problema)
-        except Exception:
+        except Exception as errore:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
+            self.allarme(f"non sono riuscito a preparare i disegni per MT5 ({type(errore).__name__}: {errore}): "
+                         "il bot lavora lo stesso, ma senza disegni sul grafico.")
 
     def _disegna(self, d, viva, adesso: int) -> None:
         if self.disegni is None or getattr(d.r.scatto, "modello", "") != "candela 3":

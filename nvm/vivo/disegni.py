@@ -16,6 +16,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,7 @@ from nvm.agenti.cacciatore import Verso
 from nvm.tempo import TF, fine_candela
 
 FILE = "nvm_disegni.csv"
+_WINDOWS = sys.platform == "win32"
 SORGENTI = ("NvmDisegni.mqh", "NvmDisegni.mq5", "NvmDisegniGrafico.mq5")
 DURATA = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400, TF.W1: 7 * 86400}
 # Quanto restano sul grafico i disegni di un'operazione, dopo la fine della candela 3.
@@ -49,6 +51,11 @@ class Segno:
 
 def _pulito(testo: str) -> str:
     return testo.replace(";", ",").replace("\n", " ")
+
+
+def _corto(gruppo: str) -> str:
+    """Il nome di un gruppo nel file: corto, perche' in MT5 il nome di un oggetto sta in 63 caratteri."""
+    return hashlib.sha1(gruppo.encode("utf-8")).hexdigest()[:10]
 
 
 class Disegni:
@@ -79,7 +86,7 @@ class Disegni:
         for g, v in self.gruppi.items():
             for s in v["segni"]:
                 fuori.append(";".join([
-                    _pulito(g), v["simbolo"], s["tipo"], str(int(s["t1"])), repr(float(s["p1"])), str(int(s["t2"])),
+                    _corto(g), v["simbolo"], s["tipo"], str(int(s["t1"])), repr(float(s["p1"])), str(int(s["t2"])),
                     repr(float(s["p2"])), s["colore"], str(int(s["stile"])), str(int(s["spessore"])), _pulito(s["testo"])]))
         return fuori
 
@@ -175,8 +182,12 @@ def installa(radice: Path, dati_mt5: Path, programma_mt5: Path) -> tuple[bool, s
         if editor is None:
             fatti = False
             continue
+        # Il comando come lo scrive MetaQuotes, con le virgolette dopo i due punti: i percorsi di
+        # Windows possono avere spazi.
+        comando = f'"{editor}" /compile:"{dest / programma}" /log:"{dest / "compilazione.log"}"'
         try:
-            subprocess.run([str(editor), f"/compile:{dest / programma}", f"/log:{dest / 'compilazione.log'}"],
+            subprocess.run(comando if _WINDOWS else [str(editor), f"/compile:{dest / programma}",
+                                                      f"/log:{dest / 'compilazione.log'}"],
                            timeout=180, capture_output=True)
         except (OSError, subprocess.SubprocessError):
             fatti = False
@@ -186,14 +197,15 @@ def installa(radice: Path, dati_mt5: Path, programma_mt5: Path) -> tuple[bool, s
         else:
             fatti = False
     if not fatti:
-        return False, ("non sono riuscito a preparare il programma dei disegni per MT5 (MetaEditor non trovato o "
-                       "compilazione fallita): il bot lavora lo stesso, ma senza disegni sul grafico.")
+        perche = "MetaEditor non trovato" if editor is None else "la compilazione non è riuscita"
+        return False, (f"non sono riuscito a preparare il programma dei disegni per MT5 ({perche}): il bot lavora "
+                       "lo stesso, ma senza disegni sul grafico.")
     return True, ""
 
 
 AVVISO = ("✏️ Da adesso disegno sul grafico di MT5 le operazioni come le disegna Romeo: la candela 1 col suo "
           "50%, la finta sul key level, l'apertura della candela 3, la candela spessa del Model#1, l'entrata, lo "
           "stop e i due obiettivi; la domenica il massimo e il minimo della settimana passata.\n"
-          "Per vederli serve una cosa sola, una volta: in MT5 apri il Navigatore (Ctrl+N), apri «Servizi», poi "
-          "la cartella «NVM»: tasto destro su «NvmDisegni» → «Avvia». Se non lo vedi: tasto destro su «Servizi» → "
-          "«Aggiorna». Da lì in poi i disegni compaiono da soli su ogni grafico aperto.")
+          "Per vederli serve una cosa sola, una volta: in MT5 apri il Navigatore (Ctrl+N), tasto destro su "
+          "«Services» (Servizi) → «Refresh» (Aggiorna), apri «Services» e la cartella «NVM»: tasto destro su "
+          "«NvmDisegni» → «Start» (Avvia). Da lì in poi i disegni compaiono da soli su ogni grafico aperto.")

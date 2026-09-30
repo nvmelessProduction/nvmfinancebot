@@ -90,7 +90,8 @@ def test_i_programmi_dei_disegni_si_installano_e_si_compilano_una_volta(tmp_path
 
     def compila(cmd, **_):
         chiamate.append(cmd)
-        sorgente = Path(cmd[1].split(":", 1)[1])
+        # Su Windows il comando e' una riga sola con le virgolette, altrove una lista.
+        sorgente = Path(cmd[1].split(":", 1)[1] if isinstance(cmd, list) else cmd.split(' /compile:"')[1].split('"')[0])
         sorgente.with_suffix(".ex5").write_text("compilato")
         return subprocess.CompletedProcess(cmd, 0)
     vero = subprocess.run
@@ -118,7 +119,8 @@ def test_i_disegni_scadono_e_il_file_e_leggibile_da_mt5(tmp_path):
     d.metti("b", "GBPUSD", [Segno("testo", 10, 1.2, testo="Lunedì")], fino=1000)
     d.scrivi(500)
     righe = (tmp_path / "comune" / "nvm_disegni.csv").read_text(encoding="cp1252").split("\n")
-    assert righe[0].split(";")[:3] == ["b", "GBPUSD", "testo"] and righe[0].endswith("Lunedì")
+    assert righe[0].split(";")[1:3] == ["GBPUSD", "testo"] and righe[0].endswith("Lunedì")
+    assert len(righe[0].split(";")[0]) == 10
     assert len(righe[0].split(";")) == 11
     # Ricaricati dopo un riavvio.
     assert list(Disegni(tmp_path).gruppi) == ["b"]
