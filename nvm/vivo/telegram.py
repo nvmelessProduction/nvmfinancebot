@@ -1,9 +1,4 @@
-"""I due canali: operativo (avvio, aperture col perche', chiusure, allarmi) ed
-equipe (gli agenti che si parlano, e la riunione del fine settimana).
 
-Senza token i messaggi finiscono solo sullo schermo. Un messaggio che non
-parte non ferma mai il bot: si riprova qualche volta, poi si va avanti.
-"""
 
 from __future__ import annotations
 
