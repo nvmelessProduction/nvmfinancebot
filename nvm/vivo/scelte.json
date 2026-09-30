@@ -1,8 +1,7 @@
 {
  "decidono_i_cervelli": true,
- "squadra_intelligente": true,
- "modello": "claude-opus-5-5",
+ "squadra_intelligente": false,
  "filtro_romeo": true,
  "quando": "30/09/2026",
- "perche": "Decide la squadra: gli agenti intelligenti con la bibbia di Romeo, se nel .env c'e' ANTHROPIC_API_KEY; se non rispondono, i cervelli numerici. La squadra si riunisce solo sulle occasioni con un key level del grafico sopra e nelle ore di Londra o New York (filtro_romeo)."
+ "perche": "Il proprietario non vuole AI esterne (30/09/2026): la squadra che ragiona con Claude resta spenta. Decidono i cervelli numerici; vale la regola di Romeo: senza key level del grafico sopra o fuori dalle ore di Londra e New York non si entra (filtro_romeo)."
 }
