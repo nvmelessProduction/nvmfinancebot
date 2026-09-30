@@ -3,8 +3,8 @@
 Questa è la legge della squadra. Viene da tutto quello che Romeo (RomeoTPT) ha insegnato: i 17 video
 del suo canale YouTube (CRT secrets 1-10, CRTology, "What is CRT?", "What is turtle soup?", due
 sessioni di tape reading), i suoi post su X e i 5.551 messaggi del suo canale Telegram. Le frasi fra
-virgolette sono sue. Dove una regola di Romeo e un numero della palestra non vanno d'accordo, **vince
-Romeo**: i numeri si usano per capire meglio, non per cambiare la strategia.
+virgolette sono sue. Qui non c'è nessun numero dei test sui vent'anni: la squadra impara solo da
+quello che succede dal vivo. Le regole, agente per agente, sono in `regole.py`.
 
 ## 1. Cos'è il CRT
 
@@ -231,15 +231,3 @@ you make is your fault."*
 - **Domenica**: la settimana passata ha chiuso sopra o sotto? Si prevede la forma della settimana nuova
   (rialzista, ribassista, interna) e si segnano i massimi e minimi da guardare.
 - *"The point of trading is to eliminate mistakes week after week."*
-
-## 17. Cosa abbiamo misurato noi (informazione, non legge)
-
-Sui vent'anni (2006-2023, EURUSD, GBPUSD, AUDUSD, USDCHF, USDJPY, oro, 47.290 operazioni del
-sistema meccanico):
-- Il sistema preso meccanicamente, senza giudizio, perde poco (−0,05 R in media): il giudizio conta.
-- Entrare nella candela 3 va meglio che nella 2 (−0,024 contro −0,052 R); le candele interne dopo il
-  range aiutano; la candela del turtle soup spessa aiuta.
-- Lunedì-mercoledì, con l'ingresso a metà o oltre nella settimana, va meglio del resto in 17 anni su 18.
-- Il KOD preso meccanicamente, senza key level e senza ora, non guadagna: serve il giudizio.
-- Il bias settimanale della chiusura/ombra, da solo, indovina la direzione della settimana nel 50%
-  dei casi: vale solo a un key level, come dice Romeo.

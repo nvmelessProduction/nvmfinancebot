@@ -1,149 +1,181 @@
-"""La squadra di agenti intelligenti, con una mente finta (nessuna rete, nessuna chiave)."""
+"""La squadra di agenti intelligenti: nostri, con le regole di Romeo, imparano solo dal vivo."""
 
-import json
+from types import SimpleNamespace as NS
 
-from nvm.intelligenti.mente import Mente, MenteFinta
-from nvm.intelligenti.squadra import DOMANDE, SPECIALISTI, Memoria, Squadra
-
-
-def _voto(voto, fiducia=70, piano=-1):
-    return {"voto": voto, "fiducia": fiducia, "regole": ["turtle soup di un CRT"], "ragionamento": f"voto {voto}",
-            "piano": piano}
+from nvm.intelligenti import al_lavoro
+from nvm.intelligenti.regole import AGENTI, LISTA, REGOLE
+from nvm.intelligenti.squadra import PER_SPEGNERE, SOGLIA_INIZIALE, Memoria, Squadra
 
 
-def _capo(entra=True, tutte=True, piano=4):
-    lista = {d: True for d in DOMANDE}
-    if not tutte:
-        lista["key_level"] = False
-    return {"entra": entra, "lista_di_romeo": lista, "piano": piano, "fiducia": 80, "discorso": "entriamo"}
+def _fatti(**cambi):
+    """Un'occasione da manuale di Romeo: tutte le domande a favore."""
+    f = {"strumento": "EURUSD", "verso": "acquisto", "colpo": 1, "coppia": "D1-H1", "candela": 3,
+         "candela 2 chiusa dentro": True, "candele interne": 2, "corpo della candela 1": -0.8,
+         "dentro un CRT più grande": True, "profondità della manipolazione": 0.3, "spessore del turtle soup": 2.0,
+         "fvg col Model#1": True, "vera rottura di struttura": True, "dalla parte giusta dell'apertura": True,
+         "smt col gemello": True, "manipolazione a fine candela": True, "liquidità presa prima": True,
+         "rr1": 1.5, "rr2": 4.0, "costi in R": 0.05, "key level": True, "tipo di key level": "FVG",
+         "si ferma sul livello": True, "livello intatto oltre l'estremo": None, "livello intatto prima del 50%": None,
+         "apertura della candela contraria toccata": True, "ore di Londra": False, "ore di New York": True,
+         "golden candle time": True, "giorno": "martedì", "ora di New York": "09:30",
+         "ora della manipolazione": "martedì 08:00", "posizione nella settimana": 0.2,
+         "estremo della settimana fra lunedì e mercoledì": True, "bias dalla candela del range": True,
+         "bias dal grafico sopra": True, "CRT grandi nello stesso verso": 1, "CRT grandi contro": 0,
+         "a sconto nella settimana": True, "timeframe grandi a favore": 3, "timeframe grandi contro": 0,
+         "settimana e mese": (True, True), "FVG davanti": True, "FVG alle spalle vicino": False,
+         "gap del weekend": True}
+    f.update(cambi)
+    return f
 
 
-def _mente(voti, capo, puntata=0.6, confronto=None):
-    def specialista(t):
-        for a in SPECIALISTI:
-            if t.startswith(f"Sei {a},"):
-                return voti[a]
-        return None
-    return MenteFinta({
-        "Primo giro della squadra": confronto or (lambda t: {"voto": "entra", "fiducia": 60, "cambio": True,
-                                                             "risposta": "avete ragione"}),
-        "Sei il Capo": capo,
-        "Sei il Rischio": {"puntata": puntata, "motivo": "operazione pulita"},
-        "Leggi il dossier": specialista,
-    })
+def test_ogni_agente_ha_le_regole_di_romeo_e_la_lista_e_completa():
+    assert {r.agente for r in REGOLE} == set(AGENTI)
+    assert all(r.romeo and r.peso > 0 for r in REGOLE)
+    # Quattro domande su cinque dalle regole; la conferma del Model#1 c'e' sempre.
+    assert {r.lista for r in REGOLE if r.lista} == set(LISTA) - {"conferma_basso"}
+    for r in REGOLE:
+        esito, perche = r.guarda(_fatti())
+        assert esito in (-1, 0, 1) and (perche or not esito)
 
 
-def test_tutti_d_accordo_niente_confronto_e_si_entra(tmp_path):
-    m = _mente({a: _voto("entra") for a in SPECIALISTI}, _capo())
-    v = Squadra(m, tmp_path).riunione("k1", "EURUSD", "DOSSIER")
-    assert v.entra and v.piano == 4 and v.puntata == 0.6
-    assert not any("Primo giro della squadra" in c for c in m.chiamate)
+def test_un_occasione_da_manuale_e_tutti_d_accordo_si_entra(tmp_path):
+    v = Squadra(tmp_path).riunione("k1", "EURUSD", _fatti())
+    assert v.entra and all(v.lista.values()) and 0.5 <= v.puntata <= 1.0
     assert [c for c, _ in v.voci][-2:] == ["Capo", "Rischio"]
-    # La decisione resta scritta, per le lezioni.
+    assert all(v.pareri[a]["voto"] == "entra" for a in AGENTI if v.pareri[a]["voto"] != "neutro")
+    # Resta scritta, per imparare quando finisce.
     assert "k1" in Memoria.carica(tmp_path).discusse
 
 
-def test_se_non_sono_d_accordo_si_confrontano(tmp_path):
-    voti = {a: _voto("entra" if i % 2 else "non entrare") for i, a in enumerate(SPECIALISTI)}
-    m = _mente(voti, _capo())
-    v = Squadra(m, tmp_path).riunione("k2", "EURUSD", "DOSSIER")
-    assert sum("Primo giro della squadra" in c for c in m.chiamate) == len(SPECIALISTI)
-    assert all("secondo" in v.pareri[a] for a in SPECIALISTI)
-
-
 def test_un_solo_no_nella_lista_di_romeo_e_non_si_entra(tmp_path):
-    m = _mente({a: _voto("entra") for a in SPECIALISTI}, _capo(entra=True, tutte=False))
-    v = Squadra(m, tmp_path).riunione("k3", "EURUSD", "DOSSIER")
-    assert not v.entra and v.puntata == 0.0
-    assert not any("Sei il Rischio" in c for c in m.chiamate)
+    sq = Squadra(tmp_path)
+    for i, f in enumerate([_fatti(**{"key level": False, "tipo di key level": "nessuno"}),
+                           _fatti(**{"ore di New York": False, "ora di New York": "20:00"}),
+                           _fatti(**{"bias dal grafico sopra": False}),
+                           _fatti(**{"livello intatto prima del 50%": 1.1})]):
+        v = sq.riunione(f"k{i}", "EURUSD", f)
+        assert not v.entra and v.puntata == 0.0 and not all(v.lista.values())
+        assert "lista di Romeo dice no" in v.voci[-1][1]
 
 
-def test_la_puntata_non_supera_il_massimo(tmp_path):
-    m = _mente({a: _voto("entra") for a in SPECIALISTI}, _capo(), puntata=7.0)
-    assert Squadra(m, tmp_path).riunione("k4", "EURUSD", "DOSSIER").puntata == 1.0
+def test_se_non_sono_d_accordo_si_confrontano(tmp_path):
+    f = _fatti(**{"candela": 2, "candela 2 chiusa dentro": None, "dentro un CRT più grande": False,
+                  "candele interne": 0, "corpo della candela 1": 0.0, "spessore del turtle soup": 0.5,
+                  "profondità della manipolazione": 0.01, "fvg col Model#1": False, "vera rottura di struttura": False,
+                  "manipolazione a fine candela": False, "liquidità presa prima": False})
+    v = Squadra(tmp_path).riunione("k", "EURUSD", f)
+    assert v.pareri["Cacciatore"]["voto"] == "non entrare" and v.pareri["Key level"]["voto"] == "entra"
+    assert any(t.startswith("Rispondo a") or t.startswith("Cambio idea") for _, t in v.voci)
 
 
-def test_senza_risposte_decide_il_sistema_di_prima(tmp_path):
-    assert Squadra(MenteFinta({}), tmp_path).riunione("k5", "EURUSD", "DOSSIER") is None
-
-
-def test_dopo_l_operazione_le_lezioni_entrano_nei_pensieri(tmp_path):
-    m = _mente({a: _voto("entra") for a in SPECIALISTI}, _capo())
-    sq = Squadra(m, tmp_path)
-    sq.riunione("k6", "GBPUSD", "DOSSIER")
-    m.risposte["Revisione dell'occasione"] = {"lezioni": [
-        {"agente": "Key level", "lezione": "sotto c'era un minimo intatto: il fondo era finto", "regola_di_romeo": "7"},
-        {"agente": "Sconosciuto", "lezione": "x", "regola_di_romeo": "x"}]}
-    fatte = sq.rifletti("k6", -1.0, preso=True)
-    assert [l["agente"] for l in fatte] == ["Key level"]
-    assert "k6" not in sq.memoria.discusse
-    assert "fondo era finto" in Memoria.carica(tmp_path).ricordi("Key level", "GBPUSD")
-    # Alla riunione dopo, Key level rilegge la sua lezione.
-    sq.riunione("k7", "GBPUSD", "DOSSIER")
-    assert any(c.startswith("Sei Key level,") and "fondo era finto" in c for c in m.chiamate)
-
-
-def test_ogni_settimana_riscrivono_il_loro_manuale(tmp_path):
-    sq = Squadra(MenteFinta({"revisione del fine settimana": {
-        "manuale": "Guardo sempre i minimi intatti sotto la manipolazione." * 100,
-        "cosa_ho_cambiato": "aggiunta la regola del fondo finto", "proposta_al_sistema": "mostrare i minimi intatti"}}),
-        tmp_path)
-    sq.memoria.impara("Key level", {"lezione": "fondo finto", "esito": "-1 R"})
+def test_imparano_solo_dal_vivo_e_si_modificano_da_soli(tmp_path):
+    sq = Squadra(tmp_path)
+    # Dal vivo il gap del weekend sbaglia sempre: chi lo usava ci crede sempre meno.
+    prima = sq.memoria.fiducia_regola("gap del weekend")
+    for i in range(PER_SPEGNERE + 5):
+        sq.riunione(f"g{i}", "EURUSD", _fatti())
+        lezioni = sq.rifletti(f"g{i}", -1.0, preso=True)
+        assert any(l["agente"] == "Capo" for l in lezioni)
+    assert sq.memoria.fiducia_regola("gap del weekend") < prima
+    assert Memoria.carica(tmp_path).credito("Gap") < 1.0
     cambi = sq.riscrivi_manuali()
-    assert cambi == [("Key level", "aggiunta la regola del fondo finto", "mostrare i minimi intatti")]
-    mem = Memoria.carica(tmp_path)
-    assert len(mem.manuali["Key level"]) == 1500 and mem.proposte[0]["agente"] == "Key level"
-    assert mem.storia_manuali[0]["prima"] == ""
-
-
-def test_la_chiave_viene_solo_dal_env(tmp_path, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert not Mente.dal_env(tmp_path).disponibile()
-    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=abc\n", encoding="utf-8")
-    m = Mente.dal_env(tmp_path)
-    assert m.chiave == "abc" and "abc" not in repr(m)
+    chi = {a for a, _, _ in cambi}
+    assert "gap del weekend" in sq.memoria.spente and "Gap" in chi
+    # La lista di Romeo non si spegne mai.
+    assert not any(r.lista and r.nome in sq.memoria.spente for r in REGOLE)
+    # Troppe operazioni in una settimana: il Capo diventa piu' esigente.
+    assert "Capo" in chi and sq.memoria.soglia > SOGLIA_INIZIALE
+    assert "spenta" in Memoria.carica(tmp_path).manuali["Gap"]
 
 
 def test_la_squadra_si_riunisce_sulle_occasioni_vere_del_giro(tmp_path):
-    from types import SimpleNamespace as NS
-    from nvm.intelligenti import al_lavoro
     from nvm.vivo.giro import giro
     from tests.test_vivo import CapoFinto, ore_finte
     import vivo
     base = ore_finte()
     decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())[:3]
     assert decisioni
-    voti = {a: _voto("entra") for a in SPECIALISTI}
-    m = _mente(voti, _capo(piano=1), puntata=0.4)
-    sq = Squadra(m, tmp_path)
-    conto = NS(saldo=10000.0, valuta="EUR")
-    verdetti = al_lavoro.riunioni(sq, decisioni, {"EURUSD": base}, {}, {}, conto, [], filtro_romeo=False)
+    sq = Squadra(tmp_path)
+    verdetti = al_lavoro.riunioni(sq, decisioni, {"EURUSD": base}, {})
+    assert not sq.ultimo_errore
     assert set(verdetti) == {d.chiave for d in decisioni}
-    # Ognuno ha letto il dossier con le candele vere e l'ora di New York.
-    letti = [pezzi[0] for pezzi in m.messaggi if pezzi[-1].startswith("Sei ")]
-    assert letti and all("=== OCCASIONE ===" in t and "Candela 1 (il range)" in t and "(New York)" in t for t in letti)
     assert len(sq.memoria.discusse) == len(decisioni)
-    # Nel bot: decide il verdetto della squadra, col piano scelto dal Capo.
-    finto = NS(_verdetti=verdetti, _decidono_i_cervelli=False)
-    d = decisioni[0]
-    assert vivo.Bot._entra(finto, d, None) is True
-    scelto = vivo.Bot._con_piano(finto, d, None)
-    assert scelto.op is d.piani[1]
-    voci = al_lavoro.voci(verdetti[d.chiave])
-    assert [v.chi for v in voci][-2:] == ["Capo", "Rischio"]
+    # Nel bot decide il verdetto della squadra; senza verdetto, con la squadra accesa, non si entra.
+    finto = NS(_verdetti=verdetti, _decidono_i_cervelli=False, squadra=sq)
+    for d in decisioni:
+        assert vivo.Bot._entra(finto, d, None) is (verdetti[d.chiave].entra and verdetti[d.chiave].puntata > 0)
+    finto._verdetti = {}
+    assert vivo.Bot._entra(finto, decisioni[0], None) is False
+    assert [v.chi for v in al_lavoro.voci(verdetti[decisioni[0].chiave])][-1] in ("Capo", "Rischio")
 
 
-def test_senza_key_level_o_fuori_orario_non_si_riunisce_nemmeno(tmp_path):
-    from types import SimpleNamespace as NS
-    from nvm.agenti.conferme import AllaRomeo, KeyLevel
-    from nvm.intelligenti import al_lavoro
-    kl = KeyLevel(massimo=True, rejection_block=False, fvg=False)
-    ore = AllaRomeo(londra=False, new_york=True, annidato=False, sconto=None)
-    assert al_lavoro.manca_a_romeo(NS(key_level=kl, alla_romeo=ore)) == ""
-    assert "key level" in al_lavoro.manca_a_romeo(NS(key_level=None, alla_romeo=ore))
-    fuori = AllaRomeo(londra=False, new_york=False, annidato=False, sconto=None)
-    assert "ore" in al_lavoro.manca_a_romeo(NS(key_level=kl, alla_romeo=fuori))
-    m = MenteFinta({})
-    d = NS(chiave="k", key_level=None, alla_romeo=ore, r=NS(strumento="EURUSD"))
-    v = al_lavoro.riunioni(Squadra(m, tmp_path), [d], {}, {}, {})
-    assert not v["k"].entra and v["k"].chiamate == 0 and m.chiamate == []
+def test_la_memoria_della_squadra_di_prima_si_riparte_da_romeo(tmp_path):
+    (tmp_path / "memoria.json").write_text('{"manuali": {"Gap": "vecchio"}, "lezioni": {}, "discusse": {}}',
+                                           encoding="utf-8")
+    m = Memoria.carica(tmp_path)
+    assert m.manuali == {} and m.soglia == SOGLIA_INIZIALE
+
+
+def test_nessuna_ai_esterna():
+    import pathlib
+    for f in pathlib.Path("nvm/intelligenti").glob("*.py"):
+        testo = f.read_text(encoding="utf-8")
+        assert "anthropic" not in testo.lower() and "openai" not in testo.lower()
+
+
+def test_nel_bot_la_squadra_decide_apre_col_suo_rischio_impara_e_fa_la_revisione(tmp_path, monkeypatch):
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+    import vivo
+    from nvm.agenti.capo import Capo
+    from nvm.vivo.giro import giro
+    from nvm.vivo.stato import Stato
+    from nvm.vivo.telegram import Telegram
+    from nvm.vivo.ambiente import Impostazioni
+    from tests.test_vivo import CapoFinto, ore_finte
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    # Tutte le occasioni come da manuale di Romeo: la squadra le vuole tutte.
+    monkeypatch.setattr(al_lavoro, "fatti", lambda d, ore, quarti=None: _fatti())
+    base = ore_finte()
+    decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())[:2]
+    mandati, aperte = [], []
+
+    class Esecutore:
+        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None):
+            aperte.append((pieno, parte, fiducia_minima))
+            viva = NS(chiave=d.chiave, strumento="EURUSD", verso=d.r.verso.value, tickets=[1], volume=0.1,
+                      ingresso=d.op.ingresso, stop=d.op.stop, tp1=d.op.tp1, tp2=d.op.tp2, rischio=pieno * parte * 10000,
+                      valuta="EUR", da_sola=pieno * parte, legate=[], pareggio_fatto=False)
+            return viva, NS(saltata=None, equipe=False, testo="aperta")
+
+    bot = object.__new__(vivo.Bot)
+    bot.tg = Telegram(Impostazioni(token="x", chat_operativo=("-1",), chat_equipe=("-2",)),
+                      invia=lambda c, t: mandati.append((c, t)), stampa=lambda _: None)
+    bot.terminale = NS(conto=lambda: NS(saldo=10000.0, valuta="EUR", demo=True))
+    bot.esecutore = Esecutore()
+    bot.stato = Stato()
+    bot.capo = Capo.da_dati(json.loads(Path("nvm/vivo/capo.json").read_text(encoding="utf-8")))
+    bot.cervelli, bot.cervelli_info, bot.scelte = None, {}, {"squadra_intelligente": True}
+    bot.squadra = al_lavoro.crea(tmp_path, bot.scelte)
+    bot.basi, bot.fini, bot._verdetti, bot._da_dire, bot._allarmi = {"EURUSD": base}, {}, {}, [], {}
+    bot._lezioni_oggi, bot._diario, bot._prove = [], ThreadPoolExecutor(1), None
+    bot._decidi(decisioni, int(base.t[-1]), 10**12)
+    # Decide la squadra, col tetto fisso e il suo Rischio.
+    assert len(aperte) == len(decisioni) and all(p == 0.01 and 0.5 <= x <= 1.0 for x, p, _ in aperte)
+    equipe = [t for c, t in mandati if c == "-2"]
+    assert any("lista di Romeo" in t or "Le cinque domande di Romeo" in t for t in equipe)
+    assert any("puntata massima" in t and "del conto" in t for t in equipe)
+    assert not any("vent'anni" in t for t in equipe)
+    # Finita male: la squadra impara in disparte e lo dice.
+    s = bot.stato.seguite[0]
+    s.esito = {"erre": -1.0, "quando": int(base.t[-1]), "tp1": False, "tp2": False, "uscita": "stop"}
+    bot._finita(s, int(base.t[-1]))
+    bot._diario.shutdown(wait=True)
+    assert s.chiave not in bot.squadra.memoria.discusse and bot._lezioni_oggi
+    assert any("Cosa impariamo" in t for c, t in mandati if c == "-2")
+    # Il sabato la revisione e' della squadra, non del Capo dei vent'anni.
+    prima = len(mandati)
+    bot.stato.vive = []                          # quelle finte non si salvano su disco
+    bot.riunione("2026-S40", int(base.t[-1]))
+    assert "Revisione del sabato" in mandati[-1][1] and len(mandati) == prima + 1

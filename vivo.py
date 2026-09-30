@@ -30,6 +30,7 @@ from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
 from nvm.intelligenti import al_lavoro
+from nvm.intelligenti.squadra import PARTE_MASSIMA
 from nvm.vivo import libro
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
@@ -160,15 +161,16 @@ class Bot:
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
             self.cervelli, self.cervelli_info = None, {}
-        # La squadra intelligente (`nvm/intelligenti/`): dieci menti che ragionano con la bibbia di Romeo,
-        # discutono, decidono e imparano. Si accende con ANTHROPIC_API_KEY nel .env; senza, tutto come prima.
+        # La squadra intelligente (`nvm/intelligenti/`): i nostri agenti con le regole di Romeo. Votano,
+        # discutono, decidono da soli e imparano solo dal vivo. Niente AI esterne, niente vent'anni.
         try:
-            self.squadra = al_lavoro.crea(RADICE, CARTELLA, self.scelte)
+            self.squadra = al_lavoro.crea(CARTELLA, self.scelte)
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
             self.squadra = None
         self._verdetti: dict = {}
-        self._consumo_sera = (0, 0.0, 0)
+        # Le lezioni della squadra di oggi, per il riepilogo della sera.
+        self._lezioni_oggi: list[str] = []
         # Le lezioni si scrivono in disparte: il giro non aspetta.
         self._diario = ThreadPoolExecutor(1)
         # Quante volte, per segnale, e' arrivato il primo obiettivo: le prove della conversazione.
@@ -236,11 +238,16 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != "2":
-            self.tg.voci([conversazione.Voce("Capo", conversazione.benvenuto(len(self.strumenti)))])
-            presentati.write_text("2", encoding="utf-8")
-        self.racconta_allenamento()
-        self.racconta_evoluzione()
+        versione = "3" if self.squadra is not None else "2"
+        if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
+            testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
+                     else conversazione.benvenuto(len(self.strumenti)))
+            self.tg.voci([conversazione.Voce("Capo", testo)])
+            presentati.write_text(versione, encoding="utf-8")
+        if self.squadra is None:
+            # Gli allenamenti sui vent'anni si raccontano solo se decide il sistema di prima.
+            self.racconta_allenamento()
+            self.racconta_evoluzione()
 
     def racconta_evoluzione(self) -> None:
         """Come i cervelli hanno provato a cambiare se stessi in settimana: una volta sola, in equipe."""
@@ -409,18 +416,20 @@ class Bot:
             saldo = self.terminale.conto().saldo
         except ErroreMT5:
             saldo = 0.0
-        lezioni = [f"{k} avrebbe fatto meglio {n} volt{'a' if n == 1 else 'e'}"
-                   for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
-        gara = [x for x in (dal_vivo.gara(self.stato.seguite, fine - 86400, fine, self.cervelli_info.get("soglia", 0.5)),
-                            dal_vivo.la_migliore(self.stato.seguite, fine - 86400, fine,
-                                                 float(self.cervelli_info.get("rischio", {}).get("minimo", 0.0))))
-                if x]
+        if self.squadra is not None:
+            # Decide la squadra: da ricordare, le sue lezioni di oggi.
+            lezioni, self._lezioni_oggi = self._lezioni_oggi[-3:], []
+            gara = [al_lavoro.imparato_oggi(self.squadra)]
+        else:
+            lezioni = [f"{k} avrebbe fatto meglio {n} volt{'a' if n == 1 else 'e'}"
+                       for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
+            gara = [x for x in (dal_vivo.gara(self.stato.seguite, fine - 86400, fine, self.cervelli_info.get("soglia", 0.5)),
+                                dal_vivo.la_migliore(self.stato.seguite, fine - 86400, fine,
+                                                     float(self.cervelli_info.get("rischio", {}).get("minimo", 0.0))))
+                    if x]
         testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
                                         self.stato.saltate, [r for _, r in self.stato.chiuse], gara,
-                                        cervelli=self._decidono_i_cervelli)
-        if testo and self.squadra is not None:
-            costo, self._consumo_sera = al_lavoro.costo_in_breve(self.squadra, self._consumo_sera)
-            testo += "\n" + costo
+                                        cervelli=self._decidono_i_cervelli and self.squadra is None)
         if testo:
             self.tg.equipe(testo)
         self.stato.lezioni = {}
@@ -475,12 +484,12 @@ class Bot:
         return bool(self.cervelli is not None and (self.cervelli_info.get("decidono") or self.scelte.get("decidono_i_cervelli")))
 
     def _entra(self, d, g: Optional[dict]) -> bool:
-        """Chi decide: la squadra intelligente, se ha risposto; altrimenti i cervelli numerici o il Capo."""
+        """Chi decide: la squadra intelligente. Solo se e' spenta (`scelte.json`), i cervelli o il Capo di prima."""
         v = self._verdetti.get(d.chiave)
         if v is not None:
             return v.entra and v.puntata > 0
-        # La legge di Romeo vale per tutti: senza key level del grafico sopra, o fuori dalle sue ore, non si entra.
-        if self.scelte.get("filtro_romeo", True) and al_lavoro.manca_a_romeo(d):
+        if self.squadra is not None:
+            # Decide la squadra: se su questa occasione non ha potuto riunirsi, non si entra.
             return False
         if self._decidono_i_cervelli and g is not None:
             return g["fiducia"] > self.cervelli_info.get("soglia", 0.5)
@@ -508,24 +517,24 @@ class Bot:
 
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
         conto = self.terminale.conto() if decisioni else None
-        giudizi = {d.chiave: self._giudizio(d) for d in decisioni}
+        # Se decide la squadra, i cervelli allenati sui vent'anni non giudicano piu'.
+        giudizi = {d.chiave: (None if self.squadra is not None else self._giudizio(d)) for d in decisioni}
         for d in decisioni:
             if giudizi[d.chiave] is not None:
                 # Cosa avrebbe fatto il Capo di prima: serve alla gara della sera.
                 giudizi[d.chiave]["capo"] = bool(d.entra)
-        # La squadra intelligente si riunisce su ogni occasione (piu' riunioni insieme).
+        # La squadra intelligente si riunisce su ogni occasione e decide.
         self._verdetti = {}
         if self.squadra is not None and decisioni:
+            self.squadra.ultimo_errore = ""
             try:
-                self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini, giudizi, conto,
-                                                    self.stato.vive, self.scelte.get("filtro_romeo", True))
+                self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini)
             except Exception:
-                registra(CARTELLA, "errore", testo=traceback.format_exc())
-            discusse = [c for c, v in self._verdetti.items() if v.chiamate]
-            if not discusse and len(self._verdetti) < len(decisioni) and self.squadra.ultimo_errore:
+                self.squadra.ultimo_errore = traceback.format_exc()
+            if self.squadra.ultimo_errore:
                 registra(CARTELLA, "errore", testo=f"squadra intelligente: {self.squadra.ultimo_errore}")
-                self.allarme("La squadra intelligente non risponde (chiave, credito o rete): per ora decide il "
-                             "sistema di prima. Il dettaglio è nel registro.")
+                self.allarme("La squadra non è riuscita a riunirsi su qualche occasione: su quelle non si entra. "
+                             "Il dettaglio è nel registro.")
         # Quando decidono i cervelli, i Livelli scelgono anche il piano: dove lo stop, come il profitto.
         decisioni = [self._con_piano(d, giudizi[d.chiave]) for d in decisioni]
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
@@ -535,10 +544,9 @@ class Bot:
             v = self._verdetti.get(d.chiave)
             if self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
-                    # Quanto puntare lo dice il Rischio della squadra, dentro la parte massima del sistema.
-                    r = self.cervelli_info.get("rischio", {})
+                    # Quanto puntare lo dice il Rischio della squadra, dentro il tetto fisso.
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,
-                                                      parte=r.get("parte"), fiducia_minima=0.0)
+                                                      parte=PARTE_MASSIMA, fiducia_minima=0.0)
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
                     # Quanto puntare lo dice il cervello del Rischio.
@@ -572,14 +580,17 @@ class Bot:
                 # le occasioni lasciate si contano nel riepilogo della sera.
                 viva = next(v for v in self.stato.vive if v.chiave == d.chiave)
                 saldo = conto.saldo if conto is not None else 0.0
-                voci = conversazione.apertura(d, per, self._prove_dei_segnali(), viva.rischio / saldo if saldo else 0.0,
+                voci = conversazione.apertura(d, per, None if self.squadra is not None else self._prove_dei_segnali(),
+                                              viva.rischio / saldo if saldo else 0.0,
                                               *self._esposizione(saldo), ingresso=viva.ingresso,
                                               da_sola=viva.da_sola, legate=tuple(viva.legate))
                 g = giudizi[d.chiave]
                 if d.chiave in self._verdetti:
-                    # La discussione vera della squadra: ognuno col suo bot, il Capo e il Rischio in fondo.
-                    # In fondo il Rischio coi numeri veri dell'ordine (quanto del conto, con le altre aperte).
-                    self.tg.voci(al_lavoro.voci(self._verdetti[d.chiave]) + [x for x in voci if x.chi == "Rischio"])
+                    # La discussione vera della squadra: ognuno col suo bot, il Capo e il Rischio in fondo,
+                    # il Rischio coi numeri veri dell'ordine (quanto del conto, con le altre aperte).
+                    numeri = " ".join(x.testo for x in voci if x.chi == "Rischio")
+                    self.tg.voci([conversazione.Voce(x.chi, x.testo + " " + numeri) if x.chi == "Rischio" else x
+                                  for x in al_lavoro.voci(self._verdetti[d.chiave])])
                     voci = []
                 elif g is not None:
                     # Il ragionamento dei cervelli, prima che il Capo chiuda.
@@ -614,10 +625,14 @@ class Bot:
                      atteso=d.atteso, qualita=d.qualita, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
 
     def _finita(self, s: Seguita, adesso: int) -> None:
-        if self.squadra is not None and s.chiave in self.squadra.memoria.discusse:
-            # La squadra rilegge cosa aveva detto e scrive le sue lezioni, in disparte.
-            self._diario.submit(self._lezioni_della_squadra, s.chiave, float(s.esito["erre"]), bool(s.entrata),
-                                s.leggibile or "")
+        if self.squadra is not None:
+            # Decide la squadra: impara lei, dal risultato vero (anche delle occasioni lasciate).
+            _, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
+            if s.chiave in self.squadra.memoria.discusse:
+                self._diario.submit(self._lezioni_della_squadra, s.chiave, float(s.esito["erre"]), bool(s.entrata),
+                                    s.leggibile or "")
+            registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto, **s.esito)
+            return
         _, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
         aggiorna_pagelle(self.stato.pagelle, ragione, torto)
         aggiorna_diario(self.stato.diario, s.x, s.esito["erre"] > 0)
@@ -671,12 +686,26 @@ class Bot:
             lezioni = self.squadra.rifletti(chiave, erre, presa, racconto)
             if lezioni:
                 registra(CARTELLA, "lezioni della squadra", chiave=chiave, erre=erre, lezioni=lezioni)
+                self._lezioni_oggi += [f"{l['agente']}: {l['lezione']}" for l in lezioni
+                                       if presa and (l["agente"] == "Capo" or not l.get("giusto"))]
                 if presa:
                     self.tg.equipe(al_lavoro.lezioni_in_breve(lezioni, chiave, erre))
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def riunione(self, settimana: str, adesso: int) -> None:
+        if self.squadra is not None:
+            # Decide la squadra: il sabato e' la sua revisione, niente Capo riallenato sui vent'anni.
+            try:
+                cambi = self.squadra.riscrivi_manuali()
+                registra(CARTELLA, "revisione della squadra", settimana=settimana, cambi=cambi)
+                self.tg.equipe(al_lavoro.manuali_in_breve(cambi))
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
+            self.stato.ultima_riunione = settimana
+            self.stato.salva(CARTELLA)
+            self.consegna()
+            return
         tutte = archiviate(CARTELLA, adesso - 365 * 86400) + self.stato.seguite
         testo, nuovo, rischio, verbale = riunione(tutte, self.capo, self.storico, adesso - 7 * 86400, settimana,
                                                   self.stato.pagelle, self.esecutore.parte, self.stato.diario,
@@ -691,15 +720,6 @@ class Bot:
         (CARTELLA / "capo.json").write_text(json.dumps(nuovo.come_dati()), encoding="utf-8")
         (CARTELLA / "rischio.json").write_text(json.dumps(rischio), encoding="utf-8")
         registra(CARTELLA, "riunione", settimana=settimana, testo=testo, verbale=verbale)
-        if self.squadra is not None:
-            # La revisione del sabato di Romeo: ognuno riscrive il suo manuale con quello che ha imparato.
-            try:
-                cambi = self.squadra.riscrivi_manuali(testo)
-                if cambi:
-                    registra(CARTELLA, "manuali riscritti", settimana=settimana, cambi=cambi)
-                    self.tg.equipe(al_lavoro.manuali_in_breve(cambi))
-            except Exception:
-                registra(CARTELLA, "errore", testo=traceback.format_exc())
         self.stato.ultima_riunione = settimana
         self.stato.salva(CARTELLA)
         self.consegna()

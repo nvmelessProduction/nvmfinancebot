@@ -1,215 +1,154 @@
-"""La squadra di agenti intelligenti: dieci menti che ragionano, discutono, decidono e imparano.
+"""La squadra di agenti intelligenti: nostri, nessuna AI esterna, nessun test sui vent'anni.
 
-Come una squadra vera (e come i sistemi multi-agente per il trading, per esempio TradingAgents):
+Ogni agente e' un programma che percepisce, ragiona, decide e impara (l'agente intelligente dei
+libri: percezione -> conoscenza -> decisione -> esperienza):
 
-1. **Ognuno guarda col suo mestiere.** Otto specialisti (Cacciatore, Grilletto, Livelli, Key level,
-   Orario, Bias, Allineamento, Gap) leggono lo stesso dossier (`dossier.py`) con la bibbia di Romeo
-   (`bibbia.md`) e il proprio manuale, e votano: entra, non entrare, neutro, con il perché e le regole
-   di Romeo che hanno usato.
-2. **Si confrontano.** Se non sono d'accordo, ognuno legge i pareri degli altri e risponde: puo'
-   cambiare idea o tenere la sua, dicendo perché.
-3. **Il Capo decide** con la lista di controllo di Romeo ("Enter a trade?": cinque domande, un solo
-   no e non si entra) e sceglie il piano. **Il Rischio** dice quanto puntare, dentro tetti fissi che
-   nessuna mente può superare (conto demo, parte massima del conto).
-4. **Imparano da ogni operazione.** Quando un'occasione finisce (presa o solo sulla carta), la squadra
-   rilegge cosa aveva detto e com'è andata e scrive una lezione per chi aveva sbagliato: *"win, journal,
-   repeat; lose, journal, avoid; miss, journal, catch next time."* Le lezioni entrano nei pensieri dopo.
-5. **Si modificano da sole.** Ogni settimana ogni agente riscrive il suo manuale personale (le sue
-   istruzioni) con quello che ha imparato, e puo' proporre cambi al sistema. La bibbia di Romeo e i
-   tetti di rischio non li puo' cambiare nessuno.
+1. **Percepisce.** Legge i fatti dell'occasione dal mercato (`fatti.py`): in che candela siamo, il
+   key level, l'ora, il bias, i grafici grandi, i vuoti.
+2. **Sa quello che sa Romeo.** Ognuno ha le regole di Romeo del suo mestiere (`regole.py`, dalla
+   `bibbia.md`), ognuna col suo peso: all'inizio quanto conta per Romeo.
+3. **Vota e discute.** Ognuno vota (entra, non entrare, neutro) col suo perche'. Se non sono
+   d'accordo si confrontano: chi e' incerto ascolta i colleghi che ultimamente ci hanno preso di piu',
+   chi e' sicuro risponde a chi la pensa al contrario.
+4. **Il Capo decide** con la lista di Romeo ("Enter a trade?": cinque domande, un solo no e non si
+   entra) e poi col voto della squadra, pesato da quanto ognuno ci ha preso dal vivo. **Il Rischio**
+   dice quanto puntare, dentro un tetto fisso che nessuno puo' superare (`PARTE_MASSIMA`).
+5. **Imparano solo dal vivo.** Quando un'occasione finisce (presa o solo sulla carta) ogni regola
+   che aveva parlato guadagna o perde fiducia, e ogni agente guadagna o perde credito presso i
+   colleghi. Scrivono la lezione (*"win, journal, repeat; lose, journal, avoid; miss, journal, catch
+   next time"*).
+6. **Si modificano da soli.** Ogni sabato ognuno riscrive il suo manuale: spegne le regole che dal
+   vivo sbagliano sempre, riaccende quelle che tornano a funzionare; il Capo cambia quanto e'
+   esigente per tenere il ritmo di Romeo. La lista di Romeo e il tetto di rischio non li cambia nessuno.
 
-Tutto il ragionamento resta scritto (`dati/vivo/intelligenti/`): chi ha detto cosa, e perché.
+Tutto resta scritto (`dati/vivo/intelligenti/memoria.json`): chi ha detto cosa, perche', e cosa ha imparato.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from nvm.intelligenti.mente import testo
+from nvm.intelligenti.regole import AGENTI, LISTA, REGOLE
 
-SPECIALISTI = ("Cacciatore", "Grilletto", "Livelli", "Key level", "Orario", "Bias", "Allineamento", "Gap")
-
-MESTIERI = {
-    "Cacciatore": "Tu giudichi il CRT stesso: è un range pulito del timeframe giusto? Quale candela stiamo "
-                  "operando (1, 2, 3)? La candela 2 ha chiuso dentro? Ci sono candele interne? La candela 1 è "
-                  "spessa e arriva a un key level? È un micro CRT dentro un macro CRT? (bibbia 1, 3)",
-    "Grilletto": "Tu giudichi l'entrata sulle candele piccole: c'è un vero turtle soup del lato del range? La "
-                 "candela del turtle soup è spessa? La chiusura oltre il suo corpo (Model#1) è netta? C'è un FVG? "
-                 "C'è la vera rottura di struttura? Siamo sotto/sopra l'apertura della candela 3 come vuole Romeo? "
-                 "C'è SMT col gemello e con quali conferme? (bibbia 2, 3, 9, 11)",
-    "Livelli": "Tu giudichi stop e obiettivi: lo stop è oltre l'estremo del turtle soup e non dentro la zona del "
-               "tentativo fallito? Il 50% e il lato opposto sono raggiungibili prima di un livello che li blocca? "
-               "Il rapporto rischio/rendimento e i costi valgono? Quale dei piani possibili sceglieresti e perché "
-               "(indica il numero)? (bibbia 4, 5)",
-    "Key level": "Tu giudichi il key level del grafico sopra: la manipolazione è arrivata a un key level vero "
-                 "(vecchio massimo/minimo, rejection block, order block, FVG, apertura dell'ultima candela "
-                 "contraria)? C'è ancora un livello non toccato oltre l'estremo, dove il prezzo andrà prima di "
-                 "girare (il fondo finto)? Senza key level non si opera. (bibbia 7)",
-    "Orario": "Tu giudichi il tempo: l'ora di New York della manipolazione e dell'entrata (Londra, New York, "
-              "golden candle time), il giorno della settimana e dove sta il prezzo nella settimana (massimo e "
-              "minimo della settimana hanno i loro giorni), se la manipolazione è alla fine della candela "
-              "precedente. (bibbia 8)",
-    "Bias": "Tu giudichi il bias: dove sta andando il prezzo (draw on liquidity)? Il bias di Romeo dalla "
-            "chiusura/ombra delle candele prima, sul grafico del range e su quello sopra. L'operazione va nel "
-            "verso dell'obiettivo del grafico grande o contro? (bibbia 6, 12)",
-    "Allineamento": "Tu giudichi se i timeframe grandi (4 ore, giorno, settimana, mese) sono d'accordo con "
-                    "l'operazione, e se ci sono CRT grandi armati nello stesso verso o contro. (bibbia 6, 13)",
-    "Gap": "Tu giudichi i vuoti: FVG ancora aperti davanti (obiettivi che attirano il prezzo) e alle spalle "
-           "(dove il prezzo può tornare contro di noi), e il gap del weekend. Un FVG sopra un vecchio massimo o "
-           "sotto un vecchio minimo è un buon posto per il kiss of death. (bibbia 7, 10)",
+SPECIALISTI = AGENTI
+DOMANDE = LISTA
+PER_AGENTE = {a: [r for r in REGOLE if r.agente == a] for a in AGENTI}
+PER_NOME = {r.nome: r for r in REGOLE}
+DOMANDE_IN_PAROLE = {
+    "key_level": "il prezzo è a un key level del grafico sopra",
+    "orderflow_alto": "è allineato all'orderflow del grafico grande",
+    "draw_on_liquidity": "c'è una strada libera verso l'obiettivo",
+    "conferma_basso": "c'è la conferma del Model#1 sul grafico piccolo",
+    "ore_giuste": "siamo nelle ore di Romeo",
 }
 
-VOTO = {
-    "type": "object",
-    "properties": {
-        "voto": {"type": "string", "enum": ["entra", "non entrare", "neutro"]},
-        "fiducia": {"type": "integer", "description": "0-100: quanto sei sicuro del tuo voto"},
-        "regole": {"type": "array", "items": {"type": "string"},
-                   "description": "le regole della bibbia di Romeo che hai usato, in poche parole"},
-        "ragionamento": {"type": "string",
-                         "description": "il perché, in italiano semplice, al massimo tre frasi, come in una chat fra colleghi"},
-        "piano": {"type": "integer", "description": "solo per Livelli: il numero del piano che sceglieresti, -1 altrimenti"},
-    },
-    "required": ["voto", "fiducia", "regole", "ragionamento", "piano"],
-    "additionalProperties": False,
-}
-
-CONFRONTO = {
-    "type": "object",
-    "properties": {
-        "voto": {"type": "string", "enum": ["entra", "non entrare", "neutro"]},
-        "fiducia": {"type": "integer"},
-        "cambio": {"type": "boolean", "description": "hai cambiato idea rispetto al primo giro?"},
-        "risposta": {"type": "string",
-                     "description": "cosa rispondi ai colleghi che la pensano diversamente, al massimo due frasi"},
-    },
-    "required": ["voto", "fiducia", "cambio", "risposta"],
-    "additionalProperties": False,
-}
-
-DOMANDE = ("key_level", "orderflow_alto", "draw_on_liquidity", "conferma_basso", "ore_giuste")
-CAPO = {
-    "type": "object",
-    "properties": {
-        "entra": {"type": "boolean"},
-        "lista_di_romeo": {
-            "type": "object",
-            "description": "Enter a trade? Le cinque domande di Romeo: true = sì",
-            "properties": {d: {"type": "boolean"} for d in DOMANDE},
-            "required": list(DOMANDE),
-            "additionalProperties": False,
-        },
-        "piano": {"type": "integer", "description": "il numero del piano scelto fra i piani possibili, -1 per quello proposto"},
-        "fiducia": {"type": "integer", "description": "0-100"},
-        "discorso": {"type": "string",
-                     "description": "cosa dici alla squadra: la decisione e il perché, citando chi aveva ragione, al massimo quattro frasi"},
-    },
-    "required": ["entra", "lista_di_romeo", "piano", "fiducia", "discorso"],
-    "additionalProperties": False,
-}
-
-RISCHIO = {
-    "type": "object",
-    "properties": {
-        "puntata": {"type": "number", "description": "da 0 a 1: quanta parte della puntata massima usare"},
-        "motivo": {"type": "string", "description": "il perché, al massimo due frasi"},
-    },
-    "required": ["puntata", "motivo"],
-    "additionalProperties": False,
-}
-
-LEZIONI = {
-    "type": "object",
-    "properties": {
-        "lezioni": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "agente": {"type": "string"},
-                    "lezione": {"type": "string", "description": "cosa ha capito, in una o due frasi, concreta"},
-                    "regola_di_romeo": {"type": "string", "description": "la regola della bibbia che c'entra"},
-                },
-                "required": ["agente", "lezione", "regola_di_romeo"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["lezioni"],
-    "additionalProperties": False,
-}
-
-MANUALE = {
-    "type": "object",
-    "properties": {
-        "manuale": {"type": "string",
-                    "description": "il tuo manuale personale riscritto: le tue regole di lavoro, al massimo 1500 caratteri"},
-        "cosa_ho_cambiato": {"type": "string", "description": "in una o due frasi"},
-        "proposta_al_sistema": {"type": "string",
-                                "description": "un cambio al codice o alle regole del sistema che proponi, o stringa vuota"},
-    },
-    "required": ["manuale", "cosa_ho_cambiato", "proposta_al_sistema"],
-    "additionalProperties": False,
-}
-
-# Quante lezioni recenti ogni agente rilegge prima di pensare.
-LEZIONI_IN_MENTE = 12
+# Il tetto del rischio: la parte del conto che un'operazione rischia al massimo. Fisso, per tutti.
+PARTE_MASSIMA = 0.01
+# Quante esperienze "a zero" pesano nel giudizio di una regola o di un agente: con poche esperienze
+# vere la fiducia resta quella di partenza (quella di Romeo), e cambia man mano che il vivo parla.
+PRUDENZA = 20
+# Una regola che dal vivo sbaglia piu' di quanto indovina si spegne dopo almeno tante esperienze.
+PER_SPEGNERE = 20
+# Quanto deve essere d'accordo la squadra perche' il Capo entri, all'inizio (da -1 a 1). Sulle occasioni
+# vere del 2023 (solo per contarle, non per giudicarle) la lista di Romeo passa circa mezza volta a
+# settimana per strumento, e con 0,6 ne resta una su cinque: qualche operazione a settimana su 40
+# strumenti. Poi il Capo la regola da solo, sul ritmo di Romeo.
+SOGLIA_INIZIALE = 0.6
+# Il ritmo di Romeo: *"You only need 1-2 of these a week"*; su tanti strumenti qualcuna in piu'.
+RITMO = (1, 5)
 LEZIONI_TENUTE = 300
-MANUALE_MASSIMO = 1500
+
+
+def _stretto(x: float, basso: float, alto: float) -> float:
+    return min(max(x, basso), alto)
+
+
+def _erre(x: float) -> float:
+    """Un risultato in R, senza che un colpo eccezionale da solo cambi tutto."""
+    return _stretto(float(x), -2.0, 3.0)
 
 
 @dataclass
 class Memoria:
-    """La memoria della squadra, su disco: manuali personali, lezioni, decisioni discusse, proposte."""
+    """La memoria della squadra, su disco: esperienze, fiducia, lezioni, manuali, decisioni aperte."""
 
     cartella: Path
-    manuali: dict = field(default_factory=dict)
+    # Per ogni regola: quante volte ha parlato dal vivo e quanto ci ha preso (somma di esito x R).
+    regole: dict = field(default_factory=dict)
+    # Per ogni agente: quante volte ha votato e quanto ci ha preso.
+    agenti: dict = field(default_factory=dict)
+    spente: list = field(default_factory=list)
+    soglia: float = SOGLIA_INIZIALE
     lezioni: dict = field(default_factory=dict)
-    discusse: dict = field(default_factory=dict)
+    manuali: dict = field(default_factory=dict)
     storia_manuali: list = field(default_factory=list)
     proposte: list = field(default_factory=list)
+    discusse: dict = field(default_factory=dict)
+    # I pesi alla revisione scorsa: per dire cosa e' cambiato in settimana.
+    pesi_sabato: dict = field(default_factory=dict)
+    # Le operazioni prese dalla revisione scorsa, e quanto era d'accordo la squadra sulle occasioni
+    # che passavano la lista di Romeo.
+    prese: int = 0
+    forze: list = field(default_factory=list)
+
+    CAMPI = ("regole", "agenti", "spente", "soglia", "lezioni", "manuali", "storia_manuali", "proposte",
+             "discusse", "pesi_sabato", "prese", "forze")
 
     @classmethod
     def carica(cls, cartella: Path) -> "Memoria":
         f = cartella / "memoria.json"
-        if not f.exists():
-            return cls(cartella)
-        d = json.loads(f.read_text(encoding="utf-8"))
-        return cls(cartella, d.get("manuali", {}), d.get("lezioni", {}), d.get("discusse", {}),
-                   d.get("storia_manuali", []), d.get("proposte", []))
+        m = cls(cartella)
+        if f.exists():
+            d = json.loads(f.read_text(encoding="utf-8"))
+            if "regole" not in d:
+                # La memoria della squadra di prima (quella che pensava con Claude): si riparte da Romeo.
+                return m
+            for k in cls.CAMPI:
+                if k in d:
+                    setattr(m, k, d[k])
+        return m
 
     def salva(self) -> None:
         self.cartella.mkdir(parents=True, exist_ok=True)
-        # Le decisioni discusse si tengono finche' non finiscono (poi diventano lezioni), al massimo 500.
-        if len(self.discusse) > 500:
-            for k in sorted(self.discusse, key=lambda k: self.discusse[k].get("quando", 0))[:-500]:
+        if len(self.discusse) > 2000:
+            for k in sorted(self.discusse, key=lambda k: self.discusse[k].get("quando", 0))[:-2000]:
                 del self.discusse[k]
+        self.storia_manuali = self.storia_manuali[-300:]
+        self.proposte = self.proposte[-200:]
         f = self.cartella / "memoria.json"
         tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"manuali": self.manuali, "lezioni": self.lezioni, "discusse": self.discusse,
-                                   "storia_manuali": self.storia_manuali[-200:], "proposte": self.proposte[-200:]},
-                                  ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(json.dumps({k: getattr(self, k) for k in self.CAMPI}, ensure_ascii=False), encoding="utf-8")
         tmp.replace(f)
 
+    # --- quanto credono a una regola, e ai colleghi ---
+
+    def fiducia_regola(self, nome: str) -> float:
+        """1 = quanto dice Romeo; sopra, il vivo gli ha dato ragione; sotto, torto (da 0,2 a 2)."""
+        e = self.regole.get(nome, {})
+        return _stretto(1.0 + 2.0 * e.get("somma", 0.0) / (e.get("n", 0) + PRUDENZA), 0.2, 2.0)
+
+    def peso(self, nome: str) -> float:
+        return PER_NOME[nome].peso * self.fiducia_regola(nome)
+
+    def credito(self, agente: str) -> float:
+        """Quanto i colleghi ascoltano un agente: da quanto ci ha preso dal vivo (da 0,3 a 2)."""
+        e = self.agenti.get(agente, {})
+        return _stretto(1.0 + 2.0 * e.get("somma", 0.0) / (e.get("n", 0) + PRUDENZA), 0.3, 2.0)
+
     def ricordi(self, agente: str, strumento: str = "") -> str:
-        """Il manuale personale e le lezioni recenti dell'agente (prima quelle sullo stesso strumento)."""
+        """Il manuale dell'agente e le sue ultime lezioni, in parole."""
         tutte = self.lezioni.get(agente, [])
-        stesse = [l for l in tutte if l.get("strumento") == strumento][-4:]
-        altre = [l for l in tutte if l not in stesse][-(LEZIONI_IN_MENTE - len(stesse)):]
-        righe = []
-        if self.manuali.get(agente):
-            righe.append(f"Il tuo manuale personale (scritto da te):\n{self.manuali[agente]}")
-        if stesse or altre:
-            righe.append("Le tue lezioni recenti (dalle operazioni vere o sulla carta):")
-            for l in altre + stesse:
-                righe.append(f"- [{l.get('strumento', '')} {l.get('esito', '')}] {l['lezione']} (regola: {l.get('regola', '')})")
-        return "\n".join(righe) if righe else "Non hai ancora lezioni: è una delle prime operazioni."
+        stesse = [l for l in tutte if l.get("strumento") == strumento][-3:]
+        altre = [l for l in tutte if l not in stesse][-(8 - len(stesse)):]
+        righe = [self.manuali[agente]] if self.manuali.get(agente) else []
+        righe += [f"- [{l.get('strumento', '')} {l.get('esito', '')}] {l['lezione']}" for l in altre + stesse]
+        return "\n".join(righe)
 
     def impara(self, agente: str, lezione: dict) -> None:
         self.lezioni.setdefault(agente, []).append(lezione)
@@ -226,179 +165,300 @@ class Verdetto:
     pareri: dict
     lista: dict
     secondi: float
-    chiamate: int
+    chiamate: int = 0
 
     def come_dati(self) -> dict:
         return {"entra": self.entra, "piano": self.piano, "puntata": self.puntata, "fiducia": self.fiducia,
-                "pareri": self.pareri, "lista": self.lista, "secondi": round(self.secondi, 1)}
+                "pareri": self.pareri, "lista": self.lista, "secondi": round(self.secondi, 3)}
 
 
-def _ruolo(agente: str, compito: str, ricordi: str) -> str:
-    return (f"Sei {agente}, uno specialista di una squadra di trading che segue la strategia di Romeo (la bibbia "
-            f"sopra è la vostra legge). Il tuo mestiere: {MESTIERI.get(agente, '')}\n\n{ricordi}\n\n{compito}")
+def _segno(voto: str) -> int:
+    return 1 if voto == "entra" else -1 if voto == "non entrare" else 0
+
+
+def _frase(motivi: list) -> str:
+    return "; ".join(m[3] for m in motivi)
 
 
 class Squadra:
-    """La squadra: si riunisce su ogni occasione trovata dal sistema e decide."""
+    """La squadra: si riunisce su ogni occasione trovata dal sistema e decide da sola."""
 
-    def __init__(self, mente, cartella: Path):
-        self.mente = mente
+    def __init__(self, cartella: Path):
         self.memoria = Memoria.carica(cartella)
-        # L'ultimo errore delle menti, per il registro (mai la chiave).
         self.ultimo_errore = ""
-        # Piu' riunioni possono girare insieme: la memoria si scrive una alla volta.
+        # Il giro e le lezioni (in disparte) toccano la memoria: una cosa alla volta.
         self._lucchetto = threading.Lock()
 
-    def _pensa(self, blocchi, schema, sforzo="low") -> Optional[dict]:
-        try:
-            return self.mente.pensa(blocchi, schema, sforzo=sforzo)
-        except Exception as e:
-            self.ultimo_errore = f"{type(e).__name__}: {e}"[:300]
-            return None
+    # --- 1-3. ognuno guarda, vota, si confronta ---
 
-    def riunione(self, chiave: str, strumento: str, dossier: str, conto: str = "",
-                 decide_da_solo: bool = False) -> Optional[Verdetto]:
-        """La riunione su un'occasione: primo giro, confronto se serve, il Capo, il Rischio. None se le
-        menti non rispondono (il bot allora decide come prima)."""
+    def _guarda(self, agente: str, f: dict) -> dict:
+        """Il parere di un agente: le sue regole sui fatti, pesate da quanto ci crede."""
+        motivi, punti, uditi = [], 0.0, []
+        for r in PER_AGENTE[agente]:
+            if r.nome in self.memoria.spente and not r.lista:
+                continue
+            try:
+                esito, perche = r.guarda(f)
+            except Exception:
+                continue
+            if esito:
+                w = self.memoria.peso(r.nome)
+                punti += esito * w
+                motivi.append((esito * w, r.nome, int(esito), perche))
+                uditi.append([r.nome, int(esito)])
+        motivi.sort(key=lambda m: -abs(m[0]))
+        voto = "entra" if punti >= 0.5 else "non entrare" if punti <= -0.5 else "neutro"
+        fiducia = 1.0 - math.exp(-abs(punti))
+        if voto == "neutro":
+            testo = ("Dal mio mestiere niente di deciso" + (f": {_frase(motivi[:2])}." if motivi else ": non vedo niente che conti."))
+        else:
+            giusti = [m for m in motivi if (m[2] > 0) == (voto == "entra")][:2]
+            contro = [m for m in motivi if (m[2] > 0) != (voto == "entra")][:1]
+            testo = ("Entrerei" if voto == "entra" else "Io non entrerei") + f": {_frase(giusti)}."
+            if contro:
+                testo += f" Unico dubbio: {contro[0][3]}."
+        return {"voto": voto, "fiducia": round(fiducia, 3), "punti": round(punti, 3), "regole": uditi,
+                "ragionamento": testo}
+
+    def _confronto(self, pareri: dict) -> list:
+        """Se non sono d'accordo: chi e' incerto ascolta i colleghi con piu' credito, chi e' sicuro risponde."""
+        voti = {p["voto"] for p in pareri.values() if p["voto"] != "neutro"}
+        if len(voti) < 2:
+            return []
+        voci = []
+        credito = {a: self.memoria.credito(a) for a in pareri}
+        for a, p in pareri.items():
+            altri = sum(credito[b] * _segno(q["voto"]) * q["fiducia"] for b, q in pareri.items() if b != a)
+            mio = _segno(p["voto"]) * p["fiducia"] * credito[a]
+            verso = "entra" if altri > 0 else "non entrare"
+            if p["fiducia"] < 0.5 and abs(altri) > 2 * abs(mio) and p["voto"] != verso:
+                chi = sorted((b for b, q in pareri.items() if b != a and q["voto"] == verso),
+                             key=lambda b: -credito[b] * pareri[b]["fiducia"])[:2]
+                p["secondo"] = {"voto": verso, "fiducia": round(min(abs(altri) / len(pareri), 1.0), 3), "cambio": True}
+                voci.append((a, f"Cambio idea: {' e '.join(chi)} hanno visto cose che dal mio mestiere non vedo. Voto "
+                                f"{'entra' if verso == 'entra' else 'non entrare'}."))
+        # Chi e' piu' sicuro da una parte risponde al piu' sicuro dell'altra.
+        finale = {a: p.get("secondo", p) for a, p in pareri.items()}
+        per = {s: sorted((a for a in finale if _segno(finale[a]["voto"]) == s), key=lambda a: -pareri[a]["fiducia"])
+               for s in (1, -1)}
+        if per[1] and per[-1]:
+            a, b = per[-1][0], per[1][0]
+            if pareri[a]["fiducia"] >= 0.5 and "secondo" not in pareri[a]:
+                voci.append((a, f"Rispondo a {b}: capisco, ma per Romeo pesa di più questo: "
+                                f"{pareri[a]['ragionamento'].split(': ', 1)[-1]}"))
+        return voci
+
+    # --- 4. il Capo e il Rischio ---
+
+    def _lista(self, f: dict) -> tuple[dict, dict]:
+        """Le cinque domande di Romeo sui fatti: si' o no, e perche'."""
+        risposte, perche = {}, {}
+        for d in DOMANDE:
+            if d == "conferma_basso":
+                # Ogni occasione nasce da un Model#1 confermato sul grafico piccolo (il Grilletto).
+                risposte[d], perche[d] = True, "Model#1 confermato"
+                continue
+            r = next(r for r in REGOLE if r.lista == d)
+            try:
+                esito, testo = r.guarda(f)
+            except Exception:
+                esito, testo = -1, "non riesco a leggerlo"
+            risposte[d], perche[d] = esito > 0, testo
+        return risposte, perche
+
+    def _capo(self, f: dict, finale: dict, lista: dict, perche: dict) -> tuple[bool, float, str]:
+        credito = {a: self.memoria.credito(a) for a in finale}
+        totale = sum(credito[a] * _segno(p["voto"]) * p["fiducia"] for a, p in finale.items())
+        forza = totale / (sum(credito.values()) or 1.0)
+        a_favore = [a for a, p in finale.items() if p["voto"] == "entra"]
+        contro = [a for a, p in finale.items() if p["voto"] == "non entrare"]
+        no = [d for d in DOMANDE if not lista[d]]
+        if no:
+            discorso = ("Non entriamo. La lista di Romeo dice no: " +
+                        "; ".join(f"{DOMANDE_IN_PAROLE[d]}? No, {perche[d]}" for d in no) + ".")
+            return False, forza, discorso
+        if forza <= self.memoria.soglia:
+            discorso = (f"Non entriamo. La lista di Romeo è tutta sì, ma la squadra non è abbastanza convinta "
+                        f"({len(a_favore)} a favore, {len(contro)} contro). Romeo aspetta le A+.")
+            return False, forza, discorso
+        principale = max(a_favore, key=lambda a: credito[a] * finale[a]["fiducia"]) if a_favore else ""
+        discorso = (f"Entriamo. Le cinque domande di Romeo sono tutte sì: key level ({f.get('tipo di key level')}), "
+                    f"orderflow, strada libera, Model#1, ore giuste ({f.get('ora di New York')} a New York). "
+                    f"La squadra è con me: {len(a_favore)} a favore, {len(contro)} contro"
+                    + (f"; seguo soprattutto {principale}" if principale else "") + ".")
+        if contro:
+            discorso += f" Ho sentito {' e '.join(contro)}: il resto della squadra pesa di più."
+        return True, forza, discorso
+
+    def _rischio(self, forza: float, finale: dict) -> tuple[float, str]:
+        contro = sum(1 for p in finale.values() if p["voto"] == "non entrare")
+        su = (forza - self.memoria.soglia) / max(1.0 - self.memoria.soglia, 1e-6)
+        puntata = _stretto(0.5 + 0.5 * su, 0.5, 1.0)
+        if contro:
+            puntata = min(puntata, 0.75)
+        tipo = "un'operazione A+" if puntata >= 0.9 else "buona, ma non perfetta" if puntata >= 0.7 else "valida, con qualche dubbio"
+        return round(puntata, 2), (f"È {tipo}: metto il {puntata:.0%} della puntata massima (che è "
+                                   f"l'{PARTE_MASSIMA:.0%} del conto). Romeo: mai troppa leva.")
+
+    def riunione(self, chiave: str, strumento: str, f: dict, conto: str = "") -> Verdetto:
+        """La riunione su un'occasione, coi fatti gia' letti (`fatti.py`)."""
         t0 = time.time()
-        chiamate0 = self.mente.consumo.chiamate
-        base = testo(dossier, cache=True)
-        compito = ("Leggi il dossier e dai il tuo voto dal tuo mestiere. Sii severo: Romeo prende 1-2 operazioni "
-                   "a settimana; senza le condizioni della bibbia si vota 'non entrare'. Se il tuo mestiere non ha "
-                   "abbastanza informazioni, vota 'neutro'.")
-        with ThreadPoolExecutor(len(SPECIALISTI)) as pool:
-            primi = dict(zip(SPECIALISTI, pool.map(
-                lambda a: self._pensa([base, testo(_ruolo(a, compito, self.memoria.ricordi(a, strumento)))], VOTO),
-                SPECIALISTI)))
-        primi = {a: p for a, p in primi.items() if p}
-        if len(primi) < len(SPECIALISTI) // 2:
-            return None
-        voci = [(a, p["ragionamento"]) for a, p in primi.items()]
-        pareri = {a: {"primo": p} for a, p in primi.items()}
-        voti = {p["voto"] for p in primi.values() if p["voto"] != "neutro"}
-        if len(voti) > 1:
-            # Non sono d'accordo: ognuno legge gli altri e risponde.
-            riassunto = "\n".join(f"- {a}: {p['voto']} ({p['fiducia']}%): {p['ragionamento']}" for a, p in primi.items())
-            def confronta(a):
-                mio = primi[a]
-                c = (f"Primo giro della squadra:\n{riassunto}\n\nTu avevi votato '{mio['voto']}'. Leggi i colleghi: "
-                     "se hanno visto qualcosa che ti era sfuggito cambia idea, altrimenti tieni il tuo voto e spiega "
-                     "perché. Rispondi a chi la pensa diversamente.")
-                return self._pensa([base, testo(_ruolo(a, c, self.memoria.ricordi(a, strumento)))], CONFRONTO)
-            with ThreadPoolExecutor(len(primi)) as pool:
-                secondi = dict(zip(primi, pool.map(confronta, primi)))
-            for a, s in secondi.items():
-                if s:
-                    pareri[a]["secondo"] = s
-                    if s["cambio"] or s["risposta"]:
-                        voci.append((a, s["risposta"]))
-        finale = {a: p.get("secondo") or p["primo"] for a, p in pareri.items()}
-        tavolo = "\n".join(f"- {a}: {f['voto']} ({f['fiducia']}%): "
-                           f"{pareri[a]['primo']['ragionamento']}"
-                           + (f" / nel confronto: {pareri[a]['secondo']['risposta']}" if "secondo" in pareri[a] else "")
-                           + (f" [piano {pareri[a]['primo']['piano']}]" if a == "Livelli" else "")
-                           for a, f in finale.items())
-        compito_capo = (
-            "Sei il Capo, il boss della squadra. Hai sentito tutti:\n" + tavolo + "\n\n"
-            "Decidi tu. Prima rispondi alle cinque domande di Romeo (Enter a trade?): un solo no e non si entra. "
-            "Poi scegli il piano (il numero fra i piani possibili, o -1 per quello proposto). Nel discorso spiega la "
-            "decisione alla squadra in italiano semplice, dicendo di chi hai seguito il parere.\n\n"
-            + self.memoria.ricordi("Capo", strumento))
-        capo = self._pensa([base, testo(compito_capo)], CAPO, sforzo="medium")
-        if capo is None:
-            return None
-        lista = capo["lista_di_romeo"]
-        # La legge di Romeo, anche se il Capo si distrae: un solo no e non si entra.
-        entra = bool(capo["entra"]) and all(lista.get(d, False) for d in DOMANDE)
-        voci.append(("Capo", capo["discorso"]))
-        puntata = 0.0
-        if entra:
-            compito_rischio = (
-                "Sei il Rischio della squadra. Il Capo ha deciso di entrare:\n" + capo["discorso"] + "\n\n"
-                f"Fiducia del Capo {capo['fiducia']}%. {conto}\n"
-                "Di' quanta parte della puntata massima usare, da 0 a 1 (la puntata massima la fissa il sistema e "
-                "non puoi superarla). Pensa a Romeo: niente leva eccessiva, le operazioni A+ meritano di più, "
-                "quelle dubbie di meno; conta le operazioni già aperte e quanto sono legate a questa.\n\n"
-                + self.memoria.ricordi("Rischio", strumento))
-            r = self._pensa([base, testo(compito_rischio)], RISCHIO)
-            puntata = min(max(float(r["puntata"]), 0.0), 1.0) if r else 0.5
-            if r:
-                voci.append(("Rischio", r["motivo"]))
-        v = Verdetto(entra, int(capo["piano"]), puntata, capo["fiducia"] / 100, voci,
-                     {**pareri, "Capo": capo}, lista, time.time() - t0, self.mente.consumo.chiamate - chiamate0)
         with self._lucchetto:
-            self.memoria.discusse[chiave] = {"quando": int(time.time()), "strumento": strumento, **v.come_dati()}
+            pareri = {a: self._guarda(a, f) for a in SPECIALISTI}
+            voci = [(a, p["ragionamento"]) for a, p in pareri.items()]
+            voci += self._confronto(pareri)
+            finale = {a: p.get("secondo", p) for a, p in pareri.items()}
+            lista, perche = self._lista(f)
+            entra, forza, discorso = self._capo(f, finale, lista, perche)
+            voci.append(("Capo", discorso))
+            puntata = 0.0
+            if entra:
+                puntata, motivo = self._rischio(forza, finale)
+                voci.append(("Rischio", motivo))
+            capo = {"entra": entra, "forza": round(forza, 3), "discorso": discorso, "soglia": self.memoria.soglia}
+            v = Verdetto(entra, -1, puntata, round(_stretto(0.5 + forza / 2, 0.0, 1.0), 3), voci,
+                         {**pareri, "Capo": capo}, lista, time.time() - t0)
+            if all(lista.values()):
+                self.memoria.forze = (self.memoria.forze + [round(forza, 3)])[-500:]
+            if entra:
+                self.memoria.prese += 1
+            self.memoria.discusse[chiave] = {"quando": int(time.time()), "strumento": strumento,
+                                             "fatti": {k: x for k, x in f.items() if isinstance(x, (bool, int, float, str)) or x is None},
+                                             **v.come_dati()}
             self.memoria.salva()
         return v
 
+    # --- 5. imparano dal vivo ---
+
     def rifletti(self, chiave: str, esito_erre: float, preso: bool, racconto: str = "") -> list[dict]:
-        """L'occasione e' finita: la squadra rilegge cosa aveva detto e scrive le lezioni per chi ha
-        sbagliato (o per chi ha avuto ragione per il motivo giusto). Una chiamata sola."""
+        """L'occasione e' finita (presa o solo sulla carta): ogni regola che aveva parlato e ogni agente
+        che aveva votato imparano dal risultato vero. Restituisce le lezioni (agente, lezione, regola)."""
         with self._lucchetto:
             d = self.memoria.discusse.pop(chiave, None)
-        if d is None:
-            return []
-        pareri = d.get("pareri", {})
-        tavolo = []
-        for a, p in pareri.items():
-            if a == "Capo":
-                tavolo.append(f"- Capo: {'entra' if p.get('entra') else 'non entrare'}: {p.get('discorso', '')}")
-            else:
-                f = p.get("secondo") or p.get("primo", {})
-                tavolo.append(f"- {a}: {f.get('voto')} ({f.get('fiducia')}%): {p.get('primo', {}).get('ragionamento', '')}")
-        com_e = ("guadagnato" if esito_erre > 0 else "perso") + f" {esito_erre:+.2f} R"
-        compito = (
-            f"Revisione dell'occasione {chiave} su {d.get('strumento')}: {'l’avete PRESA' if preso else 'NON l’avete presa (solo sulla carta)'}"
-            f" ed è finita così: {com_e}. {racconto}\nCosa avevate detto:\n" + "\n".join(tavolo) + "\n\n"
-            "Come Romeo col suo diario (win, journal, repeat; lose, journal, avoid; miss, journal, catch next time): "
-            "scrivi una lezione concreta per ogni agente che ha sbagliato e per chi ha avuto ragione per il motivo "
-            "giusto, legata a una regola della bibbia. Niente frasi generiche: cosa guarderà diversamente la "
-            "prossima volta.")
-        r = self._pensa([testo(compito)], LEZIONI)
-        if not r:
-            return []
-        fatte = []
-        with self._lucchetto:
-            for l in r["lezioni"]:
-                if l["agente"] in SPECIALISTI + ("Capo", "Rischio"):
-                    self.memoria.impara(l["agente"], {"quando": int(time.time()), "strumento": d.get("strumento", ""),
-                                                      "esito": com_e, "lezione": l["lezione"], "regola": l["regola_di_romeo"]})
-                    fatte.append(l)
+            if d is None:
+                return []
+            r = _erre(esito_erre)
+            com_e = f"{esito_erre:+.2f} R" + ("" if preso else " sulla carta")
+            fatte = []
+            for a, p in d.get("pareri", {}).items():
+                if a == "Capo":
+                    continue
+                prima = {n: self.memoria.fiducia_regola(n) for n, _ in p.get("regole", [])}
+                for nome, esito in p.get("regole", []):
+                    if nome not in PER_NOME:
+                        continue
+                    e = self.memoria.regole.setdefault(nome, {"n": 0, "somma": 0.0, "giuste": 0})
+                    e["n"] += 1
+                    e["somma"] = round(e["somma"] + esito * r, 4)
+                    e["giuste"] += int(esito * r > 0)
+                voto = p.get("secondo", p).get("voto", "neutro")
+                s = _segno(voto)
+                if not s:
+                    continue
+                e = self.memoria.agenti.setdefault(a, {"n": 0, "somma": 0.0, "giuste": 0})
+                e["n"] += 1
+                e["somma"] = round(e["somma"] + s * r, 4)
+                e["giuste"] += int(s * r > 0)
+                # La regola che l'aveva convinto di piu', e cosa ne pensa adesso.
+                sue = [(nome, es) for nome, es in p.get("regole", []) if nome in PER_NOME and (es > 0) == (s > 0)]
+                if not sue:
+                    continue
+                nome = max(sue, key=lambda x: PER_NOME[x[0]].peso * prima.get(x[0], 1.0))[0]
+                dopo = self.memoria.fiducia_regola(nome)
+                giusto = s * r > 0
+                lezione = (f"Avevo detto {voto} per «{nome}» ed è finita {com_e}: "
+                           + ("avevo ragione, ci credo di più" if giusto else "avevo torto, ci credo di meno")
+                           + f" (fiducia da {prima.get(nome, 1.0):.2f} a {dopo:.2f}).")
+                l = {"agente": a, "lezione": lezione, "regola_di_romeo": PER_NOME[nome].romeo, "giusto": giusto}
+                self.memoria.impara(a, {"quando": int(time.time()), "strumento": d.get("strumento", ""),
+                                        "esito": com_e, "lezione": lezione, "regola": nome})
+                fatte.append(l)
+            capo = d.get("pareri", {}).get("Capo", {})
+            if capo:
+                entrato = bool(capo.get("entra"))
+                if entrato:
+                    lezione = (f"Siamo entrati ed è finita {com_e}: " +
+                               ("win, journal, repeat." if r > 0 else "lose, journal, avoid."))
+                else:
+                    lezione = (f"Non siamo entrati; sulla carta è finita {com_e}: " +
+                               ("miss, journal, catch next time." if r > 0 else "abbiamo fatto bene ad aspettare."))
+                self.memoria.impara("Capo", {"quando": int(time.time()), "strumento": d.get("strumento", ""),
+                                             "esito": com_e, "lezione": lezione, "regola": "lista di Romeo"})
+                fatte.append({"agente": "Capo", "lezione": lezione, "regola_di_romeo": "Enter a trade?",
+                              "giusto": (r > 0) == entrato})
             self.memoria.salva()
         return fatte
 
+    # --- 6. si modificano da soli ---
+
     def riscrivi_manuali(self, pagelle: str = "") -> list[tuple[str, str, str]]:
-        """Una volta a settimana: ogni agente riscrive il suo manuale personale con le sue lezioni, e
-        puo' proporre un cambio al sistema. Restituisce (agente, cosa ha cambiato, proposta)."""
+        """La revisione del sabato: ognuno guarda le sue regole alla luce del vivo, spegne quelle che
+        sbagliano sempre, riaccende quelle tornate buone, riscrive il manuale. Il Capo regola quanto
+        e' esigente sul ritmo di Romeo. Restituisce (agente, cosa ha cambiato, proposta)."""
         cambi = []
-        for a in SPECIALISTI + ("Capo", "Rischio"):
-            lezioni = self.memoria.lezioni.get(a, [])[-40:]
-            if not lezioni:
-                continue
-            compito = (
-                f"Sei {a}. È la revisione del fine settimana (come il sabato di Romeo). Il tuo manuale attuale:\n"
-                f"{self.memoria.manuali.get(a) or '(vuoto)'}\n\nLe tue lezioni recenti:\n"
-                + "\n".join(f"- [{l.get('esito', '')}] {l['lezione']}" for l in lezioni)
-                + f"\n\n{pagelle}\n\nRiscrivi il tuo manuale personale: le regole di lavoro che userai d'ora in poi, "
-                "tenendo quelle che funzionano e correggendo gli errori che si ripetono. Non puoi contraddire la "
-                "bibbia di Romeo né toccare i limiti di rischio. Se vedi un cambio che servirebbe al sistema "
-                "(codice o regole), proponilo.")
-            r = self._pensa([testo(compito)], MANUALE, sforzo="medium")
-            if not r:
-                continue
-            nuovo = r["manuale"][:MANUALE_MASSIMO]
-            with self._lucchetto:
-                self._nuovo_manuale(a, nuovo, r)
-            cambi.append((a, r["cosa_ho_cambiato"], r["proposta_al_sistema"]))
         with self._lucchetto:
-            self.memoria.salva()
+            m = self.memoria
+            for a in SPECIALISTI:
+                cosa = []
+                for r in PER_AGENTE[a]:
+                    e = m.regole.get(r.nome, {})
+                    fid = m.fiducia_regola(r.nome)
+                    if not r.lista and r.nome not in m.spente and e.get("n", 0) >= PER_SPEGNERE and fid <= 0.5:
+                        m.spente.append(r.nome)
+                        cosa.append(f"smetto di usare «{r.nome}»: dal vivo in {e['n']} occasioni ha indovinato "
+                                    f"solo {e.get('giuste', 0)} volte")
+                    elif r.nome in m.spente and fid >= 1.0:
+                        m.spente.remove(r.nome)
+                        cosa.append(f"torno a usare «{r.nome}»: dal vivo ha ripreso a funzionare")
+                    else:
+                        prima = m.pesi_sabato.get(r.nome, 1.0)
+                        if abs(fid - prima) >= 0.1:
+                            cosa.append(f"«{r.nome}» {'conta di più' if fid > prima else 'conta di meno'} "
+                                        f"(da {prima:.2f} a {fid:.2f})")
+                    m.pesi_sabato[r.nome] = round(fid, 4)
+                manuale = self._manuale(a)
+                if cosa:
+                    proposta = ""
+                    cr = m.credito(a)
+                    if cr < 0.6:
+                        proposta = f"ascoltatemi meno: dal vivo ci ho preso poco (credito {cr:.2f})"
+                    self._nuovo_manuale(a, manuale, "; ".join(cosa), proposta)
+                    cambi.append((a, "; ".join(cosa) + ".", proposta))
+                else:
+                    m.manuali[a] = manuale
+            # Il Capo: Romeo prende 1-2 operazioni a settimana e aspetta le A+.
+            prima = m.soglia
+            forze = sorted(m.forze, reverse=True)
+            if m.prese > RITMO[1] and len(forze) > RITMO[1]:
+                # Troppe: a meta' strada verso l'accordo che ne avrebbe lasciate passare solo RITMO[1].
+                m.soglia = round(_stretto((m.soglia + forze[RITMO[1]]) / 2, 0.0, 0.95), 3)
+            elif m.prese < RITMO[0] and forze:
+                # Nessuna: a meta' strada verso l'accordo della migliore della settimana.
+                m.soglia = round(_stretto((m.soglia + forze[0] - 0.01) / 2, 0.0, 0.95), 3)
+            if m.soglia != prima:
+                cosa = (f"questa settimana siamo entrati {m.prese} volte: "
+                        + ("sono più esigente" if m.soglia > prima else "sono meno esigente")
+                        + f" (accordo della squadra richiesto da {prima:.2f} a {m.soglia:.2f})")
+                self._nuovo_manuale("Capo", f"Entro solo con la lista di Romeo tutta sì e la squadra d'accordo oltre {m.soglia:.2f}.",
+                                    cosa, "")
+                cambi.append(("Capo", cosa + ".", ""))
+            m.prese, m.forze = 0, []
+            m.salva()
         return cambi
 
-    def _nuovo_manuale(self, a: str, nuovo: str, r: dict) -> None:
-        """Il manuale nuovo di un agente, con la storia (prima e dopo) e la sua proposta al sistema."""
-        self.memoria.storia_manuali.append({"quando": int(time.time()), "agente": a,
-                                            "prima": self.memoria.manuali.get(a, ""), "dopo": nuovo,
-                                            "perche": r["cosa_ho_cambiato"]})
-        self.memoria.manuali[a] = nuovo
-        if r["proposta_al_sistema"].strip():
-            self.memoria.proposte.append({"quando": int(time.time()), "agente": a, "proposta": r["proposta_al_sistema"]})
+    def _manuale(self, a: str) -> str:
+        m = self.memoria
+        righe = [f"Le regole di {a}, dalla più forte:"]
+        for r in sorted(PER_AGENTE[a], key=lambda r: -m.peso(r.nome)):
+            e = m.regole.get(r.nome, {})
+            stato = " (spenta)" if r.nome in m.spente and not r.lista else (" (lista di Romeo)" if r.lista else "")
+            righe.append(f"- {r.nome}: peso {m.peso(r.nome):.2f}{stato}, dal vivo {e.get('giuste', 0)}/{e.get('n', 0)}")
+        return "\n".join(righe)
+
+    def _nuovo_manuale(self, a: str, nuovo: str, perche: str, proposta: str) -> None:
+        m = self.memoria
+        m.storia_manuali.append({"quando": int(time.time()), "agente": a, "prima": m.manuali.get(a, ""),
+                                 "dopo": nuovo, "perche": perche})
+        m.manuali[a] = nuovo
+        if proposta:
+            m.proposte.append({"quando": int(time.time()), "agente": a, "proposta": proposta})

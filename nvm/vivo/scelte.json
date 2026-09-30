@@ -1,7 +1,6 @@
 {
- "decidono_i_cervelli": true,
- "squadra_intelligente": false,
- "filtro_romeo": true,
+ "decidono_i_cervelli": false,
+ "squadra_intelligente": true,
  "quando": "30/09/2026",
- "perche": "Il proprietario non vuole AI esterne (30/09/2026): la squadra che ragiona con Claude resta spenta. Decidono i cervelli numerici; vale la regola di Romeo: senza key level del grafico sopra o fuori dalle ore di Londra e New York non si entra (filtro_romeo)."
+ "perche": "Il proprietario (30/09/2026): gli agenti hanno tutto quello che sappiamo di Romeo, lavorano solo dal vivo e decidono da soli; niente AI esterne, niente test sui vent'anni nelle decisioni. Decide la squadra intelligente (nvm/intelligenti/): regole di Romeo, lista 'Enter a trade?', impara solo dal vivo, rischio massimo 1% del conto per operazione. Il secondo obiettivo torna sul lato opposto del CRT, come dice Romeo."
 }
