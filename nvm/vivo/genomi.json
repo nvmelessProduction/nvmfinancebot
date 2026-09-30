@@ -33,7 +33,9 @@
   "Orario": {
    "neuroni": 16,
    "freno": 0.001,
-   "spenti": []
+   "spenti": [
+    "giorno e prezzo nella settimana"
+   ]
   },
   "Bias": {
    "neuroni": 16,

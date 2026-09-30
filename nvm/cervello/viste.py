@@ -194,25 +194,29 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
         distanze = [0.0, 0.0]
     key = np.r_[x[0:5], distanze, rr[0], _candele(sopra, SOPRA, zero, media_sopra, segno)]
 
-    # L'Orario: l'ora di New York e il giorno della settimana.
-    ora = ny.hour + ny.minute / 60
-    orario = np.r_[np.sin(2 * np.pi * ora / 24), np.cos(2 * np.pi * ora / 24),
-                   [float(ny.weekday() == g) for g in range(5)], x[22], x[23], rr[0]]
-
-    # Il Bias: dove e' andato il prezzo, sul grafico sopra e sulla settimana.
-    def ritorno(c: Candele, indietro: int, scala: float) -> float:
-        return _ritorno(c, indietro, scala, zero, segno)
-    media_sett = _ampiezza_media(settimane, 13)
     # Romeo: la posizione nella settimana in corso (i massimi e minimi della settimana hanno i loro
     # giorni), e l'obiettivo del grafico grande ancora da prendere: contro di lui si ignora tutto.
-    settimana = 0.5
+    settimana, parte = 0.5, 0.5
     if len(settimane) and len(basse):
         corrente = basse.bid[int(np.searchsorted(basse.inizio, settimane.fine[-1])):]
+        parte = float(np.clip((quando - settimane.fine[-1]) / (5 * 86400), 0.0, 1.2))
         if len(corrente):
             alto_s, basso_s = float(corrente[:, 1].max()), float(corrente[:, 2].min())
             if alto_s > basso_s:
                 settimana = (zero - basso_s) / (alto_s - basso_s)
                 settimana = settimana if segno > 0 else 1 - settimana
+
+    # L'Orario: l'ora di New York e il giorno della settimana. Romeo (CRT secrets 1, CRTology, "What
+    # is CRT?"): il massimo e il minimo della settimana hanno i loro giorni; l'Orario vede anche dove
+    # sta il prezzo nella settimana e quanta settimana e' passata, per legare il giorno al prezzo.
+    ora = ny.hour + ny.minute / 60
+    orario = np.r_[np.sin(2 * np.pi * ora / 24), np.cos(2 * np.pi * ora / 24),
+                   [float(ny.weekday() == g) for g in range(5)], x[22], x[23], rr[0], settimana, parte]
+
+    # Il Bias: dove e' andato il prezzo, sul grafico sopra e sulla settimana.
+    def ritorno(c: Candele, indietro: int, scala: float) -> float:
+        return _ritorno(c, indietro, scala, zero, segno)
+    media_sett = _ampiezza_media(settimane, 13)
     stesso = contro = 0
     if grandi is not None:
         from nvm.agenti.conferme import GRANDEZZA
@@ -286,7 +290,7 @@ def _gap(quadro, quando: int, zero: float, segno: int, ampiezza: float, obiettiv
 def dimensioni() -> dict[str, int]:
     """Quanti numeri vede ogni agente."""
     return {"Cacciatore": 4 + 5 + ALTE * 4 + 3, "Grilletto": 3 + 5 + BASSE * 4 + 7 + 6, "Livelli": 6,
-            "Key level": 5 + 3 + SOPRA * 4, "Orario": 2 + 5 + 3, "Bias": 3 + 3 + 1 + 5 + 1 + 3,
+            "Key level": 5 + 3 + SOPRA * 4, "Orario": 2 + 5 + 3 + 2, "Bias": 3 + 3 + 1 + 5 + 1 + 3,
             "Allineamento": 4 * 3 + 2, "Gap": 4 * 4 + 3}
 
 

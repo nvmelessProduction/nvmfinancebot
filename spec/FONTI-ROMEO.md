@@ -141,13 +141,13 @@ nostri; dal catalogo):
   hanno fatto l'ultima spinta verso l'alto. Quando il prezzo chiude sotto
   quella linea, si scende verso il CRT low.
 
-### Dai video (trascrizioni automatiche, 29/09/2026)
+### Dai video (trascrizioni automatiche, 29/09/2026; video interi il 30/09/2026)
 
 Il 24/09 i video non si potevano vedere; il 29/09 si sono lette le trascrizioni automatiche di
-YouTube (non i disegni). Canale: 17 video (CRT secrets 1-10, CRTology, due sessioni di
-"tape reading", "What is CRT?", "What is turtle soup?"). Lette: ep. 1, 2, 4, 5, 7, 8, 10 e le
-due sessioni dal vivo; le altre (ep. 3, 6 SMT, 9, CRTology, le due introduzioni) YouTube le ha
-bloccate e si riprovano. Le trascrizioni restano fuori dal repository. Le regole nuove:
+YouTube; il 30/09 sono arrivati dal computer di casa tutti i 17 video (1.631 fotogrammi, uno ogni
+15 secondi, e le parole di 15): si sono studiati fotogramma per fotogramma insieme alle parole. I
+fotogrammi e le parole restano fuori dal repository (`dati/vps/video/`). Gli esempi del 2024-2026
+sono nel periodo sigillato: da loro si prendono solo le regole, mai i casi. Le regole:
 
 | Video | Regola (parole sue fra virgolette) |
 |---|---|
@@ -158,6 +158,16 @@ bloccate e si riprovano. Le trascrizioni restano fuori dal repository. Le regole
 | ep.7 Candle 3 | *"trading CRT with no key level is a beginner mistake"*; aspettare che la **candela 2 chiuda** e operare la **candela 3** *"below the open"* (se ribassista), obiettivo il 50% e poi l'estremo della candela 1 |
 | ep.8 When does CRT fail? | tre motivi: **SMT** (*"SMT will stop the target from being hit"*, col gemello: BTC/ETH), ha già preso il 50% (e allora non è fallito), si opera contro il CRT del timeframe alto (*"avoid picking bearish CRTs in a bullish market"*) |
 | tape reading 1 | *"we ignore all bullish patterns on the way down to a bearish target"*; l'unica eccezione è l'SMT confermato |
+| ep.3 The journey | il viaggio del CRT sulle candele piccole: turtle soup, Model#1, **vera rottura di struttura** (minimo, massimo, minimo più basso, chiusura sopra il massimo), OTE, KOD, obiettivo; *"every single CRT has a true market structure shift"*; *"tape read candle 2, trade candle 3"* |
+| ep.5 Key level | andando verso un key level ancora non toccato, i CRT a favore **falliscono** (*"the death of CRT pattern traders"*), poi un fondo finto, l'ultima spinta dentro il key level, e solo lì l'inversione |
+| ep.6 SMT | l'SMT vuole **due conferme**: il Model#1 sullo strumento che ha preso il lato, poi la vera rottura; se la manipolazione avviene alla **fine della candela prima**, la candela dopo distribuisce subito; il key level vero è l'**apertura dell'ultima candela contraria** (*"down close candles as support"*); coppie: EUR-DXY, ES-NQ, BTC-ETH, oro-argento |
+| ep.7 (disegni) | la zona d'entrata della candela 3 è **sotto la sua apertura** per comprare (sopra per vendere); obiettivi 50%, poi l'estremo della candela 1 |
+| ep.8 (disegni) | l'**SMT di candela**: la stessa candela su due strumenti, una fa turtle soup del minimo precedente e l'altra no |
+| ep.9 Connecting the dots | prima la forma della candela grande, poi il **profilo del mercato** (massimi e minimi), per ultimo il modello d'entrata; *"only look for bullish SMTs in a higher time frame bullish market"*; ogni entrata è un Model#1 **o** una vera rottura; dopo la vera rottura si compra **fra il massimo rotto e il minimo del turtle soup**, stop sotto il minimo del turtle soup |
+| What is CRT? | ogni candela o viene superata o riceve un turtle soup, *"there is no third option"*; il bias dalla candela prima: chiusura sopra = più alto, ombra sopra con chiusura dentro = più basso; per il Model#1 *"ignore the wicks, look at the bodies"*: conta la chiusura oltre il **corpo** della candela spessa (come fa il nostro Grilletto) |
+| CRTology 1 (SS) | ogni sabato: giorno e ora del massimo e del minimo della settimana, forma della candela, a quale key level, errori di esecuzione; ogni domenica: la previsione della forma della settimana nuova |
+| CRTology 2 (disegni) | *"HTF key levels = LTF expansion"*: senza key level non si opera |
+| tape reading 1 e 2 | il massimo del KOD non deve essere superato: una chiusura sopra è un allarme; sulla strada verso l'obiettivo si scende prendendo i massimi (turtle soup) e rompendo i minimi |
 
 **Cosa ne hanno fatto i cervelli (29/09).** Sette occhi nuovi nelle viste (`nvm/cervello/viste.py`):
 candele interne e ora del range (Cacciatore); candela 2 o 3 e distanza dall'apertura, spessore
@@ -172,8 +182,7 @@ li tengono solo se passano l'esame.
 
 ### La serie "CRT secrets" su YouTube
 
-Titoli, da [@Romeotpt](https://www.youtube.com/@Romeotpt). I contenuti da
-qui non si possono vedere.
+Titoli, da [@Romeotpt](https://www.youtube.com/@Romeotpt). Studiati tutti il 30/09/2026 (sopra).
 
 | Ep. | Titolo |
 |---|---|
