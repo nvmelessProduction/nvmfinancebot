@@ -30,7 +30,6 @@ from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
 from nvm.intelligenti import al_lavoro
-from nvm.intelligenti.squadra import PARTE_MASSIMA
 from nvm.vivo import libro
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
@@ -238,7 +237,7 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        versione = "3" if self.squadra is not None else "2"
+        versione = "4" if self.squadra is not None else "2"
         if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
             testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
                      else conversazione.benvenuto(len(self.strumenti)))
@@ -302,7 +301,8 @@ class Bot:
             (self.tg.equipe if f.equipe else self.tg.operativo)(f.testo)
             registra(CARTELLA, "sorveglianza", testo=f.testo)
             if f.erre is not None:
-                self.stato.chiuse.append([int(time.time()), float(f.erre)])
+                netto = (f.libro or {}).get("netto")
+                self.stato.chiuse.append([int(time.time()), float(f.erre), None if netto is None else float(netto)])
             if f.libro is not None:
                 self._nel_libro("chiusura", **f.libro)
         adesso = time.time()
@@ -378,6 +378,12 @@ class Bot:
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
             self._finita(s, ora)
+        if self.squadra is not None:
+            # Livelli rivede come sarebbero andati gli altri stop e le altre uscite.
+            try:
+                al_lavoro.valuta_piani(self.squadra, self.basi, self.fini, ora)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
         # Le seguite finite da piu' di due settimane vanno nell'archivio: con tanti strumenti lo
         # stato, salvato ogni minuto, diventerebbe troppo grande. La riunione le rilegge.
         vecchie = [s for s in self.stato.seguite if s.esito is not None and s.esito["quando"] <= ora - TENERE]
@@ -413,13 +419,14 @@ class Bot:
             return
         fine = int(ny.replace(hour=17, minute=0, second=0, microsecond=0).timestamp())
         try:
-            saldo = self.terminale.conto().saldo
+            conto = self.terminale.conto()
+            saldo, valuta = conto.saldo, conto.valuta
         except ErroreMT5:
-            saldo = 0.0
+            saldo, valuta = 0.0, "EUR"
         if self.squadra is not None:
             # Decide la squadra: da ricordare, le sue lezioni di oggi.
             lezioni, self._lezioni_oggi = self._lezioni_oggi[-3:], []
-            gara = [al_lavoro.imparato_oggi(self.squadra)]
+            gara = al_lavoro.come_va(self.squadra)
         else:
             lezioni = [f"{k} avrebbe fatto meglio {n} volt{'a' if n == 1 else 'e'}"
                        for k, n in sorted(self.stato.lezioni.items(), key=lambda a: -a[1])]
@@ -428,8 +435,9 @@ class Bot:
                                                      float(self.cervelli_info.get("rischio", {}).get("minimo", 0.0))))
                     if x]
         testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
-                                        self.stato.saltate, [r for _, r in self.stato.chiuse], gara,
-                                        cervelli=self._decidono_i_cervelli and self.squadra is None)
+                                        self.stato.saltate, [c[1:] for c in self.stato.chiuse], gara,
+                                        cervelli=self._decidono_i_cervelli and self.squadra is None,
+                                        saldo=saldo or None, valuta=valuta)
         if testo:
             self.tg.equipe(testo)
         self.stato.lezioni = {}
@@ -528,7 +536,8 @@ class Bot:
         if self.squadra is not None and decisioni:
             self.squadra.ultimo_errore = ""
             try:
-                self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini)
+                esposizione = self._esposizione(conto.saldo)[1] if conto is not None else 0.0
+                self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini, esposizione)
             except Exception:
                 self.squadra.ultimo_errore = traceback.format_exc()
             if self.squadra.ultimo_errore:
@@ -544,9 +553,9 @@ class Bot:
             v = self._verdetti.get(d.chiave)
             if self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
-                    # Quanto puntare lo dice il Rischio della squadra, dentro il tetto fisso.
+                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,
-                                                      parte=PARTE_MASSIMA, fiducia_minima=0.0)
+                                                      parte=1.0, fiducia_minima=0.0, riduci=False)
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
                     # Quanto puntare lo dice il cervello del Rischio.
@@ -586,11 +595,11 @@ class Bot:
                                               da_sola=viva.da_sola, legate=tuple(viva.legate))
                 g = giudizi[d.chiave]
                 if d.chiave in self._verdetti:
-                    # La discussione vera della squadra: ognuno col suo bot, il Capo e il Rischio in fondo,
-                    # il Rischio coi numeri veri dell'ordine (quanto del conto, con le altre aperte).
-                    numeri = " ".join(x.testo for x in voci if x.chi == "Rischio")
-                    self.tg.voci([conversazione.Voce(x.chi, x.testo + " " + numeri) if x.chi == "Rischio" else x
-                                  for x in al_lavoro.voci(self._verdetti[d.chiave])])
+                    # La discussione della squadra: ognuno col suo bot, il Capo e il Rischio in fondo,
+                    # il Rischio coi soldi veri dell'ordine.
+                    aperte_ora, quota_totale = self._esposizione(saldo)
+                    self.tg.voci(al_lavoro.voci(self._verdetti[d.chiave], viva.rischio, viva.valuta,
+                                                viva.rischio / saldo if saldo else None, aperte_ora, quota_totale))
                     voci = []
                 elif g is not None:
                     # Il ragionamento dei cervelli, prima che il Capo chiuda.
@@ -629,8 +638,9 @@ class Bot:
             # Decide la squadra: impara lei, dal risultato vero (anche delle occasioni lasciate).
             _, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
             if s.chiave in self.squadra.memoria.discusse:
+                nome = f"{s.strumento} ({'vendita' if s.verso == 'short' else 'acquisto'})"
                 self._diario.submit(self._lezioni_della_squadra, s.chiave, float(s.esito["erre"]), bool(s.entrata),
-                                    s.leggibile or "")
+                                    nome)
             registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto, **s.esito)
             return
         _, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
@@ -687,9 +697,9 @@ class Bot:
             if lezioni:
                 registra(CARTELLA, "lezioni della squadra", chiave=chiave, erre=erre, lezioni=lezioni)
                 self._lezioni_oggi += [f"{l['agente']}: {l['lezione']}" for l in lezioni
-                                       if presa and (l["agente"] == "Capo" or not l.get("giusto"))]
+                                       if presa and not l.get("giusto")]
                 if presa:
-                    self.tg.equipe(al_lavoro.lezioni_in_breve(lezioni, chiave, erre))
+                    self.tg.equipe(al_lavoro.lezioni_in_breve(lezioni, racconto, erre))
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 

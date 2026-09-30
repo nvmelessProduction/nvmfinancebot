@@ -51,16 +51,21 @@ def _seguita(chiave, quando, entrata, erre=None):
 def test_il_riepilogo_della_sera_e_un_messaggio_solo_e_chiaro():
     seguite = [_seguita("a", 1000, True, 1.5), _seguita("b", 2000, True, -1.0), _seguita("c", 3000, False, -1.0),
                _seguita("d", 4000, False, None)]
-    testo = conversazione.riepilogo(seguite, 0, 86400, 2, 0.015, ["Livelli: «stop almeno a 0,3» avrebbe fatto meglio 3 volte"])
-    assert "Occasioni guardate: 4 · prese: 2 · lasciate: 2" in testo
-    assert "Operazioni chiuse: 2 (1 in guadagno)" in testo and "+0,50 volte il rischio" in testo
-    assert "ha fatto bene a lasciarle" in testo and "1,5% del conto" in testo and "Da ricordare" in testo
+    testo = conversazione.riepilogo(seguite, 0, 86400, 2, 0.015, ["Orario: pensavo che l'ora fosse buona"])
+    assert "Occasioni guardate: 4 · prese: 2" in testo
+    assert "Operazioni chiuse: 2 (1 in guadagno, 1 in perdita)" in testo
+    assert "abbiamo fatto bene a lasciarle" in testo and "1,5% del conto" in testo and "Da ricordare" in testo
+    # Coi soldi veri del conto: il saldo e quanto hanno fatto le chiuse.
+    testo = conversazione.riepilogo(seguite, 0, 86400, 0, 0.0, [], chiuse=[[1.5, 30.0], [-1.0, -20.0]],
+                                    saldo=10010.0, valuta="EUR")
+    assert "Il conto: 10.010,00 EUR" in testo and "Operazioni chiuse: 2 → +10,00 EUR" in testo
+    assert "Nessuna operazione aperta" in testo and " R" not in testo
 
 
 def test_il_riepilogo_conta_le_saltate_e_tace_se_non_e_successo_niente():
     testo = conversazione.riepilogo([_seguita("a", 1000, False)], 0, 86400, 0, 0.0, [],
                                     {"conto troppo piccolo per il lotto minimo": 2, "il prezzo era già oltre lo stop": 1})
-    assert "Il Capo ne voleva altre 3, non aperte: 2 conto troppo piccolo per il lotto minimo, 1 il prezzo" in testo
+    assert "La squadra ne voleva altre 3, ma non le ho aperte: 2 conto troppo piccolo per il lotto minimo, 1 il prezzo" in testo
     # Il sabato non succede niente: niente messaggio.
     assert conversazione.riepilogo([], 0, 86400, 0, 0.0, []) == ""
 

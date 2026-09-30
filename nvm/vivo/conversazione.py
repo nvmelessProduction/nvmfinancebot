@@ -238,46 +238,56 @@ def chiusura(s, alt: dict, torto: list[str], storia: Optional[dict]) -> list[Voc
 
 
 def benvenuto(strumenti: int) -> str:
-    return (f"La squadra è al lavoro su {strumenti} strumenti. Qui ci sentite quando apriamo o chiudiamo "
+    return (f"La squadra è al lavoro su {strumenti} mercati. Qui ci sentite quando apriamo o chiudiamo "
             "un'operazione, ogni sera alle 17 di New York con il riepilogo della giornata, e il sabato con la "
-            "riunione della settimana. Le occasioni che lasciamo non fanno rumore: le contiamo la sera.")
+            "revisione della settimana. Le occasioni che lasciamo non fanno rumore: le contiamo la sera.")
 
 
 # --- Il riepilogo della sera ------------------------------------------------------------------
+# Riscritto il 30/09/2026 in parole semplici, coi soldi veri del conto.
+
+def _euro(x: float, valuta: str) -> str:
+    testo = f"{abs(x):,.2f}".replace(",", "§").replace(".", ",").replace("§", ".")
+    return ("+" if x >= 0 else "−") + testo + f" {valuta}"
+
 
 def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: float, lezioni: list[str],
               saltate: Optional[dict] = None, chiuse: Optional[list] = None, altre: tuple = (),
-              cervelli: bool = False) -> str:
-    """Un messaggio solo, a fine giornata: cosa si e' deciso, com'e' andata, cosa ricordare.
-    Vuoto se non e' successo niente (il fine settimana, per esempio): niente messaggio."""
+              cervelli: bool = False, saldo: Optional[float] = None, valuta: str = "EUR") -> str:
+    """Un messaggio solo, a fine giornata: il conto, le operazioni, cosa ricordare. `chiuse`: i
+    risultati veri del conto, in R o come [R, soldi]. Vuoto se non e' successo niente."""
     decise = [s for s in seguite if dal <= s.quando < al]
     prese = [s for s in decise if s.entrata]
     finite = [s for s in seguite if s.esito is not None and dal <= s.esito["quando"] < al]
     if not decise and not finite and not aperte and not chiuse:
         return ""
-    # I risultati veri del conto, gli stessi del canale operativo; senza, quelli seguiti sulla carta.
-    vere = list(chiuse) if chiuse is not None else [float(s.esito["erre"]) for s in finite if s.entrata]
+    if chiuse is None:
+        chiuse = [float(s.esito["erre"]) for s in finite if s.entrata]
+    erre = [float(c[0]) if isinstance(c, (list, tuple)) else float(c) for c in chiuse]
+    soldi = [float(c[1]) for c in chiuse if isinstance(c, (list, tuple)) and len(c) > 1 and c[1] is not None]
     carta = [float(s.esito["erre"]) for s in finite if not s.entrata]
     giorno = datetime.fromtimestamp(al - 1, tz=NEW_YORK).strftime("%d/%m")
-    righe = [f"📋 Riepilogo del {giorno}", "",
-             f"• Occasioni guardate: {len(decise)} · prese: {len(prese)} · lasciate: {len(decise) - len(prese)}"]
+    righe = [f"📋 Com'è andata oggi ({giorno})", ""]
+    if saldo:
+        righe.append(f"• Il conto: {_euro(saldo, valuta)[1:]}")
+    if erre:
+        vinte = sum(r > 0.05 for r in erre)
+        perse = sum(r < -0.05 for r in erre)
+        quanto = f" → {_euro(sum(soldi), valuta)}" if len(soldi) == len(erre) else ""
+        righe.append(f"• Operazioni chiuse: {len(erre)}{quanto} ({vinte} in guadagno, {perse} in perdita)")
+    else:
+        righe.append("• Nessuna operazione chiusa oggi")
+    righe.append(f"• Aperte adesso: {aperte} (in gioco il {_pct(rischio_totale)} del conto)" if aperte
+                 else "• Nessuna operazione aperta adesso")
+    righe.append(f"• Occasioni guardate: {len(decise)} · prese: {len(prese)}")
     if saltate:
         quante = sum(saltate.values())
         perche = ", ".join(f"{n} {m}" for m, n in sorted(saltate.items(), key=lambda a: -a[1]))
-        chi = "I cervelli ne volevano" if cervelli else "Il Capo ne voleva"
-        righe.append(f"• {chi} altr{'a' if quante == 1 else 'e'} {quante}, non apert{'a' if quante == 1 else 'e'}: {perche}")
-    if vere:
-        vinte = sum(r > 0.05 for r in vere)
-        righe.append(f"• Operazioni chiuse: {len(vere)} ({vinte} in guadagno) · in tutto {_volte(sum(vere))}")
-    else:
-        righe.append("• Nessuna operazione chiusa oggi")
+        righe.append(f"• La squadra ne voleva altr{'a' if quante == 1 else 'e'} {quante}, ma non l{'a' if quante == 1 else 'e'} "
+                     f"ho apert{'a' if quante == 1 else 'e'}: {perche}")
     if carta:
-        giudizio = ("ha fatto bene a lasciarle" if sum(carta) <= 0 else "avrebbe fatto meglio a prenderne qualcuna")
-        if cervelli:
-            giudizio = giudizio.replace("ha fatto", "hanno fatto").replace("avrebbe fatto", "avrebbero fatto")
-        righe.append(f"• Le occasioni lasciate, se prese, avrebbero fatto {_volte(sum(carta))}: "
-                     f"{'i cervelli' if cervelli else 'il Capo'} {giudizio}")
-    righe.append(f"• Aperte adesso: {aperte} · {_pct(rischio_totale)} del conto a rischio")
+        righe.append("• Le occasioni lasciate sarebbero andate male: abbiamo fatto bene a lasciarle" if sum(carta) <= 0 else
+                     "• Le occasioni lasciate sarebbero andate bene: la squadra ne tiene conto")
     righe += list(altre)
     if lezioni:
         righe += ["", "Da ricordare"] + [f"• {x}" for x in lezioni[:3]]

@@ -108,15 +108,20 @@ class Esecutore:
         self.correlazioni = {float(c): float(r) for c, r in correlazioni.items()} if correlazioni else None
 
     def apri(self, d: Decisione, conto: Conto, aperte: list = (), pieno: Optional[float] = None,
-             parte: Optional[float] = None, fiducia_minima: Optional[float] = None) -> tuple[Optional[Viva], Fatto]:
+             parte: Optional[float] = None, fiducia_minima: Optional[float] = None,
+             riduci: bool = True) -> tuple[Optional[Viva], Fatto]:
         """Apre la decisione sul conto. `aperte`: le operazioni gia' aperte (`Viva`), perche' il
-        Rischio punti sul conto intero e non su un'operazione alla volta."""
+        Rischio punti sul conto intero e non su un'operazione alla volta. `riduci=False`: la puntata
+        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce."""
         k, op, verso = d.r.strumento, d.op, d.r.verso
         if not conto.demo:
             return None, Fatto(messaggi.allarme(f"il conto {conto.login} non è un demo: non apro {k}."))
         if not conto.trading_permesso:
             return None, Fatto(messaggi.allarme(
                 "MT5 non permette al bot di operare: accendi il pulsante \"Algo Trading\" in alto nel terminale."))
+        # L'unica regola che vale per tutti: senza stop non si apre, mai.
+        if op.stop is None or not math.isfinite(float(op.stop)):
+            return None, Fatto(messaggi.allarme(f"{k}: un'operazione senza stop non la apro, mai."))
         bid, ask = self.t.prezzo(k)
         prezzo = bid if verso is Verso.SHORT else ask
         segno = -1 if verso is Verso.SHORT else 1
@@ -142,7 +147,7 @@ class Esecutore:
         gamba = portafoglio.gambe(k, segno)
         # Quelle a pareggio non rischiano piu' niente.
         in_corso = [(v.gambe, v.rischio / conto.saldo) for v in aperte if not v.pareggio_fatto and conto.saldo > 0]
-        togli = portafoglio.riduzione(gamba, in_corso, self.correlazioni)
+        togli = portafoglio.riduzione(gamba, in_corso, self.correlazioni) if riduci else 0.0
         da_sola = pieno * parte
         f = max(da_sola - togli, 0.0)
         legate = portafoglio.legate(gamba, [(v.strumento, v.gambe) for v in aperte if not v.pareggio_fatto],
@@ -200,10 +205,10 @@ class Esecutore:
                     tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a, basso=d.r.basso_tf.value,
                     livello=float(op.livello_model1 or 0.0), invalida_candele=op.invalida_candele,
                     tempo_candele=op.tempo_candele, da_sola=da_sola, legate=legate if togli > 0 else [])
-        testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita != USCITE[0],
+        testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita,
                                   rischio / conto.saldo if conto.saldo else None)
         if volume < minimo:
-            testo += f"\nLa dimensione giusta era sotto il lotto minimo: apro il minimo ({minimo:g})."
+            testo += f"\n(La puntata giusta era più piccola del minimo che il broker accetta: apro il minimo, {minimo:g} lotti.)"
         return viva, Fatto(testo)
 
     def sorveglia(self, vive: list[Viva]) -> tuple[list[Viva], list[Fatto]]:

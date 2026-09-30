@@ -202,7 +202,7 @@ def test_la_prova_del_collegamento_non_manda_ordini_e_spiega_i_rifiuti():
     testo = messaggi.collegamento([("EURUSD", True, e.messaggio), ("GBPUSD", False, rifiuto.messaggio)], 2)
     assert "✅ EURUSD" in testo and "❌ GBPUSD" in testo and "aperte adesso: 2" in testo
     tutto_bene = messaggi.collegamento([("EURUSD", True, e.messaggio), ("GBPUSD", True, e.messaggio)], 0)
-    assert "tutti e 2 gli strumenti" in tutto_bene
+    assert "tutti i 2 mercati" in tutto_bene
 
 
 def test_apre_due_meta_sposta_a_pareggio_e_chiude():
@@ -216,8 +216,11 @@ def test_apre_due_meta_sposta_a_pareggio_e_chiude():
     a, b = viva.tickets
     assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
     assert m.posizioni[a].sl == m.posizioni[b].sl == round(d.op.stop, 5)
-    assert ("ACQUISTO" in fatto.testo or "VENDITA" in fatto.testo) and "Probabilità" in fatto.testo
+    # In parole semplici: cosa ho fatto, quanto posso perdere, quanto posso guadagnare, in euro.
+    assert ("HO COMPRATO" in fatto.testo or "HO VENDUTO" in fatto.testo) and "se va male perdo" in fatto.testo
+    assert "Obiettivo 1" in fatto.testo and "Obiettivo 2" in fatto.testo and "EUR" in fatto.testo
     assert "del conto" in fatto.testo and "Model#1" not in fatto.testo and "Kelly" not in fatto.testo
+    assert " R" not in fatto.testo and "Probabilità" not in fatto.testo
 
     m.chiudi(a, d.op.tp1)  # il broker incassa il primo target
     vive, fatti = e.sorveglia([viva])
@@ -515,7 +518,7 @@ def test_il_pareggio_prima_del_primo_obiettivo_tiene_i_due_target():
     meta = viva.ingresso + 0.6 * (viva.tp1 - viva.ingresso)
     m.tick["EURUSD"] = NS(time=0, bid=meta, ask=meta + 0.00001) if not viva.short else NS(time=0, bid=meta - 0.00001, ask=meta)
     vive, fatti = e.sorveglia([viva])
-    assert vive[0].pareggio_fatto and "pareggio" in fatti[0].testo
+    assert vive[0].pareggio_fatto and "prezzo d'entrata" in fatti[0].testo
     assert m.posizioni[a].sl == m.posizioni[b].sl == round(viva.ingresso, 5)
     assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
 
@@ -539,7 +542,7 @@ def test_l_uscita_anticipata_chiude_a_mercato_e_lo_dice():
     fatto = e.uscita_anticipata(viva, basse)
     assert fatto is not None and "prima dello stop" in fatto.testo and not m.posizioni
     vive, fatti = e.sorveglia([viva])
-    assert vive == [] and "l'idea non vale più" in fatti[0].testo
+    assert vive == [] and "l'idea non vale più" in fatti[0].testo.lower()
 
 
 def test_il_bot_si_sveglia_pochi_secondi_dopo_la_chiusura():

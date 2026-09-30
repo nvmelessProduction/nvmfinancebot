@@ -1,9 +1,8 @@
 """Le parole del bot: cosa scrive sui due canali, in italiano semplice.
 
-Stile (riscritti il 24/09/2026 su richiesta dell'utente): frasi brevi, una
-cosa per riga, "compro/vendo" invece di long/short, i prezzi come li mostra
-MT5, le altre cifre all'italiana. Ogni decisione e' una scheda sola: cosa dice
-ogni agente, cosa decide il Capo, chi ha pesato di piu'.
+Stile (riscritti il 30/09/2026 su richiesta del proprietario): frasi brevi, una
+cosa per riga, parole di tutti i giorni, "compro/vendo", i soldi in euro invece
+delle sigle, i prezzi come li mostra MT5, le altre cifre all'italiana.
 """
 
 from __future__ import annotations
@@ -100,72 +99,74 @@ def _candela_range(d: Decisione) -> str:
 
 
 # --- canale operativo -----------------------------------------------------------
+# Riscritti il 30/09/2026 (il proprietario: *"così non capisco niente"*): parole di tutti i giorni,
+# i soldi in euro invece delle sigle, una cosa per riga.
+
+_MOTIVI = {"stop": "è arrivata allo stop", "target": "ha raggiunto l'obiettivo",
+           "pareggio": "è tornata al prezzo d'entrata",
+           "primo target e poi secondo target": "ha raggiunto tutti e due gli obiettivi",
+           "primo target e poi pareggio": "metà chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata"}
+
 
 def avvio(login: int, server: str, saldo: float, valuta: str, strumenti: list[str], scarto: int) -> str:
     return "\n".join([
-        "🟢 Bot acceso",
-        f"Conto demo {login} · {server} · saldo {_it(saldo)} {valuta}",
-        f"Guardo {', '.join(strumenti)}",
-        "Coppie: mensile → giornaliero · settimanale → 4 ore · giornaliero → 1 ora · 4 ore → 15 minuti",
-        "Le decisioni le racconta l'équipe, qui solo quello che succede sul conto.",
+        "🟢 Il bot è acceso",
+        f"Conto demo {login} ({server})",
+        f"Saldo: {_it(saldo)} {valuta}",
+        f"Guardo {len(strumenti)} mercati.",
+        "Qui vedi solo cosa succede sul conto. Perché compriamo o vendiamo lo racconta la squadra nell'altro canale.",
     ])
 
 
 def mancanti(strumenti: list[str], guardati: int) -> str:
-    return (f"ℹ️ Il broker non ha {', '.join(strumenti)} su questo conto: li salto. "
-            f"Opero su {guardati} strumenti.")
+    return f"ℹ️ Il broker non ha questi mercati: {', '.join(strumenti)}. Li salto: lavoro su {guardati} mercati."
 
 
 def aggiornato(titolo: str) -> str:
-    return f"🔄 Aggiornato e ripartito: {titolo}"
+    return f"🔄 Mi sono aggiornato e sono ripartito.\nNovità: {titolo}"
 
 
 def collegamento(prove: list[tuple[str, bool, str]], aperte: int) -> str:
     """La prova del collegamento con MT5: nessun ordine mandato, solo il controllo del broker."""
-    righe = ["🔌 Collegamento con MT5 (controllo senza aprire niente)"]
+    righe = ["🔌 Controllo il collegamento con MT5 (senza aprire niente)"]
     if all(ok for _, ok, _ in prove):
-        righe.append(f"✅ Il broker accetta gli ordini su tutti e {len(prove)} gli strumenti")
+        righe.append(f"✅ Posso operare su tutti i {len(prove)} mercati")
     else:
         righe += [f"{'✅' if ok else '❌'} {strumento}: {testo}" for strumento, ok, testo in prove]
-    righe.append(f"Operazioni del bot aperte adesso: {aperte}")
+    righe.append(f"Operazioni aperte adesso: {aperte}")
     return "\n".join(righe)
 
 
-def _perche(d: Decisione) -> str:
-    s, crt = d.r.scatto, d.r.scatto.crt
-    k = d.r.strumento
-    short = d.r.verso is Verso.SHORT
-    lato = "massimo" if short else "minimo"
-    testo = (f"CRT sul{_candela_range(d)} ({prezzo(k, crt.crt_low)}–{prezzo(k, crt.crt_high)}). "
-             f"Il prezzo ha preso il {lato} ed è rientrato; alle {quando(s.quando)[6:]} il Model#1 "
-             f"sul grafico a {NOMI_TF[d.r.basso_tf]}.")
-    if d.r.colpo > 1:
-        testo += f" È il colpo n. {d.r.colpo}: il precedente è stato stoppato."
-    return testo
-
-
-def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, singola: bool,
+def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, uscita,
              quota: Optional[float] = None) -> str:
-    """Il canale operativo: solo i fatti dell'operazione, sempre nello stesso ordine. Il perche'
-    lo discute l'equipe."""
+    """Il canale operativo: cosa ho fatto sul conto, quanto posso perdere e quanto posso guadagnare.
+    `uscita`: "due meta'", "primo target" o "secondo target" (`nvm/agenti/rischio.USCITE`)."""
     k, op, r = d.r.strumento, d.op, d.r
-    freccia = "📉 VENDITA" if r.verso is Verso.SHORT else "📈 ACQUISTO"
-    obiettivi = prezzo(k, op.tp1) if singola else f"{prezzo(k, op.tp1)} (metà) e {prezzo(k, op.tp2)}"
-    parte = f" ({quota:.1%} del conto)".replace(".", ",") if quota else ""
-    return "\n".join([
-        f"{freccia} · {k}",
-        f"Ingresso {prezzo(k, prezzo_vero)} · Stop {prezzo(k, op.stop)}",
-        f"Obiettivi {obiettivi}",
-        f"{_it(volume, 2)} lotti · rischio {_it(rischio)} {valuta}{parte}",
-        f"Probabilità di arrivare al primo obiettivo: {d.p1:.0%}",
-    ])
+    vende = r.verso is Verso.SHORT
+    distanza = abs(prezzo_vero - op.stop) or 1e-12
+    def guadagno(target: float, parte: float) -> str:
+        return euro(rischio * parte * abs(target - prezzo_vero) / distanza, valuta)
+    parte = f" ({_it(100 * quota)}% del conto)" if quota else ""
+    righe = [f"{'🔴 HO VENDUTO' if vende else '🟢 HO COMPRATO'} {k}",
+             f"Prezzo d'entrata: {prezzo(k, prezzo_vero)}",
+             f"🛑 Stop: {prezzo(k, op.stop)} → se va male perdo {_it(rischio)} {valuta}{parte}"]
+    if uscita == "primo target" or uscita is True:
+        righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp1)} → circa {guadagno(op.tp1, 1.0)}")
+    elif uscita == "secondo target":
+        righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp2)} → circa {guadagno(op.tp2, 1.0)}")
+        righe.append(f"🛡 A {prezzo(k, op.tp1)} sposto lo stop al prezzo d'entrata: da lì non può più perdere")
+    else:
+        righe.append(f"🎯 Obiettivo 1: {prezzo(k, op.tp1)} → chiudo metà, circa {guadagno(op.tp1, 0.5)}")
+        righe.append(f"🎯 Obiettivo 2: {prezzo(k, op.tp2)} → l'altra metà, circa {guadagno(op.tp2, 0.5)}")
+    righe.append(f"Quantità: {_it(volume, 2)} lotti")
+    return "\n".join(righe)
 
 
 def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None) -> str:
-    testa = f"🎯 {k}: primo obiettivo preso, chiusa metà."
+    testa = f"🎯 {k}: primo obiettivo raggiunto, ho chiuso metà in guadagno."
     if a_pareggio:
-        return f"{testa} Il resto è a pareggio (stop a {prezzo(k, ingresso)})."
-    return f"{testa} Il resto tiene lo stop: va a pareggio quando il prezzo arriva a {prezzo(k, livello)}."
+        return f"{testa}\nSul resto lo stop ora è al prezzo d'entrata ({prezzo(k, ingresso)}): da qui non può più perdere."
+    return f"{testa}\nSul resto lo stop andrà al prezzo d'entrata quando il prezzo arriva a {prezzo(k, livello)}."
 
 
 def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
@@ -173,22 +174,27 @@ def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
 
 
 def pareggio(k: str, verso: Verso, ingresso: float) -> str:
-    return f"🛡 {k}: stop spostato a pareggio ({prezzo(k, ingresso)}). Da qui l'operazione non può più perdere."
+    return f"🛡 {k}: ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}). Da qui non può più perdere."
 
 
 def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: str) -> str:
+    come = _MOTIVI.get(motivo, motivo)
     if abs(r) < 0.05:
-        return f"➖ {k} chiusa a pareggio ({motivo})"
-    segno, come = ("✅", "in guadagno") if netto > 0 else ("❌", "in perdita")
-    return f"{segno} {k} chiusa {come}: {euro(netto, valuta)} ({erre(r)}) · {motivo}"
+        return f"➖ {k} chiusa in pari: {euro(netto, valuta)}\n{_cap(come)}."
+    segno, esito = ("✅", "in guadagno") if netto > 0 else ("❌", "in perdita")
+    return f"{segno} {k} chiusa {esito}: {euro(netto, valuta)}\n{_cap(come)}."
 
 
 def saltata(d: Decisione, motivo: str) -> str:
-    return f"⏭ {d.r.strumento} {direzione(d.r.verso)}: il Capo voleva entrare, ma non apro: {motivo}."
+    return f"⏭ {d.r.strumento}: la squadra voleva {'vendere' if d.r.verso is Verso.SHORT else 'comprare'}, ma non ho aperto: {motivo}."
 
 
 def allarme(testo: str) -> str:
     return f"⚠️ {testo}"
+
+
+def _cap(testo: str) -> str:
+    return testo[:1].upper() + testo[1:] if testo else testo
 
 
 def ora_utc(t: int) -> Optional[str]:
@@ -372,10 +378,8 @@ def romeo_ricevuta(e, s) -> str:
                   else f"a {_it(e.pip, 1)} pip")
         giudizio = " ✅ ritrovata" if e.ritrovata else (" — troppo lontana" if e.distanza is not None else "")
         righe.append(f"La mia più vicina: {s.leggibile or s.chiave}, ingresso {prezzo(k, s.ingresso)}, {quanto}.{giudizio}")
-        righe.append("L'avevo presa." if s.entrata else
-                     f"Non l'avevo presa: qualità attesa {qualita(s.qualita)}." if s.qualita is not None else
-                     f"Non l'avevo presa: guadagno atteso {erre(s.atteso)}.")
-    righe.append("Sabato imparo da questa. Non la copio: Romeo è il mio metro, non un ordine.")
+        righe.append("L'avevo presa anch'io." if s.entrata else "Io non l'avevo presa.")
+    righe.append("Non la copio: Romeo è il mio metro, non un ordine.")
     return "\n".join(righe)
 
 
