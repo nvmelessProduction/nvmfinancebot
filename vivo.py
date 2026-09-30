@@ -22,20 +22,20 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
-from nvm.intelligenti import al_lavoro
+from nvm.intelligenti import al_lavoro, fine_settimana
 from nvm.vivo import libro
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import NEW_YORK, TF
-from nvm.vivo import autoanalisi, conversazione, messaggi
+from nvm.vivo import autoanalisi, conversazione, disegni, messaggi
 from nvm.vivo.ambiente import impostazioni, leggi_env
 from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
@@ -179,6 +179,8 @@ class Bot:
         self.fini: dict[str, Minuti] = {}
         self._allarmi: dict[str, float] = {}
         self._ultimo_controllo = 0.0
+        # I disegni sul grafico di MT5 (`nvm/vivo/disegni.py`): pronti dopo il collegamento.
+        self.disegni: Optional[disegni.Disegni] = None
 
     def allarme(self, testo: str) -> None:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
@@ -231,13 +233,14 @@ class Bot:
         if mancanti:
             self.tg.operativo(messaggi.mancanti(mancanti, len(self.strumenti)))
         self.prova_collegamento(solo_se_non_va=da_aggiornamento)
+        self.prepara_disegni()
         if not self.imp.chat_equipe:
             self.tg.operativo(messaggi.allarme(
                 "Il canale équipe non è impostato: nel file .env manca la riga TELEGRAM_CHAT_EQUIPE= con l'id del "
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        versione = "4" if self.squadra is not None else "2"
+        versione = "5" if self.squadra is not None else "2"
         if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
             testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
                      else conversazione.benvenuto(len(self.strumenti)))
@@ -247,6 +250,49 @@ class Bot:
             # Gli allenamenti sui vent'anni si raccontano solo se decide il sistema di prima.
             self.racconta_allenamento()
             self.racconta_evoluzione()
+
+    def prepara_disegni(self) -> None:
+        """Installa e compila in MT5 il programma che disegna sul grafico, e lo dice una volta sola."""
+        try:
+            info = self.terminale.mt5.terminal_info()
+            comune = Path(info.commondata_path) / "Files"
+            fatto, problema = disegni.installa(RADICE, Path(info.data_path), Path(info.path))
+            self.disegni = disegni.Disegni(CARTELLA, comune)
+            self.disegni.scrivi(int(time.time()))
+            avvisato = CARTELLA / "disegni_avvisato"
+            if fatto and not avvisato.exists():
+                self.tg.operativo(disegni.AVVISO)
+                avvisato.write_text("1", encoding="utf-8")
+            elif not fatto:
+                self.allarme(problema)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _disegna(self, d, viva, adesso: int) -> None:
+        if self.disegni is None or getattr(d.r.scatto, "modello", "") != "candela 3":
+            return
+        try:
+            self.disegni.metti(d.chiave, self.terminale.simbolo(d.r.strumento),
+                               disegni.operazione(d, viva, self.terminale.scarto or 0), disegni.fino_a(d))
+            self.disegni.scrivi(adesso)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def disegna_settimana(self, adesso: int) -> None:
+        """La domenica (V14): su ogni strumento il lunedi' e i livelli della settimana passata."""
+        if self.disegni is None:
+            return
+        ny = datetime.fromtimestamp(adesso, tz=NEW_YORK)
+        lunedi_ny = (ny + timedelta(days=(7 - ny.weekday()) % 7 or 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+        lunedi = int(lunedi_ny.timestamp())
+        venerdi = int((lunedi_ny + timedelta(days=4, hours=17)).timestamp())
+        for s in self.strumenti:
+            p = fine_settimana.previsione(self.basi[s], adesso) if s in self.basi else None
+            if p is None:
+                continue
+            self.disegni.metti(f"settimana {s}", self.terminale.simbolo(s),
+                               disegni.settimana(p[1], p[2], lunedi, venerdi, self.terminale.scarto or 0), venerdi + 86400)
+        self.disegni.scrivi(adesso)
 
     def racconta_evoluzione(self) -> None:
         """Come i cervelli hanno provato a cambiare se stessi in settimana: una volta sola, in equipe."""
@@ -318,6 +364,8 @@ class Bot:
         settimana = f"{oggi.isocalendar().year}-S{oggi.isocalendar().week:02d}"
         if oggi.weekday() == 5 and oggi.hour >= 8 and self.stato.ultima_riunione != settimana:
             self.riunione(settimana, int(adesso))
+        if oggi.weekday() == 6 and oggi.hour >= 18 and self.stato.ultima_domenica != settimana:
+            self.domenica(settimana, int(adesso))
         self.stato.salva(CARTELLA)
         if adesso - self._ultimo_controllo >= CONTROLLO_VERSIONE:
             self._ultimo_controllo = adesso
@@ -565,9 +613,13 @@ class Bot:
                 else:
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
                 da_dire.append(fatto)
+                if viva is None and v is not None and self.squadra is not None:
+                    # L'ordine non e' partito: per imparare conta come non presa.
+                    self.squadra.annulla(d.chiave)
                 if viva is not None:
                     self.stato.vive.append(viva)
                     aperte.add(d.chiave)
+                    self._disegna(d, viva, adesso)
                     conto = self.terminale.conto()
                     self._nel_libro("apertura", strumento=viva.strumento, verso=viva.verso, tickets=viva.tickets,
                                     volume=viva.volume, ingresso=viva.ingresso, stop=viva.stop, tp1=viva.tp1,
@@ -703,9 +755,33 @@ class Bot:
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 
+    def _prese_in_settimana(self, adesso: int) -> list:
+        """Le operazioni prese e finite negli ultimi sette giorni: (strumento, verso, R, parte del conto)."""
+        return [(s.strumento, s.verso, float(s.esito["erre"]), None) for s in self.stato.seguite
+                if s.entrata and s.esito is not None and s.esito["quando"] > adesso - 7 * 86400]
+
+    def domenica(self, settimana: str, adesso: int) -> None:
+        """La domenica di Romeo (V14): la previsione della settimana e i livelli da portare avanti."""
+        try:
+            operati = [p[0] for p in self._prese_in_settimana(adesso)]
+            testo, previsioni = fine_settimana.domenica(self.basi, adesso, operati)
+            self.tg.equipe(testo)
+            self.stato.previsioni = previsioni
+            registra(CARTELLA, "domenica di Romeo", settimana=settimana, previsioni=previsioni)
+            self.disegna_settimana(adesso)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        self.stato.ultima_domenica = settimana
+        self.stato.salva(CARTELLA)
+
     def riunione(self, settimana: str, adesso: int) -> None:
         if self.squadra is not None:
             # Decide la squadra: il sabato e' la sua revisione, niente Capo riallenato sui vent'anni.
+            try:
+                self.tg.equipe(fine_settimana.sabato(self.basi, adesso, self._prese_in_settimana(adesso),
+                                                     self.stato.previsioni))
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
             try:
                 cambi = self.squadra.riscrivi_manuali()
                 registra(CARTELLA, "revisione della squadra", settimana=settimana, cambi=cambi)

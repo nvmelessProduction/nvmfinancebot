@@ -48,6 +48,14 @@ Range Theory): il prezzo esce da un range, prende la liquidità, rientra e inver
 4. Doppio clic su **`avvia.bat`**. La prima volta prepara Python (qualche minuto), poi sul
    canale operativo arriva "🟢 Bot acceso".
 
+5. **I disegni sul grafico** (una volta sola): in MT5 apri il Navigatore (Ctrl+N), poi «Servizi»,
+   cartella «NVM»: tasto destro su «NvmDisegni» → «Avvia». Se non lo vedi: tasto destro su
+   «Servizi» → «Aggiorna». Da lì il bot disegna su ogni grafico aperto le sue operazioni come le
+   disegna Romeo: la candela 1 col suo 50%, la finta sul key level, l'apertura della candela 3,
+   la candela del Model#1, l'entrata, lo stop e i due obiettivi; la domenica il massimo e il minimo
+   della settimana passata. Se il servizio non parte: trascina «NvmDisegniGrafico» (Indicatori →
+   NVM) su un grafico qualsiasi.
+
 Lascia aperta la finestra nera:
 - se si chiude per un problema (MT5 chiuso, internet assente), il bot riparte da solo dopo un
   minuto;
@@ -59,12 +67,17 @@ Lascia aperta la finestra nera:
   percentuale del conto) e ogni chiusura, con il risultato in euro e in "R" (1 R = quanto si
   rischiava).
 - **Équipe**:
-  - su ogni operazione aperta: chi ha visto il segnale, chi era a favore e chi contro, quanto
-    ci credono i cervelli prima e dopo il confronto, il piano scelto, il rischio sul conto
-    intero;
+  - su ogni operazione aperta: ogni agente dice la sua regola di Romeo (candela 3, la finta
+    oltre l'apertura, la candela spessa, il key level, la direzione del grafico grande, l'ora,
+    il 50% ancora da prendere), poi il Capo e il Rischio con i soldi in gioco;
+  - su ogni operazione chiusa: cosa impara la squadra;
   - ogni sera alle 17 di New York: il riepilogo della giornata;
-  - il sabato: la riunione della settimana;
-  - quando i cervelli si modificano: cosa hanno provato e cosa hanno tenuto.
+  - il sabato (come Romeo nel video CRTology SS): giorno e ora del massimo e del minimo della
+    settimana, la forma della candela, il key level, gli errori di esecuzione, e cosa la squadra
+    ha imparato;
+  - la domenica: la previsione della settimana e i livelli da guardare.
+
+Le regole vengono dai 17 video di Romeo, ognuna col video e il minuto: `spec/metodo_romeo.md`.
 
 ## 5. Il rendiconto
 

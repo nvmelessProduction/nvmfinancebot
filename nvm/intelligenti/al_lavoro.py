@@ -14,7 +14,8 @@ from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import costruisci
-from nvm.intelligenti.fatti import fatti
+from nvm.cervello.viste import COMPAGNI
+from nvm.intelligenti import metodo
 from nvm.intelligenti.squadra import Squadra, Verdetto
 from nvm.prova.campo import Operazione, Uscita, simula
 from nvm.tempo import TF
@@ -34,18 +35,29 @@ def _dati(op) -> Optional[dict]:
     return d
 
 
+def _gemello(strumento: str, basi: dict):
+    """Le ore del mercato gemello per l'SMT (V8 21:38), se il bot le ha."""
+    g = COMPAGNI.get(strumento)
+    if not g or g[0] not in basi:
+        return None
+    return basi[g[0]], g[1]
+
+
 def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: float = 0.0) -> dict[str, Verdetto]:
-    """La squadra si riunisce su ogni occasione del giro. Restituisce i verdetti per chiave; manca solo
-    l'occasione su cui qualcosa si e' rotto (l'errore resta in `squadra.ultimo_errore`)."""
+    """La squadra si riunisce su ogni occasione del giro: le domande di Romeo dai video (`metodo.py`),
+    poi decide. Restituisce i verdetti per chiave; manca solo l'occasione su cui qualcosa si e' rotto
+    (l'errore resta in `squadra.ultimo_errore`)."""
     fatte = {}
     for d in decisioni:
         s = d.r.strumento
         try:
-            f = fatti(d, basi[s], fini.get(s))
+            m = metodo.valuta(d, basi[s], fini.get(s), _gemello(s, basi))
             piani = d.piani or None
             seguire = {"strumento": s, "basso": d.r.basso_tf.value, "scadenza": int(d.scadenza),
                        "piani": [_dati(op) for op in piani]} if piani else None
-            fatte[d.chiave] = squadra.riunione(d.chiave, s, f, piani, esposizione, seguire, d.op)
+            v = squadra.riunione(d.chiave, s, m, int(d.r.quando), piani, esposizione, seguire, d.op)
+            v.metodo = m
+            fatte[d.chiave] = v
         except Exception:
             squadra.ultimo_errore = traceback.format_exc()[-1500:]
     squadra.salva()
@@ -116,10 +128,12 @@ def voci(v: Verdetto, rischio: Optional[float] = None, valuta: str = "EUR", quot
 
 
 def benvenuto(strumenti: int) -> str:
-    return (f"Da oggi siamo liberi: decidiamo tutto noi, su {strumenti} mercati. Conosciamo la strategia di Romeo, "
-            "ma nessuno nasce imparato: ogni errore ci servirà per migliorare, e se vediamo qualcosa di nuovo che "
-            "funziona ce lo inventiamo. Quanto puntare lo decide il Rischio. Una sola regola: mai un'operazione "
-            "senza stop.")
+    return (f"Ci siamo riaddestrati da zero sui 17 video di Romeo, e guardiamo {strumenti} mercati. Entriamo "
+            "quando c'è il suo setup, tutte le volte che c'è: la candela 3 dopo la finta, un key level del "
+            "grafico grande, il grafico grande dalla nostra parte, l'ora giusta, la conferma con una candela "
+            "spessa, il 50% ancora da prendere. Se manca anche una cosa, aspettiamo. Quanto puntare lo decide il "
+            "Rischio. Mai un'operazione senza stop. Ogni errore ci serve per migliorare, e se vediamo qualcosa "
+            "di nuovo che funziona ce lo inventiamo.")
 
 
 def lezioni_in_breve(lezioni: list[dict], nome: str, erre: float) -> str:
@@ -148,6 +162,9 @@ def come_va(squadra: Squadra) -> list[str]:
     """Righe per il riepilogo della sera: la puntata del Rischio e chi ci prende di piu'."""
     m = squadra.memoria
     righe = [f"• Il Rischio adesso punta in media {_pct(m.rischio['base'])} del conto a operazione"]
+    n, somma, vinte = m.a_piu
+    if n:
+        righe.append(f"• Occasioni con tutte le regole di Romeo finite finora: {n}, andate bene {vinte}")
     voti = [(a, *m.ci_prende(a)) for a in m.voti]
     voti = [(a, g, n) for a, g, n in voti if n >= 5]
     if voti:

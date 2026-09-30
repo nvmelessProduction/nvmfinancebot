@@ -13,16 +13,16 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti.cacciatore import CRT, caccia
+from nvm.agenti.cacciatore import CRT, Variante, Verso, caccia
 from nvm.agenti.capo import Capo, riga
 from nvm.agenti.conferme import SOPRA, AllaRomeo, Contesto, KeyLevel, Liquidita, Orario, tutti_i_pareri
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
-from nvm.prova.base import Risultato, opera
+from nvm.prova.base import Risultato, opera, opera_candela_3
 from nvm.prova.campo import Operazione
 from nvm.agenti import capo as capo_mod, inventate, manopole, panorama
-from nvm.agenti.conferme import Grandi
+from nvm.agenti.conferme import GRANDEZZA, Grandi
 from nvm.cervello.piani import tutti as piani_di
 from nvm.cervello.viste import COMPAGNI, viste
 from nvm.tempo import TF
@@ -31,6 +31,9 @@ from nvm.tempo import TF
 COPPIE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
 # La quarta coppia di Romeo si guarda con i quarti d'ora di MT5, ogni quarto d'ora.
 COPPIA_VELOCE = (TF.H4, TF.M15)
+# Come nascono le occasioni: "candela 3" e' il metodo dei video (`spec/metodo_romeo.md`: aspettata la
+# chiusura della candela 2, l'entrata nella candela 3); "model1" quello di prima (anche nella candela 2).
+METODO = "candela 3"
 
 
 @dataclass
@@ -62,6 +65,10 @@ class Decisione:
     viste: Optional[dict] = None
     # Le operazioni di tutti i piani fra cui i cervelli scelgono (`nvm/cervello/piani.py`).
     piani: Optional[list] = None
+    # Su quante grandezze piu' grandi c'e' un CRT armato contro e nello stesso verso (la direzione del
+    # grafico grande per il metodo dei video).
+    grandi_contro: int = 0
+    grandi_con: int = 0
 
     @property
     def entra(self) -> bool:
@@ -107,6 +114,25 @@ def _crt(base: Minuti, alto: TF, basso: TF, adesso: int):
                     lambda: caccia(_candele(base, alto, adesso), _candele(base, basso, adesso)))
 
 
+def _crt3(base: Minuti, alto: TF, basso: TF, adesso: int):
+    """I CRT del metodo dei video: la candela 2 ha fatto la finta e ha chiuso dentro."""
+    return _ricorda(("crt3", _impronta(base), alto, basso, adesso),
+                    lambda: caccia(_candele(base, alto, adesso), _candele(base, basso, adesso), Variante.CHIUSURA_DENTRO))
+
+
+def _occasioni(alte, basse, base, alto, basso, dal, adesso, metodo):
+    if metodo == "candela 3":
+        return opera_candela_3(alte, basse, dal, adesso + 1, trovati=_crt3(base, alto, basso, adesso))
+    return opera(alte, basse, dal, adesso + 1, trovati=_crt(base, alto, basso, adesso))
+
+
+def _grandi3(ore: Minuti, adesso: int):
+    """I CRT confermati (candela 2 chiusa dentro) delle coppie, ancora in viaggio verso l'obiettivo: la
+    direzione del grafico grande per il metodo dei video (V16 01:43, V10 13:43)."""
+    return _ricorda(("grandi3", _impronta(ore), adesso),
+                    lambda: Grandi.da([c for alto, basso in COPPIE for c in _crt3(ore, alto, basso, adesso)]))
+
+
 def _grandi(ore: Minuti, adesso: int):
     """I CRT delle coppie sulle ore, per "dentro un CRT piu' grande?": gli stessi del giro orario."""
     return _ricorda(("grandi", _impronta(ore), adesso, manopole.impronta()),
@@ -138,13 +164,15 @@ def _piani(r, basse) -> Optional[list]:
 
 
 def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
-         orarie: Optional[dict[str, Minuti]] = None, gemelli: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
+         orarie: Optional[dict[str, Minuti]] = None, gemelli: Optional[dict[str, Minuti]] = None,
+         metodo: Optional[str] = None) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
 
     `orarie` sono le ore di ogni strumento, se `basi` sono i quarti d'ora: da
     li' vengono il timeframe sopra, la settimana e i CRT piu' grandi.
     """
     orarie = basi if orarie is None else orarie
+    metodo = METODO if metodo is None else metodo
     decisioni = []
     for strumento, base in basi.items():
         ore = orarie.get(strumento, base)
@@ -153,6 +181,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
         # Le ore cambiano una volta l'ora: fino ad allora i CRT grandi e la settimana sono gli stessi.
         fine_ore = min(adesso, int(ore.t[-1]) + ore.passo)
         g = _grandi(ore, fine_ore)
+        g3 = _grandi3(ore, fine_ore)
         settimane = _candele(ore, TF.W1, fine_ore)
         idee = capo_mod.INVENTATE
         # Le candele grandi: per Allineamento e Gap, e per le domande inventate.
@@ -162,7 +191,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
             alte = _candele(base, alto, adesso)
             basse = _candele(base, basso, adesso)
             sopra = _candele(ore, SOPRA[alto], fine_ore)
-            for r in opera(alte, basse, dal, adesso + 1, trovati=_crt(base, alto, basso, adesso)):
+            for r in _occasioni(alte, basse, base, alto, basso, dal, adesso, metodo):
                 op = piano(r.scatto, basse)
                 kl, ora, ctx, ar, liq = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
                 x = riga(r, kl, ora, ctx, ar, liq, inventate.rispondi_tutte(idee, r, ctx_idee))[None]
@@ -175,7 +204,9 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     panorama.sguardo(r, ctx_idee),
                     float(capo_mod.qualita_attesa(p1[0], q[0], r.rr1, r.rr2, r.costo_erre)),
                     _viste(r, alte, basse, sopra, settimane, x[0], g, _compagno(strumento, gemelli, orarie), ctx_idee),
-                    _piani(r, basse)))
+                    _piani(r, basse),
+                    g3.livelli(Verso.LONG if r.verso is Verso.SHORT else Verso.SHORT, GRANDEZZA.get(alto, 0), r.quando),
+                    g3.livelli(r.verso, GRANDEZZA.get(alto, 0), r.quando)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

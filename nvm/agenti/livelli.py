@@ -77,15 +77,19 @@ def piano(
     short = crt.verso is Verso.SHORT
     # Si vende in bid e si compra in ask, alla chiusura della candela che scatta.
     ingresso = float((basse.bid if short else basse.ask)[s.indice, CHIUSURA])
+    margine = MARGINE_STOP_STRETTO * (s.turtle_soup_massimo - s.turtle_soup_minimo)
     if stop_stretto:
-        margine = MARGINE_STOP_STRETTO * (s.turtle_soup_massimo - s.turtle_soup_minimo)
         stop = s.livello + margine if short else s.livello - margine
+    elif s.punta is not None:
+        # L'entrata dei video nella candela 3: stop appena oltre la punta della candela del turtle
+        # soup (V3 15:30, V11 15:07), senza il quarto di range dei post.
+        stop = s.punta + margine if short else s.punta - margine
     else:
         stop = crt.estremo_a(s.quando)
     if stop is None:
         return None
     ampiezza = crt.crt_high - crt.crt_low
-    if not stop_stretto:
+    if not stop_stretto and s.punta is None:
         stop = max(stop, ingresso + STOP_MINIMO * ampiezza) if short else min(stop, ingresso - STOP_MINIMO * ampiezza)
     oltre = OLTRE * ampiezza
     tp1, tp2 = crt.crt_50, (crt.crt_low - oltre if short else crt.crt_high + oltre)

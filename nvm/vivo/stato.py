@@ -110,6 +110,9 @@ class Stato:
     saltate: dict = field(default_factory=dict)
     # Le operazioni chiuse sul conto dall'ultimo riepilogo: [quando, R vero].
     chiuse: list = field(default_factory=list)
+    # La settimana dell'ultima domenica di Romeo (V14) gia' fatta, e le previsioni di quella domenica.
+    ultima_domenica: str = ""
+    previsioni: dict = field(default_factory=dict)
 
     @classmethod
     def carica(cls, cartella: Path) -> "Stato":
@@ -127,6 +130,7 @@ class Stato:
             ultimo_allenamento=d.get("ultimo_allenamento", ""), ultima_evoluzione=d.get("ultima_evoluzione", ""),
             ultimo_riepilogo=d.get("ultimo_riepilogo", ""), lezioni=d.get("lezioni", {}),
             saltate=d.get("saltate", {}), chiuse=d.get("chiuse", []),
+            ultima_domenica=d.get("ultima_domenica", ""), previsioni=d.get("previsioni", {}),
         )
 
     def salva(self, cartella: Path) -> None:

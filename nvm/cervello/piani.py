@@ -49,10 +49,21 @@ def operazione(s: Scatto, basse: Candele, stop: str, uscita: str) -> Optional[Op
     estremo = crt.estremo_a(s.quando)
     if estremo is None or ampiezza <= 0:
         return None
+    margine = livelli.MARGINE_STOP_STRETTO * (s.turtle_soup_massimo - s.turtle_soup_minimo)
     all_estremo = (max(estremo, ingresso + livelli.STOP_MINIMO * ampiezza) if short
                    else min(estremo, ingresso - livelli.STOP_MINIMO * ampiezza))
-    if stop == "stretto":
-        margine = livelli.MARGINE_STOP_STRETTO * (s.turtle_soup_massimo - s.turtle_soup_minimo)
+    if s.punta is not None:
+        # L'entrata della candela 3 (`spec/metodo_romeo.md`): all'estremo vuol dire alla punta della
+        # candela del turtle soup (lo stop di Romeo); largo, oltre la manipolazione della candela 2.
+        alla_punta = s.punta + margine if short else s.punta - margine
+        piu_lontano = max(estremo, alla_punta) if short else min(estremo, alla_punta)
+        if stop == "stretto":
+            prezzo_stop = s.livello + margine if short else s.livello - margine
+        elif stop == "largo":
+            prezzo_stop = piu_lontano if piu_lontano != alla_punta else alla_punta - segno * PIU_LARGO * ampiezza
+        else:
+            prezzo_stop = alla_punta
+    elif stop == "stretto":
         prezzo_stop = s.livello + margine if short else s.livello - margine
     elif stop == "largo":
         prezzo_stop = all_estremo + segno * -PIU_LARGO * ampiezza

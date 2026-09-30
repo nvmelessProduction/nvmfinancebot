@@ -2,5 +2,5 @@
  "decidono_i_cervelli": false,
  "squadra_intelligente": true,
  "quando": "30/09/2026",
- "perche": "Il proprietario (30/09/2026): decide la squadra intelligente (nvm/intelligenti/), da sola. Nascono con la strategia di Romeo e imparano solo dal vivo, da ogni errore; nessun limite e nessun obbligo tranne uno: mai un'operazione senza stop. La lista di Romeo e' una loro convinzione, non un obbligo; quanto puntare lo decide il Rischio (parte dall'1% del conto e cambia da solo); Livelli sceglie stop e uscite; inventano idee nuove dagli errori che si ripetono. Niente AI esterne, niente test sui vent'anni nelle decisioni."
+ "perche": "Il proprietario (30/09/2026): agenti riaddestrati da zero sui 17 video di Romeo (spec/metodo_romeo.md), intelligenti, niente AI esterne, niente test sui vent'anni nelle decisioni. Entrano quando c'e' il setup di Romeo, tutte le volte e solo allora (nessun limite di operazioni: 'Se c'e' setup bene altrimenti sti cavoli. Non inventiamo cose'); mai senza stop. Le regole dei video non si disimparano; dal vivo imparano quanto contano le confluenze, stop e uscite (Livelli), quanto puntare (il Rischio, da solo, parte dall'1%), e inventano idee dagli errori che si ripetono."
 }

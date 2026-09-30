@@ -11,7 +11,7 @@ from nvm.agenti.capo import COLONNE, Capo
 from nvm.agenti.rischio import esiti, kelly
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
-from nvm.prova.base import opera
+from nvm.prova.base import opera, opera_candela_3
 from nvm.tempo import utc
 from nvm.vivo.ambiente import Impostazioni, impostazioni
 from nvm.vivo.esecutore import MAGIC, Esecutore
@@ -161,7 +161,8 @@ def test_il_giro_decide_come_lo_storico():
     attese = set()
     for alto, basso in COPPIE:
         alte, basse = costruisci(base, alto).chiuse_entro(fine + ORA), costruisci(base, basso).chiuse_entro(fine + ORA)
-        attese |= {(r.alto_tf, r.verso, r.quando, r.colpo) for r in opera(alte, basse, inizio + 1, fine + 1)}
+        # Il metodo dei video: solo la candela 3 (`spec/metodo_romeo.md`).
+        attese |= {(r.alto_tf, r.verso, r.quando, r.colpo) for r in opera_candela_3(alte, basse, inizio + 1, fine + 1)}
     viste, dal = set(), inizio + 1
     for adesso in range(inizio + 12 * ORA, fine + 1, 12 * ORA):
         viste |= {(d.r.alto_tf, d.r.verso, d.r.quando, d.r.colpo) for d in giro({"EURUSD": base}, dal, adesso, capo)}
