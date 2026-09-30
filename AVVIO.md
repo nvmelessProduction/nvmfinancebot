@@ -69,6 +69,31 @@ In un *canale* Telegram i messaggi compaiono col nome del canale, non del
 bot: per vedere ogni agente col suo nome serve un **gruppo**. Se l'équipe
 oggi è un canale e vuoi passare a un gruppo, chiedimelo e ti guido.
 
+## La squadra intelligente (gli agenti che ragionano)
+
+Gli agenti ragionano con Claude, il modello di Anthropic: ognuno legge le candele e la bibbia di
+Romeo (`nvm/intelligenti/bibbia.md`), vota e spiega perché, discutono fra loro, il Capo decide con
+la lista di controllo di Romeo, il Rischio dice quanto puntare. Dopo ogni operazione scrivono una
+lezione; ogni sabato riscrivono il loro manuale. Per accenderla serve una chiave:
+
+1. Vai su **console.anthropic.com**, entra (o crea un account), metti un po' di credito in
+   *Billing* e crea una chiave in *API keys*. La chiave comincia con `sk-ant-`: **non mandarla a
+   nessuno, nemmeno in chat con Claude.**
+2. Apri il file `.env` sulla VPS con Blocco note e aggiungi una riga:
+   `ANTHROPIC_API_KEY=sk-ant-...` (la tua chiave al posto dei puntini).
+3. Salva, chiudi la finestra nera e fai doppio clic su `avvia.bat`: installa da solo quello che
+   serve e parte.
+
+**Quanto costa.** La squadra si riunisce solo sulle occasioni che passano le due domande di Romeo
+che il sistema sa già (c'è un key level del grafico sopra, siamo nelle ore di Londra o New York):
+circa 5-15 al giorno su 40 strumenti. Ogni riunione costa circa 0,20-0,40 dollari, più le lezioni:
+in tutto circa **2-6 dollari al giorno**. Il costo del giorno è scritto nel riepilogo della sera.
+Su Anthropic puoi mettere un tetto di spesa mensile (*Limits*).
+
+**Spegnerla** (per esempio se finisce il credito): in `nvm/vivo/scelte.json` metti
+`"squadra_intelligente": false`. Senza chiave, o se le menti non rispondono, il bot decide come
+prima e lo dice una volta sul canale operativo.
+
 ## Se qualcosa non va
 
 | Cosa vedi | Cosa fare |

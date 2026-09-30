@@ -1,1 +1,8 @@
-{"decidono_i_cervelli": true, "quando": "27/09/2026", "perche": "Scelta del proprietario: sul conto demo decidono i cervelli degli agenti, anche se all'esame sullo storico non hanno battuto il Capo. Il giudice e' il mercato dal vivo."}
+{
+ "decidono_i_cervelli": true,
+ "squadra_intelligente": true,
+ "modello": "claude-opus-5-5",
+ "filtro_romeo": true,
+ "quando": "30/09/2026",
+ "perche": "Decide la squadra: gli agenti intelligenti con la bibbia di Romeo, se nel .env c'e' ANTHROPIC_API_KEY; se non rispondono, i cervelli numerici. La squadra si riunisce solo sulle occasioni con un key level del grafico sopra e nelle ore di Londra o New York (filtro_romeo)."
+}
