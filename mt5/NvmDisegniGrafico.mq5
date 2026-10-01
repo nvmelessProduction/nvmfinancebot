@@ -6,7 +6,7 @@
 #property indicator_chart_window
 #property indicator_plots 0
 #property copyright "nvmfinancebot"
-#property version   "3.00"
+#property version   "4.00"
 #include "NvmDisegni.mqh"
 
 int OnInit()

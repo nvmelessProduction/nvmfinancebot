@@ -231,7 +231,7 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     assert any("Metto in gioco" in t and "EUR" in t for t in equipe)
     # Sul grafico: la candela 1, il 50%, la finta, il Model#1, l'entrata, lo stop, gli obiettivi.
     csv = (tmp_path / "comune" / disegni.FILE).read_text(encoding="cp1252")
-    for parola in ("Candela 1", "50% del range", "Turtle soup", "Model#1", "Stop", "Obiettivo 1", "Obiettivo 2", "EURUSD.x"):
+    for parola in ("Candela 1", "Finta della candela 2", "Model#1", "Stop", "Obiettivo 1 (50%)", "Obiettivo 2", "EURUSD.x"):
         assert parola in csv, parola
     # A ogni giro: i CRT guardati, le operazioni aperte e la settimana; e il controllo del programma in MT5.
     bot.terminale.simbolo = lambda s: s + ".x"

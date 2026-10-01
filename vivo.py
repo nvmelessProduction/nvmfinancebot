@@ -291,8 +291,11 @@ class Bot:
         if self.disegni is None or getattr(d.r.scatto, "modello", "") != "candela 3":
             return
         try:
+            v = self._verdetti.get(d.chiave)
+            kl = (getattr(v, "metodo", None).fatti.get("key level")
+                  if v is not None and getattr(v, "metodo", None) is not None else None)
             self.disegni.metti(d.chiave, self.terminale.simbolo(d.r.strumento),
-                               disegni.operazione(d, viva, self.terminale.scarto or 0), disegni.fino_a(d))
+                               disegni.operazione(d, viva, self.terminale.scarto or 0, kl), disegni.fino_a(d))
             self.disegni.scrivi(adesso)
             self.chiedi_foto(d.r.strumento, d.r.basso_tf.value, "operativo",
                              f"📸 {d.r.strumento}: la nostra operazione sul grafico, disegnata come Romeo.")
@@ -349,10 +352,14 @@ class Bot:
                                "entro": time.time() + 300})
 
     def consegna_foto(self) -> None:
-        """Le foto pronte partono su Telegram; quelle che non arrivano in 5 minuti si dicono."""
+        """Le foto pronte partono su Telegram; se MT5 dice che non riesce, o non risponde in 5 minuti, si
+        dice perche' e cosa fare."""
         restano = []
         for f in self._foto:
             png = self._cartella_foto / f"nvm_foto_{f['numero']}.png" if self._cartella_foto else None
+            rispondi = self.tg.operativo if f["canale"] == "operativo" else self.tg.equipe
+            esito = f.get("esito") or (self.disegni.esito_foto(f["numero"]) if self.disegni is not None else None)
+            f["esito"] = esito
             try:
                 if png is not None and png.exists() and png.stat().st_size > 0 and time.time() - png.stat().st_mtime > 2:
                     self.tg.foto(f["canale"], png.read_bytes(), f["didascalia"])
@@ -360,10 +367,14 @@ class Bot:
                     continue
             except OSError:
                 pass
+            if esito and esito != "ok":
+                rispondi(f"Non sono riuscito a fotografare il grafico di {f['strumento']}: {esito}. Scrivimelo e lo "
+                         "sistemo.")
+                continue
             if time.time() > f["entro"]:
-                (self.tg.operativo if f["canale"] == "operativo" else self.tg.equipe)(
-                    f"Non sono riuscito a fotografare il grafico di {f['strumento']}: in MT5 il programma NvmDisegni "
-                    "è acceso? (Navigatore → «Services» → «NVM» → «NvmDisegni» → «Start»)")
+                stato = self.disegni.stato_mt5(time.time()) if self.disegni is not None else None
+                rispondi(f"Non sono riuscito a fotografare il grafico di {f['strumento']}: "
+                         + (disegni.stato_in_parole(stato) or "MT5 non ha risposto in 5 minuti."))
                 continue
             restano.append(f)
         self._foto = restano
@@ -388,6 +399,7 @@ class Bot:
         self.aggiorna_disegni(int(time.time()))
         self.disegni.scrivi(int(time.time()))
         self.chiedi_foto(strumento, periodo, canale, f"📸 {strumento} ({periodo}) coi disegni della squadra.")
+        rispondi(f"📸 Ricevuto: fotografo il grafico di {strumento} ({periodo}). Arriva fra un paio di minuti.")
 
     def controlla_disegni(self, adesso: float) -> None:
         """Il programma dei disegni in MT5 e' vivo e disegna? Se no lo dice, al massimo ogni 12 ore."""

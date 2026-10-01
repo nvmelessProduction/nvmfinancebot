@@ -133,10 +133,10 @@ def test_si_vede_se_il_programma_dei_disegni_in_mt5_lavora(tmp_path):
     d = Disegni(tmp_path, tmp_path / "comune")
     assert d.stato_mt5(1000) is None and "non è acceso" in stato_in_parole(None)
     (tmp_path / "comune").mkdir()
-    (tmp_path / "comune" / "nvm_disegni_stato.txt").write_text("servizio;3;990;3;40;0;0\r\n", encoding="cp1252")
+    (tmp_path / "comune" / "nvm_disegni_stato.txt").write_text("servizio;4;990;3;40;0;0\r\n", encoding="cp1252")
     s = d.stato_mt5(1000)
     assert s["eta"] == 10 and s["grafici"] == 3 and s["oggetti"] == 40 and stato_in_parole(s) is None
-    assert "Stop" in stato_in_parole({**s, "versione": "2"})
+    assert "Stop" in stato_in_parole({**s, "versione": "3"})
     assert "errore 4101" in stato_in_parole({**s, "oggetti": 0, "errori": 5, "ultimo_errore": 4101})
     assert "non è acceso" in stato_in_parole({**s, "eta": 3600})
 
@@ -184,6 +184,13 @@ def test_dal_telefono_il_grafico_arriva_in_foto_su_telegram(tmp_path, monkeypatc
     bot._grafico(Ricevuto(2, "-1", "/grafico PIPPO", 0))
     assert "Non conosco" in testi[-1][1] and testi[-1][0] == "-1"
     bot._grafico(Ricevuto(3, "-1", "/grafico EURUSD", 0))
+    assert "Ricevuto" in testi[-1][1]
     bot._foto[0]["entro"] = 0
     bot.consegna_foto()
-    assert "Non sono riuscito a fotografare" in testi[-1][1] and not bot._foto
+    assert "Non sono riuscito a fotografare" in testi[-1][1] and "NvmDisegni" in testi[-1][1] and not bot._foto
+    # MT5 dice perche' non ce la fa: il bot lo riferisce subito.
+    bot._grafico(Ricevuto(4, "-1", "/grafico EURUSD D1", 0))
+    numero = bot._foto[0]["numero"]
+    (tmp_path / "comune" / f"nvm_foto_{numero}.esito").write_bytes(b"non posso aprire un grafico (errore 4111)\r\n")
+    bot.consegna_foto()
+    assert "errore 4111" in testi[-1][1] and not bot._foto

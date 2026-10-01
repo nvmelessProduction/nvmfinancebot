@@ -168,7 +168,10 @@ def valuta(d, ore, quarti=None, gemello=None) -> Metodo:
     # 4. Il key level (Key level): nei video e' sul grafico della candela che si opera (V9: il vecchio
     # minimo del giornaliero per il CRT giornaliero; V8: l'apertura dell'ultima candela ribassista del
     # giornaliero; V7: il vecchio minimo del 4 ore), o su quello sopra.
-    tipi, finto = _key_level(alte, crt, estremo, short, amp)
+    tipi, finto, prezzi = _key_level(alte, crt, estremo, short, amp)
+    if prezzi:
+        # Il key level piu' vicino alla finta, per disegnarlo sul grafico.
+        m.fatti["key level"] = min(prezzi, key=lambda x: abs(x[1] - estremo))
     kl = getattr(d, "key_level", None)
     nome_tf = NOMI_TF.get(r.alto_tf, "grande")
     nome_sopra = NOMI_TF.get(tf_sopra, "grande")
@@ -342,7 +345,7 @@ def _candela_1(alte: Candele, crt, short: bool) -> Optional[bool]:
     return bool(verso_giusto and len(corpi) and abs(c - o) >= 1.2 * float(corpi.mean()))
 
 
-def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> tuple[list[str], bool]:
+def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> tuple[list[str], bool, list]:
     """I key level del grafico della candela presi dalla finta, e se c'e' un fondo (tetto) finto.
 
     Si guardano le candele prima della candela 1: i massimi di swing (per vendere) non ancora ripresi,
@@ -352,7 +355,7 @@ def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> t
     la finta. Tutto scritto per vendere; per comprare e' lo specchio."""
     k = int(np.searchsorted(alte.inizio, crt.range_inizio))
     if k < 5 or amp <= 0:
-        return [], False
+        return [], False, []
     s = 1.0 if short else -1.0
     b = alte.bid[max(0, k - 40):k + 1]
     o, c = b[:, APERTURA] * s, b[:, CHIUSURA] * s
@@ -360,7 +363,7 @@ def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> t
     lo = (b[:, MINIMO] if short else b[:, MASSIMO]) * s
     e = estremo * s
     n = len(b) - 1                      # l'ultima e' la candela 1
-    tipi, finto = [], False
+    tipi, finto, prezzi = [], False, []
     for i in range(2, n - 1):
         if not (h[i] > h[i - 2:i].max() and h[i] > h[i + 1:i + 3].max()):
             continue
@@ -368,16 +371,20 @@ def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> t
             continue                    # gia' ripreso prima della finta
         if -0.1 * amp <= e - h[i] <= 0.5 * amp:
             tipi.append(_v(short, "un vecchio minimo", "un vecchio massimo") + " mai ripreso")
+            prezzi.append((_v(short, "vecchio minimo", "vecchio massimo"), float(h[i] * s)))
         elif 0 < h[i] - e <= 0.25 * amp:
             finto = True
     for i in range(n - 1, -1, -1):
         if c[i] > o[i]:
             if -0.1 * amp <= e - o[i] <= 0.5 * amp:
                 tipi.append(_v(short, "l'apertura dell'ultima candela ribassista", "l'apertura dell'ultima candela rialzista"))
+                prezzi.append((_v(short, "apertura dell'ultima candela ribassista", "apertura dell'ultima candela rialzista"),
+                               float(o[i] * s)))
             break
     for j in range(n - 2):
         fondo, cima = h[j + 2], lo[j]
         if fondo < cima and h[j + 3:n + 1].max(initial=-np.inf) < cima and e > fondo:
             tipi.append("un vuoto lasciato dal prezzo")
+            prezzi.append(("vuoto lasciato dal prezzo", float(fondo * s)))
             break
-    return list(dict.fromkeys(tipi)), finto
+    return list(dict.fromkeys(tipi)), finto, prezzi

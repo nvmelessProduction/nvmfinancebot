@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #define NVM_FILE     "nvm_disegni.csv"
 #define NVM_STATO    "nvm_disegni_stato.txt"
-#define NVM_VERSIONE "3"
+#define NVM_VERSIONE "4"
 #define NVM_PREFISSO "NVM_"
 
 datetime nvm_modifica = 0;
@@ -276,10 +276,21 @@ ENUM_TIMEFRAMES NvmPeriodo(const string p)
    return(PERIOD_H1);
   }
 
+// L'esito di una foto, per il bot: Common\Files\nvm_foto_ID.esito con "ok" o il motivo.
+void NvmEsito(const string id, const string testo)
+  {
+   int f = FileOpen("nvm_foto_" + id + ".esito", FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+   if(f == INVALID_HANDLE)
+      return;
+   FileWriteString(f, testo + "\r\n");
+   FileClose(f);
+  }
+
 // Le foto del grafico coi disegni, per vederli dal telefono su Telegram (le app di MT5 per il telefono
 // non mostrano i disegni dei programmi). Il bot chiede una foto con un file Common\Files\nvm_foto_ID.req
-// ("simbolo;periodo"); qui si apre il grafico (solo il servizio), si disegna, si fotografa in
-// MQL5\Files\nvm_foto_ID.png e si richiude il grafico aperto apposta.
+// ("simbolo;periodo"). Il servizio apre un grafico apposta (e poi lo richiude); se MT5 non glielo
+// lascia aprire, usa per un momento un grafico gia' aperto e poi lo rimette com'era. Si disegna, si
+// fotografa in MQL5\Files\nvm_foto_ID.png e si scrive l'esito.
 void NvmFoto(const bool apri, const string tipo)
   {
    string nomi[];
@@ -310,23 +321,54 @@ void NvmFoto(const bool apri, const string tipo)
       if(StringSplit(r, ';', p) < 2)
          continue;
       string id = StringSubstr(nomi[i], 9, StringLen(nomi[i]) - 13);
+      ENUM_TIMEFRAMES tf = NvmPeriodo(p[1]);
+      if(!SymbolSelect(p[0], true))
+        {
+         NvmEsito(id, "MT5 non conosce il simbolo " + p[0] + " (errore " + IntegerToString(GetLastError()) + ")");
+         continue;
+        }
       long c = -1;
-      bool mio = false;
+      bool mio = false, prestato = false;
+      string simbolo_prima = "";
+      ENUM_TIMEFRAMES periodo_prima = PERIOD_H1;
+      string problemi = "";
       if(apri)
         {
-         SymbolSelect(p[0], true);
-         c = ChartOpen(p[0], NvmPeriodo(p[1]));
+         ResetLastError();
+         c = ChartOpen(p[0], tf);
          mio = (c > 0);
+         if(!mio)
+            problemi = "non posso aprire un grafico (errore " + IntegerToString(GetLastError()) + ")";
         }
       if(c <= 0)
         {
+         // Un grafico dello strumento gia' aperto, col suo periodo.
          c = ChartFirst();
          while(c >= 0 && ChartSymbol(c) != p[0])
             c = ChartNext(c);
         }
+      if(c < 0 && apri)
+        {
+         // Il piano B: un grafico qualsiasi, per un momento, poi torna com'era.
+         c = ChartFirst();
+         if(c >= 0)
+           {
+            simbolo_prima = ChartSymbol(c);
+            periodo_prima = ChartPeriod(c);
+            prestato = ChartSetSymbolPeriod(c, p[0], tf);
+            if(!prestato)
+              {
+               problemi += "; non posso cambiare un grafico (errore " + IntegerToString(GetLastError()) + ")";
+               c = -1;
+              }
+           }
+        }
       if(c < 0)
+        {
+         NvmEsito(id, (problemi == "" ? "nessun grafico di " + p[0] + " aperto in MT5" : problemi));
          continue;
-      if(mio)
+        }
+      if(mio || prestato)
         {
          ChartSetInteger(c, CHART_AUTOSCROLL, true);
          ChartSetInteger(c, CHART_SHIFT, true);
@@ -337,10 +379,19 @@ void NvmFoto(const bool apri, const string tipo)
       nvm_modifica = 0;
       NvmAggiorna(false, tipo);
       ChartRedraw(c);
-      if(mio)
+      if(mio || prestato)
          Sleep(1500);
-      ChartScreenShot(c, "nvm_foto_" + id + ".png", 1280, 800, ALIGN_RIGHT);
+      ResetLastError();
+      bool fatta = ChartScreenShot(c, "nvm_foto_" + id + ".png", 1280, 800, ALIGN_RIGHT);
+      int errore = GetLastError();
       if(mio)
          ChartClose(c);
+      if(prestato)
+        {
+         ChartSetSymbolPeriod(c, simbolo_prima, periodo_prima);
+         nvm_grafici = -1;
+         nvm_modifica = 0;
+        }
+      NvmEsito(id, fatta ? "ok" : "MT5 non mi lascia fotografare il grafico (errore " + IntegerToString(errore) + ")");
      }
   }

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property service
 #property copyright "nvmfinancebot"
-#property version   "3.00"
+#property version   "4.00"
 #include "NvmDisegni.mqh"
 
 void OnStart()

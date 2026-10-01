@@ -27,7 +27,7 @@ from nvm.tempo import TF, fine_candela
 FILE = "nvm_disegni.csv"
 # Il battito del programma in MT5: tipo;versione;ora UTC;grafici;oggetti;errori;ultimo errore.
 STATO = "nvm_disegni_stato.txt"
-VERSIONE_MT5 = "3"
+VERSIONE_MT5 = "4"
 _WINDOWS = sys.platform == "win32"
 SORGENTI = ("NvmDisegni.mqh", "NvmDisegni.mq5", "NvmDisegniGrafico.mq5")
 DURATA = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400, TF.W1: 7 * 86400}
@@ -116,6 +116,18 @@ class Disegni:
         (self.cartella_mt5 / f"nvm_foto_{numero}.req").write_bytes(f"{simbolo};{periodo}\r\n".encode("cp1252"))
         return True
 
+    def esito_foto(self, numero: str) -> Optional[str]:
+        """Com'e' andata una foto, se MT5 l'ha gia' detto: "ok" o il motivo. Il file si toglie."""
+        if self.cartella_mt5 is None:
+            return None
+        f = self.cartella_mt5 / f"nvm_foto_{numero}.esito"
+        try:
+            testo = f.read_text(encoding="cp1252").strip()
+            f.unlink()
+            return testo
+        except OSError:
+            return None
+
     def scrivi(self, adesso: Optional[int] = None) -> None:
         if adesso is not None:
             self.togli_scaduti(adesso)
@@ -130,8 +142,10 @@ class Disegni:
         tmp.replace(self.cartella_mt5 / FILE)
 
 
-def operazione(d, op, scarto_ore: int) -> list[Segno]:
-    """I disegni di un'operazione nata dalla candela 3 (`giro.Decisione` e l'operazione aperta)."""
+def operazione(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> list[Segno]:
+    """I disegni di un'operazione nata dalla candela 3 (`giro.Decisione` e l'operazione aperta).
+    `key_level`: (che livello e', prezzo) dalle domande di Romeo, se c'e'. Le scritte di stop e obiettivi
+    stanno a destra, quelle della candela 1 a sinistra, per non coprirsi."""
     s = d.r.scatto
     crt = s.crt
     short = crt.verso is Verso.SHORT
@@ -141,33 +155,44 @@ def operazione(d, op, scarto_ore: int) -> list[Segno]:
     inizio_3 = int(crt.armato_quando)
     fine_3 = int(crt.fine_candela_3) if crt.fine_candela_3 < 2 ** 60 else inizio_3 + (inizio_3 - fine_1)
     dopo = fine_3 + max(fine_3 - inizio_3, 3600)
+    vicino = 0.02 * (crt.crt_high - crt.crt_low)
+    lato_tp2 = crt.crt_low if short else crt.crt_high
+    tp2_sul_lato = abs(float(op.tp2) - lato_tp2) <= vicino
+    tp1_al_50 = abs(float(op.tp1) - crt.crt_50) <= vicino
     segni = [
         Segno("apri", inizio_1 + sv, 0.0),
-        Segno("rettangolo", inizio_1 + sv, crt.crt_high, fine_1 + sv, crt.crt_low, AZZURRO, testo="Candela 1 (il range)"),
-        Segno("linea", inizio_1 + sv, crt.crt_high, fine_3 + sv, crt.crt_high, BLU, 0, 2, "CRT high"),
-        Segno("linea", inizio_1 + sv, crt.crt_low, fine_3 + sv, crt.crt_low, BLU, 0, 2, "CRT low"),
-        Segno("linea", inizio_1 + sv, crt.crt_50, dopo + sv, crt.crt_50, ARANCIO, 1, 1, "50% del range"),
+        Segno("rettangolo", inizio_1 + sv, crt.crt_high, fine_1 + sv, crt.crt_low, AZZURRO, testo="Candela 1"),
+        # Le linee col nome a destra: si scrivono dalla fine all'inizio (la scritta va sul primo punto).
+        Segno("linea", fine_3 + sv, crt.crt_high, inizio_1 + sv, crt.crt_high, BLU, 0, 2,
+              "" if (tp2_sul_lato and not short) else "CRT high"),
+        Segno("linea", fine_3 + sv, crt.crt_low, inizio_1 + sv, crt.crt_low, BLU, 0, 2,
+              "" if (tp2_sul_lato and short) else "CRT low"),
+        Segno("linea", inizio_1 + sv, crt.crt_50, int(s.quando) + sv, crt.crt_50, ARANCIO, 1, 1, "" if tp1_al_50 else "50%"),
         Segno("verticale", fine_1 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 2"),
         Segno("verticale", inizio_3 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 3"),
     ]
+    if key_level is not None:
+        nome, prezzo = key_level
+        segni.append(Segno("linea", inizio_1 - 3 * (fine_1 - inizio_1) + sv, float(prezzo), dopo + sv, float(prezzo),
+                           ROSSO, 1, 1, f"Key level: {nome}"))
     estremo = crt.estremo_a(inizio_3)
     if estremo is not None:
-        segni.append(Segno("testo", (fine_1 + inizio_3) // 2 + sv, float(estremo), 0, 0.0, ROSSO,
-                           testo="Turtle soup sul key level (candela 2)"))
+        segni.append(Segno("testo", fine_1 + sv, float(estremo), 0, 0.0, ROSSO, testo="Finta della candela 2"))
     if s.apertura_3 is not None:
-        segni.append(Segno("linea", inizio_3 + sv, float(s.apertura_3), fine_3 + sv, float(s.apertura_3), GRIGIO, 2, 1,
+        segni.append(Segno("linea", fine_3 + sv, float(s.apertura_3), inizio_3 + sv, float(s.apertura_3), GRIGIO, 2, 1,
                            "Apertura candela 3"))
     durata = DURATA.get(d.r.basso_tf, 3600)
     t_ts = int(s.turtle_soup_inizio)
     segni += [
         Segno("rettangolo", t_ts + sv, float(s.turtle_soup_massimo), t_ts + durata + sv, float(s.turtle_soup_minimo), ORO,
-              testo="Model#1: la candela spessa della finta"),
-        Segno("linea", t_ts + sv, float(s.livello), int(s.quando) + sv, float(s.livello), ORO, 0, 1, "Livello del Model#1"),
+              testo="Model#1 (finta della candela 3)"),
+        Segno("linea", t_ts + sv, float(s.livello), int(s.quando) + sv, float(s.livello), ORO, 0, 1, ""),
         Segno("giu" if short else "su", int(s.quando) + sv, float(op.ingresso), 0, 0.0, VIOLA,
               testo=("Vendita" if short else "Acquisto") + ": chiusura oltre il corpo"),
-        Segno("linea", int(s.quando) + sv, float(op.stop), dopo + sv, float(op.stop), ROSSO, 0, 2, "Stop"),
-        Segno("linea", int(s.quando) + sv, float(op.tp1), dopo + sv, float(op.tp1), VERDE, 1, 2, "Obiettivo 1 (50%)"),
-        Segno("linea", int(s.quando) + sv, float(op.tp2), dopo + sv, float(op.tp2), VERDE, 0, 2, "Obiettivo 2"),
+        Segno("linea", dopo + sv, float(op.stop), int(s.quando) + sv, float(op.stop), ROSSO, 0, 2, "Stop"),
+        Segno("linea", dopo + sv, float(op.tp1), int(s.quando) + sv, float(op.tp1), VERDE, 1, 2, "Obiettivo 1 (50%)"),
+        Segno("linea", dopo + sv, float(op.tp2), int(s.quando) + sv, float(op.tp2), VERDE, 0, 2,
+              "Obiettivo 2 (" + ("CRT low" if short else "CRT high") + ")" if tp2_sul_lato else "Obiettivo 2"),
     ]
     return segni
 
