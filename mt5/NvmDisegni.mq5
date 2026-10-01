@@ -5,14 +5,14 @@
 //+------------------------------------------------------------------+
 #property service
 #property copyright "nvmfinancebot"
-#property version   "1.00"
+#property version   "2.00"
 #include "NvmDisegni.mqh"
 
 void OnStart()
   {
    while(!IsStopped())
      {
-      NvmAggiorna(true);
+      NvmAggiorna(true, "servizio");
       Sleep(2000);
      }
    NvmPulisciTutto();

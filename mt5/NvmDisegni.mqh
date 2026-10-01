@@ -7,11 +7,76 @@
 //| t1,t2: ora del server (secondi); colore: "R,G,B"                  |
 //+------------------------------------------------------------------+
 #define NVM_FILE     "nvm_disegni.csv"
+#define NVM_STATO    "nvm_disegni_stato.txt"
+#define NVM_VERSIONE "2"
 #define NVM_PREFISSO "NVM_"
 
 datetime nvm_modifica = 0;
 long     nvm_dimensione = -1;
 string   nvm_aperti[];
+int      nvm_grafici = -1;
+datetime nvm_battito = 0;
+datetime nvm_disegnato = 0;
+int      nvm_oggetti = 0;
+int      nvm_errori = 0;
+int      nvm_ultimo_errore = 0;
+
+// Ogni oggetto creato o fallito si conta: il bot lo legge nel file di stato e lo dice su Telegram.
+bool NvmConta(const bool fatto)
+  {
+   if(fatto)
+      nvm_oggetti++;
+   else
+     {
+      nvm_errori++;
+      nvm_ultimo_errore = GetLastError();
+     }
+   return(fatto);
+  }
+
+int NvmContaGrafici()
+  {
+   int n = 0;
+   long c = ChartFirst();
+   while(c >= 0)
+     {
+      n++;
+      c = ChartNext(c);
+     }
+   return(n);
+  }
+
+// Il battito: ogni 30 secondi il programma scrive che e' vivo e com'e' andato l'ultimo disegno.
+void NvmBattito(const string tipo)
+  {
+   if(TimeLocal() - nvm_battito < 30)
+      return;
+   int f = FileOpen(NVM_STATO, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+   if(f == INVALID_HANDLE)
+      return;
+   FileWriteString(f, tipo + ";" + NVM_VERSIONE + ";" + IntegerToString((long)TimeGMT()) + ";" +
+                   IntegerToString(NvmContaGrafici()) + ";" + IntegerToString(nvm_oggetti) + ";" +
+                   IntegerToString(nvm_errori) + ";" + IntegerToString(nvm_ultimo_errore) + "\r\n");
+   FileClose(f);
+   nvm_battito = TimeLocal();
+  }
+
+// Il cartello in alto a sinistra su ogni grafico: si vede subito che i disegni sono accesi.
+void NvmCartello(const long c)
+  {
+   string nome = NVM_PREFISSO + "cartello";
+   if(!NvmConta(ObjectCreate(c, nome, OBJ_LABEL, 0, 0, 0)))
+      return;
+   ObjectSetInteger(c, nome, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(c, nome, OBJPROP_XDISTANCE, 8);
+   ObjectSetInteger(c, nome, OBJPROP_YDISTANCE, 22);
+   ObjectSetString(c, nome, OBJPROP_TEXT, "NVM: disegni accesi (aggiornati " + TimeToString(nvm_disegnato, TIME_MINUTES) + ")");
+   ObjectSetString(c, nome, OBJPROP_FONT, "Arial");
+   ObjectSetInteger(c, nome, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(c, nome, OBJPROP_COLOR, clrGold);
+   ObjectSetInteger(c, nome, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(c, nome, OBJPROP_HIDDEN, true);
+  }
 
 bool NvmGiaAperto(const string gruppo)
   {
@@ -49,7 +114,7 @@ void NvmEtichetta(const long c, const string nome, const datetime t, const doubl
   {
    if(testo == "")
       return;
-   if(!ObjectCreate(c, nome, OBJ_TEXT, 0, t, p))
+   if(!NvmConta(ObjectCreate(c, nome, OBJ_TEXT, 0, t, p)))
       return;
    ObjectSetString(c, nome, OBJPROP_TEXT, testo);
    ObjectSetString(c, nome, OBJPROP_FONT, "Arial");
@@ -74,7 +139,7 @@ void NvmDisegnaRiga(const long c, const string nome, const string &p[])
    ENUM_LINE_STYLE st = (stile == 1 ? STYLE_DASH : (stile == 2 ? STYLE_DOT : STYLE_SOLID));
    if(tipo == "linea")
      {
-      if(ObjectCreate(c, nome, OBJ_TREND, 0, t1, p1, t2, p2))
+      if(NvmConta(ObjectCreate(c, nome, OBJ_TREND, 0, t1, p1, t2, p2)))
         {
          ObjectSetInteger(c, nome, OBJPROP_COLOR, colore);
          ObjectSetInteger(c, nome, OBJPROP_STYLE, st);
@@ -88,7 +153,7 @@ void NvmDisegnaRiga(const long c, const string nome, const string &p[])
      }
    else if(tipo == "rettangolo")
      {
-      if(ObjectCreate(c, nome, OBJ_RECTANGLE, 0, t1, p1, t2, p2))
+      if(NvmConta(ObjectCreate(c, nome, OBJ_RECTANGLE, 0, t1, p1, t2, p2)))
         {
          ObjectSetInteger(c, nome, OBJPROP_COLOR, colore);
          ObjectSetInteger(c, nome, OBJPROP_FILL, true);
@@ -103,7 +168,7 @@ void NvmDisegnaRiga(const long c, const string nome, const string &p[])
       NvmEtichetta(c, nome, t1, p1, colore, testo, ANCHOR_LEFT_LOWER);
    else if(tipo == "su" || tipo == "giu")
      {
-      if(ObjectCreate(c, nome, (tipo == "su" ? OBJ_ARROW_BUY : OBJ_ARROW_SELL), 0, t1, p1))
+      if(NvmConta(ObjectCreate(c, nome, (tipo == "su" ? OBJ_ARROW_BUY : OBJ_ARROW_SELL), 0, t1, p1)))
         {
          ObjectSetInteger(c, nome, OBJPROP_COLOR, colore);
          ObjectSetInteger(c, nome, OBJPROP_WIDTH, 2);
@@ -114,7 +179,7 @@ void NvmDisegnaRiga(const long c, const string nome, const string &p[])
      }
    else if(tipo == "verticale")
      {
-      if(ObjectCreate(c, nome, OBJ_VLINE, 0, t1, 0))
+      if(NvmConta(ObjectCreate(c, nome, OBJ_VLINE, 0, t1, 0)))
         {
          ObjectSetInteger(c, nome, OBJPROP_COLOR, colore);
          ObjectSetInteger(c, nome, OBJPROP_STYLE, st);
@@ -128,16 +193,20 @@ void NvmDisegnaRiga(const long c, const string nome, const string &p[])
      }
   }
 
-// Rilegge il file se e' cambiato e ridisegna tutto. `apri`: si possono aprire i grafici mancanti
-// (solo il servizio: gli indicatori non possono).
-void NvmAggiorna(const bool apri)
+// Rilegge il file se e' cambiato (o se si e' aperto o chiuso un grafico) e ridisegna tutto. `apri`:
+// si possono aprire i grafici mancanti (solo il servizio: gli indicatori non possono). `tipo`:
+// "servizio" o "indicatore", per il file di stato.
+void NvmAggiorna(const bool apri, const string tipo)
   {
+   NvmBattito(tipo);
    if(!FileIsExist(NVM_FILE, FILE_COMMON))
       return;
    datetime modifica = (datetime)FileGetInteger(NVM_FILE, FILE_MODIFY_DATE, true);
    long dimensione = FileGetInteger(NVM_FILE, FILE_SIZE, true);
-   if(modifica == nvm_modifica && dimensione == nvm_dimensione)
+   int grafici = NvmContaGrafici();
+   if(modifica == nvm_modifica && dimensione == nvm_dimensione && grafici == nvm_grafici)
       return;
+   nvm_grafici = grafici;
    int f = FileOpen(NVM_FILE, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ | FILE_SHARE_WRITE);
    if(f == INVALID_HANDLE)
       return;
@@ -146,6 +215,8 @@ void NvmAggiorna(const bool apri)
    while(!FileIsEnding(f))
      {
       string r = FileReadString(f);
+      StringTrimRight(r);
+      StringTrimLeft(r);
       if(StringLen(r) < 5)
          continue;
       ArrayResize(righe, n + 1);
@@ -154,6 +225,10 @@ void NvmAggiorna(const bool apri)
    FileClose(f);
    nvm_modifica = modifica;
    nvm_dimensione = dimensione;
+   nvm_oggetti = 0;
+   nvm_errori = 0;
+   nvm_ultimo_errore = 0;
+   nvm_disegnato = TimeLocal();
    NvmPulisciTutto();
    for(int i = 0; i < n; i++)
      {
@@ -183,7 +258,10 @@ void NvmAggiorna(const bool apri)
    long c = ChartFirst();
    while(c >= 0)
      {
+      NvmCartello(c);
       ChartRedraw(c);
       c = ChartNext(c);
      }
+   nvm_battito = 0;
+   NvmBattito(tipo);
   }

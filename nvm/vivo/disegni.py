@@ -25,12 +25,15 @@ from nvm.agenti.cacciatore import Verso
 from nvm.tempo import TF, fine_candela
 
 FILE = "nvm_disegni.csv"
+# Il battito del programma in MT5: tipo;versione;ora UTC;grafici;oggetti;errori;ultimo errore.
+STATO = "nvm_disegni_stato.txt"
+VERSIONE_MT5 = "2"
 _WINDOWS = sys.platform == "win32"
 SORGENTI = ("NvmDisegni.mqh", "NvmDisegni.mq5", "NvmDisegniGrafico.mq5")
 DURATA = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400, TF.W1: 7 * 86400}
 # Quanto restano sul grafico i disegni di un'operazione, dopo la fine della candela 3.
 RESTANO = {TF.H4: 3 * 86400, TF.D1: 7 * 86400, TF.W1: 21 * 86400, TF.MN: 45 * 86400}
-MASSIMI_GRUPPI = 80
+MASSIMI_GRUPPI = 400
 
 BLU, ARANCIO, GRIGIO, ROSSO, VERDE, ORO, VIOLA, AZZURRO = (
     "30,144,255", "255,140,0", "128,128,128", "220,20,60", "34,139,34", "218,165,32", "148,0,211", "225,235,250")
@@ -90,6 +93,21 @@ class Disegni:
                     repr(float(s["p2"])), s["colore"], str(int(s["stile"])), str(int(s["spessore"])), _pulito(s["testo"])]))
         return fuori
 
+    def togli(self, inizio: str) -> None:
+        """Toglie i gruppi il cui nome comincia cosi' (quelli che si rifanno a ogni giro)."""
+        self.gruppi = {g: v for g, v in self.gruppi.items() if not g.startswith(inizio)}
+
+    def stato_mt5(self, adesso: float) -> Optional[dict]:
+        """Il battito del programma in MT5, se c'e': chi e', quanto e' vecchio, quanti disegni e errori."""
+        if self.cartella_mt5 is None or not (self.cartella_mt5 / STATO).exists():
+            return None
+        try:
+            parti = (self.cartella_mt5 / STATO).read_text(encoding="cp1252").strip().split(";")
+            return {"tipo": parti[0], "versione": parti[1], "eta": adesso - int(parti[2]), "grafici": int(parti[3]),
+                    "oggetti": int(parti[4]), "errori": int(parti[5]), "ultimo_errore": int(parti[6])}
+        except (OSError, ValueError, IndexError):
+            return None
+
     def scrivi(self, adesso: Optional[int] = None) -> None:
         if adesso is not None:
             self.togli_scaduti(adesso)
@@ -99,8 +117,8 @@ class Disegni:
             return
         self.cartella_mt5.mkdir(parents=True, exist_ok=True)
         tmp = self.cartella_mt5 / (FILE + ".tmp")
-        # MT5 lo legge come testo ANSI (Windows): gli accenti italiani ci sono.
-        tmp.write_text("\n".join(self.righe()) + "\n", encoding="cp1252", errors="replace")
+        # MT5 lo legge come testo ANSI di Windows, righe chiuse da \r\n: gli accenti italiani ci sono.
+        tmp.write_bytes(("".join(r + "\r\n" for r in self.righe())).encode("cp1252", errors="replace"))
         tmp.replace(self.cartella_mt5 / FILE)
 
 
@@ -150,6 +168,50 @@ def fino_a(d) -> int:
     crt = d.r.scatto.crt
     fine_3 = int(crt.fine_candela_3) if crt.fine_candela_3 < 2 ** 60 else int(d.r.quando) + 7 * 86400
     return fine_3 + RESTANO.get(crt.alto_tf, 7 * 86400)
+
+
+def in_attesa(crt, apertura_3: Optional[float], scarto_ore: int) -> list[Segno]:
+    """Un CRT che gli agenti stanno guardando: la candela 2 ha fatto la finta ed e' chiusa dentro, ora si
+    aspetta nella candela 3 la finta oltre la sua apertura e la conferma (V9 24:20)."""
+    short = crt.verso is Verso.SHORT
+    sv = int(scarto_ore) * 3600
+    inizio_1 = int(crt.range_inizio)
+    fine_1 = int(fine_candela(inizio_1, crt.alto_tf))
+    inizio_3 = int(crt.armato_quando)
+    fine_3 = int(crt.fine_candela_3) if crt.fine_candela_3 < 2 ** 60 else inizio_3 + (inizio_3 - fine_1)
+    nome = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: "a 4 ore"}.get(crt.alto_tf, "")
+    segni = [
+        Segno("rettangolo", inizio_1 + sv, crt.crt_high, fine_1 + sv, crt.crt_low, AZZURRO,
+              testo=f"CRT {nome}: candela 1 (il range)"),
+        Segno("linea", inizio_1 + sv, crt.crt_high, fine_3 + sv, crt.crt_high, BLU, 0, 1, "CRT high"),
+        Segno("linea", inizio_1 + sv, crt.crt_low, fine_3 + sv, crt.crt_low, BLU, 0, 1, "CRT low"),
+        Segno("linea", inizio_1 + sv, crt.crt_50, fine_3 + sv, crt.crt_50, ARANCIO, 1, 1, "50% (primo obiettivo)"),
+        Segno("verticale", fine_1 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 2"),
+        Segno("verticale", inizio_3 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 3"),
+    ]
+    estremo = crt.estremo_a(inizio_3)
+    if estremo is not None:
+        segni.append(Segno("testo", (fine_1 + inizio_3) // 2 + sv, float(estremo), 0, 0.0, ROSSO,
+                           testo="Finta della candela 2 (turtle soup)"))
+    if apertura_3 is not None:
+        segni.append(Segno("linea", inizio_3 + sv, float(apertura_3), fine_3 + sv, float(apertura_3), GRIGIO, 2, 1,
+                           "Apertura candela 3: " + ("aspettiamo la finta sopra per vendere" if short else
+                                                     "aspettiamo la finta sotto per comprare")))
+    return segni
+
+
+def aperta(v, adesso: int, scarto_ore: int) -> list[Segno]:
+    """Un'operazione aperta sul conto: entrata, stop, obiettivi."""
+    sv = int(scarto_ore) * 3600
+    t0, t1 = int(getattr(v, "quando", adesso)) + sv, int(adesso) + 2 * 86400 + sv
+    compra = v.verso != "short"
+    return [
+        Segno("su" if compra else "giu", t0, float(v.ingresso), 0, 0.0, VIOLA,
+              testo="Operazione aperta: " + ("acquisto" if compra else "vendita")),
+        Segno("linea", t0, float(v.stop), t1, float(v.stop), ROSSO, 0, 2, "Stop"),
+        Segno("linea", t0, float(v.tp1), t1, float(v.tp1), VERDE, 1, 2, "Obiettivo 1"),
+        Segno("linea", t0, float(v.tp2), t1, float(v.tp2), VERDE, 0, 2, "Obiettivo 2"),
+    ]
 
 
 def settimana(alto: float, basso: float, lunedi: int, venerdi: int, scarto_ore: int) -> list[Segno]:
@@ -203,9 +265,28 @@ def installa(radice: Path, dati_mt5: Path, programma_mt5: Path) -> tuple[bool, s
     return True, ""
 
 
+def stato_in_parole(s: Optional[dict]) -> Optional[str]:
+    """Cosa dire se i disegni in MT5 non vanno; None se va tutto bene."""
+    if s is None or s["eta"] > 600:
+        return ("i disegni non arrivano sul grafico: il programma NvmDisegni in MT5 non è acceso. In MT5: Navigatore "
+                "(Ctrl+N) → «Services» → «NVM» → tasto destro su «NvmDisegni» → «Start».")
+    if s["versione"] != VERSIONE_MT5:
+        return ("in MT5 gira ancora il programma dei disegni vecchio: tasto destro su «NvmDisegni» (in «Services» → "
+                "«NVM») → «Stop», poi di nuovo «Start».")
+    if s["errori"] and not s["oggetti"]:
+        return (f"MT5 non mi lascia disegnare (errore {s['ultimo_errore']}): trascina «NvmDisegniGrafico» "
+                "(Navigatore → «Indicators» → «NVM») su un grafico qualsiasi e premi OK.")
+    return None
+
+
 AVVISO = ("✏️ Da adesso disegno sul grafico di MT5 le operazioni come le disegna Romeo: la candela 1 col suo "
           "50%, la finta sul key level, l'apertura della candela 3, la candela spessa del Model#1, l'entrata, lo "
           "stop e i due obiettivi; la domenica il massimo e il minimo della settimana passata.\n"
           "Per vederli serve una cosa sola, una volta: in MT5 apri il Navigatore (Ctrl+N), tasto destro su "
           "«Services» (Servizi) → «Refresh» (Aggiorna), apri «Services» e la cartella «NVM»: tasto destro su "
           "«NvmDisegni» → «Start» (Avvia). Da lì in poi i disegni compaiono da soli su ogni grafico aperto.")
+
+SUBITO = ("✏️ Ora sui grafici aperti di MT5 disegno subito, a ogni ora: i CRT che stiamo guardando (candela 1 col "
+          "50%, la finta della candela 2, l'apertura della candela 3 dove aspettiamo l'entrata), le operazioni "
+          "aperte, e il massimo e il minimo della settimana scorsa. In alto a sinistra di ogni grafico compare la "
+          "scritta «NVM: disegni accesi». Se non la vedi entro qualche minuto, te lo dico io qui.")

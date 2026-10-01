@@ -118,9 +118,34 @@ def test_i_disegni_scadono_e_il_file_e_leggibile_da_mt5(tmp_path):
     d.metti("a", "EURUSD", [Segno("linea", 10, 1.1, 20, 1.1, testo="Obiettivo 1 (50%); più giù")], fino=100)
     d.metti("b", "GBPUSD", [Segno("testo", 10, 1.2, testo="Lunedì")], fino=1000)
     d.scrivi(500)
-    righe = (tmp_path / "comune" / "nvm_disegni.csv").read_text(encoding="cp1252").split("\n")
+    grezzo = (tmp_path / "comune" / "nvm_disegni.csv").read_bytes()
+    assert grezzo.endswith(b"\r\n") and "Lunedì".encode("cp1252") in grezzo
+    righe = grezzo.decode("cp1252").split("\r\n")
     assert righe[0].split(";")[1:3] == ["GBPUSD", "testo"] and righe[0].endswith("Lunedì")
     assert len(righe[0].split(";")[0]) == 10
     assert len(righe[0].split(";")) == 11
     # Ricaricati dopo un riavvio.
     assert list(Disegni(tmp_path).gruppi) == ["b"]
+
+
+def test_si_vede_se_il_programma_dei_disegni_in_mt5_lavora(tmp_path):
+    from nvm.vivo.disegni import Disegni, stato_in_parole
+    d = Disegni(tmp_path, tmp_path / "comune")
+    assert d.stato_mt5(1000) is None and "non è acceso" in stato_in_parole(None)
+    (tmp_path / "comune").mkdir()
+    (tmp_path / "comune" / "nvm_disegni_stato.txt").write_text("servizio;2;990;3;40;0;0\r\n", encoding="cp1252")
+    s = d.stato_mt5(1000)
+    assert s["eta"] == 10 and s["grafici"] == 3 and s["oggetti"] == 40 and stato_in_parole(s) is None
+    assert "Stop" in stato_in_parole({**s, "versione": "1"})
+    assert "errore 4101" in stato_in_parole({**s, "oggetti": 0, "errori": 5, "ultimo_errore": 4101})
+    assert "non è acceso" in stato_in_parole({**s, "eta": 3600})
+
+
+def test_i_crt_in_attesa_della_candela_3_si_disegnano():
+    from nvm.vivo.disegni import in_attesa
+    crt, _ = _crt(PICCOLE)
+    segni = in_attesa(crt, 1.1060, 3)
+    testi = " ".join(s.testo for s in segni)
+    for parola in ("candela 1", "CRT high", "CRT low", "50%", "Candela 3", "Finta della candela 2", "per vendere"):
+        assert parola in testi, parola
+    assert all(s.t1 >= C1 + 3 * 3600 for s in segni if s.tipo != "testo")

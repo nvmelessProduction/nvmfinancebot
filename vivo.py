@@ -26,6 +26,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from nvm.agenti import livelli, manopole
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
@@ -181,6 +183,7 @@ class Bot:
         self._ultimo_controllo = 0.0
         # I disegni sul grafico di MT5 (`nvm/vivo/disegni.py`): pronti dopo il collegamento.
         self.disegni: Optional[disegni.Disegni] = None
+        self._avviso_disegni = 0.0
 
     def allarme(self, testo: str) -> None:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
@@ -265,6 +268,12 @@ class Bot:
                 avvisato.write_text("1", encoding="utf-8")
             elif not fatto:
                 self.allarme(problema)
+            if fatto:
+                self.aggiorna_disegni(int(time.time()))
+                subito = CARTELLA / "disegni_subito"
+                if not subito.exists():
+                    self.tg.operativo(disegni.SUBITO)
+                    subito.write_text("1", encoding="utf-8")
         except Exception as errore:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
             self.allarme(f"non sono riuscito a preparare i disegni per MT5 ({type(errore).__name__}: {errore}): "
@@ -280,12 +289,63 @@ class Bot:
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 
+    def aggiorna_disegni(self, adesso: int) -> None:
+        """A ogni giro: i livelli della settimana, i CRT che gli agenti stanno guardando nella candela 3 e le
+        operazioni aperte. Cosi' sul grafico c'e' sempre il lavoro della squadra, anche senza operazioni nuove."""
+        if self.disegni is None:
+            return
+        try:
+            from nvm.agenti.cacciatore import Stato as StatoCRT
+            from nvm.vivo import giro as il_giro
+            scarto = self.terminale.scarto or 0
+            self.disegni.togli("attesa ")
+            for s in self.strumenti:
+                base = self.basi.get(s)
+                if base is None or not len(base):
+                    continue
+                for alto, basso in ((TF.D1, TF.H1), (TF.W1, TF.H4)):
+                    basse = il_giro._candele(base, basso, adesso)
+                    for c in il_giro._crt3(base, alto, basso, adesso):
+                        if c.stato_a(adesso) is not StatoCRT.ARMATO:
+                            continue
+                        k = int(np.searchsorted(basse.inizio, c.armato_quando))
+                        apertura = float(basse.bid[k, 0]) if k < len(basse) else None
+                        fino = min(int(c.decaduto_quando), int(c.fine_candela_3), adesso + 8 * 86400)
+                        self.disegni.metti(f"attesa {s} {alto.value} {c.verso.value} {c.range_inizio}",
+                                           self.terminale.simbolo(s), disegni.in_attesa(c, apertura, scarto), fino)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        # Ogni parte per conto suo: un errore in una non toglie le altre dal grafico.
+        try:
+            self.disegni.togli("aperta ")
+            for v in self.stato.vive:
+                if v.chiave not in self.disegni.gruppi:
+                    self.disegni.metti(f"aperta {v.chiave}", self.terminale.simbolo(v.strumento),
+                                       disegni.aperta(v, adesso, self.terminale.scarto or 0), adesso + 2 * 3600)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        try:
+            self.disegna_settimana(adesso)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def controlla_disegni(self, adesso: float) -> None:
+        """Il programma dei disegni in MT5 e' vivo e disegna? Se no lo dice, al massimo ogni 12 ore."""
+        if self.disegni is None:
+            return
+        problema = disegni.stato_in_parole(self.disegni.stato_mt5(adesso))
+        if problema and adesso - self._avviso_disegni > 12 * 3600:
+            self._avviso_disegni = adesso
+            self.tg.operativo(messaggi.allarme(problema))
+
     def disegna_settimana(self, adesso: int) -> None:
-        """La domenica (V14): su ogni strumento il lunedi' e i livelli della settimana passata."""
+        """La domenica di Romeo (V14), tenuta per tutta la settimana: il lunedi' e i livelli della settimana passata."""
         if self.disegni is None:
             return
         ny = datetime.fromtimestamp(adesso, tz=NEW_YORK)
-        lunedi_ny = (ny + timedelta(days=(7 - ny.weekday()) % 7 or 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+        # Da lunedi' a venerdi' la settimana in corso; il sabato e la domenica quella che arriva.
+        giorni = -ny.weekday() if ny.weekday() <= 4 else 7 - ny.weekday()
+        lunedi_ny = (ny + timedelta(days=giorni)).replace(hour=0, minute=0, second=0, microsecond=0)
         lunedi = int(lunedi_ny.timestamp())
         venerdi = int((lunedi_ny + timedelta(days=4, hours=17)).timestamp())
         for s in self.strumenti:
@@ -441,6 +501,8 @@ class Bot:
             archivia(CARTELLA, vecchie)
             self.stato.seguite = [s for s in self.stato.seguite if s.esito is None or s.esito["quando"] > ora - TENERE]
         self.stato.ultimo_giro = ora
+        self.aggiorna_disegni(ora)
+        self.controlla_disegni(time.time())
         self.parla()
 
     def _equipe(self, testo: str) -> None:

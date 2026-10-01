@@ -233,6 +233,14 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     csv = (tmp_path / "comune" / disegni.FILE).read_text(encoding="cp1252")
     for parola in ("Candela 1", "50% del range", "Turtle soup", "Model#1", "Stop", "Obiettivo 1", "Obiettivo 2", "EURUSD.x"):
         assert parola in csv, parola
+    # A ogni giro: i CRT guardati, le operazioni aperte e la settimana; e il controllo del programma in MT5.
+    bot.terminale.simbolo = lambda s: s + ".x"
+    bot._avviso_disegni = 0.0
+    bot.aggiorna_disegni(int(decisioni[-1].r.quando))
+    assert any(g.startswith("aperta ") or g in bot.disegni.gruppi for g in bot.disegni.gruppi)
+    assert any(g.startswith("settimana ") for g in bot.disegni.gruppi)
+    bot.controlla_disegni(float(decisioni[-1].r.quando))
+    assert any("NvmDisegni" in t and "Start" in t for c, t in mandati if c == "-1")
     s = bot.stato.seguite[0]
     s.esito = {"erre": -1.0, "quando": int(base.t[-1]), "tp1": False, "tp2": False, "uscita": "stop"}
     bot._finita(s, int(base.t[-1]))
