@@ -1,9 +1,35 @@
 # Dove siamo
 
-_Aggiornato il 24/09/2026._
+_Aggiornato il 01/10/2026._
 
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
+
+## 01/10/2026: la strategia dei video alla lettera, e una squadra che impara davvero
+
+Il proprietario: *"Voglio che tutto quello che ho chiesto venga fatto e che non sono preso in giro… bot
+intelligente e strategia di Romeo"*. Confronto riga per riga del codice con i 17 video (pacchi nel ramo
+`main`: 13 con il parlato, V7, V13, V14 e V15 solo fotogrammi). Cambiato:
+
+- **Apertura di Romeo**: giorno, settimana e mese a mezzanotte di New York (prima: 17:00 e domenica sera).
+- **Model#1 sul vecchio massimo**: la candela spessa deve prendere un massimo di swing mai ripreso (prima
+  bastava un massimo nuovo dentro la candela 3).
+- **Le tre entrate di Romeo**: Model#1, vera rottura di struttura col ritorno nella zona, kiss of death
+  dopo il 50% (prima solo il Model#1).
+- **Orario dei video** sull'ora della finta: Londra o mattina di New York; settimana lunedì-mercoledì;
+  mese prime due settimane (prima: 2-11 NY e "primo 60% della candela").
+- **Sempre un parziale al 50%**: Livelli sceglie fra tre piani di Romeo (prima nove, anche senza 50%).
+- **SMT**: solo le coppie di Romeo, solo con la vera rottura a confermarlo; con l'SMT confermato contro si
+  esce prima del primo obiettivo. **KOD**: dopo il primo obiettivo, chiusura oltre il kiss of death = si esce.
+- **La squadra** (`nvm/intelligenti/squadra.py`, memoria nuova `video-2`): ogni agente ha un suo modello
+  appreso dal vivo sui numeri del suo mestiere; secondo giro di ascolto con le regole di Romeo che legano i
+  mestieri, pesi appresi; il Capo pesa i giudizi (fiducia appresa) e guarda i casi simili; lascia un'A+ solo
+  con almeno 15 casi simili in perdita con certezza; impara prima dai risultati veri del broker.
+- **Testi onesti**: benvenuto e `MANUALE.md` dicono cosa fa il codice, senza "cervelli che ragionano".
+
+**Da sapere:** le regole nuove non sono misurate sui vent'anni (i dati sono sulla VPS); il kiss of death e
+la vera rottura, provati da soli il 30/09, rendevano meno del Model#1. All'avvio la memoria della squadra
+riparte da zero: i primi giudizi diranno "non ho ancora esperienza".
 
 ## Dove siamo: il metro diventa Romeo
 

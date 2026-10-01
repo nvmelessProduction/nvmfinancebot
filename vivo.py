@@ -29,6 +29,7 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti import livelli, manopole
+from nvm.agenti.grilletto import MODELLI_ROMEO, apertura_romeo, kod_superato
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
 from nvm.intelligenti import al_lavoro, fine_settimana
@@ -71,6 +72,13 @@ CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una ver
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
+
+
+def _da(candele, k: int):
+    """Le candele dalla `k`-esima in poi."""
+    from nvm.dati.candele import Candele
+    return Candele(candele.strumento, candele.tf, candele.inizio[k:], candele.fine[k:], candele.bid[k:],
+                   candele.ask[k:], candele.volume[k:])
 
 
 def _su(t: float, passo: int) -> int:
@@ -246,7 +254,7 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        versione = "5" if self.squadra is not None else "2"
+        versione = "6" if self.squadra is not None else "2"
         if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
             testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
                      else conversazione.benvenuto(len(self.strumenti)))
@@ -288,7 +296,7 @@ class Bot:
                          "il bot lavora lo stesso, ma senza disegni sul grafico.")
 
     def _disegna(self, d, viva, adesso: int) -> None:
-        if self.disegni is None or getattr(d.r.scatto, "modello", "") != "candela 3":
+        if self.disegni is None or getattr(d.r.scatto, "modello", "") not in MODELLI_ROMEO:
             return
         try:
             v = self._verdetti.get(d.chiave)
@@ -321,8 +329,8 @@ class Bot:
                     for c in il_giro._crt3(base, alto, basso, adesso):
                         if c.stato_a(adesso) is not StatoCRT.ARMATO:
                             continue
-                        k = int(np.searchsorted(basse.inizio, c.armato_quando))
-                        apertura = float(basse.bid[k, 0]) if k < len(basse) else None
+                        ap = apertura_romeo(c, basse, il_giro._candele(base, TF.H1, adesso))
+                        apertura = ap[1] if ap is not None else None
                         fino = min(int(c.decaduto_quando), int(c.fine_candela_3), adesso + 8 * 86400)
                         self.disegni.metti(f"attesa {s} {alto.value} {c.verso.value} {c.range_inizio}",
                                            self.terminale.simbolo(s), disegni.in_attesa(c, apertura, scarto), fino)
@@ -487,6 +495,9 @@ class Bot:
                 self.stato.chiuse.append([int(time.time()), float(f.erre), None if netto is None else float(netto)])
             if f.libro is not None:
                 self._nel_libro("chiusura", **f.libro)
+                if self.squadra is not None and f.erre is not None and f.libro.get("chiave"):
+                    self._risultato_vero(f.libro["chiave"], float(f.erre), f.libro.get("strumento", ""),
+                                         f.libro.get("verso", ""))
         adesso = time.time()
         quarto = _su(adesso, 900)
         if quarto > self.stato.ultimo_quarto and adesso - quarto >= RITARDO_GIRO:
@@ -644,7 +655,29 @@ class Bot:
         self._da_dire.clear()
 
     def uscite(self, adesso: int) -> None:
-        """Le uscite prima dello stop che gli agenti hanno imparato: idea invalidata o troppo lenta."""
+        """Le uscite prima dello stop: il kiss of death superato dopo il primo obiettivo (V16 15:32), e quelle
+        che gli agenti hanno imparato (idea invalidata o troppo lenta)."""
+        for v in self.stato.vive:
+            if not (v.pareggio_fatto and v.primo_quando and v.basso) or v.uscita_anticipata:
+                continue
+            if all(t in v.chiusi for t in v.tickets):
+                continue
+            sorgente = self.fini if TF(v.basso) is TF.M15 else self.basi
+            if v.strumento not in sorgente:
+                continue
+            try:
+                basse = costruisci(sorgente[v.strumento], TF(v.basso)).chiuse_entro(adesso)
+                dopo = int(np.searchsorted(basse.inizio, v.primo_quando))
+                livello = kod_superato(_da(basse, dopo), v.short)
+            except Exception:
+                # Un errore qui non deve fermare il giro: lo stop a pareggio protegge gia' l'operazione.
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
+                continue
+            if livello is not None:
+                fatto = self.esecutore.chiudi(v, f"il prezzo ha chiuso oltre il kiss of death ({livello:g}): Romeo dice "
+                                                 "che allora l'obiettivo non arriva (V16 15:32)")
+                self.tg.operativo(fatto.testo)
+                registra(CARTELLA, "uscita anticipata", chiave=v.chiave, motivo="kiss of death superato")
         for v in self.stato.vive:
             if not (v.invalida_candele or v.tempo_candele) or not v.basso:
                 continue
@@ -698,9 +731,10 @@ class Bot:
     def _con_piano(self, d, g: Optional[dict]):
         v = self._verdetti.get(d.chiave)
         if v is not None:
-            # Il piano lo sceglie il Capo della squadra, fra quelli possibili (-1: quello proposto).
-            if d.piani and 0 <= v.piano < len(d.piani) and d.piani[v.piano] is not None:
-                return replace(d, op=d.piani[v.piano])
+            # Il piano lo sceglie Livelli, fra quelli di Romeo (-1: quello proposto).
+            piani = getattr(d, "piani_romeo", None)
+            if piani and 0 <= v.piano < len(piani) and piani[v.piano] is not None:
+                return replace(d, op=piani[v.piano])
             return d
         if not self._decidono_i_cervelli or g is None or not d.piani:
             return d
@@ -736,6 +770,11 @@ class Bot:
                 registra(CARTELLA, "errore", testo=f"squadra intelligente: {self.squadra.ultimo_errore}")
                 self.allarme("La squadra non è riuscita a riunirsi su qualche occasione: su quelle non si entra. "
                              "Il dettaglio è nel registro.")
+        if self._verdetti:
+            try:
+                self._smt_contro(decisioni)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
         # Quando decidono i cervelli, i Livelli scelgono anche il piano: dove lo stop, come il profitto.
         decisioni = [self._con_piano(d, giudizi[d.chiave]) for d in decisioni]
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
@@ -833,7 +872,11 @@ class Bot:
         if self.squadra is not None:
             # Decide la squadra: impara lei, dal risultato vero (anche delle occasioni lasciate).
             _, ragione, torto = resoconto(s.leggibile or s.chiave, s.esito, s.entrata, s.spinte, s.presa_dal_capo)
-            if s.chiave in self.squadra.memoria.discusse:
+            ancora_aperta = any(v.chiave == s.chiave for v in self.stato.vive)
+            if s.chiave in self.squadra.memoria.discusse and ancora_aperta and s.chiave not in self.squadra.memoria.veri:
+                # Sulla carta e' finita ma sul conto e' ancora aperta: si impara quando arriva il risultato vero.
+                self.squadra.memoria.discusse[s.chiave]["aspetta_vero"] = True
+            elif s.chiave in self.squadra.memoria.discusse:
                 nome = f"{s.strumento} ({'vendita' if s.verso == 'short' else 'acquisto'})"
                 self._diario.submit(self._lezioni_della_squadra, s.chiave, float(s.esito["erre"]), bool(s.entrata),
                                     nome)
@@ -886,6 +929,39 @@ class Bot:
                 self.stato.lezioni[chiave] = self.stato.lezioni.get(chiave, 0) + 1
         registra(CARTELLA, "finita sulla carta", chiave=s.chiave, ragione=ragione, torto=torto,
                  alternative={a: [[n, v, r] for n, v, r in voci] for a, voci in alt.items()}, **s.esito)
+
+    def _smt_contro(self, decisioni) -> None:
+        """L'SMT ferma l'obiettivo (V10 06:02, V16 10:03): se su uno strumento in cui siamo dentro nasce
+        un'occasione nel verso opposto con l'SMT confermato, prima del primo obiettivo si chiude."""
+        for v in list(self.stato.vive):
+            if v.pareggio_fatto or v.uscita_anticipata:
+                continue
+            for d in decisioni:
+                verdetto = self._verdetti.get(d.chiave)
+                m = getattr(verdetto, "metodo", None)
+                if m is None or d.r.strumento != v.strumento or d.r.verso.value == v.verso:
+                    continue
+                if not any(c.nome == "SMT" and c.si for c in m.confluenze):
+                    continue
+                fatto = self.esecutore.chiudi(v, "SMT confermato contro di noi: Romeo dice che con l'SMT "
+                                                 "l'obiettivo non arriva (V10 06:02)")
+                self.tg.operativo(fatto.testo)
+                self._equipe(f"Grilletto: su {v.strumento} il mercato gemello non ha seguito, con la rottura di "
+                             "struttura a confermarlo. È l'unico caso in cui Romeo dice che l'obiettivo non arriva: "
+                             "chiudiamo prima del primo obiettivo.")
+                registra(CARTELLA, "uscita anticipata", chiave=v.chiave, motivo="SMT contro")
+                break
+
+    def _risultato_vero(self, chiave: str, erre: float, strumento: str, verso: str) -> None:
+        """Il risultato vero dal broker: la squadra impara da questo, non da quello sulla carta."""
+        try:
+            self.squadra.vero(chiave, erre)
+            d = self.squadra.memoria.discusse.get(chiave)
+            if d is not None and d.get("aspetta_vero"):
+                nome = f"{strumento} ({'vendita' if verso == 'short' else 'acquisto'})"
+                self._diario.submit(self._lezioni_della_squadra, chiave, erre, True, nome)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def _lezioni_della_squadra(self, chiave: str, erre: float, presa: bool, racconto: str) -> None:
         try:

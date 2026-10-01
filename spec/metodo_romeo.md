@@ -4,7 +4,11 @@ Richiesta del proprietario: *"Voglio che li riaddestri da zero seguendo i 17 vid
 corretta e completa"* e *"Non devi rileggere la Bibbia. Voglio che rianalizzi tutti i video"*.
 
 Ogni regola dice da quale video e da quale minuto viene. [P] = detto a voce, [I] = disegnato o
-scritto sul grafico. Gli esempi dei video sono del 2025-2026 (periodo sigillato): qui ci sono solo i
+scritto sul grafico.
+
+**Verifica del 01/10/2026** sui pacchi dei video nel ramo `main`: V7 (key level), V13, V14 e V15 non hanno
+il parlato, solo i fotogrammi. Le citazioni [P V7 ...] e [P V14 ...] qui sotto non si possono controllare
+su quei pacchi: valgono come lette dai disegni ([I]), non come frasi di Romeo. Gli esempi dei video sono del 2025-2026 (periodo sigillato): qui ci sono solo i
 concetti, mai i loro prezzi come casi di prova.
 
 I video: V1 What is CRT? · V2 What is turtle soup? · V3-V12 CRT secrets ep.1-10 (V3 un modello per
@@ -38,7 +42,10 @@ tape reading dal vivo.
   cerca l'entrata nella candela 3. [P V5 00:31-07:26, V9 04:19-06:58, V1 26:48, V8 05:53]
 - Nella candela 3: per vendere **sopra l'apertura**, per comprare **sotto l'apertura** della
   candela 3 ("all the turtle soups... happen above and below the open"). Aperture: giorno a
-  mezzanotte di New York, settimana lunedì a mezzanotte. [P V1 20:55-23:09, V9 24:20, I V9 07:15]
+  mezzanotte di New York, settimana lunedì a mezzanotte (*"not Sunday evening"*), mese il primo
+  giorno a mezzanotte. [P V1 20:55-23:09, V3 24:01, V8 14:30, V9 24:20, I V9 07:15]
+  Nel codice (`grilletto.apertura_romeo`): le nostre candele aprono alle 17 di New York, l'apertura
+  di Romeo si prende 7 ore dopo dalle orarie; la finta conta solo da lì in poi.
 
 ## 3. Il key level (obbligatorio)
 
@@ -133,15 +140,45 @@ tape reading dal vivo.
   massimi e minimi della settimana passata; prevedere la forma della prossima candela settimanale.
   [P V14 21:59-26:12, I V14 24:15-27:00]
 
+## Le tre entrate nel codice (01/10/2026)
+
+- **Model#1** (`grilletto.scatto_candela_3`): dopo l'apertura di Romeo, la candela spessa (corpo almeno
+  1,2 volte la media delle 20 prima: il numero è nostro, Romeo dice solo "thick") nel colore della finta,
+  sopra l'apertura per vendere, che **si infila in un vecchio massimo** mai ripreso (un massimo di swing,
+  più alto delle due candele prima e delle due dopo, `grilletto.prende_vecchio`). Si entra alla chiusura
+  oltre il suo corpo. Non dopo il 50%.
+- **Vera rottura di struttura** (`grilletto.scatto_vera_rottura`): turtle soup su un vecchio massimo,
+  chiusura sotto il minimo che aveva fatto il massimo, ritorno nella metà alta della zona fra quel minimo
+  e il turtle soup, entrata alla chiusura che richiude sotto la metà; stop al turtle soup.
+- **Kiss of death** (`grilletto.scatto_kod`): preso il 50%, l'ultima finta (candela spessa che prende un
+  vecchio massimo, sotto il 50%) e la chiusura oltre il suo corpo; obiettivo il lato opposto, tutto lì.
+- Dopo il primo obiettivo, se il prezzo chiude oltre il kiss of death si esce (`grilletto.kod_superato`,
+  V16 15:32-17:31). Con l'SMT confermato contro di noi si esce prima del primo obiettivo (V10 06:02,
+  V16 10:03).
+- Livelli sceglie fra tre piani (`livelli.PIANI_ROMEO`): tutto al 50%; metà al 50% e il resto al lato
+  opposto (quello dei video, di partenza); metà al 50% e il resto oltre il lato. Mai senza parziale al 50%.
+- L'Orario guarda l'ora della finta: Londra (1-5 NY) o la mattina di New York (8-11 NY); sul settimanale
+  anche lunedì-mercoledì (il kiss of death anche dopo); sul mensile le prime due settimane.
+- L'SMT solo sulle coppie di Romeo (`metodo.GEMELLI`) e solo con la vera rottura di struttura a
+  confermarlo.
+
+Sui vent'anni (`registro/tentativi.md`, 30/09) il kiss of death e la vera rottura, provati da soli,
+rendevano meno del Model#1. Ci sono perché sono il metodo di Romeo (decisione del proprietario); la
+squadra impara dal vivo quanto valgono, e il conto demo dirà il resto.
+
 ## Come diventa codice
 
 | Regola | Dove |
 | --- | --- |
 | Candela 3, sopra/sotto l'apertura, Model#1 spesso, chiusura oltre il corpo, stop alla punta | `nvm/agenti/grilletto.py` (`scatto_candela_3`) |
-| Le domande obbligatorie e le confluenze, con video e minuto | `nvm/intelligenti/metodo.py` |
-| Si entra solo se tutte le domande obbligatorie dicono sì (e sempre con lo stop) | `nvm/intelligenti/squadra.py` |
+| Vera rottura di struttura, kiss of death, KOD superato, apertura di Romeo, vecchio massimo | `nvm/agenti/grilletto.py` |
+| I tre piani di Romeo (sempre un parziale al 50%) | `nvm/agenti/livelli.py` (`piani_romeo`) |
+| Le domande obbligatorie e le confluenze, con video e minuto; i numeri che vede ogni agente | `nvm/intelligenti/metodo.py` |
+| Si entra solo se tutte le domande obbligatorie dicono sì (e sempre con lo stop); giudizio appreso di ogni agente, secondo giro di ascolto, Capo coi casi simili, risultati veri | `nvm/intelligenti/squadra.py` |
+| Uscita con l'SMT contro e col kiss of death superato | `vivo.py` (`_smt_contro`, `uscite`) |
 | Il sabato e la domenica | `nvm/intelligenti/fine_settimana.py` |
 | I disegni sul grafico di MT5 | `nvm/vivo/disegni.py`, `mt5/NvmDisegni.mq5` |
 
 Quello che la squadra impara dal vivo non tocca le domande obbligatorie: quelle sono il metodo.
-Impara quanto contano le confluenze, quale stop e quale uscita rendono, quanto puntare.
+Impara il giudizio di ogni agente, quanto pesa ogni collega, di chi fidarsi, quale uscita rende, quanto
+puntare, e quando un'A+ va lasciata (solo con le prove dei casi simili).

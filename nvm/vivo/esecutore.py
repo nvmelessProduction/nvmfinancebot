@@ -10,6 +10,7 @@ protette.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
@@ -62,6 +63,8 @@ class Viva:
     # strumenti aperti che vanno insieme a lei, per cui ha rischiato meno.
     da_sola: float = 0.0
     legate: list[str] = field(default_factory=list)
+    # Quando il prezzo ha toccato il primo obiettivo (per il kiss of death che non va superato).
+    primo_quando: int = 0
 
     @property
     def gambe(self) -> dict[str, float]:
@@ -267,6 +270,8 @@ class Esecutore:
                     if not e.ok:
                         fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}")))
                 v.pareggio_fatto = True
+            if primo_preso and not v.primo_quando:
+                v.primo_quando = int(time.time())
             if primo_preso and not v.primo_detto and v.uscita != USCITE[1]:
                 v.primo_detto = True
                 fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
@@ -294,6 +299,10 @@ class Esecutore:
             motivo = f"troppo lenta: il primo obiettivo non è arrivato in {v.tempo_candele} candele"
         if not motivo:
             return None
+        return self.chiudi(v, motivo)
+
+    def chiudi(self, v: Viva, motivo: str) -> Fatto:
+        """Chiude a mercato quello che resta dell'operazione, per il motivo detto."""
         for ticket in v.tickets:
             if ticket not in v.chiusi:
                 e = self.t.chiudi_posizione(v.strumento, ticket)

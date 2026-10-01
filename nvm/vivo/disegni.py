@@ -180,15 +180,19 @@ def operazione(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> lis
         segni.append(Segno("testo", fine_1 + sv, float(estremo), 0, 0.0, ROSSO, testo="Finta della candela 2"))
     if s.apertura_3 is not None:
         segni.append(Segno("linea", fine_3 + sv, float(s.apertura_3), inizio_3 + sv, float(s.apertura_3), GRIGIO, 2, 1,
-                           "Apertura candela 3"))
+                           "Apertura candela 3" + ("" if crt.alto_tf is TF.H4 else " (mezzanotte di New York)")))
     durata = DURATA.get(d.r.basso_tf, 3600)
     t_ts = int(s.turtle_soup_inizio)
     segni += [
         Segno("rettangolo", t_ts + sv, float(s.turtle_soup_massimo), t_ts + durata + sv, float(s.turtle_soup_minimo), ORO,
-              testo="Model#1 (finta della candela 3)"),
+              testo={"kiss of death": "Kiss of death (l'ultima finta prima dell'obiettivo)",
+                     "vera rottura": "Turtle soup della vera rottura di struttura"}.get(
+                  getattr(s, "modello", ""), "Model#1 (finta della candela 3)")),
         Segno("linea", t_ts + sv, float(s.livello), int(s.quando) + sv, float(s.livello), ORO, 0, 1, ""),
         Segno("giu" if short else "su", int(s.quando) + sv, float(op.ingresso), 0, 0.0, VIOLA,
-              testo=("Vendita" if short else "Acquisto") + ": chiusura oltre il corpo"),
+              testo=("Vendita" if short else "Acquisto") + (": ritorno nella zona dopo la rottura"
+                                                           if getattr(s, "modello", "") == "vera rottura"
+                                                           else ": chiusura oltre il corpo")),
         Segno("linea", dopo + sv, float(op.stop), int(s.quando) + sv, float(op.stop), ROSSO, 0, 2, "Stop"),
         Segno("linea", dopo + sv, float(op.tp1), int(s.quando) + sv, float(op.tp1), VERDE, 1, 2, "Obiettivo 1 (50%)"),
         Segno("linea", dopo + sv, float(op.tp2), int(s.quando) + sv, float(op.tp2), VERDE, 0, 2,
@@ -228,7 +232,8 @@ def in_attesa(crt, apertura_3: Optional[float], scarto_ore: int) -> list[Segno]:
                            testo="Finta della candela 2 (turtle soup)"))
     if apertura_3 is not None:
         segni.append(Segno("linea", inizio_3 + sv, float(apertura_3), fine_3 + sv, float(apertura_3), GRIGIO, 2, 1,
-                           "Apertura candela 3: " + ("aspettiamo la finta sopra per vendere" if short else
+                           "Apertura candela 3" + ("" if crt.alto_tf is TF.H4 else " (mezzanotte di New York)")
+                           + ": " + ("aspettiamo la finta sopra per vendere" if short else
                                                      "aspettiamo la finta sotto per comprare")))
     return segni
 

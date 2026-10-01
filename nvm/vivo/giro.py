@@ -16,7 +16,7 @@ import numpy as np
 from nvm.agenti.cacciatore import CRT, Variante, Verso, caccia
 from nvm.agenti.capo import Capo, riga
 from nvm.agenti.conferme import SOPRA, AllaRomeo, Contesto, KeyLevel, Liquidita, Orario, tutti_i_pareri
-from nvm.agenti.livelli import piano, scadenza
+from nvm.agenti.livelli import piani_romeo, piano, scadenza
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.prova.base import Risultato, opera, opera_candela_3
@@ -69,6 +69,8 @@ class Decisione:
     # grafico grande per il metodo dei video).
     grandi_contro: int = 0
     grandi_con: int = 0
+    # I piani di Livelli per la squadra, tutti come li vuole Romeo (`livelli.PIANI_ROMEO`).
+    piani_romeo: Optional[list] = None
 
     @property
     def entra(self) -> bool:
@@ -120,9 +122,9 @@ def _crt3(base: Minuti, alto: TF, basso: TF, adesso: int):
                     lambda: caccia(_candele(base, alto, adesso), _candele(base, basso, adesso), Variante.CHIUSURA_DENTRO))
 
 
-def _occasioni(alte, basse, base, alto, basso, dal, adesso, metodo):
+def _occasioni(alte, basse, base, alto, basso, dal, adesso, metodo, orarie=None):
     if metodo == "candela 3":
-        return opera_candela_3(alte, basse, dal, adesso + 1, trovati=_crt3(base, alto, basso, adesso))
+        return opera_candela_3(alte, basse, dal, adesso + 1, trovati=_crt3(base, alto, basso, adesso), orarie=orarie)
     return opera(alte, basse, dal, adesso + 1, trovati=_crt(base, alto, basso, adesso))
 
 
@@ -154,6 +156,13 @@ def _compagno(strumento: str, gemelli: Optional[dict], orarie: dict):
         return None
     ore = (gemelli or orarie).get(gemello[0])
     return (ore, gemello[1]) if ore is not None else None
+
+
+def _piani_romeo(r, basse) -> Optional[list]:
+    try:
+        return piani_romeo(r.scatto, basse)
+    except Exception:
+        return None
 
 
 def _piani(r, basse) -> Optional[list]:
@@ -191,7 +200,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
             alte = _candele(base, alto, adesso)
             basse = _candele(base, basso, adesso)
             sopra = _candele(ore, SOPRA[alto], fine_ore)
-            for r in _occasioni(alte, basse, base, alto, basso, dal, adesso, metodo):
+            ore_h1 = _candele(ore, TF.H1, fine_ore) if ore.passo <= 3600 else None
+            for r in _occasioni(alte, basse, base, alto, basso, dal, adesso, metodo, ore_h1):
                 op = piano(r.scatto, basse)
                 kl, ora, ctx, ar, liq = tutti_i_pareri(r.scatto, alte, basse, sopra, settimane, g)
                 x = riga(r, kl, ora, ctx, ar, liq, inventate.rispondi_tutte(idee, r, ctx_idee))[None]
@@ -206,7 +216,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     _viste(r, alte, basse, sopra, settimane, x[0], g, _compagno(strumento, gemelli, orarie), ctx_idee),
                     _piani(r, basse),
                     g3.livelli(Verso.LONG if r.verso is Verso.SHORT else Verso.SHORT, GRANDEZZA.get(alto, 0), r.quando),
-                    g3.livelli(r.verso, GRANDEZZA.get(alto, 0), r.quando)))
+                    g3.livelli(r.verso, GRANDEZZA.get(alto, 0), r.quando),
+                    _piani_romeo(r, basse)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
     return decisioni
 

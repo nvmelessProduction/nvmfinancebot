@@ -18,7 +18,7 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti.cacciatore import Variante, Verso, caccia
-from nvm.agenti.grilletto import Scatto, scatto, scatto_candela_3
+from nvm.agenti.grilletto import MODELLI_ROMEO, Scatto, scatti_romeo, scatto
 from nvm.agenti.livelli import piano, scadenza
 from nvm.dati.candele import Candele
 from nvm.prova.campo import Uscita, simula
@@ -98,29 +98,31 @@ def opera(
 
 def opera_candela_3(
     alte: Candele, basse: Candele, dal: int, al: int, trovati: Optional[list] = None,
+    orarie: Optional[Candele] = None,
 ) -> list[Risultato]:
-    """Le operazioni del metodo dei video (`spec/metodo_romeo.md`): solo la candela 3, un colpo per
-    CRT (dopo uno stop non si rientra per vendetta). `trovati` sono i CRT della variante
-    `CHIUSURA_DENTRO`, se chi chiama li ha gia' cercati."""
+    """Le operazioni del metodo dei video (`spec/metodo_romeo.md`): solo la candela 3, le tre entrate di
+    Romeo (Model#1, vera rottura, kiss of death), al massimo una per entrata e per CRT (dopo uno stop non
+    si rientra per vendetta). `trovati` sono i CRT della variante `CHIUSURA_DENTRO`, se chi chiama li ha
+    gia' cercati; `orarie` le ore, per l'apertura di Romeo a mezzanotte di New York."""
     risultati = []
     for crt in (caccia(alte, basse, Variante.CHIUSURA_DENTRO) if trovati is None else trovati):
-        s = scatto_candela_3(crt, basse)
-        if s is None or not dal <= s.quando < al:
-            continue
-        op = piano(s, basse)
-        if op is None:
-            continue
-        esito = simula(op, basse, scadenza(s))
-        risultati.append(Risultato(
-            op.strumento, alte.tf, basse.tf, op.verso, op.quando, esito.erre,
-            esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio, s,
-            colpo=1,
-            rr1=abs(op.tp1 - op.ingresso) / op.rischio,
-            rr2=abs(op.tp2 - op.ingresso) / op.rischio,
-            stop_su_ampiezza=op.rischio / (crt.crt_high - crt.crt_low),
-            chiusa_quando=esito.quando,
-            ingresso=op.ingresso, stop=op.stop,
-        ))
+        for s in scatti_romeo(crt, basse, orarie):
+            if not dal <= s.quando < al:
+                continue
+            op = piano(s, basse)
+            if op is None:
+                continue
+            esito = simula(op, basse, scadenza(s))
+            risultati.append(Risultato(
+                op.strumento, alte.tf, basse.tf, op.verso, op.quando, esito.erre,
+                esito.uscita, esito.tp1_preso, esito.costo_erre, op.rischio, s,
+                colpo=1 + MODELLI_ROMEO.index(s.modello),
+                rr1=abs(op.tp1 - op.ingresso) / op.rischio,
+                rr2=abs(op.tp2 - op.ingresso) / op.rischio,
+                stop_su_ampiezza=op.rischio / (crt.crt_high - crt.crt_low),
+                chiusa_quando=esito.quando,
+                ingresso=op.ingresso, stop=op.stop,
+            ))
     risultati.sort(key=lambda r: r.quando)
     return risultati
 

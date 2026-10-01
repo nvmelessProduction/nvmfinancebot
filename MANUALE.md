@@ -1,9 +1,9 @@
 # NVM — Manuale d'uso
 
-NVM è un sistema di trading automatico per MetaTrader 5. Una squadra di agenti, ognuno con
-un suo cervello allenato su vent'anni di mercato, guarda i grafici, discute, decide le
-operazioni e continua a imparare da ogni risultato. Il metodo di base è il **CRT** (Candle
-Range Theory): il prezzo esce da un range, prende la liquidità, rientra e inverte.
+NVM è un sistema di trading automatico per MetaTrader 5. Segue il **CRT** (Candle Range Theory) di
+RomeoTPT, come lo spiega nei suoi 17 video: ogni candela è un range; la candela dopo lo supera o gli fa una
+finta (turtle soup) e rientra; nella candela 3 si entra verso il 50% e il lato opposto. Una squadra di agenti
+controlla le regole di Romeo, impara dai risultati dal vivo e decide.
 
 > **Avvertenza.** Il trading con leva può far perdere tutto il capitale investito. I risultati
 > passati, anche quelli dal vivo, non garantiscono quelli futuri. NVM oggi opera **solo su
@@ -15,17 +15,33 @@ Range Theory): il prezzo esce da un range, prende la liquidità, rientra e inver
   Bitcoin ed Ethereum (quelli che il tuo broker offre).
 - **Trova le occasioni** sui grafici mensile, settimanale, giornaliero e 4 ore, con l'ingresso
   sul grafico più piccolo.
-- **La squadra ragiona**:
-  - *Cacciatore* trova i range;
-  - *Grilletto* vede l'ingresso;
-  - *Livelli* sceglie stop e obiettivi;
-  - *Key level*, *Orario* e *Bias* guardano livelli, orari e direzione;
-  - *Rischio* decide quanto rischiare sul conto intero.
-  Ognuno dà il suo giudizio, sente i colleghi e può cambiare idea; poi si decide.
-- **Impara sempre**:
-  - dopo ogni risultato vero, ogni cervello si corregge;
-  - ogni settimana tornano a scuola sui vent'anni, provano a migliorare se stessi e tengono
-    solo i cambiamenti che reggono all'esame.
+- **Le regole di Romeo, tutte obbligatorie** (ognuna col video e il minuto in `spec/metodo_romeo.md`):
+  - *Cacciatore*: la candela 2 ha fatto la finta ed è chiusa dentro, si opera la candela 3;
+  - *Grilletto*: la finta oltre l'apertura della candela 3 (a mezzanotte di New York per giorno, settimana e
+    mese) e una delle tre entrate di Romeo: il **Model#1** (la candela spessa che si infila in un vecchio
+    massimo, chiusura oltre il suo corpo), la **vera rottura di struttura** col ritorno nella zona, o il
+    **kiss of death** dopo il 50%;
+  - *Key level*: la finta arriva su un livello importante del grafico grande;
+  - *Bias*: il grafico grande non va contro;
+  - *Orario*: la finta arriva nelle ore di Romeo (Londra o la mattina di New York; la settimana fra lunedì
+    e mercoledì; il mese nelle prime due settimane);
+  - *Livelli*: l'obiettivo è ancora da prendere. Stop alla punta della finta, e al 50% si prende sempre
+    qualcosa.
+  Se manca anche una regola non si entra; se ci sono tutte si entra, senza limiti al numero di operazioni.
+- **Come impara, esattamente** (niente intelligenza artificiale esterna):
+  - ogni agente stima quanto spesso un'occasione come quella va bene, guardando i numeri del suo mestiere,
+    e corregge la stima dopo ogni occasione finita (presa o lasciata). All'inizio non sa niente e lo dice;
+  - gli agenti si ascoltano con le regole di Romeo che legano i mestieri (per esempio l'SMT confermato
+    rafforza il Bias). Quanto pesa ogni collega lo imparano dai risultati, e su Telegram si dice chi cambia
+    idea e perché;
+  - il Capo mette insieme i giudizi e guarda i casi simili già finiti dal vivo. Lascia un'occasione con
+    tutte le regole solo quando i casi simili sono abbastanza e perdono con certezza (*"lose, journal,
+    avoid"*);
+  - i risultati veri del broker contano più di quelli calcolati sulla carta;
+  - Livelli sceglie fra tre modi di uscire, tutti di Romeo; il Rischio parte dall'1% del conto e si
+    corregge coi risultati.
+- **Esce prima dell'obiettivo** solo nei due casi in cui Romeo dice che l'obiettivo non arriva: l'SMT
+  confermato contro di noi, o il prezzo che chiude oltre il kiss of death dopo il primo obiettivo.
 - **Protegge il conto**:
   - stop e obiettivi stanno sempre sul broker, anche se il computer si spegne;
   - la dimensione delle operazioni tiene conto di tutte quelle aperte insieme.
@@ -103,10 +119,15 @@ bot non può toccare.
 abbastanza, e mai più di quanto il conto regge. Su conti piccoli il lotto minimo del broker
 può essere troppo grande per la puntata giusta: in quel caso l'operazione si lascia.
 
-**Quanto rischia?** Lo decide il Rischio da solo, simulando il conto intero su vent'anni e su
-migliaia di storie sfortunate: sceglie le puntate che fanno crescere di più il conto senza
-portarlo alla rovina. Questo vuol dire accettare cali anche grandi: nei vent'anni, con le
-scelte di oggi, il calo peggiore è stato di circa il 60%.
+**Quanto rischia?** Il Rischio parte dall'1% del conto per operazione, punta un po' di più quando
+il Capo è più convinto del solito e meno quando ci sono altre operazioni aperte, e si corregge coi
+risultati veri. Non c'è un tetto fisso al rischio totale: con molte operazioni aperte insieme il
+conto può scendere molto.
+
+**Il metodo di Romeo guadagna?** Nessuno lo sa ancora. Sui vent'anni di prezzi il CRT preso alla
+lettera perdeva un po' dopo i costi; nella prova sul 2023 della versione precedente le occasioni
+con tutte le regole erano poche (su 6 strumenti, circa una ogni 3 settimane), troppo poche per un
+giudizio. Le regole di questa versione non sono ancora state misurate sui vent'anni. Per questo il bot gira solo sul demo: il conto demo è la prova.
 
 **Un messaggio dice "il simbolo non c'è su questo conto".** Il broker chiama i simboli con un
 suffisso: scrivilo in `MT5_SUFFISSO_SIMBOLI` nel file `.env`.

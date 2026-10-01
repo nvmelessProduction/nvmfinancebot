@@ -28,6 +28,7 @@ conta quante operazioni ci arrivano.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
@@ -93,6 +94,10 @@ def piano(
         stop = max(stop, ingresso + STOP_MINIMO * ampiezza) if short else min(stop, ingresso - STOP_MINIMO * ampiezza)
     oltre = OLTRE * ampiezza
     tp1, tp2 = crt.crt_50, (crt.crt_low - oltre if short else crt.crt_high + oltre)
+    if s.modello == "kiss of death":
+        # Il 50% e' gia' alle spalle: l'obiettivo e' il lato opposto del range, tutto li' (V4 07:01).
+        tp1 = tp2 = crt.crt_low if short else crt.crt_high
+        parziale = 1.0
     segno = -1 if short else 1
     if segno * (ingresso - stop) <= 0 or segno * (tp1 - ingresso) <= 0:
         return None
@@ -112,3 +117,38 @@ TETTO = {TF.MN: 300 * 86400, TF.W1: 70 * 86400, TF.D1: 14 * 86400, TF.H4: 3 * 86
 def scadenza(s: Scatto) -> int:
     """Il tetto di sicurezza: dopo, l'operazione si chiude al prezzo del momento."""
     return s.quando + TETTO[s.crt.alto_tf]
+
+
+# I piani di Livelli per la squadra: tutti come li vuole Romeo. Lo stop sta sempre alla punta del turtle
+# soup (V3 20:02, V11 16:30) e al 50% si prende sempre qualcosa: *"always taking profits at the 50% mark.
+# Always"* (V1 18:32, V8 20:01, V16 23:30). Cambia solo dove va il resto.
+PIANI_ROMEO = (
+    ("tutto al 50%", "chiudo tutto al 50%: Romeo dice che basta per una carriera (V10 13:01)"),
+    ("metà al 50% e il resto al lato opposto", "metà al 50% e il resto al lato opposto del range (V1 18:01)"),
+    ("metà al 50% e il resto oltre il lato", "metà al 50% e il resto oltre il lato, sulla liquidità dopo (V9 24:30)"),
+)
+PIANO_ROMEO = 1
+# Di quanto oltre il lato opposto va il resto nel terzo piano, in ampiezze del range.
+OLTRE_PIANO = 0.5
+
+
+def piani_romeo(s: Scatto, basse: Candele) -> list[Optional[Operazione]]:
+    """I piani fra cui Livelli sceglie, nell'ordine di `PIANI_ROMEO` (None se un piano non si puo' fare).
+    Per il kiss of death ce n'e' uno solo: tutto al lato opposto."""
+    base = piano(s, basse)
+    if base is None:
+        return [None] * len(PIANI_ROMEO)
+    if s.modello == "kiss of death":
+        return [None, base, None]
+    crt = s.crt
+    short = crt.verso is Verso.SHORT
+    ampiezza = crt.crt_high - crt.crt_low
+    lato = crt.crt_low if short else crt.crt_high
+    oltre = lato - OLTRE_PIANO * ampiezza if short else lato + OLTRE_PIANO * ampiezza
+    fuori = []
+    for parziale, tp2 in ((1.0, lato), (0.5, lato), (0.5, oltre)):
+        try:
+            fuori.append(replace(base, parziale=parziale, tp2=tp2, pareggio=parziale < 1.0))
+        except ValueError:
+            fuori.append(None)
+    return fuori

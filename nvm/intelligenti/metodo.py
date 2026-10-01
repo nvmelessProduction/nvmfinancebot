@@ -21,7 +21,7 @@ import numpy as np
 
 from nvm.agenti.cacciatore import Verso
 from nvm.agenti.conferme import SOPRA, Bias, Contesto
-from nvm.agenti.grilletto import SPESSORE
+from nvm.agenti.grilletto import MODELLI_ROMEO, SPESSORE
 from nvm.dati.candele import Candele, costruisci
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
 from nvm.tempo import NEW_YORK, TF, fine_candela, scarti_ny
@@ -31,14 +31,11 @@ NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: 
 NOMI_COPPIA = {"MN-D1": "la candela del mese", "W1-H4": "la candela della settimana",
                "D1-H1": "la candela del giorno", "H4-M15": "la candela delle 4 ore"}
 
-# L'ora giusta per entrare sui grafici piccoli, in ore di New York: dalla sessione di Londra alla
-# mattina di New York (V11 10:21 martedi' a Londra, V17 14:13 le 9:30 di New York). Fuori ci sono le
-# ore di consolidamento (V1 42:04): la notte asiatica e il pomeriggio americano.
-ORE_GIUSTE = (2, 11)
-# L'estremo della candela si fa presto: il massimo della settimana fra lunedi' e mercoledi' (V3 24:06),
-# la candela ribassista sale presto al key level (V1 11:45), e tutte le candele si formano allo stesso
-# modo (V6 06:31). La finta della candela 3 dev'essere nella sua prima parte.
-PRIMA_PARTE = 0.6
+# I mercati gemelli per l'SMT, solo quelli che dice Romeo (V8 22:00): l'euro con la sterlina (il DXY i
+# broker di solito non ce l'hanno), gli indici americani fra loro, Bitcoin ed Ethereum, oro e argento.
+GEMELLI = {"EURUSD": ("GBPUSD", 1), "GBPUSD": ("EURUSD", 1), "XAUUSD": ("XAGUSD", 1), "XAGUSD": ("XAUUSD", 1),
+           "SPX500": ("NAS100", 1), "NAS100": ("SPX500", 1), "US30": ("NAS100", 1),
+           "BTCUSD": ("ETHUSD", 1), "ETHUSD": ("BTCUSD", 1)}
 # La manipolazione "alla fine della candela" (V8 07:28): nell'ultimo quarto della candela 2.
 FINE_CANDELA = 0.75
 
@@ -62,6 +59,8 @@ class Metodo:
     confluenze: list[Domanda] = field(default_factory=list)
     # I fatti semplici dell'occasione, per le idee nuove della squadra.
     fatti: dict = field(default_factory=dict)
+    # Quello che vede ogni agente, in numeri: e' da qui che ognuno impara il suo giudizio (`squadra.py`).
+    numeri: dict = field(default_factory=dict)
 
     @property
     def a_piu(self) -> bool:
@@ -81,7 +80,7 @@ class Metodo:
         f = self.fatti
         return [f"{n}=1" for n in self.presenti] + [
             f"strumento={f.get('strumento')}", f"coppia={f.get('coppia')}", f"giorno={f.get('giorno')}",
-            f"ora={f.get('ora')}", f"verso={f.get('verso')}"]
+            f"ora={f.get('ora')}", f"verso={f.get('verso')}", f"modello={f.get('modello')}"]
 
 
 def _ny(t: int) -> datetime:
@@ -142,28 +141,50 @@ def valuta(d, ore, quarti=None, gemello=None) -> Metodo:
     ob, co = m.obbligatorie, m.confluenze
 
     # 1. Candela 3 (Cacciatore).
-    c3 = getattr(s, "modello", "") == "candela 3"
+    modello = getattr(s, "modello", "")
+    kod = modello == "kiss of death"
+    c3 = modello in MODELLI_ROMEO
     ob.append(Domanda("candela 3", "Cacciatore", "V5 00:31, V9 05:58", c3,
                       f"{candela} di prima ha fatto la finta ed è già chiusa dentro il range: entriamo nella "
                       "candela 3, come vuole Romeo" if c3 else
                       "siamo ancora nella candela della finta: Romeo dice di aspettare che chiuda"))
 
-    # 2. La finta oltre l'apertura della candela 3 (Grilletto).
+    # 2. La finta oltre l'apertura della candela 3 (Grilletto): l'apertura di Romeo, a mezzanotte di New
+    # York per giorno, settimana e mese (V1 21:31). Il kiss of death viene dopo il 50%: la sua finta e'
+    # l'ultimo turtle soup prima dell'obiettivo (V4 06:30).
     a3 = getattr(s, "apertura_3", None)
-    oltre = a3 is not None and (s.livello >= a3 if short else s.livello <= a3)
-    ob.append(Domanda("oltre l'apertura", "Grilletto", "V1 20:55, V9 24:20", oltre,
-                      _v(short, "la finta è scesa sotto il prezzo di apertura della candela 3: compriamo a sconto",
-                         "la finta è salita sopra il prezzo di apertura della candela 3: vendiamo caro") if oltre else
-                      _v(short, "la finta non è scesa sotto l'apertura della candela 3: non è a sconto",
-                         "la finta non è salita sopra l'apertura della candela 3: non è caro")))
+    estremo_finta = s.punta if getattr(s, "punta", None) is not None else s.livello
+    if kod:
+        oltre = True
+        perche = (_v(short, "il prezzo ha già preso il 50% e ora fa l'ultima finta in giù, sotto un vecchio minimo: "
+                           "il kiss of death prima dell'obiettivo", "il prezzo ha già preso il 50% e ora fa l'ultima "
+                           "finta in su, sopra un vecchio massimo: il kiss of death prima dell'obiettivo"))
+    else:
+        oltre = a3 is not None and (estremo_finta >= a3 if short else estremo_finta <= a3)
+        perche = (_v(short, "la finta è scesa sotto il prezzo di apertura della candela 3 (mezzanotte di New York): "
+                            "compriamo a sconto",
+                     "la finta è salita sopra il prezzo di apertura della candela 3 (mezzanotte di New York): vendiamo caro")
+                  if oltre else
+                  _v(short, "la finta non è scesa sotto l'apertura della candela 3: non è a sconto",
+                     "la finta non è salita sopra l'apertura della candela 3: non è caro"))
+    ob.append(Domanda("oltre l'apertura", "Grilletto", "V1 21:31, V9 06:31, V4 06:30", oltre, perche))
 
-    # 3. Il Model#1 con la candela spessa, chiusura oltre il corpo (Grilletto).
+    # 3. Il modello d'entrata (Grilletto): Model#1 con la candela spessa che si infila in un vecchio massimo
+    # e la chiusura oltre il corpo, o la vera rottura di struttura col ritorno nella zona (V11 14:30).
     k = float(getattr(s, "spessore", 0.0))
-    spessa = k >= SPESSORE
-    ob.append(Domanda("Model#1 spesso", "Grilletto", "V1 37:18, V3 11:13, V8 18:21", spessa,
-                      f"la candela della finta è spessa ({_numero(k)} volte il normale) e il prezzo ha chiuso "
-                      f"{_v(short, 'sopra', 'sotto')} il suo corpo: è la conferma di Romeo (Model#1)" if spessa else
-                      "la candela della finta è sottile: Romeo si fida solo di quella spessa"))
+    if modello == "vera rottura":
+        entrata = True
+        perche = (f"il prezzo ha fatto la finta su un vecchio {_v(short, 'minimo', 'massimo')}, ha rotto la struttura "
+                  f"chiudendo oltre il {_v(short, 'massimo', 'minimo')} che l'aveva fatta, ed è tornato nella zona: "
+                  "è la seconda entrata di Romeo (vera rottura di struttura), stop al turtle soup")
+    else:
+        entrata = k >= SPESSORE
+        perche = (f"la candela della finta si è infilata in un vecchio {_v(short, 'minimo', 'massimo')}, è spessa "
+                  f"({_numero(k)} volte il normale) e il prezzo ha chiuso {_v(short, 'sopra', 'sotto')} il suo corpo: "
+                  "è la conferma di Romeo (Model#1)" if entrata else
+                  "la candela della finta è sottile: Romeo si fida solo di quella spessa")
+    ob.append(Domanda("modello d'entrata", "Grilletto", "V1 37:32, V3 10:00, V11 14:30", entrata, perche))
+    m.fatti["modello"] = modello
 
     # 4. Il key level (Key level): nei video e' sul grafico della candela che si opera (V9: il vecchio
     # minimo del giornaliero per il CRT giornaliero; V8: l'apertura dell'ultima candela ribassista del
@@ -205,42 +226,25 @@ def valuta(d, ore, quarti=None, gemello=None) -> Metodo:
                   f"il grafico {nome_sopra} non va contro di noi")
     ob.append(Domanda("direzione", "Bias", "V16 01:43, V10 13:43, V1 35:12", dire, perche))
 
-    # 6. L'ora giusta (Orario).
-    inizio_3, fine_3 = int(crt.armato_quando), int(crt.fine_candela_3)
-    frazione = (q - inizio_3) / (fine_3 - inizio_3) if fine_3 > inizio_3 else 1.0
-    # Il giorno qui parte alle 17 di New York, quello di Romeo a mezzanotte (V1 20:55): sul giornaliero
-    # conta la sessione (Londra - mattina di New York e' la prima parte del suo giorno).
-    presto = frazione <= PRIMA_PARTE or r.alto_tf is TF.D1
-    if r.basso_tf in (TF.M15, TF.H1, TF.H4):
-        ore_ny = _ore_toccate(int(basse.inizio[-1]), int(basse.fine[-1])) if len(basse) else set()
-        in_sessione = any(ORE_GIUSTE[0] <= h < ORE_GIUSTE[1] for h in ore_ny)
-    else:
-        in_sessione = True
-    ora_ok = presto and in_sessione
-    quando = f"{GIORNI[ny.weekday()]} alle {ny:%H:%M} di New York"
-    if ora_ok:
-        perche = f"è {quando}, nella prima parte della candela 3" + (": fra Londra e New York" if r.basso_tf in (TF.M15, TF.H1) else "")
-    elif not presto:
-        perche = f"è {quando}: la candela 3 è già avanti, di solito l'estremo si fa prima"
-    else:
-        perche = f"è {quando}: fuori dalle ore di Londra e New York, ore di consolidamento"
-    ob.append(Domanda("ora giusta", "Orario", "V3 23:02, V3 24:06, V11 10:21", ora_ok, perche))
+    # 6. L'ora giusta (Orario), sull'ora della finta: *"time is more important than price"* (V3 23:02).
+    ora_ok, perche = _ora_giusta(r, s, kod)
+    ob.append(Domanda("ora giusta", "Orario", "V3 24:31, V11 10:32, V17 14:00, V1 16:00", ora_ok, perche))
 
-    # 7. Il 50% ancora da prendere (Livelli): se l'ha gia' preso, il CRT ha gia' funzionato (V10 12:10).
+    # 7. L'obiettivo ancora da prendere (Livelli): se il 50% e' gia' preso, il CRT ha gia' funzionato
+    # (V10 12:01) e resta solo il kiss of death verso il lato opposto (V4 07:01).
     rr1 = abs(op.tp1 - op.ingresso) / op.rischio if op.rischio > 0 else 0.0
     strada = segno * (op.tp1 - op.ingresso) > 0
-    perche = (f"la metà della candela di riferimento (il primo obiettivo) è ancora da prendere: fino a lì guadagniamo "
-              f"{_numero(rr1)} volte quello che rischiamo, poi il resto all'altro lato" if strada else
-              "il prezzo ha già preso la metà della candela di riferimento: il movimento c'è già stato")
-    ob.append(Domanda("50% da prendere", "Livelli", "V1 17:39, V10 12:10", strada, perche))
+    if kod:
+        perche = (f"il 50% è già preso: l'obiettivo è il lato opposto del range, ancora da prendere; fino a lì "
+                  f"guadagniamo {_numero(rr1)} volte quello che rischiamo" if strada else
+                  "il prezzo ha già preso anche il lato opposto: il movimento c'è già stato")
+    else:
+        perche = (f"la metà della candela di riferimento (il primo obiettivo) è ancora da prendere: fino a lì "
+                  f"guadagniamo {_numero(rr1)} volte quello che rischiamo, poi il resto all'altro lato" if strada else
+                  "il prezzo ha già preso la metà della candela di riferimento: il movimento c'è già stato")
+    ob.append(Domanda("obiettivo da prendere", "Livelli", "V1 17:39, V10 12:10, V4 07:01", strada, perche))
 
     # --- Le confluenze ---
-    smt = _smt(crt, r.alto_tf, gemello, q, short)
-    if smt is not None:
-        co.append(Domanda("SMT", "Grilletto", "V8 02:04, V11 13:01", bool(smt and dire),
-                          "il mercato gemello non ha fatto la stessa finta: segnale di forza" if smt and dire else
-                          "il mercato gemello ha fatto la stessa finta" if not smt else
-                          "il mercato gemello diverge, ma contro il grafico grande: non conta"))
     n = len(basse) - 1
     if n >= 2:
         fvg = (basse.bid[n, MASSIMO] < basse.bid[n - 2, MINIMO]) if short else (basse.bid[n, MINIMO] > basse.bid[n - 2, MASSIMO])
@@ -252,6 +256,17 @@ def valuta(d, ore, quarti=None, gemello=None) -> Metodo:
         co.append(Domanda("vera rottura di struttura", "Grilletto", "V11 14:02, V5 11:46", mss,
                           f"il prezzo ha anche rotto l'ultimo {_v(short, 'massimo', 'minimo')}: ha girato davvero" if mss else
                           "la struttura non è ancora rotta"))
+    # L'SMT si prende sul serio solo nel verso del grafico grande e con le due conferme: il Model#1 (c'e',
+    # e' l'entrata) e la vera rottura di struttura (V8 28:06-31:01, V11 13:31).
+    smt = _smt(crt, r.alto_tf, gemello, q, short)
+    if smt is not None:
+        confermato = bool(smt and dire and (mss or modello == "vera rottura"))
+        co.append(Domanda("SMT", "Grilletto", "V8 02:04, V8 30:03, V11 13:31", confermato,
+                          "il mercato gemello non ha fatto la stessa finta, con la rottura di struttura a confermarlo"
+                          if confermato else
+                          "il mercato gemello ha fatto la stessa finta" if not smt else
+                          "il mercato gemello diverge, ma contro il grafico grande: non conta" if not dire else
+                          "il mercato gemello diverge, ma manca la rottura di struttura che lo conferma"))
     fine_c2 = _fine_candela_2(crt, basse, short)
     if fine_c2 is not None:
         co.append(Domanda("finta a fine candela", "Grilletto", "V8 07:28", fine_c2,
@@ -281,8 +296,70 @@ def valuta(d, ore, quarti=None, gemello=None) -> Metodo:
         co.append(Domanda("entrata oltre l'apertura", "Grilletto", "V9 24:20", bool(sconto),
                           _v(short, "entriamo ancora sotto l'apertura della candela 3", "entriamo ancora sopra l'apertura della candela 3")
                           if sconto else "la conferma ci fa entrare dall'altra parte dell'apertura"))
+    # --- Quello che vede ogni agente, in numeri (per il suo giudizio, che impara dal vivo) ---
+    presenti = set(m.presenti)
+    ore_finta = _ny(int(getattr(s, "turtle_soup_inizio", 0) or q))
+    m.numeri = {
+        "Cacciatore": {"candela 1 spessa": float("candela 1 spessa" in presenti),
+                       "dentro un CRT più grande": float("dentro un CRT più grande" in presenti),
+                       **{f"coppia {c}": float(coppia == c) for c in NOMI_COPPIA}},
+        "Grilletto": {"spessore": min(k, 5.0) / 5.0, "vera rottura": float(modello == "vera rottura"),
+                      "kiss of death": float(kod), "FVG": float("FVG col Model#1" in presenti),
+                      "rottura di struttura": float("vera rottura di struttura" in presenti),
+                      "finta a fine candela": float("finta a fine candela" in presenti),
+                      "liquidità presa": float("liquidità presa" in presenti), "SMT": float("SMT" in presenti),
+                      "entrata oltre l'apertura": float("entrata oltre l'apertura" in presenti)},
+        "Key level": {"livelli": min(len(tipi), 3) / 3.0, "ferma sul key level": float("ferma sul key level" in presenti),
+                      "fondo finto": float(finto)},
+        "Bias": {"grafico sopra a favore": float(b_sopra is True), "CRT grandi a favore": min(con, 3) / 3.0,
+                 "CRT grandi contro": min(contro, 3) / 3.0},
+        "Orario": {"Londra": float(1 <= ore_finta.hour < 5), "New York": float(8 <= ore_finta.hour < 11),
+                   **{f"di {GIORNI[g]}": float(ore_finta.weekday() == g) for g in range(5)}},
+        "Livelli": {"guadagno al primo obiettivo": min(rr1, 6.0) / 6.0,
+                    "rischio sul range": min(op.rischio / amp, 2.0) / 2.0 if amp > 0 else 0.0},
+    }
     return m
 
+
+# Le ore delle sessioni in cui Romeo entra, in ore di New York: Londra (V11 10:32, martedi' a Londra) e la
+# mattina di New York (V17 14:00: l'obiettivo alle 9:30). Fuori ci sono le ore di consolidamento (V1 42:31).
+SESSIONI = ((1, 5), (8, 11))
+# La settimana: il suo estremo si forma fra lunedi' e mercoledi', l'altro giovedi'-venerdi' (V3 24:31).
+GIORNI_FINTA = (0, 1, 2)
+# Il mese: settimana 1 accumulazione, settimana 2 manipolazione, il resto distribuzione (V1 16:00).
+GIORNI_DEL_MESE = 14
+
+
+def _in_sessione(ore: set[int]) -> bool:
+    return any(a <= h < b for h in ore for a, b in SESSIONI)
+
+
+def _ora_giusta(r, s, kod: bool) -> tuple[bool, str]:
+    """L'Orario: la finta e' arrivata quando Romeo dice che si formano i massimi e i minimi?"""
+    t = int(s.turtle_soup_inizio) if getattr(s, "turtle_soup_inizio", 0) else int(s.quando)
+    ny = _ny(t)
+    quando = f"{GIORNI[ny.weekday()]} alle {ny:%H:%M} di New York"
+    durata = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400}.get(r.basso_tf, 3600)
+    ore = _ore_toccate(t, t + durata)
+    if r.alto_tf is TF.MN:
+        ok = ny.day <= GIORNI_DEL_MESE or kod
+        return ok, (f"la finta è del {ny.day} del mese: nelle prime due settimane, quando Romeo dice che il mese "
+                    "manipola" if ok else f"la finta è del {ny.day} del mese: troppo tardi, la manipolazione del mese "
+                    "si fa nelle prime due settimane")
+    if r.alto_tf is TF.W1:
+        giorno_ok = ny.weekday() in GIORNI_FINTA or kod
+        sessione = _in_sessione(ore)
+        ok = giorno_ok and sessione
+        if ok:
+            return True, (f"è {quando}: " + ("il kiss of death arriva verso fine settimana, quando la settimana "
+                                             "distribuisce" if kod else "lunedì-mercoledì, quando si fa l'estremo della "
+                                             "settimana") + ", nelle ore di Londra o New York")
+        if not giorno_ok:
+            return False, f"è {quando}: l'estremo della settimana si fa fra lunedì e mercoledì, non dopo"
+        return False, f"è {quando}: fuori dalle ore di Londra e New York, ore di consolidamento"
+    ok = _in_sessione(ore)
+    return ok, (f"è {quando}: nella sessione di Londra o la mattina di New York, le ore di Romeo" if ok else
+                f"è {quando}: fuori dalle ore di Londra e New York, ore di consolidamento")
 
 def _smt(crt, alto: TF, gemello, q: int, short: bool) -> Optional[bool]:
     """L'SMT della candela (V10 07:25): la candela 2 del nostro strumento ha preso il lato della candela 1,

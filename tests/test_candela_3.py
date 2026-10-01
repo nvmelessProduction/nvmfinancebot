@@ -194,3 +194,101 @@ def test_dal_telefono_il_grafico_arriva_in_foto_su_telegram(tmp_path, monkeypatc
     (tmp_path / "comune" / f"nvm_foto_{numero}.esito").write_bytes(b"non posso aprire un grafico (errore 4111)\r\n")
     bot.consegna_foto()
     assert "errore 4111" in testi[-1][1] and not bot._foto
+
+
+# --- Le regole dei video, una per una (spec/metodo_romeo.md) ---
+
+def test_l_apertura_di_romeo_e_a_mezzanotte_di_new_york():
+    from types import SimpleNamespace as NS
+    from nvm.agenti.grilletto import apertura_romeo
+    ore = candele("EURUSD", TF.H1, [(ny(2026, 9, 9, 17) + h * 3600, 1.10 + h / 10000, 1.11, 1.09, 1.10)
+                                    for h in range(30)])
+    # Il giorno: la nostra candela apre alle 17, quella di Romeo a mezzanotte (V1 21:31).
+    giorno = NS(alto_tf=TF.D1, armato_quando=ny(2026, 9, 9, 17), fine_candela_3=ny(2026, 9, 10, 17))
+    assert apertura_romeo(giorno, ore, ore) == (ny(2026, 9, 10, 0), pytest.approx(1.1007))
+    # La settimana: lunedi' a mezzanotte, non domenica sera (V8 14:30). Il 13/09/2026 e' domenica.
+    ore_s = candele("EURUSD", TF.H1, [(ny(2026, 9, 13, 17) + h * 3600, 1.20 + h / 10000, 1.21, 1.19, 1.20)
+                                      for h in range(30)])
+    settimana = NS(alto_tf=TF.W1, armato_quando=ny(2026, 9, 13, 17), fine_candela_3=ny(2026, 9, 18, 17))
+    assert apertura_romeo(settimana, ore_s, ore_s) == (ny(2026, 9, 14, 0), pytest.approx(1.2007))
+    # La candela a 4 ore apre quando apre.
+    quattro = NS(alto_tf=TF.H4, armato_quando=ny(2026, 9, 9, 21), fine_candela_3=ny(2026, 9, 10, 1))
+    assert apertura_romeo(quattro, ore)[0] == ny(2026, 9, 9, 21)
+
+
+def test_il_model1_deve_infilarsi_in_un_vecchio_massimo():
+    # Spessa e sopra l'apertura, ma il suo massimo (1.1087) resta sotto il vecchio massimo della candela 2
+    # (1.1088): non ha preso niente, non e' il Model#1 di Romeo (V3 10:00).
+    corta = (1.1066, 1.1087, 1.1064, 1.1086)
+    crt, b = _crt(PICCOLE + [corta, SOTTO])
+    assert scatto_candela_3(crt, b) is None
+
+
+def test_la_seconda_entrata_vera_rottura_e_ritorno_nella_zona():
+    from nvm.agenti.grilletto import scatto_vera_rottura
+    candela_3 = [
+        (1.1060, 1.1068, 1.1058, 1.1065), (1.1065, 1.1072, 1.1062, 1.1070), (1.1070, 1.1071, 1.1063, 1.1064),
+        (1.1064, 1.1066, 1.1060, 1.1061),
+        (1.1061, 1.1092, 1.1061, 1.1090),     # il turtle soup: prende il vecchio massimo (1.1088)
+        (1.1090, 1.1091, 1.1070, 1.1072),
+        (1.1072, 1.1073, 1.1053, 1.1055),     # chiude sotto il minimo da rompere (1.1058): rottura vera
+        (1.1055, 1.1078, 1.1054, 1.1070),     # torna nella zona e richiude sotto la meta' (1.1075): si vende
+    ]
+    crt, b = _crt(candela_3)
+    s = scatto_vera_rottura(crt, b)
+    assert s is not None and s.modello == "vera rottura" and s.quando == C3 + 8 * Q
+    assert s.livello == pytest.approx(1.1075) and s.punta == pytest.approx(1.1092)
+    op = piano(s, b)
+    # Stop al turtle soup (V11 16:30), obiettivi il 50% e il lato opposto.
+    assert op.stop == pytest.approx(1.1092 + 0.1 * (1.1092 - 1.1061)) and op.tp1 == pytest.approx(1.1050)
+    # Se il turtle soup viene superato prima del ritorno, l'idea non vale piu'.
+    rotta = candela_3[:7] + [(1.1055, 1.1095, 1.1054, 1.1070)]
+    crt, b = _crt(rotta)
+    assert scatto_vera_rottura(crt, b) is None
+
+
+KOD = [
+    (1.1060, 1.1062, 1.1048, 1.1049),         # prende il 50% (1.1050)
+    (1.1049, 1.1049, 1.1030, 1.1032), (1.1032, 1.1034, 1.1030, 1.1033), (1.1033, 1.1035, 1.1031, 1.1034),
+    (1.1034, 1.1041, 1.1033, 1.1036),         # un massimo (1.1041)
+    (1.1036, 1.1037, 1.1029, 1.1030), (1.1030, 1.1032, 1.1027, 1.1029),
+    (1.1029, 1.1046, 1.1028, 1.1045),         # l'ultima finta: spessa, prende 1.1041, sotto il 50%
+    (1.1045, 1.1046, 1.1026, 1.1028),         # chiude sotto il suo corpo: il kiss of death
+]
+
+
+def test_il_kiss_of_death_dopo_il_50_verso_il_lato_opposto():
+    from nvm.agenti.grilletto import scatti_romeo, scatto_kod
+    crt, b = _crt(KOD)
+    # Il Model#1 non c'e' (il 50% e' gia' preso), il kiss of death si' (V4 06:30, V16 07:31).
+    assert scatto_candela_3(crt, b) is None
+    s = scatto_kod(crt, b)
+    assert s is not None and s.modello == "kiss of death" and s.quando == C3 + 9 * Q
+    assert [x.modello for x in scatti_romeo(crt, b)] == ["kiss of death"]
+    op = piano(s, b)
+    assert op.tp1 == op.tp2 == pytest.approx(1.1000) and op.parziale == 1.0
+    assert op.stop == pytest.approx(1.1046 + 0.1 * (1.1046 - 1.1028))
+
+
+def test_dopo_il_primo_obiettivo_il_kod_non_va_superato():
+    from nvm.agenti.grilletto import kod_superato
+    righe = [(1.1050, 1.1051, 1.1040, 1.1042),    # minimo nuovo
+             (1.1042, 1.1048, 1.1041, 1.1047),    # il rimbalzo
+             (1.1047, 1.1046, 1.1043, 1.1044)]    # massimo piu' basso e chiusura ribassista: il KOD e' 1.1048
+    sopra = (1.1044, 1.1052, 1.1043, 1.1050)      # chiude sopra il KOD (V16 17:31)
+    c = lambda rr: candele("EURUSD", TF.M15, [(C3 + n * Q, *r) for n, r in enumerate(rr)])
+    assert kod_superato(c(righe), short=True) is None
+    assert kod_superato(c(righe + [sopra]), short=True) == pytest.approx(1.1048)
+    # Un minimo nuovo azzera: il KOD vecchio non conta piu'.
+    assert kod_superato(c(righe + [(1.1044, 1.1045, 1.1030, 1.1031), sopra]), short=True) is None
+
+
+def test_i_piani_di_livelli_prendono_sempre_qualcosa_al_50():
+    from nvm.agenti.livelli import PIANI_ROMEO, PIANO_ROMEO, piani_romeo
+    crt, b = _crt(PICCOLE + [SPESSA, SOPRA, SOTTO])
+    piani = piani_romeo(scatto_candela_3(crt, b), b)
+    assert len(piani) == len(PIANI_ROMEO) and all(p is not None for p in piani)
+    # Tutti con lo stop alla punta, tutti con almeno meta' al 50% (V1 18:32).
+    assert len({p.stop for p in piani}) == 1 and all(p.tp1 == pytest.approx(1.1050) and p.parziale >= 0.5 for p in piani)
+    assert piani[PIANO_ROMEO].tp2 == pytest.approx(1.1000) and piani[0].parziale == 1.0
+    assert piani[2].tp2 == pytest.approx(1.1000 - 0.5 * 0.0100)

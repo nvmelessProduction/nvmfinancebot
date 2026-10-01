@@ -1,6 +1,6 @@
 {
  "decidono_i_cervelli": false,
  "squadra_intelligente": true,
- "quando": "30/09/2026",
- "perche": "Il proprietario (30/09/2026): agenti riaddestrati da zero sui 17 video di Romeo (spec/metodo_romeo.md), intelligenti, niente AI esterne, niente test sui vent'anni nelle decisioni. Entrano quando c'e' il setup di Romeo, tutte le volte e solo allora (nessun limite di operazioni: 'Se c'e' setup bene altrimenti sti cavoli. Non inventiamo cose'); mai senza stop. Le regole dei video non si disimparano; dal vivo imparano quanto contano le confluenze, stop e uscite (Livelli), quanto puntare (il Rischio, da solo, parte dall'1%), e inventano idee dagli errori che si ripetono."
+ "quando": "01/10/2026",
+ "perche": "Il proprietario (30/09 e 01/10/2026): strategia di Romeo dai 17 video, bot intelligente, niente AI esterne, nessuna presa in giro. Entrano quando c'e' il setup di Romeo, tutte le volte e solo allora (nessun limite di operazioni); mai senza stop; al 50% sempre un parziale. Ogni agente impara il suo giudizio dai risultati dal vivo (prima quelli veri del broker), si confrontano con le regole di Romeo che legano i mestieri, il Capo lascia un'A+ solo con le prove dei casi simili, il Rischio parte dall'1%."
 }

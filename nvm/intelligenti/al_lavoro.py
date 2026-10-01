@@ -14,7 +14,6 @@ from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import costruisci
-from nvm.cervello.viste import COMPAGNI
 from nvm.intelligenti import metodo
 from nvm.intelligenti.squadra import Squadra, Verdetto
 from nvm.prova.campo import Operazione, Uscita, simula
@@ -36,8 +35,8 @@ def _dati(op) -> Optional[dict]:
 
 
 def _gemello(strumento: str, basi: dict):
-    """Le ore del mercato gemello per l'SMT (V8 21:38), se il bot le ha."""
-    g = COMPAGNI.get(strumento)
+    """Le ore del mercato gemello per l'SMT (V8 22:00), se il bot le ha: solo le coppie di Romeo."""
+    g = metodo.GEMELLI.get(strumento)
     if not g or g[0] not in basi:
         return None
     return basi[g[0]], g[1]
@@ -52,7 +51,7 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
         s = d.r.strumento
         try:
             m = metodo.valuta(d, basi[s], fini.get(s), _gemello(s, basi))
-            piani = d.piani or None
+            piani = getattr(d, "piani_romeo", None) or None
             seguire = {"strumento": s, "basso": d.r.basso_tf.value, "scadenza": int(d.scadenza),
                        "piani": [_dati(op) for op in piani]} if piani else None
             v = squadra.riunione(d.chiave, s, m, int(d.r.quando), piani, esposizione, seguire, d.op)
@@ -128,12 +127,18 @@ def voci(v: Verdetto, rischio: Optional[float] = None, valuta: str = "EUR", quot
 
 
 def benvenuto(strumenti: int) -> str:
-    return (f"Ci siamo riaddestrati da zero sui 17 video di Romeo, e guardiamo {strumenti} mercati. Entriamo "
-            "quando c'è il suo setup, tutte le volte che c'è: la candela 3 dopo la finta, un key level del "
-            "grafico grande, il grafico grande dalla nostra parte, l'ora giusta, la conferma con una candela "
-            "spessa, il 50% ancora da prendere. Se manca anche una cosa, aspettiamo. Quanto puntare lo decide il "
-            "Rischio. Mai un'operazione senza stop. Ogni errore ci serve per migliorare, e se vediamo qualcosa "
-            "di nuovo che funziona ce lo inventiamo.")
+    return (f"Guardiamo {strumenti} mercati col metodo dei 17 video di Romeo. Entriamo quando c'è il suo setup, tutte "
+            "le volte che c'è: la candela 3 dopo la finta, la finta oltre l'apertura (mezzanotte di New York), la "
+            "conferma (Model#1 con la candela spessa su un vecchio massimo, la vera rottura di struttura, o il kiss of "
+            "death dopo il 50%), un key level, il grafico grande dalla nostra parte, l'ora giusta, l'obiettivo ancora da "
+            "prendere. Se manca anche una cosa, aspettiamo. Mai senza stop, e al 50% prendiamo sempre qualcosa.\n"
+            "Come lavoriamo davvero: ognuno di noi stima quanto spesso un'occasione così va bene e lo impara dai "
+            "risultati dal vivo (all'inizio non sappiamo niente e lo diciamo); poi ci ascoltiamo con le regole di "
+            "Romeo che legano i nostri mestieri, e se uno cambia idea lo dice. Il Capo mette insieme i giudizi e "
+            "guarda i casi simili già finiti; lascia un'occasione con tutte le regole solo se i fatti dicono chiaro "
+            "che occasioni così perdono. Il Rischio parte dall'1% del conto. Impariamo prima dai risultati veri del "
+            "broker, poi da quelli sulla carta. Non siamo un'intelligenza artificiale che parla: siamo regole di Romeo "
+            "e numeri che si correggono coi fatti.")
 
 
 def lezioni_in_breve(lezioni: list[dict], nome: str, erre: float) -> str:
