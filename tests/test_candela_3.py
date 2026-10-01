@@ -133,10 +133,10 @@ def test_si_vede_se_il_programma_dei_disegni_in_mt5_lavora(tmp_path):
     d = Disegni(tmp_path, tmp_path / "comune")
     assert d.stato_mt5(1000) is None and "non è acceso" in stato_in_parole(None)
     (tmp_path / "comune").mkdir()
-    (tmp_path / "comune" / "nvm_disegni_stato.txt").write_text("servizio;2;990;3;40;0;0\r\n", encoding="cp1252")
+    (tmp_path / "comune" / "nvm_disegni_stato.txt").write_text("servizio;3;990;3;40;0;0\r\n", encoding="cp1252")
     s = d.stato_mt5(1000)
     assert s["eta"] == 10 and s["grafici"] == 3 and s["oggetti"] == 40 and stato_in_parole(s) is None
-    assert "Stop" in stato_in_parole({**s, "versione": "1"})
+    assert "Stop" in stato_in_parole({**s, "versione": "2"})
     assert "errore 4101" in stato_in_parole({**s, "oggetti": 0, "errori": 5, "ultimo_errore": 4101})
     assert "non è acceso" in stato_in_parole({**s, "eta": 3600})
 
@@ -149,3 +149,41 @@ def test_i_crt_in_attesa_della_candela_3_si_disegnano():
     for parola in ("candela 1", "CRT high", "CRT low", "50%", "Candela 3", "Finta della candela 2", "per vendere"):
         assert parola in testi, parola
     assert all(s.t1 >= C1 + 3 * 3600 for s in segni if s.tipo != "testo")
+
+
+def test_dal_telefono_il_grafico_arriva_in_foto_su_telegram(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    import vivo
+    from nvm.vivo import disegni
+    from nvm.vivo.ambiente import Impostazioni
+    from nvm.vivo.telegram import Ricevuto, Telegram
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    testi, foto = [], []
+    bot = object.__new__(vivo.Bot)
+    bot.imp = Impostazioni(token="x", chat_operativo=("-1",), chat_equipe=("-2",))
+    bot.tg = Telegram(bot.imp, invia=lambda c, t: testi.append((c, t)), stampa=lambda _: None,
+                      invia_foto=lambda c, dati, didascalia: foto.append((c, dati, didascalia)))
+    bot.terminale = NS(simbolo=lambda s: s + "+", scarto=3)
+    bot.strumenti, bot.basi, bot.stato = ["EURUSD"], {}, NS(vive=[])
+    bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
+    bot._cartella_foto, bot._foto, bot._avviso_disegni = tmp_path / "MQL5" / "Files", [], 0.0
+    bot._cartella_foto.mkdir(parents=True)
+    bot._grafico(Ricevuto(1, "-2", "/grafico eurusd+ H4", 0))
+    richiesta = next((tmp_path / "comune").glob("nvm_foto_*.req"))
+    assert richiesta.read_bytes() == b"EURUSD+;H4\r\n"
+    numero = richiesta.stem.split("_")[-1]
+    # MT5 fa la foto: il bot la manda sul canale da cui e' arrivata la richiesta.
+    png = bot._cartella_foto / f"nvm_foto_{numero}.png"
+    png.write_bytes(b"\x89PNG finto")
+    import os, time
+    os.utime(png, (time.time() - 10, time.time() - 10))
+    bot.consegna_foto()
+    assert foto and foto[0][0] == "-2" and foto[0][1] == b"\x89PNG finto" and "EURUSD" in foto[0][2]
+    assert not png.exists() and not bot._foto
+    # Un simbolo che non c'e', e una foto che non arriva mai.
+    bot._grafico(Ricevuto(2, "-1", "/grafico PIPPO", 0))
+    assert "Non conosco" in testi[-1][1] and testi[-1][0] == "-1"
+    bot._grafico(Ricevuto(3, "-1", "/grafico EURUSD", 0))
+    bot._foto[0]["entro"] = 0
+    bot.consegna_foto()
+    assert "Non sono riuscito a fotografare" in testi[-1][1] and not bot._foto

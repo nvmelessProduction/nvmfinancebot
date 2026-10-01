@@ -184,6 +184,9 @@ class Bot:
         # I disegni sul grafico di MT5 (`nvm/vivo/disegni.py`): pronti dopo il collegamento.
         self.disegni: Optional[disegni.Disegni] = None
         self._avviso_disegni = 0.0
+        # Le foto dei grafici chieste a MT5 e non ancora arrivate (per vedere i disegni dal telefono).
+        self._cartella_foto: Optional[Path] = None
+        self._foto: list[dict] = []
 
     def allarme(self, testo: str) -> None:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
@@ -260,6 +263,7 @@ class Bot:
             info = self.terminale.mt5.terminal_info()
             comune = Path(info.commondata_path) / "Files"
             fatto, problema = disegni.installa(RADICE, Path(info.data_path), Path(info.path))
+            self._cartella_foto = Path(info.data_path) / "MQL5" / "Files"
             self.disegni = disegni.Disegni(CARTELLA, comune)
             self.disegni.scrivi(int(time.time()))
             avvisato = CARTELLA / "disegni_avvisato"
@@ -274,6 +278,10 @@ class Bot:
                 if not subito.exists():
                     self.tg.operativo(disegni.SUBITO)
                     subito.write_text("1", encoding="utf-8")
+                telefono = CARTELLA / "disegni_telefono"
+                if not telefono.exists():
+                    self.tg.operativo(disegni.TELEFONO)
+                    telefono.write_text("1", encoding="utf-8")
         except Exception as errore:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
             self.allarme(f"non sono riuscito a preparare i disegni per MT5 ({type(errore).__name__}: {errore}): "
@@ -286,6 +294,8 @@ class Bot:
             self.disegni.metti(d.chiave, self.terminale.simbolo(d.r.strumento),
                                disegni.operazione(d, viva, self.terminale.scarto or 0), disegni.fino_a(d))
             self.disegni.scrivi(adesso)
+            self.chiedi_foto(d.r.strumento, d.r.basso_tf.value, "operativo",
+                             f"📸 {d.r.strumento}: la nostra operazione sul grafico, disegnata come Romeo.")
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 
@@ -328,6 +338,56 @@ class Bot:
             self.disegna_settimana(adesso)
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def chiedi_foto(self, strumento: str, periodo: str, canale: str, didascalia: str) -> None:
+        """Chiede a MT5 la foto del grafico coi disegni; arriva su Telegram appena e' pronta."""
+        if self.disegni is None or self._cartella_foto is None:
+            return
+        numero = str(int(time.time() * 1000) % 10 ** 12)
+        if self.disegni.chiedi_foto(self.terminale.simbolo(strumento), periodo, numero):
+            self._foto.append({"numero": numero, "canale": canale, "didascalia": didascalia, "strumento": strumento,
+                               "entro": time.time() + 300})
+
+    def consegna_foto(self) -> None:
+        """Le foto pronte partono su Telegram; quelle che non arrivano in 5 minuti si dicono."""
+        restano = []
+        for f in self._foto:
+            png = self._cartella_foto / f"nvm_foto_{f['numero']}.png" if self._cartella_foto else None
+            try:
+                if png is not None and png.exists() and png.stat().st_size > 0 and time.time() - png.stat().st_mtime > 2:
+                    self.tg.foto(f["canale"], png.read_bytes(), f["didascalia"])
+                    png.unlink()
+                    continue
+            except OSError:
+                pass
+            if time.time() > f["entro"]:
+                (self.tg.operativo if f["canale"] == "operativo" else self.tg.equipe)(
+                    f"Non sono riuscito a fotografare il grafico di {f['strumento']}: in MT5 il programma NvmDisegni "
+                    "è acceso? (Navigatore → «Services» → «NVM» → «NvmDisegni» → «Start»)")
+                continue
+            restano.append(f)
+        self._foto = restano
+
+    def _grafico(self, m) -> None:
+        """Il comando /grafico SIMBOLO [PERIODO]: la foto del grafico coi disegni, per il telefono."""
+        parti = m.testo.split()
+        canale = "operativo" if m.chat in self.imp.chat_operativo else "equipe"
+        rispondi = self.tg.operativo if canale == "operativo" else self.tg.equipe
+        if len(parti) < 2:
+            rispondi("Scrivi per esempio «/grafico EURUSD» oppure «/grafico XAUUSD H4».")
+            return
+        nome = parti[1].upper().rstrip("+.").replace("/", "")
+        strumento = next((s for s in self.strumenti if s == nome or self.terminale.simbolo(s).upper() == parti[1].upper()), None)
+        periodo = parti[2].upper() if len(parti) > 2 and parti[2].upper() in ("M15", "H1", "H4", "D1", "W1") else "H1"
+        if strumento is None:
+            rispondi(f"Non conosco «{parti[1]}». Scrivi per esempio «/grafico EURUSD».")
+            return
+        if self.disegni is None:
+            rispondi("I disegni in MT5 non sono pronti: guarda il messaggio sui disegni qui sopra.")
+            return
+        self.aggiorna_disegni(int(time.time()))
+        self.disegni.scrivi(int(time.time()))
+        self.chiedi_foto(strumento, periodo, canale, f"📸 {strumento} ({periodo}) coi disegni della squadra.")
 
     def controlla_disegni(self, adesso: float) -> None:
         """Il programma dei disegni in MT5 e' vivo e disegna? Se no lo dice, al massimo ogni 12 ore."""
@@ -398,6 +458,8 @@ class Bot:
 
     def minuto(self) -> None:
         self.ascolta()
+        if self._foto:
+            self.consegna_foto()
         try:
             self.stato.vive, fatti = self.esecutore.sorveglia(self.stato.vive)
         except ErroreMT5:
@@ -442,6 +504,12 @@ class Bot:
             self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
             return
         for m in arrivati:
+            if m.testo.lower().split("@")[0].startswith("/grafico"):
+                try:
+                    self._grafico(m)
+                except Exception:
+                    registra(CARTELLA, "errore", testo=traceback.format_exc())
+                continue
             if not m.testo.lower().startswith("/romeo"):
                 continue
             e = leggi_comando(m.testo, m.quando or int(time.time()))

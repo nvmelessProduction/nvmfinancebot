@@ -55,6 +55,9 @@ Range Theory): il prezzo esce da un range, prende la liquidità, rientra e inver
    la candela del Model#1, l'entrata, lo stop e i due obiettivi; la domenica il massimo e il minimo
    della settimana passata. Se il servizio non parte: trascina «NvmDisegniGrafico» (Indicatori →
    NVM) su un grafico qualsiasi.
+   Le app di MT5 per il telefono non mostrano i disegni dei programmi: sul telefono il bot manda la
+   foto del grafico disegnato su Telegram a ogni operazione nuova, e quando vuoi la chiedi tu
+   scrivendo «/grafico EURUSD» (o «/grafico XAUUSD H4») su uno dei due canali.
 
 Lascia aperta la finestra nera:
 - se si chiude per un problema (MT5 chiuso, internet assente), il bot riparte da solo dopo un

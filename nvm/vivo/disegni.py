@@ -27,7 +27,7 @@ from nvm.tempo import TF, fine_candela
 FILE = "nvm_disegni.csv"
 # Il battito del programma in MT5: tipo;versione;ora UTC;grafici;oggetti;errori;ultimo errore.
 STATO = "nvm_disegni_stato.txt"
-VERSIONE_MT5 = "2"
+VERSIONE_MT5 = "3"
 _WINDOWS = sys.platform == "win32"
 SORGENTI = ("NvmDisegni.mqh", "NvmDisegni.mq5", "NvmDisegniGrafico.mq5")
 DURATA = {TF.M15: 900, TF.H1: 3600, TF.H4: 4 * 3600, TF.D1: 86400, TF.W1: 7 * 86400}
@@ -107,6 +107,14 @@ class Disegni:
                     "oggetti": int(parti[4]), "errori": int(parti[5]), "ultimo_errore": int(parti[6])}
         except (OSError, ValueError, IndexError):
             return None
+
+    def chiedi_foto(self, simbolo: str, periodo: str, numero: str) -> bool:
+        """Chiede al programma in MT5 la foto del grafico coi disegni (per il telefono, su Telegram)."""
+        if self.cartella_mt5 is None:
+            return False
+        self.cartella_mt5.mkdir(parents=True, exist_ok=True)
+        (self.cartella_mt5 / f"nvm_foto_{numero}.req").write_bytes(f"{simbolo};{periodo}\r\n".encode("cp1252"))
+        return True
 
     def scrivi(self, adesso: Optional[int] = None) -> None:
         if adesso is not None:
@@ -290,3 +298,7 @@ SUBITO = ("✏️ Ora sui grafici aperti di MT5 disegno subito, a ogni ora: i CR
           "50%, la finta della candela 2, l'apertura della candela 3 dove aspettiamo l'entrata), le operazioni "
           "aperte, e il massimo e il minimo della settimana scorsa. In alto a sinistra di ogni grafico compare la "
           "scritta «NVM: disegni accesi». Se non la vedi entro qualche minuto, te lo dico io qui.")
+
+TELEFONO = ("📱 Le app di MT5 sul telefono non mostrano i disegni (le fa così MetaQuotes): li vedi sul computer. "
+            "Sul telefono te li mando io qui, in foto: a ogni operazione nuova arriva il grafico disegnato, e quando "
+            "vuoi lo chiedi tu scrivendo per esempio «/grafico EURUSD» (o «/grafico XAUUSD H4»).")

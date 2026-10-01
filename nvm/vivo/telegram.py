@@ -16,6 +16,7 @@ from typing import Callable, Optional
 from nvm.vivo.ambiente import Impostazioni
 
 URL = "https://api.telegram.org/bot{token}/sendMessage"
+FOTO = "https://api.telegram.org/bot{token}/sendPhoto"
 AGGIORNAMENTI = "https://api.telegram.org/bot{token}/getUpdates"
 
 
@@ -92,11 +93,13 @@ class Telegram:
         prendi: Optional[Callable[[int], list[dict]]] = None,
         intervallo: float = INTERVALLO, in_coda: Optional[bool] = None,
         invia_come: Optional[Callable[[str, str, str], None]] = None,
+        invia_foto: Optional[Callable[[str, bytes, str], None]] = None,
     ):
         self._imp = imp
         self._invia = invia or self._http
         # Per le voci degli agenti col loro bot: (token, chat, testo).
         self._invia_come = invia_come or self._http_come
+        self._invia_foto = invia_foto or self._http_foto
         self._prendi = prendi or self._aggiornamenti
         self._stampa = stampa
         self._tentativi = tentativi
@@ -124,6 +127,18 @@ class Telegram:
             if chat in miei and testo:
                 arrivati.append(Ricevuto(int(u["update_id"]), chat, testo, int(m.get("date", 0))))
         return arrivati, prossimo
+
+    def foto(self, canale: str, dati: bytes, didascalia: str = "") -> None:
+        """Una foto (il grafico coi disegni) sul canale "operativo" o "equipe"."""
+        chat = self._imp.chat_operativo if canale == "operativo" else self._imp.chat_equipe
+        self._stampa(f"[{canale}] 📸 {didascalia}")
+        if not self._imp.token:
+            return
+        for c in chat:
+            if self._in_coda:
+                self._coda.put((canale, c, (dati, didascalia[:1000]), None))
+            else:
+                self._spedisci(canale, c, (dati, didascalia[:1000]), None)
 
     def operativo(self, testo: str) -> None:
         self._manda("operativo", self._imp.chat_operativo, testo)
@@ -155,7 +170,7 @@ class Telegram:
                 else:
                     self._spedisci(canale, c, pezzo, token)
 
-    def _spedisci(self, canale: str, chat: str, pezzo: str, token: Optional[str] = None) -> None:
+    def _spedisci(self, canale: str, chat: str, pezzo, token: Optional[str] = None) -> None:
         # Telegram conta i messaggi per bot e per gruppo: ogni bot ha il suo ritmo.
         chiave = (token or "", chat)
         attesa = self._ultimo.get(chiave, -1e9) + self._intervallo - time.monotonic()
@@ -163,7 +178,9 @@ class Telegram:
             time.sleep(attesa)
         for n in range(self._tentativi):
             try:
-                if token:
+                if isinstance(pezzo, tuple):
+                    self._invia_foto(chat, *pezzo)
+                elif token:
                     self._invia_come(token, chat, pezzo)
                 else:
                     self._invia(chat, pezzo)
@@ -210,6 +227,26 @@ class Telegram:
         except urllib.error.URLError as errore:
             raise RuntimeError(f"Telegram non raggiungibile: {errore.reason}") from None
         return risposta.get("result", [])
+
+    def _http_foto(self, chat: str, dati: bytes, didascalia: str) -> None:
+        confine = "nvm" + str(int(time.time() * 1000))
+        parti = []
+        for nome, valore in (("chat_id", chat), ("caption", didascalia)):
+            parti.append(f'--{confine}\r\nContent-Disposition: form-data; name="{nome}"\r\n\r\n{valore}\r\n'.encode("utf-8"))
+        parti.append(f'--{confine}\r\nContent-Disposition: form-data; name="photo"; filename="grafico.png"\r\n'
+                     f'Content-Type: image/png\r\n\r\n'.encode("utf-8") + dati + b"\r\n")
+        parti.append(f"--{confine}--\r\n".encode("utf-8"))
+        richiesta = urllib.request.Request(FOTO.format(token=self._imp.token), data=b"".join(parti),
+                                           headers={"Content-Type": f"multipart/form-data; boundary={confine}"})
+        try:
+            with urllib.request.urlopen(richiesta, timeout=60, context=contesto()) as r:
+                r.read()
+        except urllib.error.HTTPError as errore:
+            if errore.code == 429:
+                raise TroppiMessaggi(30.0) from None
+            raise RuntimeError(f"Telegram ha risposto {errore.code}") from None
+        except urllib.error.URLError as errore:
+            raise RuntimeError(f"Telegram non raggiungibile: {errore.reason}") from None
 
     def _http(self, chat: str, testo: str) -> None:
         self._http_come(self._imp.token, chat, testo)

@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #define NVM_FILE     "nvm_disegni.csv"
 #define NVM_STATO    "nvm_disegni_stato.txt"
-#define NVM_VERSIONE "2"
+#define NVM_VERSIONE "3"
 #define NVM_PREFISSO "NVM_"
 
 datetime nvm_modifica = 0;
@@ -264,4 +264,83 @@ void NvmAggiorna(const bool apri, const string tipo)
      }
    nvm_battito = 0;
    NvmBattito(tipo);
+  }
+
+ENUM_TIMEFRAMES NvmPeriodo(const string p)
+  {
+   if(p == "M15") return(PERIOD_M15);
+   if(p == "H4")  return(PERIOD_H4);
+   if(p == "D1")  return(PERIOD_D1);
+   if(p == "W1")  return(PERIOD_W1);
+   if(p == "MN")  return(PERIOD_MN1);
+   return(PERIOD_H1);
+  }
+
+// Le foto del grafico coi disegni, per vederli dal telefono su Telegram (le app di MT5 per il telefono
+// non mostrano i disegni dei programmi). Il bot chiede una foto con un file Common\Files\nvm_foto_ID.req
+// ("simbolo;periodo"); qui si apre il grafico (solo il servizio), si disegna, si fotografa in
+// MQL5\Files\nvm_foto_ID.png e si richiude il grafico aperto apposta.
+void NvmFoto(const bool apri, const string tipo)
+  {
+   string nomi[];
+   string nome;
+   long h = FileFindFirst("nvm_foto_*.req", nome, FILE_COMMON);
+   if(h == INVALID_HANDLE)
+      return;
+   do
+     {
+      int k = ArraySize(nomi);
+      ArrayResize(nomi, k + 1);
+      nomi[k] = nome;
+     }
+   while(FileFindNext(h, nome));
+   FileFindClose(h);
+   for(int i = 0; i < ArraySize(nomi); i++)
+     {
+      string r = "";
+      int f = FileOpen(nomi[i], FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ);
+      if(f != INVALID_HANDLE)
+        {
+         r = FileReadString(f);
+         FileClose(f);
+        }
+      FileDelete(nomi[i], FILE_COMMON);
+      StringTrimRight(r);
+      string p[];
+      if(StringSplit(r, ';', p) < 2)
+         continue;
+      string id = StringSubstr(nomi[i], 9, StringLen(nomi[i]) - 13);
+      long c = -1;
+      bool mio = false;
+      if(apri)
+        {
+         SymbolSelect(p[0], true);
+         c = ChartOpen(p[0], NvmPeriodo(p[1]));
+         mio = (c > 0);
+        }
+      if(c <= 0)
+        {
+         c = ChartFirst();
+         while(c >= 0 && ChartSymbol(c) != p[0])
+            c = ChartNext(c);
+        }
+      if(c < 0)
+         continue;
+      if(mio)
+        {
+         ChartSetInteger(c, CHART_AUTOSCROLL, true);
+         ChartSetInteger(c, CHART_SHIFT, true);
+         ChartSetInteger(c, CHART_SCALE, 3);
+         Sleep(3000);
+        }
+      nvm_grafici = -1;
+      nvm_modifica = 0;
+      NvmAggiorna(false, tipo);
+      ChartRedraw(c);
+      if(mio)
+         Sleep(1500);
+      ChartScreenShot(c, "nvm_foto_" + id + ".png", 1280, 800, ALIGN_RIGHT);
+      if(mio)
+         ChartClose(c);
+     }
   }

@@ -6,7 +6,7 @@
 #property indicator_chart_window
 #property indicator_plots 0
 #property copyright "nvmfinancebot"
-#property version   "2.00"
+#property version   "3.00"
 #include "NvmDisegni.mqh"
 
 int OnInit()
@@ -25,6 +25,7 @@ void OnDeinit(const int motivo)
 void OnTimer()
   {
    NvmAggiorna(false, "indicatore");
+   NvmFoto(false, "indicatore");
   }
 
 int OnCalculate(const int rates_total, const int prev_calculated, const int begin, const double &price[])
