@@ -32,6 +32,17 @@ prepara Python (qualche minuto). Poi, sul canale operativo, arriva
 Lascia aperta la finestra nera: se la chiudi, il bot si ferma (le posizioni
 aperte restano protette sul broker con i loro stop).
 
+## Consigliato: che riparta da solo
+
+- **Se la VPS si riavvia** (gli aggiornamenti di Windows lo fanno di notte), il bot non riparte da solo:
+  nella cartella del bot fai **doppio clic una volta su `avvio_automatico.bat`**. Da lì in poi il bot
+  parte un minuto dopo che Windows si accende, e apre MT5 da solo. Serve che la VPS entri in Windows
+  senza password (di solito è già così sulle VPS) e che in MT5 sia salvata la password del conto.
+- **Se il bot si inchioda** (MT5 o la rete che non rispondono) si riavvia da solo dopo 20 minuti e lo
+  scrive sul canale operativo.
+- **Ogni sera alle 23 italiane** (le 17 di New York) in équipe arriva il riepilogo, **anche se non è
+  successo niente**. Se una sera non arriva, il bot è fermo: guarda la VPS.
+
 ## Facoltativo: un bot Telegram per ogni agente
 
 Senza questo passo l'équipe parla lo stesso, tutta da un bot solo (ogni riga

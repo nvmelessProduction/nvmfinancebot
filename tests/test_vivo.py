@@ -3,6 +3,8 @@
 from dataclasses import replace
 from types import SimpleNamespace as NS
 
+import time
+
 import numpy as np
 import pytest
 
@@ -621,3 +623,30 @@ def test_una_chiusura_che_mt5_non_trova_non_ferma_il_bot():
         assert vive == [viva] and fatti == []           # aspetta, senza errori e senza rumore
     vive, fatti = e.sorveglia(vive)
     assert vive == [] and any("non ne dà il risultato" in f.testo for f in fatti)
+
+
+def test_il_riepilogo_della_sera_arriva_anche_se_non_e_successo_niente():
+    from nvm.vivo.conversazione import riepilogo
+    assert riepilogo([], 0, 86400, 0, 0.0, []) == ""
+    testo = riepilogo([], 0, 86400, 0, 0.0, [], sempre=True, saldo=1000.0,
+                      mancanze={"tutte le regole": 1, "l'ora giusta": 5, "un key level del grafico grande": 3})
+    assert "Com'è andata oggi" in testo and "Il conto" in testo
+    assert "Con tutte le regole di Romeo: 1" in testo
+    assert "Alle altre mancava soprattutto: l'ora giusta (5), un key level del grafico grande (3)" in testo
+    assert "Giornata tranquilla" in testo and "acceso" in testo
+
+
+def test_se_il_bot_si_inchioda_il_cane_da_guardia_lo_chiude_e_lo_dice(tmp_path, monkeypatch):
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    detti, uscite = [], []
+    bot = NS(battito=time.time() - vivo.INCHIODATO - 5, tg=NS(operativo=detti.append, svuota=lambda _: True))
+    filo = vivo.cane_da_guardia(bot, controlla_ogni=0.01, uscita=uscite.append)
+    filo.join(2)
+    assert uscite == [vivo.BLOCCATO] and "bloccato" in detti[0]
+    # Finche' il giro finisce, non fa niente.
+    uscite.clear()
+    vivo_bot = NS(battito=time.time(), tg=NS(operativo=detti.append, svuota=lambda _: True))
+    vivo.cane_da_guardia(vivo_bot, controlla_ogni=0.01, uscita=uscite.append)
+    time.sleep(0.1)
+    assert not uscite

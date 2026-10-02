@@ -113,6 +113,8 @@ class Stato:
     # La settimana dell'ultima domenica di Romeo (V14) gia' fatta, e le previsioni di quella domenica.
     ultima_domenica: str = ""
     previsioni: dict = field(default_factory=dict)
+    # Dall'ultimo riepilogo: quale regola di Romeo mancava alle occasioni guardate -> quante volte.
+    mancanze: dict = field(default_factory=dict)
 
     @classmethod
     def carica(cls, cartella: Path) -> "Stato":
@@ -131,6 +133,7 @@ class Stato:
             ultimo_riepilogo=d.get("ultimo_riepilogo", ""), lezioni=d.get("lezioni", {}),
             saltate=d.get("saltate", {}), chiuse=d.get("chiuse", []),
             ultima_domenica=d.get("ultima_domenica", ""), previsioni=d.get("previsioni", {}),
+            mancanze=d.get("mancanze", {}),
         )
 
     def salva(self, cartella: Path) -> None:

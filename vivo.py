@@ -16,8 +16,10 @@ Chiude con il codice 3 quando si e' aggiornato: `avvia.bat` lo riavvia.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -33,6 +35,7 @@ from nvm.agenti.grilletto import MODELLI_ROMEO, apertura_romeo, kod_superato
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
 from nvm.intelligenti import al_lavoro, fine_settimana
+from nvm.intelligenti.squadra import MANCA_IN_PAROLE
 from nvm.vivo import libro
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
@@ -640,11 +643,13 @@ class Bot:
         testo = conversazione.riepilogo(self.stato.seguite, fine - 86400, fine, *self._esposizione(saldo), lezioni,
                                         self.stato.saltate, [c[1:] for c in self.stato.chiuse], gara,
                                         cervelli=self._decidono_i_cervelli and self.squadra is None,
-                                        saldo=saldo or None, valuta=valuta)
+                                        saldo=saldo or None, valuta=valuta, sempre=True,
+                                        mancanze=self.stato.mancanze if self.squadra is not None else None)
         if testo:
             self.tg.equipe(testo)
         self.stato.lezioni = {}
         self.stato.saltate = {}
+        self.stato.mancanze = {}
         self.stato.chiuse = []
         self.stato.ultimo_riepilogo = giorno
 
@@ -770,6 +775,12 @@ class Bot:
                 registra(CARTELLA, "errore", testo=f"squadra intelligente: {self.squadra.ultimo_errore}")
                 self.allarme("La squadra non è riuscita a riunirsi su qualche occasione: su quelle non si entra. "
                              "Il dettaglio è nel registro.")
+        for v in self._verdetti.values():
+            # Per il riepilogo della sera: cosa mancava alle occasioni guardate (la prima regola che manca).
+            mancano = v.pareri.get("Capo", {}).get("mancano", [])
+            chiave_m = "tutte le regole" if v.a_piu else MANCA_IN_PAROLE.get(mancano[0], mancano[0]) if mancano else ""
+            if chiave_m:
+                self.stato.mancanze[chiave_m] = self.stato.mancanze.get(chiave_m, 0) + 1
         if self._verdetti:
             try:
                 self._smt_contro(decisioni)
@@ -1047,6 +1058,32 @@ class Bot:
 FERMO = 2
 
 
+# Se un giro non finisce entro questo tempo il bot si e' inchiodato (MT5 o la rete che non rispondono):
+# il cane da guardia lo chiude, e avvia.bat lo fa ripartire dopo un minuto.
+INCHIODATO = 20 * 60
+BLOCCATO = 4
+
+
+def cane_da_guardia(bot, controlla_ogni: float = 30.0, uscita=os._exit) -> threading.Thread:
+    """Un filo a parte che guarda se il giro di ogni minuto finisce. Se no, lo scrive e chiude il bot."""
+    def guarda():
+        while True:
+            time.sleep(controlla_ogni)
+            fermo = time.time() - bot.battito
+            if fermo > INCHIODATO:
+                try:
+                    registra(CARTELLA, "errore", testo=f"bot inchiodato da {int(fermo)} secondi: lo riavvio")
+                    bot.tg.operativo(messaggi.allarme(f"Il bot era bloccato da {int(fermo // 60)} minuti (MT5 o la "
+                                                      "rete non rispondevano): lo riavvio da solo."))
+                    bot.tg.svuota(10)
+                finally:
+                    uscita(BLOCCATO)
+                return
+    filo = threading.Thread(target=guarda, name="cane da guardia", daemon=True)
+    filo.start()
+    return filo
+
+
 def main() -> None:
     bot = Bot()
     try:
@@ -1054,7 +1091,10 @@ def main() -> None:
     except ErroreMT5 as errore:
         bot.tg.operativo(messaggi.allarme(f"Non parto: {errore}"))
         sys.exit(1)
+    bot.battito = time.time()
+    cane_da_guardia(bot)
     while True:
+        bot.battito = time.time()
         try:
             bot.minuto()
         except ErroreMT5 as errore:

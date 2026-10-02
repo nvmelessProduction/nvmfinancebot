@@ -253,13 +253,16 @@ def _euro(x: float, valuta: str) -> str:
 
 def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: float, lezioni: list[str],
               saltate: Optional[dict] = None, chiuse: Optional[list] = None, altre: tuple = (),
-              cervelli: bool = False, saldo: Optional[float] = None, valuta: str = "EUR") -> str:
+              cervelli: bool = False, saldo: Optional[float] = None, valuta: str = "EUR",
+              sempre: bool = False, mancanze: Optional[dict] = None) -> str:
     """Un messaggio solo, a fine giornata: il conto, le operazioni, cosa ricordare. `chiuse`: i
-    risultati veri del conto, in R o come [R, soldi]. Vuoto se non e' successo niente."""
+    risultati veri del conto, in R o come [R, soldi]. Vuoto se non e' successo niente, a meno di
+    `sempre`: allora arriva comunque, e il silenzio vuol dire che il bot e' fermo. `mancanze`: quale
+    regola di Romeo mancava alle occasioni guardate, e quante volte."""
     decise = [s for s in seguite if dal <= s.quando < al]
     prese = [s for s in decise if s.entrata]
     finite = [s for s in seguite if s.esito is not None and dal <= s.esito["quando"] < al]
-    if not decise and not finite and not aperte and not chiuse:
+    if not decise and not finite and not aperte and not chiuse and not sempre:
         return ""
     if chiuse is None:
         chiuse = [float(s.esito["erre"]) for s in finite if s.entrata]
@@ -280,6 +283,14 @@ def riepilogo(seguite: list, dal: int, al: int, aperte: int, rischio_totale: flo
     righe.append(f"• Aperte adesso: {aperte} (in gioco il {_pct(rischio_totale)} del conto)" if aperte
                  else "• Nessuna operazione aperta adesso")
     righe.append(f"• Occasioni guardate: {len(decise)} · prese: {len(prese)}")
+    if mancanze:
+        complete = int(mancanze.get("tutte le regole", 0))
+        altre_m = sorted(((n, k) for k, n in mancanze.items() if k != "tutte le regole"), reverse=True)
+        righe.append(f"• Con tutte le regole di Romeo: {complete}")
+        if altre_m:
+            righe.append("• Alle altre mancava soprattutto: " + ", ".join(f"{k} ({n})" for n, k in altre_m[:3]))
+    if not decise and not finite and not aperte and not chiuse:
+        righe.append("• Giornata tranquilla: nessun CRT pronto nella candela 3. Il bot è acceso e guarda.")
     if saltate:
         quante = sum(saltate.values())
         perche = ", ".join(f"{n} {m}" for m, n in sorted(saltate.items(), key=lambda a: -a[1]))
