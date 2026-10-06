@@ -152,11 +152,14 @@ def test_i_crt_in_attesa_della_candela_3_si_disegnano():
 
 
 def test_dal_telefono_il_grafico_arriva_in_foto_su_telegram(tmp_path, monkeypatch):
+    # La foto la disegna il bot (sfondo bianco, candele chiare): quelle di MT5 non si leggevano.
+    pytest.importorskip("matplotlib")
     from types import SimpleNamespace as NS
     import vivo
     from nvm.vivo import disegni
     from nvm.vivo.ambiente import Impostazioni
     from nvm.vivo.telegram import Ricevuto, Telegram
+    from tests.test_vivo import ore_finte
     monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
     testi, foto = [], []
     bot = object.__new__(vivo.Bot)
@@ -164,32 +167,45 @@ def test_dal_telefono_il_grafico_arriva_in_foto_su_telegram(tmp_path, monkeypatc
     bot.tg = Telegram(bot.imp, invia=lambda c, t: testi.append((c, t)), stampa=lambda _: None,
                       invia_foto=lambda c, dati, didascalia: foto.append((c, dati, didascalia)))
     bot.terminale = NS(simbolo=lambda s: s + "+", scarto=3)
-    bot.strumenti, bot.basi, bot.stato = ["EURUSD"], {}, NS(vive=[])
+    bot.strumenti, bot.basi, bot.fini, bot.stato = ["EURUSD", "GBPUSD"], {"EURUSD": ore_finte(giorni=40)}, {}, NS(vive=[])
+    bot._grafico(Ricevuto(1, "-2", "/grafico eurusd+ H4", 0))
+    assert foto and foto[0][0] == "-2" and foto[0][1].startswith(b"\x89PNG") and "EURUSD" in foto[0][2]
+    # Un simbolo che non c'e', e una foto che non si puo' disegnare (niente candele): lo dice.
+    bot._grafico(Ricevuto(2, "-1", "/grafico PIPPO", 0))
+    assert "Non conosco" in testi[-1][1] and testi[-1][0] == "-1"
+    bot._grafico(Ricevuto(3, "-1", "/grafico GBPUSD", 0))
+    assert "non è partita" in testi[-1][1] and len(foto) == 1
+
+
+def test_la_foto_di_mt5_arriva_quando_mt5_l_ha_fatta(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    import vivo
+    from nvm.vivo import disegni
+    from nvm.vivo.ambiente import Impostazioni
+    from nvm.vivo.telegram import Telegram
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    testi, foto = [], []
+    bot = object.__new__(vivo.Bot)
+    bot.imp = Impostazioni(token="x", chat_operativo=("-1",), chat_equipe=("-2",))
+    bot.tg = Telegram(bot.imp, invia=lambda c, t: testi.append((c, t)), stampa=lambda _: None,
+                      invia_foto=lambda c, dati, didascalia: foto.append((c, dati, didascalia)))
+    bot.terminale = NS(simbolo=lambda s: s + "+", scarto=3)
     bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
     bot._cartella_foto, bot._foto, bot._avviso_disegni = tmp_path / "MQL5" / "Files", [], 0.0
     bot._cartella_foto.mkdir(parents=True)
-    bot._grafico(Ricevuto(1, "-2", "/grafico eurusd+ H4", 0))
+    bot.chiedi_foto("EURUSD", "H4", "equipe", "📸 EURUSD")
     richiesta = next((tmp_path / "comune").glob("nvm_foto_*.req"))
     assert richiesta.read_bytes() == b"EURUSD+;H4\r\n"
     numero = richiesta.stem.split("_")[-1]
-    # MT5 fa la foto: il bot la manda sul canale da cui e' arrivata la richiesta.
     png = bot._cartella_foto / f"nvm_foto_{numero}.png"
     png.write_bytes(b"\x89PNG finto")
     import os, time
     os.utime(png, (time.time() - 10, time.time() - 10))
     bot.consegna_foto()
-    assert foto and foto[0][0] == "-2" and foto[0][1] == b"\x89PNG finto" and "EURUSD" in foto[0][2]
+    assert foto and foto[0][0] == "-2" and foto[0][1] == b"\x89PNG finto"
     assert not png.exists() and not bot._foto
-    # Un simbolo che non c'e', e una foto che non arriva mai.
-    bot._grafico(Ricevuto(2, "-1", "/grafico PIPPO", 0))
-    assert "Non conosco" in testi[-1][1] and testi[-1][0] == "-1"
-    bot._grafico(Ricevuto(3, "-1", "/grafico EURUSD", 0))
-    assert "Ricevuto" in testi[-1][1]
-    bot._foto[0]["entro"] = 0
-    bot.consegna_foto()
-    assert "Non sono riuscito a fotografare" in testi[-1][1] and "NvmDisegni" in testi[-1][1] and not bot._foto
     # MT5 dice perche' non ce la fa: il bot lo riferisce subito.
-    bot._grafico(Ricevuto(4, "-1", "/grafico EURUSD D1", 0))
+    bot.chiedi_foto("EURUSD", "D1", "operativo", "📸 EURUSD")
     numero = bot._foto[0]["numero"]
     (tmp_path / "comune" / f"nvm_foto_{numero}.esito").write_bytes(b"non posso aprire un grafico (errore 4111)\r\n")
     bot.consegna_foto()

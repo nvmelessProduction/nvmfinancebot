@@ -4,8 +4,7 @@ Il proprietario, 07/10/2026: *"quando manda le foto non si legge un cazzo ... il
 non riesco a distinguere niente"*. Le foto di MT5 prendevano i colori del terminale, scritte minuscole e tutti i
 disegni dello strumento insieme. Qui: sfondo bianco, candele verdi e rosse come su TradingView, scritte grandi,
 solo l'operazione (il range, la candela 2 e la 3, la finta, il key level, l'entrata, lo stop, il TP1 e il target
-finale), inquadrata sulle candele del suo timeframe. Se il disegno non riesce (manca matplotlib), il bot torna
-alla foto di MT5.
+finale), inquadrata sulle candele del suo timeframe. Le foto di MT5 non si mandano piu'.
 """
 
 from __future__ import annotations
@@ -29,6 +28,17 @@ BLU, ARANCIO, GRIGIO, NERO, VIOLA = "#2962FF", "#FF9800", "#787B86", "#131722", 
 NOMI_TF = {TF.M15: "15 minuti", TF.H1: "1 ora", TF.H4: "4 ore", TF.H6: "6 ore", TF.H12: "12 ore",
            TF.D1: "giornaliero", TF.W1: "settimanale", TF.MN: "mensile"}
 LARGHEZZA, ALTEZZA, DPI = 12.8, 10.0, 100
+
+
+def pronto() -> bool:
+    """C'e' matplotlib (si installa con `requirements.txt`; se manca lo installa il bot, `vivo.prepara_foto`)."""
+    import importlib
+    importlib.invalidate_caches()
+    try:
+        import matplotlib  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 @dataclass

@@ -76,6 +76,7 @@ LUNGHE = 7000           # circa 25 anni di giornaliere: i 3, 6 e 12 mesi del met
 RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo di chiudere la barra
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
+RITARDO_MASSIMO = 600     # metodo delle foto: oltre 10 minuti dall'apertura della candela 3 non si entra piu'
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
@@ -273,6 +274,7 @@ class Bot:
             self.tg.operativo(messaggi.mancanti(mancanti, len(self.strumenti)))
         self.prova_collegamento(solo_se_non_va=da_aggiornamento)
         self.prepara_disegni()
+        self.prepara_foto()
         # La lista degli strumenti del broker, una volta sola (poi a richiesta con /strumenti).
         mandati_simboli = CARTELLA / "simboli_mandati"
         if not mandati_simboli.exists():
@@ -374,17 +376,37 @@ class Bot:
 
     def manda_foto_operazioni(self) -> None:
         """Le foto delle operazioni appena aperte, disegnate dal bot: sfondo bianco, candele verdi e rosse, solo
-        l'operazione (il proprietario: *"quando manda le foto non si legge un cazzo"*). Se non riesce, la foto
-        di MT5 come prima."""
+        l'operazione (il proprietario: *"quando manda le foto non si legge un cazzo"*). Le foto di MT5 non si
+        mandano piu': se il disegno non riesce, lo si dice."""
         da_fare, self._foto_da_fare = getattr(self, "_foto_da_fare", []), []
         for d, viva in da_fare:
             didascalia = f"📸 {d.r.strumento}: l'operazione sul grafico, come nelle foto."
             try:
                 self.tg.foto("operativo", foto_grafico.operazione_foto(d, viva), didascalia)
+            except Exception as errore:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
+                self.allarme(_foto_non_riuscita(errore))
+
+    def prepara_foto(self) -> None:
+        """Le foto le disegna matplotlib: se manca (l'installazione di `avvia.bat` non e' andata), il bot lo
+        installa da solo, in disparte, e lo dice."""
+        if foto_grafico.pronto():
+            return
+
+        def installa():
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "matplotlib>=3.8"], cwd=RADICE,
+                               capture_output=True, text=True, timeout=900, check=True)
+                fatto = foto_grafico.pronto()
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
-                periodo = d.r.alto_tf.value if d.r.alto_tf in (TF.H1, TF.H4, TF.D1, TF.W1) else "H1"
-                self.chiedi_foto(d.r.strumento, periodo, "operativo", didascalia)
+                fatto = False
+            self.tg.operativo("📸 Il programma che disegna le foto del grafico è installato: da ora le foto arrivano "
+                              "nuove." if fatto else messaggi.allarme(
+                                  "Non riesco a installare il programma che disegna le foto (matplotlib). Nella "
+                                  "cartella del bot apri un prompt e scrivi: .venv\\Scripts\\python.exe -m pip install "
+                                  "matplotlib"))
+        threading.Thread(target=installa, name="installa matplotlib", daemon=True).start()
 
     def aggiorna_disegni(self, adesso: int) -> None:
         """A ogni giro: i livelli della settimana, i CRT che gli agenti stanno guardando nella candela 3 e le
@@ -465,7 +487,7 @@ class Bot:
         self._foto = restano
 
     def _grafico(self, m) -> None:
-        """Il comando /grafico SIMBOLO [PERIODO]: la foto del grafico coi disegni, per il telefono."""
+        """Il comando /grafico SIMBOLO [PERIODO]: la foto del grafico disegnata dal bot, per il telefono."""
         parti = m.testo.split()
         canale = "operativo" if m.chat in self.imp.chat_operativo else "equipe"
         rispondi = self.tg.operativo if canale == "operativo" else self.tg.equipe
@@ -485,16 +507,9 @@ class Bot:
             aperte = [v for v in self.stato.vive if v.strumento == strumento]
             nome = foto_grafico.NOMI_TF.get(TF(periodo), periodo)
             self.tg.foto(canale, foto_grafico.grafico(candele, strumento, aperte), f"📸 {strumento} ({nome}).")
-            return
-        except Exception:
+        except Exception as errore:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        if self.disegni is None:
-            rispondi("I disegni in MT5 non sono pronti: guarda il messaggio sui disegni qui sopra.")
-            return
-        self.aggiorna_disegni(int(time.time()))
-        self.disegni.scrivi(int(time.time()))
-        self.chiedi_foto(strumento, periodo, canale, f"📸 {strumento} ({periodo}) coi disegni della squadra.")
-        rispondi(f"📸 Ricevuto: fotografo il grafico di {strumento} ({periodo}). Arriva fra un paio di minuti.")
+            rispondi(_foto_non_riuscita(errore))
 
     def controlla_disegni(self, adesso: float) -> None:
         """Il programma dei disegni in MT5 e' vivo e disegna? Se no lo dice, al massimo ogni 12 ore."""
@@ -601,6 +616,11 @@ class Bot:
         if oggi.weekday() == 6 and oggi.hour >= 18 and self.stato.ultima_domenica != settimana:
             self.domenica(settimana, int(adesso))
         self.stato.salva(CARTELLA)
+
+    def controlla_versione(self) -> None:
+        """Ogni due minuti: c'e' una versione nuova su GitHub? Fuori da `minuto`, cosi' un errore nel giro non
+        blocca gli aggiornamenti (prima era successo: il giro si rompeva e il bot non si aggiornava piu')."""
+        adesso = time.time()
         if adesso - self._ultimo_controllo >= CONTROLLO_VERSIONE:
             self._ultimo_controllo = adesso
             self.aggiorna_se_serve()
@@ -673,11 +693,18 @@ class Bot:
         # gia' guardati); se non va nessuno (MT5 staccato) si riprova al minuto dopo.
         self.aggiorna_lunghe(time.time())
         andati, ultimo_errore = 0, None
+        foto_metodo = il_metodo() == "foto"
         for s in self.strumenti:
             try:
                 self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
-                self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
-                                         lunghe=self.lunghe), ora, 3600)
+                decisioni = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
+                                        lunghe=self.lunghe)
+                if foto_metodo:
+                    # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi
+                    # (riavvio, MT5 lento) non si entra a un prezzo che non e' piu' quello.
+                    self._decidi(decisioni, int(time.time()), RITARDO_MASSIMO)
+                else:
+                    self._decidi(decisioni, ora, 3600)
                 andati += 1
             except Exception as errore:
                 ultimo_errore = errore
@@ -685,9 +712,19 @@ class Bot:
                 self.allarme(f"{s}: errore nel giro dell'ora ({errore!r}). Gli altri strumenti vanno avanti.")
         if not andati and ultimo_errore is not None:
             raise ultimo_errore
+        # Le decisioni dell'ora sono fatte: il giro non si ripete, qualunque cosa succeda dopo.
+        self.stato.ultimo_giro = ora
         self.stato.scarto = self.terminale.scarto
-        self.manda_foto_operazioni()
-        self.uscite(ora)
+        self.stato.salva(CARTELLA)
+        for passo in (self.manda_foto_operazioni, lambda: self.uscite(ora), lambda: self._segui_carta(ora),
+                      lambda: self.aggiorna_disegni(ora), lambda: self.controlla_disegni(time.time()), self.parla):
+            try:
+                passo()
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _segui_carta(self, ora: int) -> None:
+        """Le occasioni seguite sulla carta: come sono finite, cosa impara la squadra, l'archivio."""
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
             self._finita(s, ora)
         if self.squadra is not None:
@@ -702,10 +739,6 @@ class Bot:
         if vecchie:
             archivia(CARTELLA, vecchie)
             self.stato.seguite = [s for s in self.stato.seguite if s.esito is None or s.esito["quando"] > ora - TENERE]
-        self.stato.ultimo_giro = ora
-        self.aggiorna_disegni(ora)
-        self.controlla_disegni(time.time())
-        self.parla()
 
     def _equipe(self, testo: str) -> None:
         self._da_dire.append(testo)
@@ -914,6 +947,12 @@ class Bot:
         for d in decisioni:
             g = giudizi[d.chiave]
             v = self._verdetti.get(d.chiave)
+            if self._entra(d, g) and adesso - d.r.quando > finestra and getattr(d, "foto", None):
+                # La candela 3 e' aperta da troppo: non si entra in ritardo, l'occasione si segue sulla carta.
+                self.stato.saltate["arrivato tardi"] = self.stato.saltate.get("arrivato tardi", 0) + 1
+                if v is not None and self.squadra is not None:
+                    self.squadra.annulla(d.chiave)
+                registra(CARTELLA, "saltata", testo=f"{d.chiave}: candela 3 aperta da {int(adesso - d.r.quando)} s")
             if self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
@@ -954,7 +993,11 @@ class Bot:
             else:
                 (self._equipe if fatto.equipe else self.tg.operativo)(fatto.testo)
         for d in decisioni:
-            per = spinte(self.capo, d.x)
+            try:
+                per = spinte(self.capo, d.x)
+            except Exception:
+                # Il Capo di prima (riallenato sulla VPS con meno colonne): con la squadra non serve.
+                per = {}
             aperta = d.chiave in aperte
             if aperta:
                 # In equipe parla solo chi ha qualcosa da dire, e solo sulle operazioni aperte davvero:
@@ -1190,6 +1233,13 @@ INCHIODATO = 20 * 60
 BLOCCATO = 4
 
 
+def _foto_non_riuscita(errore: Exception) -> str:
+    if isinstance(errore, ImportError):
+        return ("La foto del grafico non è partita: manca il programma che la disegna (matplotlib). Lo sto "
+                "installando: le prossime arrivano.")
+    return f"La foto del grafico non è partita ({errore!r}). Scrivimelo e lo sistemo."
+
+
 def cane_da_guardia(bot, controlla_ogni: float = 30.0, uscita=os._exit) -> threading.Thread:
     """Un filo a parte che guarda se il giro di ogni minuto finisce. Se no, lo scrive e chiude il bot."""
     def guarda():
@@ -1233,6 +1283,12 @@ def main() -> None:
             raise
         except Exception as errore:
             bot.allarme(f"errore nel bot: {errore!r}")
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        try:
+            bot.controlla_versione()
+        except SystemExit:
+            raise
+        except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         time.sleep(attesa(time.time()))
 

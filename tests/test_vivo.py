@@ -779,18 +779,26 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     bot.stato = Stato()
     bot.stato.ultimo_giro = utc(2025, 1, 1)
     bot.allarme = allarmi.append
-    bot._decidi = lambda dd, adesso, finestra: decise.extend(d.chiave for d in dd)
+    finestre = []
+    bot._decidi = lambda dd, adesso, finestra: (decise.extend(d.chiave for d in dd), finestre.append((adesso, finestra)))
     for nome in ("aggiorna_lunghe", "uscite", "aggiorna_disegni", "controlla_disegni", "parla"):
         setattr(bot, nome, lambda *a: None)
     ora = utc(2025, 1, 1, 5)
     bot.giro(ora)
     assert decise == ["EURUSD H4 1", "AUDUSD H4 1"] and bot.stato.ultimo_giro == ora
     assert len(allarmi) == 1 and "GBPUSD" in allarmi[0]
+    # Col metodo delle foto si entra solo vicino all'apertura della candela 3, contando l'ora vera.
+    if vivo.il_metodo() == "foto":
+        assert all(f == vivo.RITARDO_MASSIMO and abs(a - time.time()) < 60 for a, f in finestre)
+    # Un errore dopo le decisioni (foto, disegni, carta) non fa ripetere il giro.
+    bot.uscite = lambda *a: (_ for _ in ()).throw(RuntimeError("disegni rotti"))
+    bot.giro(ora + 3600)
+    assert bot.stato.ultimo_giro == ora + 3600
     # Se non va nessuno strumento (MT5 staccato) il giro si riprova al minuto dopo.
     bot.terminale = NS(orarie=lambda s, q: (_ for _ in ()).throw(RuntimeError("MT5 staccato")), scarto=3)
     with pytest.raises(RuntimeError):
-        bot.giro(ora + 3600)
-    assert bot.stato.ultimo_giro == ora
+        bot.giro(ora + 7200)
+    assert bot.stato.ultimo_giro == ora + 3600
 
 
 def test_il_bot_non_rimette_sul_tavolo_un_crt_gia_visto(tmp_path, monkeypatch):
@@ -805,3 +813,19 @@ def test_il_bot_non_rimette_sul_tavolo_un_crt_gia_visto(tmp_path, monkeypatch):
     bot.squadra = None
     bot._decidi([NS(chiave="EURUSD H4-H1 short 1 colpo 1 crt 0")], 1, 3600)
     assert not chiesto                 # gia' aperto: non si riunisce nessuno e non si apre niente
+
+
+def test_il_controllo_degli_aggiornamenti_non_dipende_dal_giro(monkeypatch):
+    # Prima il controllo stava in fondo a `minuto`: se il giro si rompeva, il bot non si aggiornava piu'.
+    import vivo
+    chiamate = []
+    bot = object.__new__(vivo.Bot)
+    bot._ultimo_controllo = 0.0
+    bot.aggiorna_se_serve = lambda: chiamate.append(1)
+    bot.controlla_versione()
+    bot.controlla_versione()                 # non prima di due minuti
+    assert chiamate == [1]
+    import inspect
+    sorgente = inspect.getsource(vivo.main)
+    assert sorgente.index("bot.controlla_versione()") > sorgente.index("bot.minuto()")
+    assert "aggiorna_se_serve" not in inspect.getsource(vivo.Bot.minuto)

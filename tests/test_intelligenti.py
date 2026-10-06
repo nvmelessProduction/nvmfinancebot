@@ -262,7 +262,8 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
         return m
     monkeypatch.setattr(metodo, "valuta_foto", tutto_si)
     base = ore_finte(giorni=400)
-    decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())[-2:]
+    tutte = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
+    decisioni, tardiva = tutte[-2:], tutte[-3]
     assert decisioni
     mandati, aperte = [], []
 
@@ -293,6 +294,10 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     # Lo stesso CRT una volta sola, anche se il giro si ripete.
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
     assert len(aperte) == 1
+    # In ritardo (il bot ripartito 40 minuti dopo l'apertura della candela 3) non si entra: si segue sulla carta.
+    bot._decidi([tardiva], int(tardiva.r.quando) + 40 * 60, vivo.RITARDO_MASSIMO)
+    assert len(aperte) == 1 and bot.stato.saltate.get("arrivato tardi") == 1
+    assert any(s.chiave == tardiva.chiave for s in bot.stato.seguite)
     # La foto per il telefono la disegna il bot, a fine giro (dopo tutti gli ordini).
     foto = []
     bot.tg.foto = lambda canale, dati, didascalia: foto.append((canale, dati, didascalia))

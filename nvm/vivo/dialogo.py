@@ -62,16 +62,23 @@ def spinte_su_casi(capo: Capo, x: np.ndarray) -> dict[str, np.ndarray]:
     l'agente avesse dato le risposte di un caso medio. Per Romeo: meno quella che avrebbe
     stimato senza ascoltarlo."""
     x = np.atleast_2d(np.asarray(x, float))
-    if x.shape[1] < len(COLONNE):
-        x = np.c_[x, np.zeros((len(x), len(COLONNE) - x.shape[1]))]
+    # Tante colonne quante ne conosce il Capo: un Capo riallenato quando le domande inventate erano meno ne ha
+    # meno di `COLONNE` (sulla VPS: 31 contro 34, e il giro si rompeva).
+    n = len(capo.media)
+    if x.shape[1] < n:
+        x = np.c_[x, np.zeros((len(x), n - x.shape[1]))]
+    x = x[:, :n]
     zero = np.zeros(len(x))
     rr1, rr2 = COLONNE.index("RR1"), COLONNE.index("RR2")
     tutto = capo.qualita(x, x[:, rr1], x[:, rr2], zero)
-    media = capo.media[:len(COLONNE)]
+    media = capo.media
     per = {}
     for nome, col in AGENTI.items():
+        col = [c for c in col if c < n]
+        if not col:
+            continue
         medio = x.copy()
-        medio[:, list(col)] = media[list(col)]
+        medio[:, col] = media[col]
         per[nome] = tutto - capo.qualita(medio, medio[:, rr1], medio[:, rr2], zero)
     if capo.romeo is not None and capo.fiducia_in_romeo != 0:
         senza = replace(capo, fiducia_in_romeo=0.0)
