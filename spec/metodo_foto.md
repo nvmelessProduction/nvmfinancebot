@@ -5,7 +5,8 @@ riassunte in `casi/ESEMPI-PROPRIETARIO.md`) e alle domande ha risposto così:
 
 1. video o esempi? *"come nelle foto"*;
 2. le candele *"devono partire come sul futures"*;
-3. (la tolleranza della chiusura: la domanda va rifatta, vedi in fondo);
+3. la candela 2 *"non deve sforare. potrebbe essere un errore mio, ho dato per scontato che non avesse
+   accettato"* (07/10/2026);
 4. *"il kl è sempre il tp1+be come nelle foto e il gap il target finale, ovvio che se non c'è gap il target è
    il kl"*;
 5. *"4664.3 ... è il range low h6, questa logica viene utilizzata nel momento in cui il prezzo o con la candela
@@ -36,7 +37,7 @@ codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa quest
 | --- | --- | --- |
 | Candele come sui future: il giorno alle 18 di New York (mezzanotte italiana), 4 ore alle 18-22-2-6-10-14, 6 e 12 ore, 3-6-12 mesi; l'ora della domenica prima delle 18 va nella prima candela | risposta 2; foto 5/5, 5/7, 5/8: CRT solo con queste candele | `nvm/tempo.py` |
 | CRT sui timeframe 1 ora, 4 ore, 6 ore, giorno, settimana, mese | le foto | `foto.TF_CRT` |
-| La candela 2 prende il massimo (minimo) del range e chiude dentro, senza toccare l'altro lato; un filo oltre (2% del range) conta ancora dentro | tutte; foto 5/6 | `foto.trova`, `TOLLERANZA_CHIUSURA` |
+| La candela 2 prende il massimo (minimo) del range e chiude dentro, senza toccare l'altro lato e senza sforare (la chiusura sul lato conta dentro, un filo oltre no) | tutte; il proprietario, 07/10/2026: *"non deve sforare"* | `foto.trova`, `TOLLERANZA_CHIUSURA` |
 | Il range è la candela madre se la candela 1 è una inside bar (e così via) | risposta 5, foto 2/7 | `foto._madre` |
 | Entrata all'apertura della candela 3, a qualunque ora | risposte 1 e 10; tutte le foto | `foto.trova`, `giro.occasioni_foto` |
 | Stop oltre l'estremo della candela 2 | tutte le foto | `foto.trova` |
@@ -50,7 +51,8 @@ codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa quest
 | Le fasi del gap, lette due timeframe sotto il gap (3 mesi sul giornaliero, settimana sul 4 ore, giorno sull'orario): aggressione, reazione automatica (prima chiusura oltre il massimo della candela del minimo), liquidazione (preso il minimo dell'aggressione), continuazione (più la divergenza RSI 14) | risposte 7 e 8; foto 4/1 (il minimo dei 3 mesi è quello di giugno) | `foto.fase`, `foto.rsi` |
 | DXY sintetico dalle coppie (formula ICE, la corona svedese ferma a 10); un suo setup vale per EURUSD, GBPUSD, AUDUSD, NZDUSD, XAUUSD, XAGUSD (verso opposto) e USDJPY, USDCHF, USDCAD (stesso verso), con stop e TP1 della coppia | risposta 8, foto 2/6 | `foto.dxy`, `foto.dal_dxy`, `giro.occasioni_foto` |
 | Timeframe allineati (una confluenza): un altro timeframe con un CRT nello stesso verso | tutte le foto ("TF allineati") | `foto.allineati` |
-| Un'occasione per apertura e verso (il timeframe più grande); un'operazione alla volta per strumento | scelta nostra: lo stesso movimento su 1, 4 e 6 ore è la stessa idea | `giro.occasioni_foto`, `vivo.Bot._decidi` |
+| Un'occasione per apertura e verso (il timeframe più grande) | lo stesso movimento su 1, 4 e 6 ore è la stessa idea | `giro.occasioni_foto` |
+| Più operazioni sullo stesso strumento: le decide il Rischio, che punta meno se lo strumento ha già un'operazione aperta e impara quanto | il proprietario, 07/10/2026: *"lo gestisce l'agente rischio. decisione sua"* | `squadra._rischio` |
 
 Le domande obbligatorie (`metodo.valuta_foto`): **CRT**, **key level**, **direzione**. Le altre sono
 confluenze: timeframe allineati, inside bar, key level grande, dentro un gap a favore, continuazione col RSI,
@@ -66,11 +68,11 @@ dati manca marzo 2026, e il gap dei 3 mesi esce sbagliato. Il range madre della 
 (4656,3 sullo spot = 4664,3 sul future).
 
 **Quante occasioni**: sul 2021-2023 (fuori dal periodo chiuso), su EURUSD e oro, circa 12 setup a settimana
-per strumento; con un'operazione alla volta per strumento circa 3 a settimana per strumento. Non sono numeri
-di guadagno: il proprietario non vuole il fattore dei vent'anni nelle decisioni.
+per strumento (circa 3 se si tenesse un'operazione alla volta per strumento: lo decide il Rischio). Non sono
+numeri di guadagno: il proprietario non vuole il fattore dei vent'anni nelle decisioni. La foto 6 della
+cartella 5 (la candela 2 che chiude 0,1 sopra) col *"non deve sforare"* non è più un CRT.
 
 ## Da chiedere ancora
 
-- La tolleranza della chiusura della candela 2 (foto 6 della cartella 5, oro 4 ore del 1° maggio 2026: chiude
-  a 4641 col massimo della candela 1 a 4640,9): per ora il 2% del range.
-- Quanti strumenti: le foto usano euro, sterlina, oro, argento, DXY e Bitcoin; il bot ne guarda 40.
+- Quanti strumenti: le foto usano euro, sterlina, oro, argento, DXY e Bitcoin; il bot ne guarda 40 (39 al
+  broker). La lista completa del broker arriva su Telegram (`/strumenti`).

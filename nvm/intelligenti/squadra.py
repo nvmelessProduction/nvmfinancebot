@@ -186,7 +186,7 @@ class Memoria:
         self.capo.setdefault("base", 0.0)
         self.capo.setdefault("fiducia", {a: FIDUCIA_INIZIALE for a in AGENTI})
         self.capo.setdefault("errori", [0, 0.0, 0.0])
-        for k, v in (("base", PUNTATA_INIZIALE), ("convinzione", 0.2), ("aperte", 0.2), ("media", 0.0),
+        for k, v in (("base", PUNTATA_INIZIALE), ("convinzione", 0.2), ("aperte", 0.2), ("stesso", 0.2), ("media", 0.0),
                      ("scarto", 0.1), ("volte", 0)):
             self.rischio.setdefault(k, v)
 
@@ -369,14 +369,18 @@ class Squadra:
         buoni = [j for j, op in enumerate(piani) if op is not None and con_stop(op)]
         return max(buoni, key=valore) if buoni else -1
 
-    def _rischio(self, p: float, esposizione: float) -> tuple[float, float]:
+    def _rischio(self, p: float, esposizione: float, stesso: float = 0.0) -> tuple[float, float]:
+        """La puntata: la base, piu' quando il Capo e' piu' convinto del solito, meno con altre operazioni aperte e
+        meno ancora se sono sullo stesso strumento. Quanto pesa ognuna lo impara dai risultati (il proprietario,
+        07/10/2026: un'operazione alla volta per strumento? *"lo gestisce l'agente rischio. decisione sua"*)."""
         ri = self.memoria.rischio
         # Quanto e' convinto il Capo rispetto al solito: si sa solo dopo un po' di occasioni.
         z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0) if ri.get("volte", 0) >= 10 else 0.0
-        return ri["base"] * math.exp(_stretto(ri["convinzione"] * z - ri["aperte"] * 100 * esposizione, -5.0, 3.0)), z
+        esponente = ri["convinzione"] * z - ri["aperte"] * 100 * esposizione - ri.get("stesso", 0.2) * 100 * stesso
+        return ri["base"] * math.exp(_stretto(esponente, -5.0, 3.0)), z
 
     def riunione(self, chiave: str, strumento: str, m: Metodo, quando: int, piani: Optional[list] = None,
-                 esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None) -> Verdetto:
+                 esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None, stesso: float = 0.0) -> Verdetto:
         """La riunione su un'occasione: le domande di Romeo gia' risposte (`metodo.valuta`)."""
         t0 = time.time()
         with self._lucchetto:
@@ -398,7 +402,7 @@ class Squadra:
             n_s, vinte_s, media_s, t_s = self.simili(m)
             evita = m.a_piu and n_s >= MINIMO_SIMILI and media_s < 0 and t_s <= -CERTEZZA_EVITA
             capo_entra = m.a_piu and stop_ok and not evita
-            parte, z = self._rischio(p, esposizione)
+            parte, z = self._rischio(p, esposizione, stesso)
             puntata = max(parte, 0.0) if capo_entra else 0.0
             entra = capo_entra and puntata > 0
             if entra:
@@ -407,12 +411,13 @@ class Squadra:
                 ri["media"] = round(p if ri["volte"] == 1 else 0.95 * ri["media"] + 0.05 * p, 6)
                 ri["scarto"] = round(max(math.sqrt(0.95 * ri["scarto"] ** 2 + 0.05 * (p - ri["media"]) ** 2), 0.02), 6)
             voci = self._voci(m, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano,
-                              (n_s, vinte_s, media_s))
+                              (n_s, vinte_s, media_s), stesso)
             lista = {d.nome: bool(d.si) for d in m.obbligatorie}
             pareri = {"Capo": {"entra": capo_entra, "p": round(p, 4), "stima": round(stima, 4), "a_piu": m.a_piu,
                                "evita": evita, "mancano": [d.nome for d in m.mancano],
                                "simili": [n_s, vinte_s, round(media_s, 4)]},
-                      "Rischio": {"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6)},
+                      "Rischio": {"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6),
+                                  "stesso": round(stesso, 6)},
                       "agenti": {a: {"prima": round(g["prima"], 4), "dopo": round(g["dopo"], 4)}
                                  for a, g in giudizi.items()}}
             v = Verdetto(entra, piano, round(puntata, 6), round(p, 3), voci, pareri, lista, time.time() - t0,
@@ -436,7 +441,8 @@ class Squadra:
                 d["entra"] = False
                 d.setdefault("pareri", {}).setdefault("Capo", {})["entra"] = False
 
-    def _voci(self, m: Metodo, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano, simili) -> list:
+    def _voci(self, m: Metodo, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano, simili,
+              stesso: float = 0.0) -> list:
         """La riunione in equipe: ogni agente dice la sua domanda di Romeo e il suo giudizio, chi ha
         cambiato idea dopo aver sentito i colleghi, il Capo decide, il Rischio dice quanto."""
         compra = m.fatti.get("verso") == "acquisto"
@@ -496,7 +502,9 @@ class Squadra:
             perche_r = "il Capo è meno convinto del solito, punto un po' di meno"
         else:
             perche_r = "convinzione nella media, puntata normale"
-        if esposizione > 0:
+        if stesso > 0:
+            perche_r += f"; su {m.fatti.get('strumento')} c'è già un'operazione aperta: ne tengo conto e punto meno"
+        elif esposizione > 0:
             perche_r += "; ci sono già altre operazioni aperte e ne tengo conto"
         voci.append(("Rischio", _cap(perche_r) + "."))
         return voci
@@ -603,6 +611,7 @@ class Squadra:
                     ri["base"] = round(ri["base"] * math.exp(_stretto(spinta, -0.5, 0.5)), 8)
                     ri["convinzione"] = round(ri["convinzione"] + spinta * float(g.get("z", 0.0)), 6)
                     ri["aperte"] = round(ri["aperte"] - spinta * 100 * float(g.get("esposizione", 0.0)), 6)
+                    ri["stesso"] = round(ri.get("stesso", 0.2) - spinta * 100 * float(g.get("stesso", 0.0)), 6)
                     fatte.append({"agente": "Rischio", "giusto": bene, "lezione":
                                   f"Dopo questa {'vincita' if bene else 'perdita'} la mia puntata base passa da "
                                   f"{_pct(prima)} a {_pct(ri['base'])} del conto."})

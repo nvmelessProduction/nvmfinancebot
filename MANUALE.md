@@ -25,7 +25,8 @@ le regole, impara dai risultati dal vivo e decide.
     massimo o minimo delle 4 ore: anticipa la candela a 4 ore dopo);
   - *Bias*: il timeframe di comando (settimana, mese, 3, 6, 12 mesi) è dalla nostra parte, o c'è un gap
     da riempire nel nostro verso.
-  Se manca anche una regola non si entra; se ci sono tutte si entra, un'operazione alla volta per strumento.
+  Se manca anche una regola non si entra; se ci sono tutte si entra. Se lo strumento ha già un'operazione
+  aperta decide il Rischio quanto puntare (impara lui quanto ridurre).
 - **Stop e obiettivi come nelle foto**: stop oltre la candela 2; **TP1** all'altro lato del range, dove si
   chiude metà e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande se
   c'è, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la liquidità). Se davanti
@@ -80,6 +81,7 @@ le regole, impara dai risultati dal vivo e decide.
    Le app di MT5 per il telefono non mostrano i disegni dei programmi: sul telefono il bot manda la
    foto del grafico disegnato su Telegram a ogni operazione nuova, e quando vuoi la chiedi tu
    scrivendo «/grafico EURUSD» (o «/grafico XAUUSD H4») su uno dei due canali.
+   Con «/strumenti» il bot manda la lista di tutti gli strumenti del broker, con segnati quelli che guarda.
 
 Lascia aperta la finestra nera:
 - se si chiude per un problema (MT5 chiuso, internet assente), il bot riparte da solo dopo un

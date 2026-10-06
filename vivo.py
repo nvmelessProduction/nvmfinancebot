@@ -262,6 +262,14 @@ class Bot:
             self.tg.operativo(messaggi.mancanti(mancanti, len(self.strumenti)))
         self.prova_collegamento(solo_se_non_va=da_aggiornamento)
         self.prepara_disegni()
+        # La lista degli strumenti del broker, una volta sola (poi a richiesta con /strumenti).
+        mandati_simboli = CARTELLA / "simboli_mandati"
+        if not mandati_simboli.exists():
+            try:
+                self.manda_simboli()
+                mandati_simboli.write_text("1", encoding="utf-8")
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
         if not self.imp.chat_equipe:
             self.tg.operativo(messaggi.allarme(
                 "Il canale équipe non è impostato: nel file .env manca la riga TELEGRAM_CHAT_EQUIPE= con l'id del "
@@ -290,6 +298,16 @@ class Bot:
                 self.lunghe[s] = self.terminale.giornaliere(s, LUNGHE)
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def manda_simboli(self, canale: str = "operativo") -> None:
+        """Tutti gli strumenti del broker, su Telegram (comando /strumenti), e nel registro (arriva a Claude con
+        i dati della VPS)."""
+        simboli = self.terminale.tutti_i_simboli()
+        usati = {self.terminale.simbolo(s): s for s in self.strumenti}
+        registra(CARTELLA, "simboli del broker", simboli=[list(x) for x in simboli], usati=usati)
+        manda = self.tg.operativo if canale == "operativo" else self.tg.equipe
+        for testo in messaggi.simboli_del_broker(simboli, usati):
+            manda(testo)
 
     def prepara_disegni(self) -> None:
         """Installa e compila in MT5 il programma che disegna sul grafico, e lo dice una volta sola."""
@@ -556,6 +574,12 @@ class Bot:
             self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
             return
         for m in arrivati:
+            if m.testo.lower().split("@")[0].startswith("/strumenti"):
+                try:
+                    self.manda_simboli("operativo" if m.chat in self.imp.chat_operativo else "equipe")
+                except Exception:
+                    registra(CARTELLA, "errore", testo=traceback.format_exc())
+                continue
             if m.testo.lower().split("@")[0].startswith("/grafico"):
                 try:
                     self._grafico(m)
@@ -803,7 +827,13 @@ class Bot:
             self.squadra.ultimo_errore = ""
             try:
                 esposizione = self._esposizione(conto.saldo)[1] if conto is not None else 0.0
-                self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini, esposizione)
+                # Quanto e' gia' a rischio su ogni strumento: decide il Rischio se e quanto aggiungere.
+                per_strumento: dict = {}
+                for v in self.stato.vive:
+                    if not v.pareggio_fatto and conto is not None and conto.saldo:
+                        per_strumento[v.strumento] = per_strumento.get(v.strumento, 0.0) + v.rischio / conto.saldo
+                self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini, esposizione,
+                                                    per_strumento)
             except Exception:
                 self.squadra.ultimo_errore = traceback.format_exc()
             if self.squadra.ultimo_errore:
@@ -828,14 +858,6 @@ class Bot:
         for d in decisioni:
             g = giudizi[d.chiave]
             v = self._verdetti.get(d.chiave)
-            if (self._entra(d, g) and adesso - d.r.quando <= finestra and getattr(d, "foto", None)
-                    and any(x.strumento == d.r.strumento for x in self.stato.vive)):
-                # Un'operazione alla volta per strumento: lo stesso movimento su piu' timeframe e' la stessa idea.
-                self.stato.saltate["c'era già un'operazione aperta su quello strumento"] = \
-                    self.stato.saltate.get("c'era già un'operazione aperta su quello strumento", 0) + 1
-                if self.squadra is not None and v is not None:
-                    self.squadra.annulla(d.chiave)
-                continue
             if self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.

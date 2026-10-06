@@ -51,9 +51,10 @@ LUNGO = {TF.Q3: "dei 3 mesi", TF.S6: "dei 6 mesi", TF.Y1: "annuale"}
 
 # Quante candele indietro si cerca la candela madre (le inside bar che rimandano).
 MADRE_MASSIMA = 12
-# La candela 2 "chiude dentro" anche un filo oltre il lato, di questa frazione del range: nella foto 6 della
-# cartella 5 (oro, 1 maggio 2026) chiude 0,1 sopra il massimo della candela 1, e per il proprietario e' dentro.
-TOLLERANZA_CHIUSURA = 0.02
+# Di quanto la candela 2 puo' chiudere oltre il lato del range: niente. Il proprietario, 07/10/2026: *"non deve
+# sforare. potrebbe essere un errore mio, ho dato per scontato che non avesse accettato"* (la foto 6 della
+# cartella 5, oro del 1 maggio 2026, chiudeva 0,1 sopra il massimo della candela 1).
+TOLLERANZA_CHIUSURA = 0.0
 # Quante candele indietro si guardano i gap, per timeframe: un gap piu' vecchio non e' piu' "attivo" (nelle
 # foto i gap usati come target sono di 1-2 anni al massimo; il gap annuale della sterlina del 2017 o quello
 # dei 3 mesi dell'euro del 2022 il proprietario non li guarda).

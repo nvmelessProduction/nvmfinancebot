@@ -114,6 +114,16 @@ class Terminale:
                 continue
         return False
 
+    def tutti_i_simboli(self) -> list[tuple[str, str, str]]:
+        """Tutti gli strumenti che il broker offre: (nome, cartella, descrizione), come nella finestra
+        «Simboli» di MT5."""
+        simboli = self.mt5.symbols_get() or ()
+        fuori = []
+        for s in simboli:
+            fuori.append((str(getattr(s, "name", "")), str(getattr(s, "path", "") or ""),
+                          str(getattr(s, "description", "") or "")))
+        return sorted(fuori, key=lambda x: (x[1].lower(), x[0]))
+
     # --- l'ora del server -----------------------------------------------------
 
     def misura_scarto(self, strumento: str, attesa: float = 30.0) -> Optional[int]:

@@ -49,6 +49,11 @@ class MT5Finto:
     def terminal_info(self):
         return NS(trade_allowed=True)
 
+    def symbols_get(self):
+        from types import SimpleNamespace as NS
+        return [NS(name=s, path=("Metals\\" if s.startswith("XA") else "Forex\\Majors\\") + s, description=s)
+                for s in sorted(self.tick)] + [NS(name="DE40.x", path="Indices\\DE40.x", description="Germany 40")]
+
     def symbol_select(self, simbolo, _):
         return simbolo in self.tick
 

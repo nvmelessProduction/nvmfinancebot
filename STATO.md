@@ -18,14 +18,15 @@ Il proprietario ha mandato 23 esempi suoi (cartelle di foto, `casi/ESEMPI-PROPRI
 - **Obbligatori**: CRT, key level (massimo o minimo del periodo prima, preso dal CRT), direzione del
   timeframe di comando. CRT a 1 ora solo col key level del giorno e il massimo/minimo delle 4 ore.
 - **Gap** con le fasi (aggressione, reazione, liquidazione, continuazione con l'RSI) e **DXY** sintetico: due
-  agenti nuovi nella squadra (memoria nuova `foto-1`). Un'operazione alla volta per strumento.
+  agenti nuovi nella squadra (memoria nuova `foto-1`).
 - **Verifica**: tutti e 17 gli esempi controllabili danno il setup; il target finale coincide in 13 (gli altri
   4 sono oro 2026, dove mancano i dati di marzo). Prove in `tests/test_foto.py`.
 - **La routine settimanale dei vent'anni è spenta** (il proprietario: *"a tua discrezione"*).
 - Il bot dal vivo prende anche le giornaliere lunghe da MT5 (per i 3, 6, 12 mesi).
 
-**Da sapere:** circa 3 operazioni a settimana per strumento (con un'operazione alla volta per strumento). La
-tolleranza della chiusura della candela 2 è da confermare col proprietario.
+**Da sapere:** circa 12 setup a settimana per strumento. 07/10/2026: la candela 2 non deve sforare (niente
+tolleranza); più operazioni sullo stesso strumento le decide il Rischio (punta meno e impara quanto); il
+comando `/strumenti` dà la lista di tutti gli strumenti del broker.
 
 ## 01/10/2026: la strategia dei video alla lettera, e una squadra che impara davvero
 

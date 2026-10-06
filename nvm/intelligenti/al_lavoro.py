@@ -42,10 +42,12 @@ def _gemello(strumento: str, basi: dict):
     return basi[g[0]], g[1]
 
 
-def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: float = 0.0) -> dict[str, Verdetto]:
+def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: float = 0.0,
+             per_strumento: Optional[dict] = None) -> dict[str, Verdetto]:
     """La squadra si riunisce su ogni occasione del giro: le domande di Romeo dai video (`metodo.py`),
     poi decide. Restituisce i verdetti per chiave; manca solo l'occasione su cui qualcosa si e' rotto
-    (l'errore resta in `squadra.ultimo_errore`)."""
+    (l'errore resta in `squadra.ultimo_errore`). `per_strumento`: la parte del conto gia' a rischio su ogni
+    strumento, per il Rischio."""
     fatte = {}
     for d in decisioni:
         s = d.r.strumento
@@ -57,7 +59,8 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
             piani = getattr(d, "piani_romeo", None) or None
             seguire = {"strumento": s, "basso": d.r.basso_tf.value, "scadenza": int(d.scadenza),
                        "piani": [_dati(op) for op in piani]} if piani else None
-            v = squadra.riunione(d.chiave, s, m, int(d.r.quando), piani, esposizione, seguire, d.op)
+            v = squadra.riunione(d.chiave, s, m, int(d.r.quando), piani, esposizione, seguire, d.op,
+                                 stesso=(per_strumento or {}).get(s, 0.0))
             v.metodo = m
             fatte[d.chiave] = v
         except Exception:

@@ -139,6 +139,37 @@ def collegamento(prove: list[tuple[str, bool, str]], aperte: int) -> str:
     return "\n".join(righe)
 
 
+def simboli_del_broker(simboli: list, usati: dict) -> list[str]:
+    """La lista di tutti gli strumenti del broker, per cartella di MT5, coi nomi che il bot usa segnati ✅.
+    `usati`: nome sul broker -> nome nel bot. In piu' messaggi se e' lunga."""
+    cartelle: dict = {}
+    for nome, cartella, descrizione in simboli:
+        gruppo = cartella.replace("/", "\\").split("\\")[0] if cartella else "Altro"
+        cartelle.setdefault(gruppo or "Altro", []).append((nome, descrizione))
+    righe = [f"📋 Gli strumenti del broker: {len(simboli)} in tutto. ✅ = il bot li guarda ({len(usati)})."]
+    for gruppo in sorted(cartelle, key=str.lower):
+        voci = cartelle[gruppo]
+        righe.append(f"\n{gruppo} ({len(voci)}):")
+        riga = ""
+        for n, _ in voci:
+            nome = ("✅ " if n in usati else "") + n
+            if riga and len(riga) + len(nome) + 2 > 3000:
+                righe.append(riga)
+                riga = ""
+            riga = f"{riga}, {nome}" if riga else nome
+        if riga:
+            righe.append(riga)
+    testi, pezzo = [], ""
+    for r in righe:
+        if len(pezzo) + len(r) + 1 > 3800:
+            testi.append(pezzo)
+            pezzo = ""
+        pezzo += r + "\n"
+    if pezzo:
+        testi.append(pezzo)
+    return testi
+
+
 def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, uscita,
              quota: Optional[float] = None) -> str:
     """Il canale operativo: cosa ho fatto sul conto, quanto posso perdere e quanto posso guadagnare.

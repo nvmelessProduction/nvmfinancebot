@@ -652,3 +652,30 @@ def test_se_il_bot_si_inchioda_il_cane_da_guardia_lo_chiude_e_lo_dice(tmp_path, 
     vivo.cane_da_guardia(vivo_bot, controlla_ogni=0.01, uscita=uscite.append)
     time.sleep(0.1)
     assert not uscite
+
+
+def test_la_lista_degli_strumenti_del_broker(tmp_path, monkeypatch):
+    """Il comando /strumenti: tutti gli strumenti del broker per cartella, con quelli del bot segnati."""
+    import vivo
+    from nvm.vivo import messaggi
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    m = MT5Finto()
+    m.tick["EURUSD.x"] = NS(time=0, bid=1.1, ask=1.1001)
+    m.tick["XAUUSD.x"] = NS(time=0, bid=2000.0, ask=2000.3)
+    t = Terminale(mt5=m)
+    simboli = t.tutti_i_simboli()
+    assert [s[0] for s in simboli] == ["EURUSD.x", "DE40.x", "XAUUSD.x"]
+    testi = messaggi.simboli_del_broker(simboli, {"EURUSD.x": "EURUSD"})
+    testo = "\n".join(testi)
+    assert "3 in tutto" in testo and "✅ EURUSD.x" in testo and "Forex (1)" in testo and "Metals (1)" in testo
+    # Tanti strumenti: piu' messaggi, ognuno sotto il limite di Telegram.
+    tanti = [(f"S{i:04d}", "Forex\\Exotics", "") for i in range(900)]
+    assert len(messaggi.simboli_del_broker(tanti, {})) > 1
+    assert all(len(x) < 4000 for x in messaggi.simboli_del_broker(tanti, {}))
+    mandati = []
+    bot = object.__new__(vivo.Bot)
+    bot.terminale, bot.strumenti = t, ["EURUSD"]
+    t._nomi["EURUSD"] = "EURUSD.x"
+    bot.tg = NS(operativo=lambda x: mandati.append(("op", x)), equipe=lambda x: mandati.append(("eq", x)))
+    bot.manda_simboli("equipe")
+    assert mandati and mandati[0][0] == "eq" and "✅ EURUSD.x" in mandati[0][1]

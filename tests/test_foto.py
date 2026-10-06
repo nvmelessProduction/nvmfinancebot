@@ -91,16 +91,16 @@ def test_la_candela_2_che_chiude_fuori_non_e_un_crt():
     assert not [s for s in F.trova(q, TF.H4, n3, n3) if s.verso is Verso.LONG]
 
 
-def test_la_chiusura_un_filo_oltre_il_range_e_ancora_dentro():
-    """Foto 6 della cartella 5: la candela 2 chiude 0,1 sopra il massimo della candela 1 e per il proprietario
-    e' dentro. Si tollera il 2% del range; il 5% e' fuori."""
+def test_la_candela_2_non_deve_sforare():
+    """Il proprietario, 07/10/2026: *"non deve sforare"*. La chiusura sul lato e' ancora dentro, un filo oltre no
+    (la foto 6 della cartella 5 chiudeva 0,1 sopra: non e' un CRT)."""
     def con_chiusura(c2):
         righe = [(ny(2026, 9, 8, 2) - 8 * ORA, 1.1000, 1.1005, 1.0995, 1.1000)]
         righe += _candela_in_ore(ny(2026, 9, 8, 2) - 4 * ORA, 4, 1.1000, 1.1100, 1.1000, 1.1090)    # candela 1
         righe += _candela_in_ore(ny(2026, 9, 8, 2), 4, 1.1090, 1.1140, 1.1040, c2)                  # candela 2
         return _ore(righe)
     n3 = ny(2026, 9, 8, 6)
-    for c2, crt in ((1.1101, True), (1.1105, False), (1.1060, True)):
+    for c2, crt in ((1.1100, True), (1.1101, False), (1.1060, True)):
         q = F.Quadro.da(con_chiusura(c2), n3)
         assert bool([s for s in F.trova(q, TF.H4, n3, n3) if s.verso is Verso.SHORT]) is crt, c2
 

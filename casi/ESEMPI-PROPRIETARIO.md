@@ -157,3 +157,7 @@ Il proprietario ha risposto *"come nelle foto"*: il bot ora segue questo metodo 
 
 Le cartelle 6 e 7 (anticipare la N3, entrare sulla N3) sono le stesse operazioni: il bot entra sempre
 all'apertura della candela 3 del timeframe del CRT, e il CRT a 1 ora anticipa quello a 4 ore.
+
+07/10/2026: sulla foto 6 della cartella 5 il proprietario ha detto *"non deve sforare. potrebbe essere un errore
+mio, ho dato per scontato che non avesse accettato"*. La candela 2 chiude 0,1 sopra il massimo della candela 1:
+per il bot non è un CRT.

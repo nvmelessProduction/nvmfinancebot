@@ -290,10 +290,12 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
     assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci for x, p, riduci in aperte)
-    # Un'operazione alla volta per strumento: con una gia' aperta la seconda non si apre.
+    # Con un'operazione gia' aperta sullo stesso strumento decide il Rischio (il proprietario: *"lo gestisce
+    # l'agente rischio"*): apre, ma punta meno, e lo dice.
     bot._decidi(decisioni[1:], int(decisioni[1].r.quando), 10**12)
-    assert len(aperte) == 1 and bot.stato.saltate.get("c'era già un'operazione aperta su quello strumento") == 1
+    assert len(aperte) == 2 and 0 < aperte[1][0] < aperte[0][0]
     equipe = [t for c, t in mandati if c == "-2"]
+    assert any("su EURUSD c'è già un'operazione aperta" in t for t in equipe)
     assert any("Tutte e 3 le regole del metodo dicono sì" in t for t in equipe)
     assert any("Metto in gioco" in t and "EUR" in t for t in equipe)
     # Sul grafico: il range, la finta, l'entrata all'apertura della candela 3, lo stop, il TP1, il target finale.
@@ -406,3 +408,20 @@ def test_dopo_il_primo_obiettivo_si_esce_se_il_kod_e_superato(tmp_path, monkeypa
     assert not chiuse          # l'ultima candela non e' ancora chiusa
     bot.uscite(t0 + 5 * 3600)
     assert len(chiuse) == 1 and "kiss of death" in chiuse[0] and "V16" in chiuse[0]
+
+
+def test_sullo_stesso_strumento_decide_il_rischio(tmp_path):
+    """Il proprietario, 07/10/2026: un'operazione alla volta per strumento? *"lo gestisce l'agente rischio.
+    decisione sua"*. Con un'operazione gia' aperta sullo stesso strumento il Rischio punta meno, lo dice, e
+    quanto ridurre lo impara dai risultati."""
+    sq = Squadra(tmp_path)
+    sola = sq.riunione("a", "EURUSD", _metodo(), 0, op=_op())
+    stesso = sq.riunione("b", "EURUSD", _metodo(), 0, op=_op(), stesso=0.01)
+    assert sola.entra and stesso.entra and 0 < stesso.puntata < sola.puntata
+    assert "su EURUSD c'è già un'operazione aperta" in dict(stesso.voci)["Rischio"]
+    # Se anche le seconde operazioni sullo stesso strumento vanno bene, il Rischio riduce di meno.
+    prima = sq.memoria.rischio["stesso"]
+    for i in range(30):
+        sq.riunione(f"s{i}", "EURUSD", _metodo(), 0, op=_op(), stesso=0.01)
+        sq.rifletti(f"s{i}", 2.0, preso=True)
+    assert sq.memoria.rischio["stesso"] < prima
