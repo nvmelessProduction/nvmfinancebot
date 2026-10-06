@@ -12,8 +12,8 @@ le regole, impara dai risultati dal vivo e decide.
 
 ## 1. Cosa fa
 
-- **Guarda fino a 40 strumenti**: 28 coppie forex, oro, argento, petrolio, i principali indici,
-  Bitcoin ed Ethereum (quelli che il tuo broker offre).
+- **Guarda 37 strumenti**: 28 coppie forex, oro, argento, petrolio WTI, S&P 500, Nasdaq, Dow Jones, DAX,
+  Bitcoin ed Ethereum (quelli che il tuo broker offre; Brent, FTSE e Nikkei tolti il 07/10/2026).
 - **Le candele** aprono come sui future: il giorno alle 18 di New York (mezzanotte italiana), le 4 ore alle
   18, 22, 2, 6, 10 e 14 di New York; ci sono anche le 6 e 12 ore e le candele di 3, 6 e 12 mesi.
 - **Trova le occasioni** sui CRT a 1 ora, 4 ore, 6 ore, giorno, settimana e mese, ed entra **all'apertura

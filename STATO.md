@@ -26,7 +26,7 @@ Il proprietario ha mandato 23 esempi suoi (cartelle di foto, `casi/ESEMPI-PROPRI
 
 **Da sapere:** circa 12 setup a settimana per strumento. 07/10/2026: la candela 2 non deve sforare (niente
 tolleranza); più operazioni sullo stesso strumento le decide il Rischio (punta meno e impara quanto); il
-comando `/strumenti` dà la lista di tutti gli strumenti del broker.
+comando `/strumenti` dà la lista di tutti gli strumenti del broker. Tolti Brent, FTSE e Nikkei: 37 strumenti.
 
 ## 01/10/2026: la strategia dei video alla lettera, e una squadra che impara davvero
 

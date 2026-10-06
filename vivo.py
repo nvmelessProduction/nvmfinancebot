@@ -62,8 +62,10 @@ from nvm.vivo.terminale import ErroreMT5, Terminale
 RADICE = Path(__file__).resolve().parent
 # Gli strumenti su cui il bot opera dal vivo, sul conto demo: tutti quelli che conosce
 # (`nvm/dati/strumenti.py`: forex, oro e argento, petrolio, indici, crypto) che il broker ha.
-# L'utente, 25/09/2026: "testare tutto sul live sempre su mt5".
-STRUMENTI_VIVO = tuple(STRUMENTI)
+# L'utente, 25/09/2026: "testare tutto sul live sempre su mt5". Il proprietario, 07/10/2026: *"togliamo ukoil
+# uk100 jpn225, per il resto tutto ok"*.
+TOLTI = ("UKOIL", "UK100", "JPN225")
+STRUMENTI_VIVO = tuple(s for s in STRUMENTI if s not in TOLTI)
 # Per quanto le decisioni finite restano nello stato, prima dell'archivio.
 TENERE = 14 * 86400
 CARTELLA = RADICE / "dati" / "vivo"
@@ -243,6 +245,13 @@ class Bot:
                 self.strumenti.append(strumento)
             except ErroreMT5:
                 mancanti.append(strumento)
+        # Le operazioni ancora aperte su strumenti tolti dalla lista: il bot le segue lo stesso fino alla fine.
+        for v in self.stato.vive:
+            if v.strumento not in self.strumenti:
+                try:
+                    self.terminale.esiste(v.strumento)
+                except Exception:
+                    registra(CARTELLA, "errore", testo=traceback.format_exc())
         self.aggiorna_lunghe(time.time())
         adesso = time.time()
         if self.stato.ultimo_giro is None:

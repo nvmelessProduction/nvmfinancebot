@@ -679,3 +679,11 @@ def test_la_lista_degli_strumenti_del_broker(tmp_path, monkeypatch):
     bot.tg = NS(operativo=lambda x: mandati.append(("op", x)), equipe=lambda x: mandati.append(("eq", x)))
     bot.manda_simboli("equipe")
     assert mandati and mandati[0][0] == "eq" and "✅ EURUSD.x" in mandati[0][1]
+
+
+def test_il_bot_non_guarda_brent_ftse_e_nikkei():
+    """Il proprietario, 07/10/2026: *"togliamo ukoil uk100 jpn225, per il resto tutto ok"*."""
+    import vivo
+    assert len(vivo.STRUMENTI_VIVO) == 37
+    assert not {"UKOIL", "UK100", "JPN225"} & set(vivo.STRUMENTI_VIVO)
+    assert {"USOIL", "GER40", "BTCUSD", "XAGUSD", "EURUSD"} <= set(vivo.STRUMENTI_VIVO)
