@@ -41,7 +41,7 @@ from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import NEW_YORK, TF
-from nvm.vivo import autoanalisi, conversazione, disegni, messaggi
+from nvm.vivo import autoanalisi, conversazione, disegni, foto_grafico, messaggi
 from nvm.vivo.ambiente import impostazioni, leggi_env
 from nvm.vivo.carta import segui
 from nvm.vivo.dialogo import (
@@ -210,6 +210,8 @@ class Bot:
         # Le foto dei grafici chieste a MT5 e non ancora arrivate (per vedere i disegni dal telefono).
         self._cartella_foto: Optional[Path] = None
         self._foto: list[dict] = []
+        # Le foto delle operazioni appena aperte: si disegnano a fine giro, dopo tutti gli ordini.
+        self._foto_da_fare: list = []
 
     def allarme(self, testo: str) -> None:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
@@ -349,6 +351,11 @@ class Bot:
                          "il bot lavora lo stesso, ma senza disegni sul grafico.")
 
     def _disegna(self, d, viva, adesso: int) -> None:
+        if getattr(d, "foto", None):
+            # La foto per il telefono la disegna il bot (`foto_grafico`), a fine giro: gli ordini non aspettano.
+            if not hasattr(self, "_foto_da_fare"):
+                self._foto_da_fare = []
+            self._foto_da_fare.append((d, viva))
         if self.disegni is None or (getattr(d.r.scatto, "modello", "") not in MODELLI_ROMEO and not getattr(d, "foto", None)):
             return
         try:
@@ -359,11 +366,25 @@ class Bot:
                        else disegni.operazione(d, viva, self.terminale.scarto or 0, kl))
             self.disegni.metti(d.chiave, self.terminale.simbolo(d.r.strumento), disegno, disegni.fino_a(d))
             self.disegni.scrivi(adesso)
-            periodo = d.r.alto_tf.value if getattr(d, "foto", None) and d.r.alto_tf in (TF.H1, TF.H4, TF.D1, TF.W1) else d.r.basso_tf.value
-            self.chiedi_foto(d.r.strumento, periodo, "operativo",
-                             f"📸 {d.r.strumento}: la nostra operazione sul grafico, disegnata come nelle foto.")
+            if not getattr(d, "foto", None):
+                self.chiedi_foto(d.r.strumento, d.r.basso_tf.value, "operativo",
+                                 f"📸 {d.r.strumento}: la nostra operazione sul grafico.")
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def manda_foto_operazioni(self) -> None:
+        """Le foto delle operazioni appena aperte, disegnate dal bot: sfondo bianco, candele verdi e rosse, solo
+        l'operazione (il proprietario: *"quando manda le foto non si legge un cazzo"*). Se non riesce, la foto
+        di MT5 come prima."""
+        da_fare, self._foto_da_fare = getattr(self, "_foto_da_fare", []), []
+        for d, viva in da_fare:
+            didascalia = f"📸 {d.r.strumento}: l'operazione sul grafico, come nelle foto."
+            try:
+                self.tg.foto("operativo", foto_grafico.operazione_foto(d, viva), didascalia)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
+                periodo = d.r.alto_tf.value if d.r.alto_tf in (TF.H1, TF.H4, TF.D1, TF.W1) else "H1"
+                self.chiedi_foto(d.r.strumento, periodo, "operativo", didascalia)
 
     def aggiorna_disegni(self, adesso: int) -> None:
         """A ogni giro: i livelli della settimana, i CRT che gli agenti stanno guardando nella candela 3 e le
@@ -453,10 +474,20 @@ class Bot:
             return
         nome = parti[1].upper().rstrip("+.").replace("/", "")
         strumento = next((s for s in self.strumenti if s == nome or self.terminale.simbolo(s).upper() == parti[1].upper()), None)
-        periodo = parti[2].upper() if len(parti) > 2 and parti[2].upper() in ("M15", "H1", "H4", "D1", "W1") else "H1"
+        periodo = parti[2].upper() if len(parti) > 2 and parti[2].upper() in ("M15", "H1", "H4", "H6", "D1", "W1", "MN") else "H1"
         if strumento is None:
             rispondi(f"Non conosco «{parti[1]}». Scrivi per esempio «/grafico EURUSD».")
             return
+        try:
+            # La foto la disegna il bot: le candele e le operazioni aperte su quello strumento.
+            sorgente = self.fini if periodo == "M15" else self.basi
+            candele = costruisci(sorgente[strumento], TF(periodo))
+            aperte = [v for v in self.stato.vive if v.strumento == strumento]
+            nome = foto_grafico.NOMI_TF.get(TF(periodo), periodo)
+            self.tg.foto(canale, foto_grafico.grafico(candele, strumento, aperte), f"📸 {strumento} ({nome}).")
+            return
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
         if self.disegni is None:
             rispondi("I disegni in MT5 non sono pronti: guarda il messaggio sui disegni qui sopra.")
             return
@@ -655,6 +686,7 @@ class Bot:
         if not andati and ultimo_errore is not None:
             raise ultimo_errore
         self.stato.scarto = self.terminale.scarto
+        self.manda_foto_operazioni()
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
             self._finita(s, ora)

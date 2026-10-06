@@ -6,3 +6,5 @@ tzdata
 certifi
 # MetaTrader5 esiste solo per Windows: altrove il bot dal vivo non parte, il resto si'.
 MetaTrader5>=5.0.45 ; sys_platform == "win32"
+# Le foto del grafico per Telegram, disegnate dal bot (sfondo bianco, candele verdi e rosse).
+matplotlib>=3.8

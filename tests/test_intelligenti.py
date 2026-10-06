@@ -290,6 +290,14 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
     assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci for x, p, riduci in aperte)
+    # Lo stesso CRT una volta sola, anche se il giro si ripete.
+    bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
+    assert len(aperte) == 1
+    # La foto per il telefono la disegna il bot, a fine giro (dopo tutti gli ordini).
+    foto = []
+    bot.tg.foto = lambda canale, dati, didascalia: foto.append((canale, dati, didascalia))
+    bot.manda_foto_operazioni()
+    assert len(foto) == 1 and foto[0][0] == "operativo" and foto[0][1].startswith(b"\x89PNG")
     # Con un'operazione gia' aperta sullo stesso strumento decide il Rischio (il proprietario: *"lo gestisce
     # l'agente rischio"*): apre, ma punta meno, e lo dice.
     bot._decidi(decisioni[1:], int(decisioni[1].r.quando), 10**12)

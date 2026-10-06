@@ -82,9 +82,11 @@ le regole, impara dai risultati dal vivo e decide.
    candela 3, lo stop, il TP1 e il target finale; la domenica il massimo e il minimo della settimana
    passata. Se il servizio non parte: trascina «NvmDisegniGrafico» (Indicatori →
    NVM) su un grafico qualsiasi.
-   Le app di MT5 per il telefono non mostrano i disegni dei programmi: sul telefono il bot manda la
-   foto del grafico disegnato su Telegram a ogni operazione nuova, e quando vuoi la chiedi tu
-   scrivendo «/grafico EURUSD» (o «/grafico XAUUSD H4») su uno dei due canali.
+   Le app di MT5 per il telefono non mostrano i disegni dei programmi: per il telefono il bot disegna
+   da sé la foto di ogni operazione nuova e la manda su Telegram (sfondo bianco, candele verdi e rosse,
+   solo l'operazione: il range, la finta, l'entrata, lo stop, il TP1 e il target finale, con i prezzi
+   scritti grandi). Quando vuoi la chiedi tu scrivendo «/grafico EURUSD» (o «/grafico XAUUSD H4») su
+   uno dei due canali: arrivano le candele con le operazioni aperte su quello strumento.
    Con «/strumenti» il bot manda la lista di tutti gli strumenti del broker, con segnati quelli che guarda.
 
 Lascia aperta la finestra nera:

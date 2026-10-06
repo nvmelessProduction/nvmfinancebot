@@ -9,8 +9,9 @@ file. Il piano completo è in `PIANO.md`.
 
 Il bot apriva euro-dollaro di continuo e due posizioni per ogni CRT. Ora: una posizione sola (stop e target
 finale sul broker; al TP1 il bot chiude metà e mette lo stop a pareggio, se il lotto si divide); lo stesso CRT
-non si apre mai due volte; un errore su uno strumento non fa più ripartire il giro dell'ora. Dettagli in
-`registro/tentativi.md`.
+non si apre mai due volte; un errore su uno strumento non fa più ripartire il giro dell'ora. Le foto per
+Telegram le disegna il bot (`nvm/vivo/foto_grafico.py`: sfondo bianco, candele verdi e rosse, solo
+l'operazione); la foto di MT5 resta solo se il disegno non riesce. Dettagli in `registro/tentativi.md`.
 
 ## 06/10/2026: il metodo delle foto del proprietario
 
