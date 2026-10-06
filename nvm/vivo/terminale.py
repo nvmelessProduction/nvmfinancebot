@@ -277,8 +277,8 @@ class Terminale:
             return Esito(False, f"stop non spostato: {getattr(r, 'retcode', None)} {self.mt5.last_error()}")
         return Esito(True, "stop spostato")
 
-    def chiudi_posizione(self, strumento: str, ticket: int) -> Esito:
-        """Chiude una posizione a mercato: le uscite prima dello stop che gli agenti hanno imparato."""
+    def chiudi_posizione(self, strumento: str, ticket: int, volume: Optional[float] = None) -> Esito:
+        """Chiude una posizione a mercato, tutta o solo `volume` lotti (il parziale al TP1)."""
         posizioni = self.mt5.positions_get(ticket=int(ticket))
         if not posizioni:
             return Esito(True, "già chiusa")
@@ -286,8 +286,9 @@ class Terminale:
         simbolo = self.simbolo(strumento)
         bid, ask = self.prezzo(strumento)
         compra = int(p.type) == self.mt5.ORDER_TYPE_SELL
+        quanto = float(p.volume) if volume is None else min(float(volume), float(p.volume))
         r = self.mt5.order_send({
-            "action": self.mt5.TRADE_ACTION_DEAL, "symbol": simbolo, "volume": float(p.volume),
+            "action": self.mt5.TRADE_ACTION_DEAL, "symbol": simbolo, "volume": quanto,
             "type": self.mt5.ORDER_TYPE_BUY if compra else self.mt5.ORDER_TYPE_SELL, "position": int(ticket),
             "price": ask if compra else bid, "deviation": 20, "magic": int(p.magic), "comment": "nvm uscita",
             "type_time": self.mt5.ORDER_TIME_GTC, "type_filling": self._riempimento(simbolo),
@@ -302,6 +303,28 @@ class Terminale:
         if posizioni is None:
             raise ErroreMT5(f"MT5 non da' le posizioni: {self.mt5.last_error()}")
         return {int(p.ticket) for p in posizioni if int(p.magic) == magic}
+
+    def commenti(self, magic: int) -> set[str]:
+        """I commenti delle posizioni del bot ancora aperte: ognuno dice di quale CRT e'."""
+        posizioni = self.mt5.positions_get()
+        if posizioni is None:
+            raise ErroreMT5(f"MT5 non da' le posizioni: {self.mt5.last_error()}")
+        return {str(getattr(p, "comment", "")) for p in posizioni if int(p.magic) == magic}
+
+    def estremi(self, strumento: str, dal: int, quante: int = 5) -> Optional[tuple[float, float]]:
+        """Il massimo e il minimo (bid) delle ultime barre da un minuto che aprono da `dal` in poi (UTC): per
+        non perdere un TP1 toccato fra un controllo e l'altro. None se MT5 non le da'."""
+        tf = getattr(self.mt5, "TIMEFRAME_M1", None)
+        if tf is None or self.scarto is None:
+            return None
+        barre = self.mt5.copy_rates_from_pos(self.simbolo(strumento), tf, 0, quante)
+        if barre is None or len(barre) == 0:
+            return None
+        t = np.asarray(barre["time"], np.int64) - self.scarto * 3600
+        dopo = t >= dal
+        if not dopo.any():
+            return None
+        return float(np.asarray(barre["high"])[dopo].max()), float(np.asarray(barre["low"])[dopo].min())
 
     def chiusura(self, ticket: int) -> tuple[float, float]:
         """Profitto netto (con commissioni e swap) e prezzo d'uscita di una posizione chiusa."""

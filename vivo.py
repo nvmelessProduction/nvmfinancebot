@@ -637,12 +637,23 @@ class Bot:
 
     def giro(self, ora: int) -> None:
         dal = max(self.stato.ultimo_giro + 1, ora - 86400)
-        # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini.
+        # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini. Un errore su uno
+        # strumento non ferma gli altri e non fa ripartire il giro (prima rifaceva da capo anche gli strumenti
+        # gia' guardati); se non va nessuno (MT5 staccato) si riprova al minuto dopo.
         self.aggiorna_lunghe(time.time())
+        andati, ultimo_errore = 0, None
         for s in self.strumenti:
-            self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
-            self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
-                                     lunghe=self.lunghe), ora, 3600)
+            try:
+                self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
+                self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
+                                         lunghe=self.lunghe), ora, 3600)
+                andati += 1
+            except Exception as errore:
+                ultimo_errore = errore
+                registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
+                self.allarme(f"{s}: errore nel giro dell'ora ({errore!r}). Gli altri strumenti vanno avanti.")
+        if not andati and ultimo_errore is not None:
+            raise ultimo_errore
         self.stato.scarto = self.terminale.scarto
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
@@ -823,6 +834,10 @@ class Bot:
         return replace(d, op=d.piani[j])
 
     def _decidi(self, decisioni, adesso: int, finestra: int) -> None:
+        # Un CRT si guarda e si apre una volta sola (il proprietario: *"una per CRT"*): se il giro si ripete,
+        # le occasioni gia' viste non tornano.
+        viste = {s.chiave for s in self.stato.seguite} | {v.chiave for v in self.stato.vive}
+        decisioni = [d for d in decisioni if d.chiave not in viste]
         conto = self.terminale.conto() if decisioni else None
         # Se decide la squadra, i cervelli allenati sui vent'anni non giudicano piu'.
         giudizi = {d.chiave: (None if self.squadra is not None else self._giudizio(d)) for d in decisioni}
@@ -887,6 +902,11 @@ class Bot:
                 if viva is not None:
                     self.stato.vive.append(viva)
                     aperte.add(d.chiave)
+                    try:
+                        # Subito su disco: se il bot riparte, sa gia' che questo CRT e' aperto.
+                        self.stato.salva(CARTELLA)
+                    except Exception:
+                        registra(CARTELLA, "errore", testo=traceback.format_exc())
                     self._disegna(d, viva, adesso)
                     conto = self.terminale.conto()
                     self._nel_libro("apertura", strumento=viva.strumento, verso=viva.verso, tickets=viva.tickets,

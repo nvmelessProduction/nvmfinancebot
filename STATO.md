@@ -5,6 +5,13 @@ _Aggiornato il 06/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 07/10/2026: una posizione sola per CRT
+
+Il bot apriva euro-dollaro di continuo e due posizioni per ogni CRT. Ora: una posizione sola (stop e target
+finale sul broker; al TP1 il bot chiude metà e mette lo stop a pareggio, se il lotto si divide); lo stesso CRT
+non si apre mai due volte; un errore su uno strumento non fa più ripartire il giro dell'ora. Dettagli in
+`registro/tentativi.md`.
+
 ## 06/10/2026: il metodo delle foto del proprietario
 
 Il proprietario ha mandato 23 esempi suoi (cartelle di foto, `casi/ESEMPI-PROPRIETARIO.md`) e ha risposto

@@ -171,9 +171,10 @@ def simboli_del_broker(simboli: list, usati: dict) -> list[str]:
 
 
 def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, valuta: str, uscita,
-             quota: Optional[float] = None) -> str:
+             quota: Optional[float] = None, meta: float = 0.0) -> str:
     """Il canale operativo: cosa ho fatto sul conto, quanto posso perdere e quanto posso guadagnare.
-    `uscita`: "due meta'", "primo target" o "secondo target" (`nvm/agenti/rischio.USCITE`)."""
+    `uscita`: "due meta'", "primo target" o "secondo target" (`nvm/agenti/rischio.USCITE`); `meta`: i lotti
+    che il bot chiude al TP1 (la posizione e' una sola)."""
     k, op, r = d.r.strumento, d.op, d.r
     vende = r.verso is Verso.SHORT
     distanza = abs(prezzo_vero - op.stop) or 1e-12
@@ -185,19 +186,26 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
              f"🛑 Stop: {prezzo(k, op.stop)} → se va male perdo {_it(rischio)} {valuta}{parte}"]
     if uscita == "primo target" or uscita is True:
         righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp1)} → circa {guadagno(op.tp1, 1.0)}")
+    elif uscita == "secondo target" and getattr(d, "foto", None) and 0 < op.parziale < 1:
+        ob = d.foto.get("obiettivo")
+        righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop al prezzo d'entrata. "
+                     "Il lotto è il più piccolo che il broker accetta: non si può chiudere metà")
+        righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → tutto, "
+                     f"circa {guadagno(op.tp2, 1.0)}")
     elif uscita == "secondo target":
         righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp2)} → circa {guadagno(op.tp2, 1.0)}")
         righe.append(f"🛡 A {prezzo(k, op.tp1)} sposto lo stop al prezzo d'entrata: da lì non può più perdere")
     elif getattr(d, "foto", None):
         ob = d.foto.get("obiettivo")
-        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo metà, circa {guadagno(op.tp1, 0.5)}, "
-                     "e metto lo stop al prezzo d'entrata")
+        mezzo = f" ({_it(meta, 2)} lotti)" if meta else ""
+        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo metà{mezzo}, circa "
+                     f"{guadagno(op.tp1, 0.5)}, e metto lo stop al prezzo d'entrata")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → l'altra metà, "
                      f"circa {guadagno(op.tp2, 0.5)}")
     else:
         righe.append(f"🎯 Obiettivo 1: {prezzo(k, op.tp1)} → chiudo metà, circa {guadagno(op.tp1, 0.5)}")
         righe.append(f"🎯 Obiettivo 2: {prezzo(k, op.tp2)} → l'altra metà, circa {guadagno(op.tp2, 0.5)}")
-    righe.append(f"Quantità: {_it(volume, 2)} lotti")
+    righe.append(f"Quantità: {_it(volume, 2)} lotti, in una posizione sola")
     return "\n".join(righe)
 
 
@@ -212,8 +220,10 @@ def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
     return f"✋ {k}: chiudo prima dello stop, {motivo}."
 
 
-def pareggio(k: str, verso: Verso, ingresso: float) -> str:
-    return f"🛡 {k}: ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}). Da qui non può più perdere."
+def pareggio(k: str, verso: Verso, ingresso: float, tp1: bool = False) -> str:
+    testa = f"🎯 {k}: TP1 raggiunto. " if tp1 else f"🛡 {k}: "
+    coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
+    return f"{testa}Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}). Da qui non può più perdere.{coda}"
 
 
 def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: str) -> str:

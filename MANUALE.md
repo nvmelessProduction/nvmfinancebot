@@ -48,6 +48,10 @@ le regole, impara dai risultati dal vivo e decide.
   - i risultati veri del broker contano più di quelli calcolati sulla carta;
   - Livelli sceglie fra tre modi di uscire (tutto al TP1; metà al TP1 e il resto al target finale, come nelle
     foto; metà al TP1 e il resto più in là); il Rischio parte dall'1% del conto e si corregge coi risultati.
+- **Una posizione sola per CRT** (il proprietario, 07/10/2026): sul broker stanno lo stop e il target finale;
+  quando il prezzo arriva al TP1 il bot chiude metà e mette lo stop al prezzo d'entrata. Se il lotto è il
+  più piccolo che il broker accetta e non si può dividere, al TP1 sposta solo lo stop e tiene tutto fino al
+  target finale. Lo stesso CRT non si apre mai due volte (il commento della posizione dice quale CRT è).
 - **Esce** allo stop, al pareggio dopo il TP1, o al target finale.
 - **Protegge il conto**:
   - stop e obiettivi stanno sempre sul broker, anche se il computer si spegne;

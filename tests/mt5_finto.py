@@ -15,7 +15,7 @@ BARRA = np.dtype([("time", "i8"), ("open", "f8"), ("high", "f8"), ("low", "f8"),
 
 
 class MT5Finto:
-    TIMEFRAME_H1, TIMEFRAME_M15, TIMEFRAME_D1 = 16385, 15, 16408
+    TIMEFRAME_H1, TIMEFRAME_M15, TIMEFRAME_D1, TIMEFRAME_M1 = 16385, 15, 16408, 1
     ACCOUNT_TRADE_MODE_DEMO, ACCOUNT_TRADE_MODE_REAL = 0, 2
     TRADE_ACTION_DEAL, TRADE_ACTION_SLTP = 1, 6
     ORDER_TYPE_BUY, ORDER_TYPE_SELL = 0, 1
@@ -80,12 +80,22 @@ class MT5Finto:
     def order_send(self, r):
         self.richieste.append(dict(r))
         if r["action"] == self.TRADE_ACTION_DEAL and "position" in r:
-            self.chiudi(r["position"], r["price"])
+            p = self.posizioni[r["position"]]
+            if r["volume"] < p.volume - 1e-9:
+                # Chiusura parziale: la posizione resta, con meno lotti.
+                profitto = self.order_calc_profit(p.type, p.symbol, r["volume"], p.price_open, r["price"])
+                self._affari(p.ticket, p.price_open).append(
+                    NS(entry=self.DEAL_ENTRY_OUT, price=r["price"], profit=profitto, commission=0.0, swap=0.0))
+                p.volume = round(p.volume - r["volume"], 8)
+                self.saldo += profitto
+            else:
+                self.chiudi(r["position"], r["price"])
             return NS(retcode=self.TRADE_RETCODE_DONE, order=0, price=r["price"], volume=r["volume"])
         if r["action"] == self.TRADE_ACTION_DEAL:
             self._ticket += 1
             self.posizioni[self._ticket] = NS(ticket=self._ticket, magic=r["magic"], symbol=r["symbol"], type=r["type"],
-                                              volume=r["volume"], price_open=r["price"], sl=r["sl"], tp=r["tp"])
+                                              volume=r["volume"], price_open=r["price"], sl=r["sl"], tp=r["tp"],
+                                              comment=r.get("comment", ""))
             return NS(retcode=self.TRADE_RETCODE_DONE, order=self._ticket, price=r["price"], volume=r["volume"])
         p = self.posizioni[r["position"]]
         p.sl, p.tp = r["sl"], r["tp"]
@@ -100,12 +110,15 @@ class MT5Finto:
         return self.affari.get(position, [])
 
     # --- per le prove ---
+    def _affari(self, ticket: int, apertura: float) -> list:
+        if ticket not in self.affari:
+            self.affari[ticket] = [NS(entry=self.DEAL_ENTRY_IN, price=apertura, profit=0.0, commission=0.0, swap=0.0)]
+        return self.affari[ticket]
+
     def chiudi(self, ticket: int, prezzo: float) -> float:
         p = self.posizioni.pop(ticket)
         profitto = self.order_calc_profit(p.type, p.symbol, p.volume, p.price_open, prezzo)
-        self.affari[ticket] = [
-            NS(entry=self.DEAL_ENTRY_IN, price=p.price_open, profit=0.0, commission=0.0, swap=0.0),
-            NS(entry=self.DEAL_ENTRY_OUT, price=prezzo, profit=profitto, commission=0.0, swap=0.0),
-        ]
+        self._affari(ticket, p.price_open).append(
+            NS(entry=self.DEAL_ENTRY_OUT, price=prezzo, profit=profitto, commission=0.0, swap=0.0))
         self.saldo += profitto
         return profitto

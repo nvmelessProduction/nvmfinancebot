@@ -210,32 +210,100 @@ def test_la_prova_del_collegamento_non_manda_ordini_e_spiega_i_rifiuti():
     assert "tutti i 2 mercati" in tutto_bene
 
 
-def test_apre_due_meta_sposta_a_pareggio_e_chiude():
+def test_una_posizione_sola_meta_al_tp1_dal_bot_pareggio_e_chiude():
+    # Il proprietario, 07/10/2026: *"vorrei che apri una sola operazione. Quando arriva [al TP1], parzializza.
+    # Se si può parzializzare, altrimenti no. E continua fino al TP"*.
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, fatto = e.apri(d, t.conto())
+    assert viva is not None and len(viva.tickets) == 1 and len(m.posizioni) == 1, fatto.testo
+    (a,) = viva.tickets
+    # Sul broker: lo stop e il target finale; il TP1 lo fa il bot.
+    assert m.posizioni[a].tp == round(d.op.tp2, 5) and m.posizioni[a].sl == round(d.op.stop, 5)
+    assert 0 < viva.meta <= m.posizioni[a].volume / 2 + 1e-9
+    # In parole semplici: cosa ho fatto, quanto posso perdere, quanto posso guadagnare, in euro.
+    assert ("HO COMPRATO" in fatto.testo or "HO VENDUTO" in fatto.testo) and "se va male perdo" in fatto.testo
+    assert "Obiettivo 1" in fatto.testo and "Obiettivo 2" in fatto.testo and "EUR" in fatto.testo
+    assert "in una posizione sola" in fatto.testo
+    assert "del conto" in fatto.testo and "Model#1" not in fatto.testo and "Kelly" not in fatto.testo
+    assert " R" not in fatto.testo and "Probabilità" not in fatto.testo
+
+    vive, fatti = e.sorveglia([viva])          # niente ancora
+    assert vive and not vive[0].meta_fatta and not fatti
+    volume = m.posizioni[a].volume
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.tp1, ask=d.op.tp1 + 0.0001)   # il TP1
+    vive, fatti = e.sorveglia(vive)
+    v = vive[0]
+    assert v.meta_fatta and v.pareggio_fatto
+    assert abs(m.posizioni[a].volume - (volume - v.meta)) < 1e-9          # chiusa meta', il resto resta
+    assert m.posizioni[a].sl == round(v.ingresso, 5) and m.posizioni[a].tp == round(d.op.tp2, 5)
+    assert "primo obiettivo" in fatti[0].testo
+    vive, fatti = e.sorveglia(vive)            # una volta sola
+    assert not fatti and abs(m.posizioni[a].volume - (volume - v.meta)) < 1e-9
+
+    m.chiudi(a, v.ingresso)                    # il resto torna a pareggio
+    vive, fatti = e.sorveglia(vive)
+    assert vive == [] and "chiusa in guadagno" in fatti[0].testo
+    assert fatti[0].libro["netto"] > 0         # il parziale e' nel risultato
+
+
+def test_il_tp1_toccato_fra_due_controlli_si_vede_dalle_barre_da_un_minuto():
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    long = d.r.verso is Verso.LONG
+    # Fra un minuto e l'altro il prezzo ha toccato il TP1 ed e' tornato indietro.
+    barra = np.zeros(1, BARRA)
+    barra["time"] = viva.quando + 60 + m.scarto * 3600
+    barra["high"] = d.op.tp1 + 0.0001 if long else d.op.ingresso
+    barra["low"] = d.op.ingresso if long else d.op.tp1 - 0.0002
+    m.barre[("EURUSD", m.TIMEFRAME_M1)] = barra
+    vive, fatti = e.sorveglia([viva])
+    assert vive[0].meta_fatta and vive[0].pareggio_fatto and "primo obiettivo" in fatti[0].testo
+    # Le barre di prima dell'apertura non contano.
+    viva2, _ = e.apri(replace(d, r=replace(d.r, quando=d.r.quando + 86400)), t.conto())
+    barra["time"] = viva2.quando - 120 + m.scarto * 3600
+    vive, fatti = e.sorveglia([viva2])
+    assert not vive[0].meta_fatta
+
+
+def test_se_il_lotto_non_si_divide_niente_parziale_e_tutto_al_target_finale():
+    d = _una_decisione()
+    m = MT5Finto(saldo=2.0)                    # la puntata e' il lotto minimo: non si divide
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, fatto = e.apri(d, t.conto(), pieno=1.0, parte=1.0, fiducia_minima=0.0, riduci=False)
+    assert viva is not None and len(viva.tickets) == 1 and viva.meta == 0.0, fatto.testo
+    (a,) = viva.tickets
+    assert m.posizioni[a].tp == round(d.op.tp2, 5)
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.tp1, ask=d.op.tp1 + 0.0001)
+    vive, fatti = e.sorveglia([viva])
+    assert m.posizioni[a].volume == viva.volume and m.posizioni[a].sl == round(viva.ingresso, 5)
+    assert "non si poteva dividere" in fatti[0].testo
+
+
+def test_lo_stesso_crt_non_si_apre_due_volte():
     d = _una_decisione()
     m = MT5Finto()
     m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
     t = Terminale(mt5=m)
     e = Esecutore(t)
-    viva, fatto = e.apri(d, t.conto())
-    assert viva is not None and len(viva.tickets) == 2, fatto.testo
-    a, b = viva.tickets
-    assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
-    assert m.posizioni[a].sl == m.posizioni[b].sl == round(d.op.stop, 5)
-    # In parole semplici: cosa ho fatto, quanto posso perdere, quanto posso guadagnare, in euro.
-    assert ("HO COMPRATO" in fatto.testo or "HO VENDUTO" in fatto.testo) and "se va male perdo" in fatto.testo
-    assert "Obiettivo 1" in fatto.testo and "Obiettivo 2" in fatto.testo and "EUR" in fatto.testo
-    assert "del conto" in fatto.testo and "Model#1" not in fatto.testo and "Kelly" not in fatto.testo
-    assert " R" not in fatto.testo and "Probabilità" not in fatto.testo
-
-    m.chiudi(a, d.op.tp1)  # il broker incassa il primo target
-    vive, fatti = e.sorveglia([viva])
-    assert vive and vive[0].pareggio_fatto
-    assert m.posizioni[b].sl == round(viva.ingresso, 5)
-    assert "primo obiettivo" in fatti[0].testo
-
-    m.chiudi(b, viva.ingresso)  # il resto torna a pareggio
-    vive, fatti = e.sorveglia(vive)
-    assert vive == [] and "chiusa" in fatti[0].testo
+    viva, _ = e.apri(d, t.conto())
+    assert viva is not None
+    # Anche se il bot se l'e' dimenticato (ripartito senza stato): il commento sul broker dice quale CRT e'.
+    di_nuovo, fatto = e.apri(d, t.conto())
+    assert di_nuovo is None and len(m.posizioni) == 1 and "già" in fatto.testo
+    assert all(len(p.comment) <= 31 for p in m.posizioni.values())
 
 
 def test_su_un_conto_reale_non_apre():
@@ -510,7 +578,7 @@ def test_il_bot_racconta_l_allenamento_una_volta_sola(tmp_path, monkeypatch):
     assert mandati[-1] == "🏋️ Di nuovo"
 
 
-def test_il_pareggio_prima_del_primo_obiettivo_tiene_i_due_target():
+def test_il_pareggio_prima_del_primo_obiettivo_tiene_il_target_finale():
     from nvm.vivo.esecutore import Viva
     d = _una_decisione()
     m = MT5Finto()
@@ -519,13 +587,14 @@ def test_il_pareggio_prima_del_primo_obiettivo_tiene_i_due_target():
     e = Esecutore(t)
     viva, _ = e.apri(d, t.conto())
     viva.pareggio_a = 0.5                         # i Livelli hanno imparato: pareggio a meta' strada
-    a, b = viva.tickets
+    (a,) = viva.tickets
     meta = viva.ingresso + 0.6 * (viva.tp1 - viva.ingresso)
     m.tick["EURUSD"] = NS(time=0, bid=meta, ask=meta + 0.00001) if not viva.short else NS(time=0, bid=meta - 0.00001, ask=meta)
+    volume = m.posizioni[a].volume
     vive, fatti = e.sorveglia([viva])
     assert vive[0].pareggio_fatto and "prezzo d'entrata" in fatti[0].testo
-    assert m.posizioni[a].sl == m.posizioni[b].sl == round(viva.ingresso, 5)
-    assert m.posizioni[a].tp == round(d.op.tp1, 5) and m.posizioni[b].tp == round(d.op.tp2, 5)
+    assert m.posizioni[a].sl == round(viva.ingresso, 5) and m.posizioni[a].tp == round(d.op.tp2, 5)
+    assert m.posizioni[a].volume == volume and not vive[0].meta_fatta     # il TP1 non e' ancora arrivato
 
 
 def test_l_uscita_anticipata_chiude_a_mercato_e_lo_dice():
@@ -687,3 +756,52 @@ def test_il_bot_non_guarda_brent_ftse_e_nikkei():
     assert len(vivo.STRUMENTI_VIVO) == 37
     assert not {"UKOIL", "UK100", "JPN225"} & set(vivo.STRUMENTI_VIVO)
     assert {"USOIL", "GER40", "BTCUSD", "XAGUSD", "EURUSD"} <= set(vivo.STRUMENTI_VIVO)
+
+
+def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monkeypatch):
+    # Prima un errore su uno strumento faceva ripartire tutto il giro dell'ora al minuto dopo, e gli
+    # strumenti gia' guardati (euro-dollaro per primo) riaprivano la stessa operazione.
+    import vivo
+    from nvm.vivo.stato import Stato
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    monkeypatch.setattr(vivo, "giro_orario", lambda basi, *a, **k: [NS(chiave=f"{next(iter(basi))} H4 1")])
+    bot = object.__new__(vivo.Bot)
+    allarmi, decise = [], []
+
+    def orarie(s, quante):
+        if s == "GBPUSD":
+            raise RuntimeError("niente barre")
+        return ore_finte(s, giorni=1)
+    bot.terminale = NS(orarie=orarie, scarto=3)
+    bot.strumenti = ["EURUSD", "GBPUSD", "AUDUSD"]
+    bot.basi = {s: ore_finte(s, giorni=1) for s in bot.strumenti}
+    bot.fini, bot.lunghe, bot.squadra, bot.capo = {}, {}, None, None
+    bot.stato = Stato()
+    bot.stato.ultimo_giro = utc(2025, 1, 1)
+    bot.allarme = allarmi.append
+    bot._decidi = lambda dd, adesso, finestra: decise.extend(d.chiave for d in dd)
+    for nome in ("aggiorna_lunghe", "uscite", "aggiorna_disegni", "controlla_disegni", "parla"):
+        setattr(bot, nome, lambda *a: None)
+    ora = utc(2025, 1, 1, 5)
+    bot.giro(ora)
+    assert decise == ["EURUSD H4 1", "AUDUSD H4 1"] and bot.stato.ultimo_giro == ora
+    assert len(allarmi) == 1 and "GBPUSD" in allarmi[0]
+    # Se non va nessuno strumento (MT5 staccato) il giro si riprova al minuto dopo.
+    bot.terminale = NS(orarie=lambda s, q: (_ for _ in ()).throw(RuntimeError("MT5 staccato")), scarto=3)
+    with pytest.raises(RuntimeError):
+        bot.giro(ora + 3600)
+    assert bot.stato.ultimo_giro == ora
+
+
+def test_il_bot_non_rimette_sul_tavolo_un_crt_gia_visto(tmp_path, monkeypatch):
+    import vivo
+    from nvm.vivo.stato import Stato
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    bot = object.__new__(vivo.Bot)
+    bot.stato = Stato()
+    bot.stato.vive = [NS(chiave="EURUSD H4-H1 short 1 colpo 1 crt 0")]
+    chiesto = []
+    bot.terminale = NS(conto=lambda: chiesto.append(1))
+    bot.squadra = None
+    bot._decidi([NS(chiave="EURUSD H4-H1 short 1 colpo 1 crt 0")], 1, 3600)
+    assert not chiesto                 # gia' aperto: non si riunisce nessuno e non si apre niente

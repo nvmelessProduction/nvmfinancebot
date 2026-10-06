@@ -27,6 +27,9 @@ riassunte in `casi/ESEMPI-PROPRIETARIO.md`) e alle domande ha risposto così:
    candela h1 che equivale entrare sulla successiva candela h4"*;
 10. *"non c'è limite di orario entra ad apertura candela"*;
 11. la routine dei vent'anni *"a tua discrezione"*: spenta il 06/10/2026.
+12. 07/10/2026: *"vorrei che apri una sola operazione. Quando arriva [al TP1], parzializza. Se si può
+    parzializzare, altrimenti no. E continua fino al TP"*; lo stop dopo il parziale va a pareggio; più operazioni
+    sullo stesso strumento: una per CRT.
 
 Dove i video e le foto dicono cose diverse vincono le foto (risposta 1). Il metodo dei video resta nel
 codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa questo.
@@ -41,7 +44,7 @@ codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa quest
 | Il range è la candela madre se la candela 1 è una inside bar (e così via) | risposta 5, foto 2/7 | `foto._madre` |
 | Entrata all'apertura della candela 3, a qualunque ora | risposte 1 e 10; tutte le foto | `foto.trova`, `giro.occasioni_foto` |
 | Stop oltre l'estremo della candela 2 | tutte le foto | `foto.trova` |
-| TP1 = l'altro lato del range, metà chiusa e stop a pareggio | risposta 4; tutte le foto ("TP1 PARZ + BE") | `foto.trova`, `giro.piani_foto` |
+| TP1 = l'altro lato del range, metà chiusa e stop a pareggio; una posizione sola, la metà la chiude il bot (se il lotto non si divide, solo il pareggio) | risposte 4 e 12; tutte le foto ("TP1 PARZ + BE") | `foto.trova`, `giro.piani_foto`, `esecutore.Esecutore` |
 | Key level = massimo o minimo del periodo prima (giorno, settimana, mese, 3 mesi, anno), almeno giornaliero e almeno grande come il CRT, preso dal CRT (candela 1 o 2) o dalla candela appena prima; per 4, 6 e 12 ore anche il massimo (minimo) di oggi fatto prima del range | tutte le foto ("KL preso: DH, WH, ML, max annuale…"); foto 3/4 ("per l'entry H4 come KL ho usato il DH") | `foto.key_level_presi` |
 | Il CRT a 1 ora vale solo se prende il key level del giorno e il massimo (minimo) dell'ultima candela a 4 ore | risposta 9, foto 4/6 | `foto._h4_preso`, `giro.setup_buono` |
 | Target finale: il gap ancora intatto del timeframe sopra il CRT (al massimo 1-2 anni di età: 120 giorni, 52 settimane, 24 mesi, 8 trimestri, 6 semestri, 6 anni), oltre il TP1; se davanti c'è un gap già toccato che ha appena reagito contro di noi, l'estremo della sua aggressione (la liquidazione); il più vicino dei due | risposta 4; cartella 2; foto 3/4, 4/1, 4/6 | `foto.obiettivo_finale`, `gap_target`, `liquidazione` |

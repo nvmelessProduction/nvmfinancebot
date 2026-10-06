@@ -1,10 +1,10 @@
 """L'Esecutore: porta sul conto demo le decisioni del Capo, con la puntata del Rischio.
 
-Ogni operazione e' fatta di due meta': una esce al primo target, l'altra al
-secondo, e quando la prima incassa lo stop della seconda va a pareggio. E'
-la stessa regola delle prove sullo storico (`nvm/prova/campo.py`). Lo stop e
-i target stanno sul broker: se il bot si spegne, le posizioni restano
-protette.
+Ogni operazione e' una posizione sola (il proprietario, 07/10/2026: *"vorrei che apri una sola operazione"*),
+con lo stop e il target finale sul broker: se il bot si spegne, la posizione resta protetta. Quando il prezzo
+arriva al TP1 il bot chiude meta' e mette lo stop al prezzo d'entrata; se il lotto non si puo' dividere, sposta
+solo lo stop e tiene tutto fino al target finale. E' la stessa regola delle prove sullo storico
+(`nvm/prova/campo.py`).
 """
 
 from __future__ import annotations
@@ -65,6 +65,10 @@ class Viva:
     legate: list[str] = field(default_factory=list)
     # Quando il prezzo ha toccato il primo obiettivo (per il kiss of death che non va superato).
     primo_quando: int = 0
+    # La posizione sola: quanti lotti chiude il bot al TP1 (0 = nessun parziale: il lotto non si divide, o le
+    # operazioni di prima con due posizioni) e se l'ha gia' fatto.
+    meta: float = 0.0
+    meta_fatta: bool = False
 
     @property
     def gambe(self) -> dict[str, float]:
@@ -162,14 +166,19 @@ class Esecutore:
             return None, Fatto(messaggi.saltata(d, "siamo già troppo esposti con " + ", ".join(legate or ["le altre aperte"])),
                                equipe=True, saltata="già troppo esposti su operazioni legate")
         volume = min(_giu(conto.saldo * f / per_lotto, passo), massimo)
+        meta = 0.0
         if op.parziale in (0.0, 1.0) and volume >= minimo:
-            # Il piano scelto dai cervelli: tutto al primo obiettivo, o tutto al secondo col pareggio.
+            # Il piano scelto: tutto al primo obiettivo, o tutto al secondo col pareggio.
             uscita = USCITE[1] if op.parziale == 1.0 else USCITE[2]
             parti = [(volume, op.tp1 if op.parziale == 1.0 else op.tp2)]
-        elif volume >= 2 * minimo:
-            meta = _giu(volume / 2, passo)
-            parti = [(meta, op.tp1), (meta, op.tp2)]
-            uscita = USCITE[0]
+        elif volume >= minimo:
+            # Una posizione sola fino al target finale; al TP1 il bot ne chiude meta', se il lotto si divide
+            # (*"Se si può parzializzare, altrimenti no. E continua fino al TP"*).
+            meta = _giu(volume * op.parziale, passo)
+            if meta < minimo or volume - meta < minimo - 1e-9:
+                meta = 0.0
+            uscita = USCITE[0] if meta > 0 else USCITE[2]
+            parti = [(volume, op.tp2)]
         else:
             # Una posizione sola: l'uscita che fa crescere di piu' il conto, con la fiducia nelle stime
             # che il Rischio ha imparato (non con le stime prese per buone: il lotto minimo puo' essere
@@ -179,7 +188,8 @@ class Esecutore:
             if dei_cervelli:
                 # La crescita torna a zero al doppio della puntata giusta (`crescita_creduta`).
                 migliore = 1.0 if quota < 2 * (da_sola - togli) else -1.0
-                uscita = USCITE[2] if op.parziale == 0.0 else USCITE[1]
+                # Col lotto minimo non si divide: tutto al target del piano (col pareggio al TP1).
+                uscita = USCITE[1] if op.parziale == 1.0 else USCITE[2]
             else:
                 scelte = [(crescita_creduta(esiti(d.p1, d.q, rr1, rr2, costi, u), quota, parte, togli), u)
                           for u in USCITE[1:]]
@@ -190,7 +200,16 @@ class Esecutore:
                        f"({quota:.1%} del conto): troppo per quanto valgono le stime"), equipe=True,
                     saltata="conto troppo piccolo per il lotto minimo")
             parti = [(v, op.tp1 if uscita == USCITE[1] else op.tp2)]
-        commento = f"nvm {k} {d.r.alto_tf.value}{d.r.basso_tf.value} {d.r.colpo}"
+        # Il commento dice di quale CRT e' la posizione: lo stesso CRT non si apre due volte, neanche se il bot
+        # riparte senza ricordarselo.
+        commento = commento_crt(d)
+        try:
+            gia = commento in self.t.commenti(MAGIC)
+        except (ErroreMT5, AttributeError):
+            gia = False
+        if gia:
+            return None, Fatto(messaggi.saltata(d, "questo CRT ha già la sua operazione aperta"), equipe=True,
+                               saltata="CRT già aperto")
         tickets, prezzi, messi = [], [], 0.0
         for v, target in parti:
             e = self.t.apri(k, verso, v, op.stop, target, MAGIC, commento)
@@ -207,9 +226,14 @@ class Esecutore:
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
                     tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a, basso=d.r.basso_tf.value,
                     livello=float(op.livello_model1 or 0.0), invalida_candele=op.invalida_candele,
-                    tempo_candele=op.tempo_candele, da_sola=da_sola, legate=legate if togli > 0 else [])
-        testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita,
-                                  rischio / conto.saldo if conto.saldo else None)
+                    tempo_candele=op.tempo_candele, da_sola=da_sola, legate=legate if togli > 0 else [],
+                    meta=meta if len(tickets) == 1 else 0.0)
+        try:
+            testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita,
+                                      rischio / conto.saldo if conto.saldo else None, meta=meta)
+        except Exception:
+            # L'ordine e' gia' sul conto: un messaggio sbagliato non deve farla perdere di vista al bot.
+            testo = f"{'🔴 HO VENDUTO' if verso is Verso.SHORT else '🟢 HO COMPRATO'} {k}: {messi:g} lotti a {ingresso:g}"
         if volume < minimo:
             testo += f"\n(La puntata giusta era più piccola del minimo che il broker accetta: apro il minimo, {minimo:g} lotti.)"
         return viva, Fatto(testo)
@@ -255,9 +279,28 @@ class Esecutore:
                                           "chiave": v.chiave}))
                 continue
             bid, ask = self.t.prezzo(v.strumento)
-            # Il primo target: la meta' al primo target e' stata incassata, o il prezzo ci e' arrivato.
-            primo_preso = (v.uscita == USCITE[0] and v.tickets[0] in v.chiusi and v.incassato > 0) or (
-                (ask <= v.tp1) if v.short else (bid >= v.tp1))
+            sola = len(v.tickets) == 1
+            # Il primo target: la meta' al primo target e' stata incassata, o il prezzo ci e' arrivato (anche fra
+            # un controllo e l'altro: le barre da un minuto dopo l'apertura).
+            alto, basso = bid, bid
+            if sola and (not v.pareggio_fatto or (v.meta > 0 and not v.meta_fatta)):
+                try:
+                    e = self.t.estremi(v.strumento, v.quando)
+                except Exception:
+                    e = None
+                if e is not None:
+                    alto, basso = max(bid, e[0]), min(bid, e[1])
+            primo_preso = (v.uscita == USCITE[0] and not sola and v.tickets[0] in v.chiusi and v.incassato > 0) or (
+                (min(ask, basso + (ask - bid)) <= v.tp1) if v.short else (alto >= v.tp1))
+            if sola and v.meta > 0 and not v.meta_fatta and primo_preso:
+                # Il TP1: il bot chiude meta' della posizione (*"Quando arriva ... parzializza"*).
+                e = self.t.chiudi_posizione(v.strumento, ancora[0], v.meta)
+                if e.ok:
+                    v.meta_fatta = True
+                else:
+                    fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: TP1 preso ma non riesco a chiudere metà "
+                                                        f"({e.messaggio}): riprovo al minuto dopo.")))
+                    primo_preso = False
             # Il pareggio: al livello che i Livelli avevano scelto all'apertura.
             livello = v.ingresso + v.pareggio_a * (v.tp1 - v.ingresso)
             oltre = (ask <= livello) if v.short else (bid >= livello)
@@ -265,7 +308,7 @@ class Esecutore:
             if sposta:
                 for ticket in ancora:
                     # Ogni posizione tiene il suo target: la prima meta' il primo, la seconda il secondo.
-                    primo = v.uscita == USCITE[1] or (v.uscita == USCITE[0] and ticket == v.tickets[0])
+                    primo = v.uscita == USCITE[1] or (v.uscita == USCITE[0] and not sola and ticket == v.tickets[0])
                     e = self.t.sposta_stop(v.strumento, ticket, v.ingresso, v.tp1 if primo else v.tp2)
                     if not e.ok:
                         fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}")))
@@ -274,8 +317,12 @@ class Esecutore:
                 v.primo_quando = int(time.time())
             if primo_preso and not v.primo_detto and v.uscita != USCITE[1]:
                 v.primo_detto = True
-                fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
-                                                         None if v.pareggio_fatto else livello)))
+                if sola and not v.meta_fatta:
+                    # Il lotto non si divideva: niente parziale, solo lo stop a pareggio.
+                    fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso, tp1=True)))
+                else:
+                    fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
+                                                             None if v.pareggio_fatto else livello)))
             elif sposta:
                 fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
             restano.append(v)
@@ -310,6 +357,18 @@ class Esecutore:
                     return Fatto(messaggi.allarme(f"{v.strumento}: non riesco a chiudere ({e.messaggio})"))
         v.uscita_anticipata = motivo
         return Fatto(messaggi.uscita_anticipata(v.strumento, Verso(v.verso), motivo))
+
+
+def commento_crt(d: Decisione) -> str:
+    """Il commento della posizione sul broker (al massimo 31 caratteri): strumento, timeframe, verso e
+    l'apertura della candela 3, cioe' quale CRT e'."""
+    quando = int(d.r.quando)
+    cifre = "0123456789abcdefghijklmnopqrstuvwxyz"
+    b36 = ""
+    while quando:
+        quando, resto = divmod(quando, 36)
+        b36 = cifre[resto] + b36
+    return f"nvm {d.r.strumento} {d.r.alto_tf.value}{'S' if d.r.verso is Verso.SHORT else 'L'} {b36 or '0'}"[:31]
 
 
 def come_dati(v: Viva) -> dict:
