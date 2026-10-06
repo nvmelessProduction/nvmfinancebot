@@ -9,31 +9,39 @@ chiusi. Per questo il bot dal vivo decide come avrebbe deciso sullo storico:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 import numpy as np
 
+from nvm.agenti import foto
 from nvm.agenti.cacciatore import CRT, Variante, Verso, caccia
+from nvm.agenti.grilletto import Scatto
 from nvm.agenti.capo import Capo, riga
 from nvm.agenti.conferme import SOPRA, AllaRomeo, Contesto, KeyLevel, Liquidita, Orario, tutti_i_pareri
 from nvm.agenti.livelli import piani_romeo, piano, scadenza
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti
 from nvm.prova.base import Risultato, opera, opera_candela_3
-from nvm.prova.campo import Operazione
+from nvm.prova.campo import COMMISSIONE, Operazione, Uscita
 from nvm.agenti import capo as capo_mod, inventate, manopole, panorama
 from nvm.agenti.conferme import GRANDEZZA, Grandi
 from nvm.cervello.piani import tutti as piani_di
 from nvm.cervello.viste import COMPAGNI, viste
-from nvm.tempo import TF
+from nvm.tempo import NEW_YORK, ORDINE, TF
 
 # Le coppie che si guardano con le orarie, ogni ora.
 COPPIE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
 # La quarta coppia di Romeo si guarda con i quarti d'ora di MT5, ogni quarto d'ora.
 COPPIA_VELOCE = (TF.H4, TF.M15)
-# Come nascono le occasioni: "candela 3" e' il metodo dei video (`spec/metodo_romeo.md`: aspettata la
-# chiusura della candela 2, l'entrata nella candela 3); "model1" quello di prima (anche nella candela 2).
-METODO = "candela 3"
+# Come nascono le occasioni: "foto" e' il metodo delle foto del proprietario (`spec/metodo_foto.md`, dal
+# 06/10/2026: entrata all'apertura della candela 3, stop oltre la 2, TP1 l'altro lato del range, target finale
+# il gap o il key level); "candela 3" il metodo dei video (`spec/metodo_romeo.md`); "model1" quello di prima.
+METODO = "foto"
+# Fino a quando si segue un'occasione del metodo delle foto sulla carta, per timeframe del CRT: i target finali
+# sono gap e key level dei timeframe grandi, possono servire mesi.
+TETTO_FOTO = {TF.H1: 10 * 86400, TF.H4: 30 * 86400, TF.H6: 40 * 86400, TF.D1: 90 * 86400,
+              TF.W1: 300 * 86400, TF.MN: 800 * 86400}
 
 
 @dataclass
@@ -71,6 +79,8 @@ class Decisione:
     grandi_con: int = 0
     # I piani di Livelli per la squadra, tutti come li vuole Romeo (`livelli.PIANI_ROMEO`).
     piani_romeo: Optional[list] = None
+    # Il metodo delle foto: il setup, il quadro dei timeframe, il target finale, il setup del DXY.
+    foto: Optional[dict] = None
 
     @property
     def entra(self) -> bool:
@@ -174,14 +184,25 @@ def _piani(r, basse) -> Optional[list]:
 
 def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
          orarie: Optional[dict[str, Minuti]] = None, gemelli: Optional[dict[str, Minuti]] = None,
-         metodo: Optional[str] = None) -> list[Decisione]:
+         metodo: Optional[str] = None, lunghe: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
 
     `orarie` sono le ore di ogni strumento, se `basi` sono i quarti d'ora: da
-    li' vengono il timeframe sopra, la settimana e i CRT piu' grandi.
+    li' vengono il timeframe sopra, la settimana e i CRT piu' grandi. `lunghe`: le giornaliere di tanti anni
+    (per i 3, 6 e 12 mesi del metodo delle foto).
     """
     orarie = basi if orarie is None else orarie
     metodo = METODO if metodo is None else metodo
+    if metodo == "foto":
+        decisioni = []
+        for strumento, base in basi.items():
+            ore = orarie.get(strumento, base)
+            if ore.passo > 3600:
+                continue
+            decisioni += occasioni_foto(strumento, ore, dal, adesso, capo, gemelli or orarie,
+                                        (lunghe or {}).get(strumento))
+        decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
+        return decisioni
     decisioni = []
     for strumento, base in basi.items():
         ore = orarie.get(strumento, base)
@@ -219,6 +240,136 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                     g3.livelli(r.verso, GRANDEZZA.get(alto, 0), r.quando),
                     _piani_romeo(r, basse)))
     decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
+    return decisioni
+
+
+# --- il metodo delle foto (`nvm/agenti/foto.py`) ----------------------------------------------------------
+
+# I quadri dei timeframe pesano qualche MB l'uno: se ne tengono pochi (il DXY si riusa per tutte le coppie
+# col dollaro nello stesso giro).
+_QUADRI: dict = {}
+_QUADRI_MASSIMI = 12
+
+
+def _ricorda_quadro(chiave, fai):
+    if chiave not in _QUADRI:
+        if len(_QUADRI) >= _QUADRI_MASSIMI:
+            _QUADRI.pop(next(iter(_QUADRI)))
+        _QUADRI[chiave] = fai()
+    return _QUADRI[chiave]
+
+
+def _quadro(ore: Minuti, adesso: int, lunghe: Optional[Minuti] = None):
+    return _ricorda_quadro(("quadro", _impronta(ore), adesso,
+                            None if lunghe is None or not len(lunghe) else _impronta(lunghe)),
+                           lambda: foto.Quadro.da(ore, adesso, lunghe))
+
+
+def _dxy(gemelli: Optional[dict], adesso: int):
+    """Il quadro del DXY sintetico, se il bot ha le coppie che servono."""
+    if not gemelli or not all(k in gemelli for k in foto.PESI_DXY):
+        return None
+    chiave = ("dxy", adesso, tuple(_impronta(gemelli[k]) for k in foto.PESI_DXY if len(gemelli[k])))
+
+    def fai():
+        m = foto.dxy(gemelli)
+        return None if m is None or len(m) < 200 else foto.Quadro.da(m, adesso)
+    return _ricorda_quadro(chiave, fai)
+
+
+def setup_buono(s) -> bool:
+    """Il CRT a 1 ora vale solo se ha preso il key level giornaliero e il massimo (minimo) a 4 ore: *"se il
+    prezzo prende kl daily e sbilancia un max minimo h4 e si forma un crt h1"* (il proprietario, 06/10/2026)."""
+    if s.tf is not TF.H1:
+        return True
+    return s.h4_preso is not None and any(l.tf is TF.D1 and not l.oggi for l in s.presi)
+
+
+def piani_foto(s, ob, altro, quando: int) -> list:
+    """I piani di Livelli, nell'ordine di `foto.PIANI`: tutto al TP1; meta' al TP1 e il resto al target finale
+    (quello delle foto, di partenza); meta' al TP1 e il resto al target dopo. None se non si puo' fare."""
+    fuori = []
+    for parziale, tp2 in ((1.0, s.tp1), (0.5, ob.prezzo), (0.5, None if altro is None else altro.prezzo)):
+        if tp2 is None or (parziale < 1.0 and tp2 == s.tp1):
+            fuori.append(None)
+            continue
+        try:
+            fuori.append(Operazione(s.strumento, s.verso, quando, s.ingresso, s.stop, s.tp1, tp2,
+                                    parziale=parziale, pareggio=parziale < 1.0))
+        except ValueError:
+            fuori.append(None)
+    return fuori
+
+
+def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=()) -> Optional[Decisione]:
+    """Il setup delle foto come `Decisione`, con gli stessi oggetti che il resto del bot usa gia'."""
+    ob = foto.obiettivo_finale(q, s)
+    altro = foto.target_dopo(q, s, ob)
+    piani = piani_foto(s, ob, altro, s.n3_inizio)
+    op = piani[1] or piani[0]
+    if op is None:
+        return None
+    crt = s.crt(TF.H1)
+    ore = q.ore
+    indice = min(int(np.searchsorted(ore.inizio, s.n3_inizio)), max(len(ore) - 1, 0))
+    scatto = Scatto(crt, s.n3_inizio, indice, s.tp1, s.n2_inizio, s.n2_alto, s.n2_basso,
+                    modello="dal DXY" if s.dal_dxy else "apertura N3", punta=s.n2_alto if s.short else s.n2_basso,
+                    apertura_3=s.entrata)
+    rischio = op.rischio
+    costo = COMMISSIONE.get(s.strumento, 0.0) / rischio if rischio > 0 else 0.0
+    r = Risultato(s.strumento, s.tf, TF.H1, s.verso, s.n3_inizio, 0.0, Uscita.SCADUTA, False, costo, rischio, scatto,
+                  colpo=1, rr1=abs(op.tp1 - op.ingresso) / rischio, rr2=abs(op.tp2 - op.ingresso) / rischio,
+                  stop_su_ampiezza=rischio / max(s.range_alto - s.range_basso, 1e-12), chiusa_quando=0,
+                  ingresso=op.ingresso, stop=op.stop)
+    ora = Orario(int(datetime.fromtimestamp(s.n3_inizio, tz=NEW_YORK).hour),
+                 int(datetime.fromtimestamp(s.n2_inizio, tz=NEW_YORK).hour))
+    x = np.zeros(len(capo.media)) if getattr(capo, "media", None) is not None else np.zeros(1)
+    return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
+                     piani_romeo=piani,
+                     foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy,
+                           "allineati": list(allineati)})
+
+
+def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Capo,
+                   gemelli: Optional[dict] = None, lunghe: Optional[Minuti] = None) -> list[Decisione]:
+    """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso], su uno strumento.
+
+    Se piu' timeframe danno lo stesso verso alla stessa apertura, l'occasione e' una (quella del timeframe
+    piu' grande) e gli altri sono i "timeframe allineati". Sulle coppie col dollaro anche i setup del DXY
+    (*"se lui ci forma un setup long possiamo shortare tutte le coppie ... con il dollaro al denominatore"*)."""
+    if not len(ore):
+        return []
+    q = _quadro(ore, adesso, lunghe)
+    trovati = [s for tf in foto.TF_CRT for s in foto.trova(q, tf, dal, adesso) if setup_buono(s)]
+    qd = _dxy(gemelli, adesso) if strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA else None
+    dxy_setup = []
+    if qd is not None:
+        dxy_setup = [s for tf in foto.TF_CRT for s in foto.trova(qd, tf, dal, adesso) if setup_buono(s)]
+        for sd in dxy_setup:
+            if not sd.presi:
+                continue
+            gia = any(s.tf is sd.tf and s.n3_inizio == sd.n3_inizio for s in trovati)
+            if not gia:
+                x = foto.dal_dxy(q, sd)
+                if x is not None:
+                    trovati.append(x)
+    # Una sola occasione per apertura e verso: quella del timeframe piu' grande.
+    gruppi: dict = {}
+    for s in trovati:
+        gruppi.setdefault((s.n3_inizio, s.verso), []).append(s)
+    decisioni = []
+    for (n3, verso), gruppo in sorted(gruppi.items(), key=lambda g: g[0][0]):
+        gruppo.sort(key=lambda s: -ORDINE.index(s.tf))
+        s = gruppo[0]
+        qq = q.taglia(s.n3_inizio) if s.n3_inizio < adesso else q
+        stessi = [x.tf for x in gruppo[1:]]
+        dxy = next((sd for sd in dxy_setup if sd.tf is s.tf and sd.n3_inizio == s.n3_inizio), None)
+        try:
+            d = _decisione_foto(s, qq, capo, dxy, stessi)
+        except Exception:
+            d = None
+        if d is not None:
+            decisioni.append(d)
     return decisioni
 
 

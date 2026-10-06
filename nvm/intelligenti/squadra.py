@@ -1,13 +1,14 @@
-"""La squadra: i nostri agenti, col metodo dei 17 video di Romeo, che imparano dal vivo.
+"""La squadra: i nostri agenti, col metodo delle foto del proprietario, che imparano dal vivo.
 
-Il proprietario: *"Voglio che li riaddestri da zero seguendo i 17 video in maniera corretta e completa"*,
-*"bot intelligente e strategia di Romeo"*, *"non voglio essere preso in giro"*. Nessuna AI esterna. Qui
-c'e' scritto esattamente cosa fa ogni agente, e i messaggi su Telegram dicono solo questo.
+Il proprietario: *"come nelle foto"* (06/10/2026, `spec/metodo_foto.md`), *"bot intelligente e strategia di
+Romeo"*, *"non voglio essere preso in giro"*. Nessuna AI esterna. Qui c'e' scritto esattamente cosa fa ogni
+agente, e i messaggi su Telegram dicono solo questo.
 
-1. **Le domande di Romeo** (`metodo.py`, `spec/metodo_romeo.md`). Ogni agente risponde alla sua. Sono
-   il metodo: **se anche una sola dice no, non si entra**, e non si disimparano.
+1. **Le domande del metodo** (`metodo.valuta_foto`): il CRT, il key level, la direzione. Ogni agente
+   risponde alla sua. Sono il metodo: **se anche una sola dice no, non si entra**, e non si disimparano.
 2. **Il giudizio di ogni agente si impara.** Ognuno guarda i numeri del suo mestiere (`Metodo.numeri`:
-   il Grilletto lo spessore, l'FVG, l'SMT...; l'Orario l'ora e il giorno; Livelli quanto si guadagna...)
+   il Cacciatore il timeframe e gli allineati, il Gap la fase e l'RSI, il DXY il dollaro, l'Orario l'ora e
+   il giorno, Livelli quanto si guadagna...)
    e ha un suo piccolo modello (regressione logistica) che stima quanto spesso un'occasione cosi' va
    bene. All'inizio non sa niente (50%, *"nessuna esperienza"*); impara da **ogni** occasione finita,
    presa o lasciata, e da quelle vere prima che da quelle sulla carta.
@@ -20,8 +21,8 @@ c'e' scritto esattamente cosa fa ogni agente, e i messaggi su Telegram dicono so
    casi simili** gia' finiti dal vivo. Entra in ogni A+ con lo stop (il proprietario: *"Se c'e' setup bene
    altrimenti sti cavoli"*); ne lascia una solo quando i fatti dicono chiaro che occasioni cosi' perdono
    (*"lose, journal, avoid"*, V9 23:30): almeno `MINIMO_SIMILI` casi simili, in perdita con certezza.
-5. **Livelli** sceglie fra tre piani, tutti di Romeo (al 50% si prende sempre qualcosa): parte da quello
-   dei video e cambia solo se un altro rende di piu' dal vivo.
+5. **Livelli** sceglie fra tre piani (`foto.PIANI`, sempre il TP1 all'altro lato del range): parte da
+   quello delle foto e cambia solo se un altro rende di piu' dal vivo.
 6. **Il Rischio** parte dall'1% del conto, punta di piu' quando il Capo e' piu' convinto del solito e
    meno con altre operazioni aperte, e corregge la puntata coi risultati veri.
 7. **Inventano**: un errore del Capo che si ripete sempre nello stesso verso in una situazione precisa
@@ -42,10 +43,11 @@ from typing import Optional
 
 from nvm.intelligenti.metodo import Metodo
 
-VERSIONE = "video-2"
-AGENTI = ("Cacciatore", "Grilletto", "Key level", "Bias", "Orario", "Livelli")
+VERSIONE = "foto-1"
+AGENTI = ("Cacciatore", "Grilletto", "Key level", "Bias", "Gap", "DXY", "Orario", "Livelli")
 # Le domande obbligatorie, in parole semplici: quello che manca quando dicono no.
 MANCA_IN_PAROLE = {
+    "CRT": "il CRT (la candela 2 che prende un lato e rientra)",
     "candela 3": "aspettare la candela 3",
     "oltre l'apertura": "la finta oltre l'apertura della candela 3",
     "modello d'entrata": "la conferma (Model#1 con la candela spessa, o la vera rottura di struttura)",
@@ -58,15 +60,12 @@ MANCA_IN_PAROLE = {
 # Il secondo giro: le regole di Romeo che legano i mestieri. (chi ascolta, chi parla, cosa ha visto, peso
 # di partenza in logit, la regola). Il peso poi lo impara: e' una colonna in piu' nel suo modello.
 ASCOLTI = (
-    ("Bias", "Grilletto", "SMT", 0.4, "l'SMT confermato vuol dire espansione (V11 13:01)"),
-    ("Orario", "Grilletto", "finta a fine candela", 0.3,
-     "se la finta è arrivata a fine candela, la distribuzione parte subito (V8 07:31)"),
-    ("Key level", "Cacciatore", "candela 1 spessa", 0.3,
-     "una candela 1 spessa appena prima del livello è il CRT ideale (V9 02:43)"),
-    ("Grilletto", "Grilletto", "FVG", 0.3, "il Model#1 con l'FVG è più probabile (V3 16:01)"),
-    ("Livelli", "Cacciatore", "dentro un CRT più grande", 0.3,
-     "dentro un movimento più grande nello stesso verso l'obiettivo arriva più spesso (V5 13:00)"),
-    ("Livelli", "Grilletto", "kiss of death", 0.3, "dopo il kiss of death si va dritti all'obiettivo (V4 07:32)"),
+    ("Bias", "Gap", "dentro un gap a favore", 0.3,
+     "dentro un gap che spinge dalla nostra parte la direzione è più forte (il CRT a supporto di gap, cartella 5)"),
+    ("Bias", "DXY", "DXY a favore", 0.3, "il DXY è un grafico fondamentale: se fa il setup, le coppie col dollaro seguono"),
+    ("Livelli", "Gap", "RSI", 0.3, "con la continuazione confermata dall'RSI il prezzo esce dal gap e va al target"),
+    ("Livelli", "Cacciatore", "allineati", 0.2, "con più timeframe allineati il target arriva più spesso"),
+    ("Key level", "Cacciatore", "inside bar", 0.2, "dopo le inside bar la finta prende più liquidità"),
 )
 
 # Come impara ogni modello.
@@ -84,7 +83,7 @@ CERTEZZA_EVITA = 2.0
 # Il Rischio nasce puntando l'1% del conto: Romeo non dice un numero, dice di non esagerare.
 PUNTATA_INIZIALE = 0.01
 PASSO_RISCHIO = 0.01
-# Livelli nasce col piano di Romeo (`livelli.PIANI_ROMEO`).
+# Livelli nasce col piano delle foto (`foto.PIANI`).
 PIANO_ROMEO = 1
 # Il peso dei risultati veri rispetto a quelli sulla carta.
 PESO_VERO, PESO_CARTA = 1.0, 0.5
@@ -460,30 +459,31 @@ class Squadra:
                               f"{regola}")
             voci.append((d.agente, testo + "."))
         if piano >= 0 and piano != PIANO_ROMEO:
-            from nvm.agenti.livelli import PIANI_ROMEO
-            voci.append(("Livelli", f"Stavolta {PIANI_ROMEO[piano][1]}: dal vivo, finora, su questo grafico così "
+            from nvm.agenti.foto import PIANI
+            voci.append(("Livelli", f"Stavolta {PIANI[piano][1]}: dal vivo, finora, su questo grafico così "
                                     "ha reso di più."))
         if not stop_ok:
             voci.append(("Capo", "Non entriamo: senza uno stop giusto non si entra, mai."))
             return voci
         if not m.a_piu:
-            voci.append(("Capo", "Non entriamo. Romeo vuole " + ", ".join(MANCA_IN_PAROLE.get(d.nome, d.nome)
-                                                                        for d in m.mancano) + "."))
+            voci.append(("Capo", "Non entriamo. Il metodo vuole " + ", ".join(MANCA_IN_PAROLE.get(d.nome, d.nome)
+                                                                            for d in m.mancano) + "."))
             return voci
         n_s, vinte_s, media_s = simili
         if evita:
-            voci.append(("Capo", f"Tutte le regole di Romeo dicono sì, ma dal vivo occasioni così finora sono andate "
+            voci.append(("Capo", f"Tutte le regole del metodo dicono sì, ma dal vivo occasioni così finora sono andate "
                                  f"male: su {n_s} casi simili ne sono andati bene {vinte_s}, in media {_erre(media_s)} "
                                  "volte il rischio. Romeo: «lose, journal, avoid». Stavolta la lasciamo."))
             return voci
         if not entra:
-            voci.append(("Capo", "Tutte le regole di Romeo dicono sì, ma il Rischio non trova una puntata possibile."))
+            voci.append(("Capo", "Tutte le regole del metodo dicono sì, ma il Rischio non trova una puntata possibile."))
             return voci
         n = len(m.obbligatorie)
         punti = [d.nome for d in m.confluenze if d.si]
         entrata = {"vera rottura": " (entrata: vera rottura di struttura)",
-                   "kiss of death": " (entrata: kiss of death)"}.get(m.fatti.get("modello", ""), "")
-        testo = f"Tutte e {n} le regole di Romeo dicono sì. {verbo} {m.fatti.get('strumento')}{entrata}."
+                   "kiss of death": " (entrata: kiss of death)",
+                   "dal DXY": " (il setup l'ha fatto il DXY)"}.get(m.fatti.get("modello", ""), "")
+        testo = f"Tutte e {n} le regole del metodo dicono sì. {verbo} {m.fatti.get('strumento')}{entrata}."
         if punti:
             testo += f" Punti in più: {len(punti)}."
         testo += f" Mettendo insieme i giudizi della squadra stimo che vada bene il {_p(p)} delle volte"
@@ -571,7 +571,7 @@ class Squadra:
                 for nome in capo.get("mancano", [])[:1]:
                     a = agenti.get(nome, "Capo")
                     lezione = (f"Avevo detto di no ({MANCA_IN_PAROLE.get(nome, nome)} mancava) e sarebbe andata "
-                               + ("male: Romeo aveva ragione." if not bene else "bene lo stesso: lo segno, ma la regola resta."))
+                               + ("male: la regola aveva ragione." if not bene else "bene lo stesso: lo segno, ma la regola resta."))
                     fatte.append({"agente": a, "lezione": lezione, "giusto": not bene})
             else:
                 ap = mem.a_piu
@@ -586,8 +586,8 @@ class Squadra:
                                   f"{'bene' if bene else 'male'}: per occasioni così ora dico {_p(c['dopo'])}."})
                 entrato = bool(capo.get("entra")) and bool(d.get("entra"))
                 if entrato:
-                    lezione = ("Siamo entrati con tutte le regole di Romeo ed è andata bene." if bene else
-                               "Siamo entrati con tutte le regole di Romeo ed è andata male: capita, lo stop ci ha "
+                    lezione = ("Siamo entrati con tutte le regole del metodo ed è andata bene." if bene else
+                               "Siamo entrati con tutte le regole del metodo ed è andata male: capita, lo stop ci ha "
                                "protetti. Lo segno nel diario.")
                 else:
                     lezione = ("L'avevamo lasciata e sarebbe andata bene: lo segno, la prossima volta pesa di meno." if bene
@@ -703,8 +703,8 @@ class Squadra:
             n1, s1, v1 = mem.a_piu
             if n1 > n0:
                 k = n1 - n0
-                cambi.append(("Capo", f"questa settimana {k} occasion{'e' if k == 1 else 'i'} con tutte le regole di "
-                                      f"Romeo: {v1 - v0} andat{'a' if v1 - v0 == 1 else 'e'} bene, in media "
+                cambi.append(("Capo", f"questa settimana {k} occasion{'e' if k == 1 else 'i'} con tutte le regole del "
+                                      f"metodo: {v1 - v0} andat{'a' if v1 - v0 == 1 else 'e'} bene, in media "
                                       f"{_erre((s1 - s0) / k)} volte il rischio.", ""))
             for nome, (n, somma) in sorted(mem.controprova.items()):
                 n_p, s_p = prima.get("controprova", {}).get(nome, [0, 0.0])
@@ -712,7 +712,7 @@ class Squadra:
                     media = (somma - s_p) / (n - n_p)
                     cambi.append(("Capo", f"senza «{MANCA_IN_PAROLE.get(nome, nome)}» abbiamo lasciato {n - n_p} "
                                           f"occasioni: sarebbero andate in media {_erre(media)} volte il rischio. "
-                                          + ("Romeo aveva ragione." if media <= 0 else "Stavolta sarebbero andate bene, "
+                                          + ("La regola aveva ragione." if media <= 0 else "Stavolta sarebbero andate bene, "
                                              "ma la regola resta: la seguiamo sempre."), ""))
             if abs(mem.rischio["base"] - prima.get("base", PUNTATA_INIZIALE)) >= 0.0005:
                 cambi.append(("Rischio", f"la mia puntata base passa da {_pct(prima.get('base', PUNTATA_INIZIALE))} a "

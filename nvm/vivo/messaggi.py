@@ -18,7 +18,7 @@ from nvm.vivo.giro import Decisione
 from nvm.vivo.romeo_vivo import PIP as PIP_ROMEO
 
 CIFRE = {n: s.cifre for n, s in STRUMENTI.items()}
-NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: "4 ore", TF.H1: "1 ora",
+NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H12: "12 ore", TF.H6: "6 ore", TF.H4: "4 ore", TF.H1: "1 ora",
            TF.M15: "15 minuti", TF.M5: "5 minuti", TF.M1: "1 minuto"}
 MESI = ("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
         "settembre", "ottobre", "novembre", "dicembre")
@@ -76,7 +76,9 @@ def direzione(verso: Verso) -> str:
 
 
 def coppia(d: Decisione) -> str:
-    return f"{NOMI_TF[d.r.alto_tf]} → {NOMI_TF[d.r.basso_tf]}"
+    if getattr(d, "foto", None):
+        return f"CRT {NOMI_TF.get(d.r.alto_tf, d.r.alto_tf.value)}"
+    return f"{NOMI_TF.get(d.r.alto_tf, d.r.alto_tf.value)} → {NOMI_TF.get(d.r.basso_tf, d.r.basso_tf.value)}"
 
 
 def leggibile(d: Decisione) -> str:
@@ -88,7 +90,7 @@ def leggibile(d: Decisione) -> str:
 
 
 def _candela_range(d: Decisione) -> str:
-    t = datetime.fromtimestamp(d.r.scatto.crt.range_inizio + 7 * 3600, tz=timezone.utc).astimezone(NEW_YORK)
+    t = datetime.fromtimestamp(d.r.scatto.crt.range_inizio + 6 * 3600, tz=timezone.utc).astimezone(NEW_YORK)
     if d.r.alto_tf is TF.MN:
         return f"la candela mensile di {MESI[t.month - 1]} {t.year}"
     if d.r.alto_tf is TF.W1:
@@ -155,6 +157,12 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
     elif uscita == "secondo target":
         righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp2)} → circa {guadagno(op.tp2, 1.0)}")
         righe.append(f"🛡 A {prezzo(k, op.tp1)} sposto lo stop al prezzo d'entrata: da lì non può più perdere")
+    elif getattr(d, "foto", None):
+        ob = d.foto.get("obiettivo")
+        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo metà, circa {guadagno(op.tp1, 0.5)}, "
+                     "e metto lo stop al prezzo d'entrata")
+        righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → l'altra metà, "
+                     f"circa {guadagno(op.tp2, 0.5)}")
     else:
         righe.append(f"🎯 Obiettivo 1: {prezzo(k, op.tp1)} → chiudo metà, circa {guadagno(op.tp1, 0.5)}")
         righe.append(f"🎯 Obiettivo 2: {prezzo(k, op.tp2)} → l'altra metà, circa {guadagno(op.tp2, 0.5)}")

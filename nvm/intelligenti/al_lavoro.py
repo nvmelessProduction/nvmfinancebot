@@ -50,7 +50,10 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
     for d in decisioni:
         s = d.r.strumento
         try:
-            m = metodo.valuta(d, basi[s], fini.get(s), _gemello(s, basi))
+            if getattr(d, "foto", None):
+                m = metodo.valuta_foto(d)
+            else:
+                m = metodo.valuta(d, basi[s], fini.get(s), _gemello(s, basi))
             piani = getattr(d, "piani_romeo", None) or None
             seguire = {"strumento": s, "basso": d.r.basso_tf.value, "scadenza": int(d.scadenza),
                        "piani": [_dati(op) for op in piani]} if piani else None
@@ -127,18 +130,22 @@ def voci(v: Verdetto, rischio: Optional[float] = None, valuta: str = "EUR", quot
 
 
 def benvenuto(strumenti: int) -> str:
-    return (f"Guardiamo {strumenti} mercati col metodo dei 17 video di Romeo. Entriamo quando c'è il suo setup, tutte "
-            "le volte che c'è: la candela 3 dopo la finta, la finta oltre l'apertura (mezzanotte di New York), la "
-            "conferma (Model#1 con la candela spessa su un vecchio massimo, la vera rottura di struttura, o il kiss of "
-            "death dopo il 50%), un key level, il grafico grande dalla nostra parte, l'ora giusta, l'obiettivo ancora da "
-            "prendere. Se manca anche una cosa, aspettiamo. Mai senza stop, e al 50% prendiamo sempre qualcosa.\n"
+    return (f"Guardiamo {strumenti} mercati col metodo delle foto del proprietario (la strategia CRT di Romeo come la "
+            "fa lui). Entriamo all'apertura della candela 3, a qualunque ora, quando: la candela 2 ha preso un lato del "
+            "range (la candela 1, o la madre se ci sono inside bar) ed è rientrata; la finta ha preso un key level "
+            "(massimo o minimo del giorno, della settimana, del mese, dei 3 mesi, dell'anno prima); il timeframe di "
+            "comando è dalla nostra parte. Stop oltre la candela 2. TP1 all'altro lato del range, con metà chiusa e "
+            "il pareggio; il resto al gap del timeframe grande, o al key level se il gap non c'è. Lavoriamo su 1 ora "
+            "(solo quando prende il key level del giorno e il massimo o minimo delle 4 ore), 4 ore, 6 ore, giorno, "
+            "settimana e mese; il DXY vale per tutte le coppie col dollaro. Se manca una regola, aspettiamo. Mai "
+            "senza stop.\n"
             "Come lavoriamo davvero: ognuno di noi stima quanto spesso un'occasione così va bene e lo impara dai "
-            "risultati dal vivo (all'inizio non sappiamo niente e lo diciamo); poi ci ascoltiamo con le regole di "
-            "Romeo che legano i nostri mestieri, e se uno cambia idea lo dice. Il Capo mette insieme i giudizi e "
-            "guarda i casi simili già finiti; lascia un'occasione con tutte le regole solo se i fatti dicono chiaro "
-            "che occasioni così perdono. Il Rischio parte dall'1% del conto. Impariamo prima dai risultati veri del "
-            "broker, poi da quelli sulla carta. Non siamo un'intelligenza artificiale che parla: siamo regole di Romeo "
-            "e numeri che si correggono coi fatti.")
+            "risultati dal vivo (all'inizio non sappiamo niente e lo diciamo): il Gap guarda le fasi del gap e "
+            "l'RSI, il DXY il dollaro, l'Orario l'ora, Livelli dove chiudere. Poi ci ascoltiamo, e se uno cambia "
+            "idea lo dice. Il Capo mette insieme i giudizi e lascia un'occasione con tutte le regole solo se i fatti "
+            "dicono chiaro che occasioni così perdono. Il Rischio parte dall'1% del conto. Impariamo prima dai "
+            "risultati veri del broker, poi da quelli sulla carta. Non siamo un'intelligenza artificiale che parla: "
+            "siamo le regole del metodo e numeri che si correggono coi fatti.")
 
 
 def lezioni_in_breve(lezioni: list[dict], nome: str, erre: float) -> str:
@@ -169,7 +176,7 @@ def come_va(squadra: Squadra) -> list[str]:
     righe = [f"• Il Rischio adesso punta in media {_pct(m.rischio['base'])} del conto a operazione"]
     n, somma, vinte = m.a_piu
     if n:
-        righe.append(f"• Occasioni con tutte le regole di Romeo finite finora: {n}, andate bene {vinte}")
+        righe.append(f"• Occasioni con tutte le regole del metodo finite finora: {n}, andate bene {vinte}")
     voti = [(a, *m.ci_prende(a)) for a in m.voti]
     voti = [(a, g, n) for a, g, n in voti if n >= 5]
     if voti:

@@ -1,6 +1,6 @@
 {
  "decidono_i_cervelli": false,
  "squadra_intelligente": true,
- "quando": "01/10/2026",
- "perche": "Il proprietario (30/09 e 01/10/2026): strategia di Romeo dai 17 video, bot intelligente, niente AI esterne, nessuna presa in giro. Entrano quando c'e' il setup di Romeo, tutte le volte e solo allora (nessun limite di operazioni); mai senza stop; al 50% sempre un parziale. Ogni agente impara il suo giudizio dai risultati dal vivo (prima quelli veri del broker), si confrontano con le regole di Romeo che legano i mestieri, il Capo lascia un'A+ solo con le prove dei casi simili, il Rischio parte dall'1%."
+ "quando": "06/10/2026",
+ "perche": "Il proprietario (06/10/2026): \"come nelle foto\" (spec/metodo_foto.md). CRT su 1 ora, 4 ore, 6 ore, giorno, settimana, mese con le candele dei future (18 di New York); entrata all'apertura della candela 3 a qualunque ora; stop oltre la candela 2; TP1 all'altro lato del range con metà e pareggio; target finale il gap del timeframe grande o il key level. Obbligatori: CRT, key level (massimo o minimo del periodo prima), direzione del timeframe di comando. Gap con le fasi e l'RSI, DXY per le coppie col dollaro. Bot intelligente, niente AI esterne, niente vent'anni; mai senza stop; nessun limite di operazioni (una alla volta per strumento)."
 }

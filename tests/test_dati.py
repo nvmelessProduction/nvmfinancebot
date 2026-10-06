@@ -117,27 +117,27 @@ def test_un_giorno_recente_senza_file_non_si_ricorda_vuoto(tmp_path):
 
 # --- Candele -----------------------------------------------------------------
 
-def test_candela_a_quattro_ore_dalle_5_alle_9_di_new_york():
-    t = [ny(2026, 9, 10, 4, 59), ny(2026, 9, 10, 5, 0), ny(2026, 9, 10, 6, 30), ny(2026, 9, 10, 8, 59), ny(2026, 9, 10, 9, 0)]
+def test_candela_a_quattro_ore_dalle_6_alle_10_di_new_york():
+    t = [ny(2026, 9, 10, 5, 59), ny(2026, 9, 10, 6, 0), ny(2026, 9, 10, 7, 30), ny(2026, 9, 10, 9, 59), ny(2026, 9, 10, 10, 0)]
     prezzi = [(1.0, 1.0, 1.0, 1.0), (1.1, 1.2, 1.05, 1.15), (1.15, 1.3, 1.1, 1.2), (1.2, 1.25, 1.0, 1.02), (2.0, 2.0, 2.0, 2.0)]
     c = costruisci(minuti("EURUSD", t, prezzi, spread=0.0002), TF.H4)
-    assert c.inizio.tolist() == [ny(2026, 9, 10, 1), ny(2026, 9, 10, 5), ny(2026, 9, 10, 9)]
-    assert c.fine[1] == ny(2026, 9, 10, 9)
+    assert c.inizio.tolist() == [ny(2026, 9, 10, 2), ny(2026, 9, 10, 6), ny(2026, 9, 10, 10)]
+    assert c.fine[1] == ny(2026, 9, 10, 10)
     np.testing.assert_allclose(c.bid[1], [1.1, 1.3, 1.0, 1.02])
     np.testing.assert_allclose(c.ask[1], [1.1002, 1.3002, 1.0002, 1.0202])
 
 
-def test_giornaliera_dalle_17_alle_17():
-    m = minuti_piatti("EURUSD", ny(2026, 9, 9, 16), ny(2026, 9, 10, 18))
+def test_giornaliera_dalle_18_alle_18():
+    m = minuti_piatti("EURUSD", ny(2026, 9, 9, 17), ny(2026, 9, 10, 19))
     c = costruisci(m, TF.D1)
-    assert c.inizio.tolist() == [ny(2026, 9, 8, 17), ny(2026, 9, 9, 17), ny(2026, 9, 10, 17)]
+    assert c.inizio.tolist() == [ny(2026, 9, 8, 18), ny(2026, 9, 9, 18), ny(2026, 9, 10, 18)]
 
 
 def test_le_candele_chiuse_non_guardano_il_futuro():
-    m = minuti_piatti("EURUSD", ny(2026, 9, 10, 1), ny(2026, 9, 10, 12))
+    m = minuti_piatti("EURUSD", ny(2026, 9, 10, 2), ny(2026, 9, 10, 13))
     c = costruisci(m, TF.H4)
-    assert len(c.chiuse_entro(ny(2026, 9, 10, 8, 59))) == 1  # solo quella delle 1
-    assert len(c.chiuse_entro(ny(2026, 9, 10, 9))) == 2
+    assert len(c.chiuse_entro(ny(2026, 9, 10, 9, 59))) == 1  # solo quella delle 2
+    assert len(c.chiuse_entro(ny(2026, 9, 10, 10))) == 2
 
 
 # --- Controlli ---------------------------------------------------------------
@@ -190,9 +190,9 @@ def test_un_giorno_vero_di_dukascopy():
     assert 0 < np.median(spread) < 0.0001  # meno di un pip
     h4 = costruisci(m, TF.H4)
     # Il giorno UTC va dalle 20:00 alle 20:00 di New York: la prima candela a
-    # 4 ore completa e' quella delle 21:00.
-    assert ny(2026, 9, 9, 21) in h4.inizio.tolist()
-    assert ny(2026, 9, 10, 5) in h4.inizio.tolist()
+    # 4 ore completa e' quella delle 22:00.
+    assert ny(2026, 9, 9, 22) in h4.inizio.tolist()
+    assert ny(2026, 9, 10, 6) in h4.inizio.tolist()
 
 
 # --- Le ore ------------------------------------------------------------------
@@ -209,7 +209,7 @@ def test_ore_del_mese_contano_dall_inizio_del_mese():
 
 
 def test_dalle_ore_si_costruiscono_4_ore_e_giornaliere_ma_non_i_quarti():
-    ore = minuti_piatti("EURUSD", ny(2026, 9, 9, 17), ny(2026, 9, 10, 17))
+    ore = minuti_piatti("EURUSD", ny(2026, 9, 9, 18), ny(2026, 9, 10, 18))
     ore = Minuti(ore.strumento, ore.t[::60], ore.bid[::60], ore.ask[::60], ore.volume_bid[::60], ore.volume_ask[::60], 3600)
     assert len(costruisci(ore, TF.H4)) == 6
     assert len(costruisci(ore, TF.D1)) == 1

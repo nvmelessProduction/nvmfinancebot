@@ -32,7 +32,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.dati.candele import Candele
+from nvm.dati.candele import Candele, weekend
 from nvm.dati.minuti import CHIUSURA, MASSIMO, MINIMO
 from nvm.tempo import TF, fine_candela, inizio_candela
 
@@ -128,7 +128,7 @@ def caccia(alte: Candele, basse: Candele, variante: Optional[Variante] = None) -
     variante = VARIANTE if variante is None else variante
     # A quale candela alta appartiene ogni candela bassa: la candela 2 e la 3
     # si riconoscono dalle basse, senza aspettare che quelle alte chiudano.
-    gruppo = inizio_candela(basse.inizio, alte.tf) if len(basse) else np.empty(0, np.int64)
+    gruppo = inizio_candela(basse.inizio, alte.tf, weekend(alte.strumento)) if len(basse) else np.empty(0, np.int64)
     inizi_alti = np.unique(gruppo)
     trovati: list[CRT] = []
     for k in range(len(alte)):
@@ -161,8 +161,8 @@ def _un_range(
         return None
     inizio_2 = int(inizi_alti[dopo])
     inizio_3 = int(inizi_alti[dopo + 1]) if dopo + 1 < len(inizi_alti) else None
-    fine_2 = fine_candela(inizio_2, alte.tf)
-    fine_3 = fine_candela(inizio_3, alte.tf) if inizio_3 is not None else MAI
+    fine_2 = fine_candela(inizio_2, alte.tf, weekend(alte.strumento))
+    fine_3 = fine_candela(inizio_3, alte.tf, weekend(alte.strumento)) if inizio_3 is not None else MAI
 
     # La candela 2 chiusa, se c'e' gia'.
     k2 = int(np.searchsorted(alte.inizio, inizio_2))

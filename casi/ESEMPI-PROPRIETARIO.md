@@ -130,3 +130,30 @@ In sintesi:
 - **Cosa coincide**: il CRT con la N2 che chiude dentro; la presa di liquidità; il parziale e il pareggio al
   primo target; nessun rapporto minimo fra guadagno e rischio; i timeframe grandi nello stesso verso come
   conferma.
+
+## Dopo le risposte del proprietario (06/10/2026)
+
+Il proprietario ha risposto *"come nelle foto"*: il bot ora segue questo metodo (`spec/metodo_foto.md`,
+`nvm/agenti/foto.py`). Rifatta la verifica sui dati (`tests/test_foto.py`, in fondo):
+
+| Esempio | Setup e key level | Direzione | Target finale del bot | Del proprietario (sullo spot) |
+|---|---|---|---|---|
+| 2/1 euro W1 | ✅ WH, massimo annuale | ✅ | gap 3 mesi 1.1392 | 1.1404 |
+| 2/2 euro MN | ✅ MH | ✅ | gap 3 mesi 1.1392 | 1.1373 |
+| 2/3 euro W1 | ✅ WH | ✅ | gap 3 mesi 1.1392 | 1.1412 |
+| 2/6 oro D1 | ✅ DH, WH | ✅ | gap settimanale 4310.4 | 4308.6 |
+| 2/7 oro H6 | ✅ DH, WH; TP1 = range madre 4656.3 (= 4664.3 sul future) | ✅ | ❓ dati di marzo 2026 mancanti | gap 3 mesi |
+| 3/1 euro MN | ✅ ML | ✅ | tutto al TP1 1.1779 | 1.1779 |
+| 3/2 euro W1 | ✅ WL, ML | ✅ | MH 1.1779 | 1.1798 |
+| 3/3 euro D1 | ✅ DL, WL, ML | ✅ | MH 1.1779 | 1.1803 |
+| 3/4 oro H4 | ✅ DH di oggi | ✅ | liquidazione nel gap settimanale 4282 | 4283 |
+| 4/1 euro W1 | ✅ WH | ✅ | liquidazione nel gap dei 3 mesi 1.1325 | 1.1358 |
+| 4/6 oro H1 | ✅ DH + massimo 4 ore | ✅ | liquidazione nel gap settimanale 4282 | 4285 |
+| 5/1 sterlina MN | ✅ ML, minimo 3 mesi | ✅ | massimo dei 3 mesi 1.3789 | 1.3793 |
+| 5/2 sterlina W1 | ✅ WL, ML, minimo 3 mesi | ✅ | massimo dei 3 mesi 1.3789 | 1.3794 |
+| 5/5, 5/6, 5/7 oro H4 | ✅ DH | ✅ | ❓ dati di marzo 2026 mancanti | gap 3 mesi |
+| 5/8 oro H4 | ✅ DL | ✅ | gap giornaliero 4471.8 | 4475.6 |
+| CASO-009 oro H4 | ✅ DL | ✅ | gap giornaliero 1683.8 | 1683.7 |
+
+Le cartelle 6 e 7 (anticipare la N3, entrare sulla N3) sono le stesse operazioni: il bot entra sempre
+all'apertura della candela 3 del timeframe del CRT, e il CRT a 1 ora anticipa quello a 4 ore.

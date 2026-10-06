@@ -48,6 +48,7 @@ from nvm.vivo.dialogo import (
     aggiorna_diario, aggiorna_pagelle, resoconto, spinte,
 )
 from nvm.vivo.esecutore import MAGIC, Esecutore
+from nvm.vivo import giro as _giro_modulo
 from nvm.vivo.giro import COPPIA_VELOCE, COPPIE
 from nvm.vivo.giro import giro as giro_orario
 from nvm.vivo.riunione import Storico, riunione
@@ -69,12 +70,18 @@ CARTELLA = RADICE / "dati" / "vivo"
 RAMO = "claude/zealous-albattani-394cd9"
 ORARIE = 13000          # circa due anni: servono al key level del mensile
 QUARTI = 4000           # circa sei settimane di quarti d'ora: il 4 ore e il giornaliero sopra
+LUNGHE = 7000           # circa 25 anni di giornaliere: i 3, 6 e 12 mesi del metodo delle foto
 RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo di chiudere la barra
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
+
+
+def il_metodo() -> str:
+    """Il metodo con cui nascono le occasioni (`nvm/vivo/giro.METODO`)."""
+    return _giro_modulo.METODO
 
 
 def _da(candele, k: int):
@@ -190,6 +197,9 @@ class Bot:
         self.versione = _versione()
         self.basi: dict[str, Minuti] = {}
         self.fini: dict[str, Minuti] = {}
+        # Le giornaliere di tanti anni (per i 3, 6, 12 mesi del metodo delle foto) e il giorno in cui si sono prese.
+        self.lunghe: dict[str, Minuti] = {}
+        self._lunghe_del = 0
         self._allarmi: dict[str, float] = {}
         self._ultimo_controllo = 0.0
         # I disegni sul grafico di MT5 (`nvm/vivo/disegni.py`): pronti dopo il collegamento.
@@ -233,6 +243,7 @@ class Bot:
                 self.strumenti.append(strumento)
             except ErroreMT5:
                 mancanti.append(strumento)
+        self.aggiorna_lunghe(time.time())
         adesso = time.time()
         if self.stato.ultimo_giro is None:
             self.stato.ultimo_giro = _su(adesso, 3600)
@@ -257,7 +268,7 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        versione = "6" if self.squadra is not None else "2"
+        versione = "7" if self.squadra is not None else "2"
         if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
             testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
                      else conversazione.benvenuto(len(self.strumenti)))
@@ -267,6 +278,18 @@ class Bot:
             # Gli allenamenti sui vent'anni si raccontano solo se decide il sistema di prima.
             self.racconta_allenamento()
             self.racconta_evoluzione()
+
+    def aggiorna_lunghe(self, adesso: float) -> None:
+        """Le giornaliere lunghe, una volta al giorno: senza, i 3, 6 e 12 mesi si fanno con le orarie (due anni)."""
+        giorno = int(adesso // 86400)
+        if giorno == self._lunghe_del:
+            return
+        self._lunghe_del = giorno
+        for s in self.strumenti:
+            try:
+                self.lunghe[s] = self.terminale.giornaliere(s, LUNGHE)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def prepara_disegni(self) -> None:
         """Installa e compila in MT5 il programma che disegna sul grafico, e lo dice una volta sola."""
@@ -299,17 +322,19 @@ class Bot:
                          "il bot lavora lo stesso, ma senza disegni sul grafico.")
 
     def _disegna(self, d, viva, adesso: int) -> None:
-        if self.disegni is None or getattr(d.r.scatto, "modello", "") not in MODELLI_ROMEO:
+        if self.disegni is None or (getattr(d.r.scatto, "modello", "") not in MODELLI_ROMEO and not getattr(d, "foto", None)):
             return
         try:
             v = self._verdetti.get(d.chiave)
             kl = (getattr(v, "metodo", None).fatti.get("key level")
                   if v is not None and getattr(v, "metodo", None) is not None else None)
-            self.disegni.metti(d.chiave, self.terminale.simbolo(d.r.strumento),
-                               disegni.operazione(d, viva, self.terminale.scarto or 0, kl), disegni.fino_a(d))
+            disegno = (disegni.operazione_foto(d, viva, self.terminale.scarto or 0, kl) if getattr(d, "foto", None)
+                       else disegni.operazione(d, viva, self.terminale.scarto or 0, kl))
+            self.disegni.metti(d.chiave, self.terminale.simbolo(d.r.strumento), disegno, disegni.fino_a(d))
             self.disegni.scrivi(adesso)
-            self.chiedi_foto(d.r.strumento, d.r.basso_tf.value, "operativo",
-                             f"📸 {d.r.strumento}: la nostra operazione sul grafico, disegnata come Romeo.")
+            periodo = d.r.alto_tf.value if getattr(d, "foto", None) and d.r.alto_tf in (TF.H1, TF.H4, TF.D1, TF.W1) else d.r.basso_tf.value
+            self.chiedi_foto(d.r.strumento, periodo, "operativo",
+                             f"📸 {d.r.strumento}: la nostra operazione sul grafico, disegnata come nelle foto.")
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 
@@ -323,7 +348,8 @@ class Bot:
             from nvm.vivo import giro as il_giro
             scarto = self.terminale.scarto or 0
             self.disegni.togli("attesa ")
-            for s in self.strumenti:
+            # Col metodo delle foto non si aspetta niente dentro la candela 3: si entra alla sua apertura.
+            for s in ([] if il_metodo() == "foto" else self.strumenti):
                 base = self.basi.get(s)
                 if base is None or not len(base):
                     continue
@@ -565,6 +591,10 @@ class Bot:
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
         for s in self.strumenti:
             self.fini[s] = _unisci(self.fini[s], self.terminale.barre(s, 20, 900), QUARTI)
+            if il_metodo() == "foto":
+                # Col metodo delle foto si entra all'apertura delle candele, che cadono tutte allo scoccare
+                # dell'ora: decide il giro orario.
+                continue
             self._decidi(giro_orario({s: self.fini[s]}, dal, quarto, self.capo, (COPPIA_VELOCE,), {s: self.basi[s]},
                                      gemelli=self.basi),
                          quarto, 900)
@@ -575,9 +605,11 @@ class Bot:
     def giro(self, ora: int) -> None:
         dal = max(self.stato.ultimo_giro + 1, ora - 86400)
         # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini.
+        self.aggiorna_lunghe(time.time())
         for s in self.strumenti:
             self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
-            self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi), ora, 3600)
+            self._decidi(giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
+                                     lunghe=self.lunghe), ora, 3600)
         self.stato.scarto = self.terminale.scarto
         self.uscite(ora)
         for s in segui(self.stato.seguite, self.basi, ora, self.fini):
@@ -663,6 +695,9 @@ class Bot:
         """Le uscite prima dello stop: il kiss of death superato dopo il primo obiettivo (V16 15:32), e quelle
         che gli agenti hanno imparato (idea invalidata o troppo lenta)."""
         for v in self.stato.vive:
+            if il_metodo() == "foto":
+                # Il kiss of death era del metodo dei video: nelle foto si esce allo stop, al pareggio o al target.
+                break
             if not (v.pareggio_fatto and v.primo_quando and v.basso) or v.uscita_anticipata:
                 continue
             if all(t in v.chiusi for t in v.tickets):
@@ -793,6 +828,14 @@ class Bot:
         for d in decisioni:
             g = giudizi[d.chiave]
             v = self._verdetti.get(d.chiave)
+            if (self._entra(d, g) and adesso - d.r.quando <= finestra and getattr(d, "foto", None)
+                    and any(x.strumento == d.r.strumento for x in self.stato.vive)):
+                # Un'operazione alla volta per strumento: lo stesso movimento su piu' timeframe e' la stessa idea.
+                self.stato.saltate["c'era già un'operazione aperta su quello strumento"] = \
+                    self.stato.saltate.get("c'era già un'operazione aperta su quello strumento", 0) + 1
+                if self.squadra is not None and v is not None:
+                    self.squadra.annulla(d.chiave)
+                continue
             if self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.

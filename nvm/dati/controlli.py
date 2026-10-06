@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, Minuti
-from nvm.tempo import SPOSTAMENTO, come_testo, scarti_ny
+from nvm.tempo import SPOSTAMENTO_FOREX, come_testo, scarti_ny
 
 # Salto massimo credibile fra due minuti consecutivi, in frazione del prezzo.
 SALTO_MASSIMO = {"XAUUSD": 0.03}
@@ -58,7 +58,7 @@ class Rapporto:
 
 def _sessione(t: np.ndarray) -> np.ndarray:
     """L'ora di New York spostata di 7 ore: le 17:00 diventano mezzanotte (`nvm.tempo`)."""
-    return t + scarti_ny(t) + SPOSTAMENTO
+    return t + scarti_ny(t) + SPOSTAMENTO_FOREX
 
 
 def controlla(minuti: Minuti) -> Rapporto:

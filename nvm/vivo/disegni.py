@@ -201,6 +201,45 @@ def operazione(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> lis
     return segni
 
 
+def operazione_foto(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> list[Segno]:
+    """I disegni di un'operazione del metodo delle foto (`spec/metodo_foto.md`): il range (la candela 1 o la
+    madre), la finta della candela 2, il key level preso, l'entrata all'apertura della candela 3, lo stop oltre la
+    candela 2, il TP1 all'altro lato del range e il target finale (il gap o il key level)."""
+    info = d.foto
+    st = info["setup"]
+    ob = info["obiettivo"]
+    short = st.short
+    sv = int(scarto_ore) * 3600
+    inizio_1 = int(st.range_inizio)
+    inizio_2, inizio_3 = int(st.n2_inizio), int(st.n3_inizio)
+    fine_3 = int(st.n3_fine)
+    dopo = fine_3 + max(fine_3 - inizio_3, 3600)
+    nome_range = "Range (candela madre, con le inside bar)" if st.dentro else "Range (candela 1)"
+    segni = [
+        Segno("apri", inizio_1 + sv, 0.0),
+        Segno("rettangolo", inizio_1 + sv, st.range_alto, inizio_2 + sv, st.range_basso, AZZURRO, testo=nome_range),
+        Segno("verticale", inizio_2 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 2"),
+        Segno("verticale", inizio_3 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 3: entrata all'apertura"),
+        Segno("testo", inizio_2 + sv, float(st.n2_alto if short else st.n2_basso), 0, 0.0, ROSSO,
+              testo="Finta della candela 2" + (" (dal DXY)" if st.dal_dxy else "")),
+    ]
+    if key_level is not None:
+        nome, prezzo = key_level
+        segni.append(Segno("linea", inizio_1 - 3 * max(inizio_2 - inizio_1, 3600) + sv, float(prezzo), dopo + sv,
+                           float(prezzo), ROSSO, 1, 1, f"Key level preso: {nome}"))
+    segni += [
+        Segno("giu" if short else "su", inizio_3 + sv, float(op.ingresso), 0, 0.0, VIOLA,
+              testo=("Vendita" if short else "Acquisto") + " all'apertura della candela 3"),
+        Segno("linea", dopo + sv, float(op.stop), inizio_3 + sv, float(op.stop), ROSSO, 0, 2, "Stop (oltre la candela 2)"),
+        Segno("linea", dopo + sv, float(op.tp1), inizio_3 + sv, float(op.tp1), VERDE, 1, 2,
+              "TP1: chiusura del CRT" + (" (metà + pareggio)" if float(op.tp2) != float(op.tp1) else "")),
+    ]
+    if float(op.tp2) != float(op.tp1):
+        segni.append(Segno("linea", dopo + sv, float(op.tp2), inizio_3 + sv, float(op.tp2), VERDE, 0, 2,
+                           f"Target finale: {ob.nome}" if abs(float(op.tp2) - ob.prezzo) < 1e-9 else "Target finale"))
+    return segni
+
+
 def fino_a(d) -> int:
     crt = d.r.scatto.crt
     fine_3 = int(crt.fine_candela_3) if crt.fine_candela_3 < 2 ** 60 else int(d.r.quando) + 7 * 86400
@@ -247,8 +286,8 @@ def aperta(v, adesso: int, scarto_ore: int) -> list[Segno]:
         Segno("su" if compra else "giu", t0, float(v.ingresso), 0, 0.0, VIOLA,
               testo="Operazione aperta: " + ("acquisto" if compra else "vendita")),
         Segno("linea", t0, float(v.stop), t1, float(v.stop), ROSSO, 0, 2, "Stop"),
-        Segno("linea", t0, float(v.tp1), t1, float(v.tp1), VERDE, 1, 2, "Obiettivo 1"),
-        Segno("linea", t0, float(v.tp2), t1, float(v.tp2), VERDE, 0, 2, "Obiettivo 2"),
+        Segno("linea", t0, float(v.tp1), t1, float(v.tp1), VERDE, 1, 2, "TP1"),
+        Segno("linea", t0, float(v.tp2), t1, float(v.tp2), VERDE, 0, 2, "Target finale"),
     ]
 
 

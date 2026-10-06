@@ -167,7 +167,8 @@ def test_il_giro_decide_come_lo_storico():
         attese |= {(r.alto_tf, r.verso, r.quando, r.colpo) for r in opera_candela_3(alte, basse, inizio + 1, fine + 1)}
     viste, dal = set(), inizio + 1
     for adesso in range(inizio + 12 * ORA, fine + 1, 12 * ORA):
-        viste |= {(d.r.alto_tf, d.r.verso, d.r.quando, d.r.colpo) for d in giro({"EURUSD": base}, dal, adesso, capo)}
+        viste |= {(d.r.alto_tf, d.r.verso, d.r.quando, d.r.colpo)
+                  for d in giro({"EURUSD": base}, dal, adesso, capo, metodo="candela 3")}
         dal = adesso + 1
     fuori = {a for a in attese if a[2] < dal}
     assert fuori, "la passeggiata deve dare qualche decisione"
@@ -187,7 +188,8 @@ def test_kelly_di_una_scommessa_semplice():
 
 def _una_decisione():
     base = ore_finte()
-    d = giro({"EURUSD": base}, int(base.t[0]) + 100 * 86400, int(base.t[-1]), CapoFinto())
+    # Il metodo dei video: l'Esecutore e i messaggi non cambiano col metodo.
+    d = giro({"EURUSD": base}, int(base.t[0]) + 100 * 86400, int(base.t[-1]), CapoFinto(), metodo="candela 3")
     return next(x for x in d if x.entra)
 
 

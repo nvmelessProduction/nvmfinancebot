@@ -1,9 +1,31 @@
 # Dove siamo
 
-_Aggiornato il 01/10/2026._
+_Aggiornato il 06/10/2026._
 
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
+
+## 06/10/2026: il metodo delle foto del proprietario
+
+Il proprietario ha mandato 23 esempi suoi (cartelle di foto, `casi/ESEMPI-PROPRIETARIO.md`) e ha risposto
+*"come nelle foto"*. Il bot ora segue quelli (`spec/metodo_foto.md`, `nvm/agenti/foto.py`):
+
+- **Candele come sui future**: aprono alle 18 di New York (mezzanotte italiana); in più 6 e 12 ore, 3, 6 e 12
+  mesi. Con le candele di prima tre esempi suoi sull'oro non erano CRT.
+- **Entrata all'apertura della candela 3**, a qualunque ora; **stop oltre la candela 2**; **TP1 all'altro lato
+  del range** (metà e pareggio); **target finale** il gap del timeframe grande, o il key level, o la
+  liquidazione di un gap che ha appena reagito. Il range è la candela madre se ci sono inside bar.
+- **Obbligatori**: CRT, key level (massimo o minimo del periodo prima, preso dal CRT), direzione del
+  timeframe di comando. CRT a 1 ora solo col key level del giorno e il massimo/minimo delle 4 ore.
+- **Gap** con le fasi (aggressione, reazione, liquidazione, continuazione con l'RSI) e **DXY** sintetico: due
+  agenti nuovi nella squadra (memoria nuova `foto-1`). Un'operazione alla volta per strumento.
+- **Verifica**: tutti e 17 gli esempi controllabili danno il setup; il target finale coincide in 13 (gli altri
+  4 sono oro 2026, dove mancano i dati di marzo). Prove in `tests/test_foto.py`.
+- **La routine settimanale dei vent'anni è spenta** (il proprietario: *"a tua discrezione"*).
+- Il bot dal vivo prende anche le giornaliere lunghe da MT5 (per i 3, 6, 12 mesi).
+
+**Da sapere:** circa 3 operazioni a settimana per strumento (con un'operazione alla volta per strumento). La
+tolleranza della chiusura della candela 2 è da confermare col proprietario.
 
 ## 01/10/2026: la strategia dei video alla lettera, e una squadra che impara davvero
 

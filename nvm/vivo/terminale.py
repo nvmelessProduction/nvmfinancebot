@@ -153,7 +153,7 @@ class Terminale:
         self._scarto_dal_tick(simbolo)
         if self.scarto is None:
             raise ErroreMT5("non so ancora l'ora del server: aspetto che il mercato si muova")
-        tf = {3600: self.mt5.TIMEFRAME_H1, 900: self.mt5.TIMEFRAME_M15}[passo]
+        tf = {3600: self.mt5.TIMEFRAME_H1, 900: self.mt5.TIMEFRAME_M15, 86400: self.mt5.TIMEFRAME_D1}[passo]
         barre = self.mt5.copy_rates_from_pos(simbolo, tf, 0, quante)
         if barre is None or len(barre) == 0:
             raise ErroreMT5(f"nessuna barra da {passo // 60} minuti per {simbolo}: {self.mt5.last_error()}")
@@ -168,6 +168,13 @@ class Terminale:
         ask = bid + spread[:, None]
         volume = np.asarray(barre["tick_volume"], np.float32)
         return Minuti(strumento, t, bid, ask, volume, volume.copy(), passo=passo)
+
+    def giornaliere(self, strumento: str, quante: int) -> Minuti:
+        """Le candele giornaliere di tanti anni, per i 3, 6 e 12 mesi del metodo delle foto. Il broker le apre
+        alle 17 di New York; le nostre candele aprono alle 18 (`nvm/tempo.py`): si spostano di un'ora, cosi'
+        ogni giornata cade nel suo giorno di sessione."""
+        m = self.barre(strumento, quante, 86400)
+        return Minuti(strumento, m.t + 3600, m.bid, m.ask, m.volume_bid, m.volume_ask, passo=86400)
 
     # --- gli ordini -----------------------------------------------------------
 

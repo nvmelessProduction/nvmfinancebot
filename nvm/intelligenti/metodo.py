@@ -24,7 +24,7 @@ from nvm.agenti.conferme import SOPRA, Bias, Contesto
 from nvm.agenti.grilletto import MODELLI_ROMEO, SPESSORE
 from nvm.dati.candele import Candele, costruisci
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
-from nvm.tempo import NEW_YORK, TF, fine_candela, scarti_ny
+from nvm.tempo import NEW_YORK, ORDINE as ORDINE_TF, TF, fine_candela, scarti_ny
 
 GIORNI = ("lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica")
 NOMI_TF = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: "a 4 ore", TF.H1: "orario"}
@@ -465,3 +465,157 @@ def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> t
             prezzi.append(("vuoto lasciato dal prezzo", float(fondo * s)))
             break
     return list(dict.fromkeys(tipi)), finto, prezzi
+
+
+# --- Il metodo delle foto del proprietario (06/10/2026, `spec/metodo_foto.md`) --------------------------
+
+FOTO = "le foto del proprietario"
+NOMI_TF_FOTO = {TF.H1: "a 1 ora", TF.H4: "a 4 ore", TF.H6: "a 6 ore", TF.H12: "a 12 ore", TF.D1: "giornaliero",
+                TF.W1: "settimanale", TF.MN: "mensile"}
+CANDELA_FOTO = {TF.H1: "la candela di un'ora", TF.H4: "la candela delle 4 ore", TF.H6: "la candela delle 6 ore",
+                TF.D1: "la candela del giorno", TF.W1: "la candela della settimana", TF.MN: "la candela del mese"}
+# Le fasce di New York in cui apre la candela 3: l'Orario non decide (*"non c'è limite di orario"*), impara.
+FASCE = (("Asia", 18, 2), ("Londra", 2, 8), ("New York", 8, 12), ("pomeriggio", 12, 18))
+
+
+def _fascia(ora: int, a: int, b: int) -> bool:
+    return a <= ora < b if a < b else (ora >= a or ora < b)
+
+
+def _gap_a_favore(q, s):
+    """Il gap del timeframe alto in cui la candela 2 e' entrata e che spinge dalla nostra parte: per comprare
+    un gap rialzista sotto (il CRT a supporto di gap, cartella 5), per vendere uno ribassista sopra."""
+    from nvm.agenti import foto
+    for tf in foto.TF_GAP:
+        for g in foto.gap_di(q, tf, s.n3_inizio):
+            if g.toccato is None or g.riempito is not None or g.rialzista == s.short:
+                continue
+            dentro = (s.n2_alto >= g.basso) if s.short else (s.n2_basso <= g.alto)
+            if dentro:
+                return g, foto.fase(q, g, s.n3_inizio)
+    return None, None
+
+
+def valuta_foto(d) -> Metodo:
+    """Le domande del metodo delle foto su un'occasione (`giro.occasioni_foto`). Obbligatorie: il CRT, il key
+    level, la direzione. Il resto sono confluenze: la squadra impara dal vivo quanto conta ognuna."""
+    from nvm.agenti import foto
+    info = d.foto
+    s, q, ob = info["setup"], info["quadro"], info["obiettivo"]
+    sd = info.get("dxy")
+    short = s.short
+    segno = -1 if short else 1
+    amp = s.range_alto - s.range_basso
+    ny = _ny(s.n3_inizio)
+    m = Metodo(fatti={"strumento": s.strumento, "coppia": s.tf.value, "verso": "vendita" if short else "acquisto",
+                      "giorno": GIORNI[ny.weekday()], "ora": f"{ny.hour:02d}",
+                      "modello": "dal DXY" if s.dal_dxy else "apertura N3"})
+    ob_ = m.obbligatorie
+    co = m.confluenze
+    candela = CANDELA_FOTO.get(s.tf, "la candela")
+    lato = _v(short, "il minimo", "il massimo")
+    numero = foto.numero
+
+    # 1. Il CRT (Cacciatore): la candela 2 ha preso un lato del range ed e' rientrata.
+    madre = f" (il range è la candela madre: dopo ci sono {s.dentro} inside bar)" if s.dentro else ""
+    if s.dal_dxy:
+        x = sd
+        testo = (f"il DXY ha fatto il CRT {NOMI_TF_FOTO.get(s.tf, '')}: la candela 2 ha preso "
+                 f"{_v(x.short, 'il minimo', 'il massimo') if x is not None else 'un lato'} del range ed è rientrata. "
+                 f"Il dollaro {'sale' if x is not None and not x.short else 'scende'}: su {s.strumento} "
+                 f"{'vendiamo' if short else 'compriamo'} all'apertura della candela 3")
+    else:
+        testo = (f"{candela} di prima ha preso {lato} del range ({numero(s.range_alto if short else s.range_basso)})"
+                 f"{madre} ed è rientrata: entriamo all'apertura della candela 3, come nelle foto")
+    ob_.append(Domanda("CRT", "Cacciatore", FOTO, True, testo))
+
+    # 2. Il key level (Key level): il massimo o minimo del periodo prima preso dal CRT.
+    presi = sd.presi if (s.dal_dxy and sd is not None) else s.presi
+    if s.tf is TF.H1:
+        kl_ok = bool(s.h4_preso is not None and any(l.tf is TF.D1 and not l.oggi for l in presi))
+        perche = (f"il CRT a 1 ora ha preso il {', il '.join(l.nome for l in presi if l.tf is TF.D1)} e il "
+                  f"{_v(short, 'minimo', 'massimo')} delle 4 ore ({numero(s.h4_preso)}): entriamo sulla terza candela "
+                  "di un'ora, che anticipa la candela a 4 ore dopo" if kl_ok else
+                  "il CRT a 1 ora vale solo se prende il key level giornaliero e il massimo (minimo) a 4 ore")
+    else:
+        kl_ok = bool(presi)
+        perche = (f"la finta ha preso {' e '.join(f'il {l.nome} ({numero(l.prezzo)})' for l in presi[:3])}: un key "
+                  "level, dove c'era la liquidità" if kl_ok else
+                  "la finta non ha preso nessun key level (massimo o minimo del giorno, della settimana, del mese, "
+                  "dei 3 mesi, dell'anno prima)")
+    ob_.append(Domanda("key level", "Key level", FOTO, kl_ok, perche))
+    if presi:
+        k = presi[-1]
+        m.fatti["key level"] = (k.nome, float(k.prezzo))
+
+    # 3. La direzione (Bias): il timeframe di comando.
+    dz = foto.direzione(q, s)
+    ob_.append(Domanda("direzione", "Bias", FOTO, dz.ok,
+                       dz.testo if dz.ok else dz.testo + ": nelle foto si entra solo col comando dalla nostra parte"))
+
+    # --- Le confluenze ---
+    allineati = list(info.get("allineati", [])) + [tf for tf in foto.allineati(q, s) if tf not in info.get("allineati", [])]
+    co.append(Domanda("timeframe allineati", "Cacciatore", FOTO, bool(allineati),
+                      f"anche {', '.join(NOMI_TF_FOTO.get(t, t.value) for t in allineati[:3])} "
+                      f"{'fa' if len(allineati) == 1 else 'fanno'} il CRT nello stesso verso" if allineati else
+                      "gli altri timeframe non fanno il CRT nello stesso verso"))
+    co.append(Domanda("inside bar", "Cacciatore", FOTO, s.dentro > 0,
+                      f"il range è una candela madre con {s.dentro} inside bar dopo: il prezzo ha caricato" if s.dentro
+                      else "nessuna inside bar nel range"))
+    alti = [l for l in presi if l.tf in (TF.W1, TF.MN, TF.Q3, TF.Y1)]
+    co.append(Domanda("key level grande", "Key level", FOTO, bool(alti),
+                      f"la finta ha preso anche il {alti[0].nome}" if alti else "solo key level giornalieri"))
+    g, f = _gap_a_favore(q, s)
+    co.append(Domanda("dentro un gap a favore", "Gap", FOTO, g is not None,
+                      f"la finta è entrata nel {g.nome} ({numero(g.basso)}–{numero(g.alto)}): {f.testo}" if g is not None
+                      else "la finta non è dentro un gap che ci spinge"))
+    if g is not None:
+        co.append(Domanda("continuazione col RSI", "Gap", FOTO, bool(f.divergenza),
+                          "nel gap l'RSI conferma la continuazione (minimi decrescenti sul grafico, crescenti sull'RSI)"
+                          if f.divergenza else "nel gap l'RSI non dà ancora la divergenza della continuazione"))
+    co.append(Domanda("target sul gap", "Livelli", FOTO, ob.tipo in ("gap", "liquidazione"),
+                      f"il target finale è {ob.nome} ({numero(ob.prezzo)})"))
+    dxy_con = dxy_contro = False
+    if sd is not None and not s.dal_dxy:
+        verso_coppia = foto.verso_dal_dxy(s.strumento, sd.verso)
+        dxy_con = verso_coppia is s.verso
+        dxy_contro = verso_coppia is not None and verso_coppia is not s.verso
+    if s.dal_dxy:
+        dxy_con = True
+    if s.strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA:
+        co.append(Domanda("DXY a favore", "DXY", FOTO, dxy_con,
+                          "il DXY ha fatto il CRT che ci dà ragione" if dxy_con else
+                          "il DXY fa il CRT dall'altra parte" if dxy_contro else "il DXY non ha fatto un CRT ora"))
+
+    # --- I numeri che vede ogni agente: da qui ognuno impara il suo giudizio ---
+    presenti = set(m.presenti)
+    b = foto.biases(q, s.n3_inizio)
+    sopra = [v for tf, (v, _) in b.items() if ORDINE_TF.index(tf) > ORDINE_TF.index(s.tf)]
+    rr1 = abs(s.tp1 - s.ingresso) / max(abs(s.ingresso - s.stop), 1e-12)
+    rr2 = abs(ob.prezzo - s.ingresso) / max(abs(s.ingresso - s.stop), 1e-12)
+    finta = ((s.n2_alto - s.range_alto) if short else (s.range_basso - s.n2_basso)) / amp if amp > 0 else 0.0
+    rientro = ((s.range_alto - s.n2_chiusura) if short else (s.n2_chiusura - s.range_basso)) / amp if amp > 0 else 0.0
+    m.numeri = {
+        "Cacciatore": {**{f"CRT {NOMI_TF_FOTO[t]}": float(s.tf is t) for t in foto.TF_CRT},
+                       "inside bar": min(s.dentro, 3) / 3.0, "allineati": min(len(allineati), 4) / 4.0,
+                       "dal DXY": float(s.dal_dxy)},
+        "Grilletto": {"finta oltre il range": min(max(finta, 0.0), 1.0), "rientro nel range": min(max(rientro, 0.0), 1.0),
+                      "rischio sul range": min(abs(s.ingresso - s.stop) / amp, 2.0) / 2.0 if amp > 0 else 0.0},
+        "Key level": {**{f"preso {k}": float(any(l.tf is t and not l.oggi for l in presi))
+                         for k, t in (("D", TF.D1), ("W", TF.W1), ("M", TF.MN), ("3 mesi", TF.Q3), ("anno", TF.Y1))},
+                      "preso di oggi": float(any(l.oggi for l in presi)), "quanti": min(len(presi), 4) / 4.0},
+        "Bias": {"sopra a favore": sum(1 for v in sopra if v == segno) / max(len(sopra), 1),
+                 "sopra contro": sum(1 for v in sopra if v == -segno) / max(len(sopra), 1),
+                 "ritracciamento": float(dz.ok and not dz.a_favore)},
+        "Gap": {"dentro un gap a favore": float("dentro un gap a favore" in presenti),
+                **{f"fase {n}": float(f is not None and f.numero == n) for n in (1, 2, 3, 4)},
+                "RSI": float("continuazione col RSI" in presenti), "target sul gap": float("target sul gap" in presenti)},
+        "DXY": {"DXY a favore": float(dxy_con), "DXY contro": float(dxy_contro)},
+        "Orario": {**{n: float(_fascia(ny.hour, a, b_)) for n, a, b_ in FASCE},
+                   **{f"di {GIORNI[g_]}": float(ny.weekday() == g_) for g_ in range(5)}},
+        "Livelli": {"guadagno al TP1": min(rr1, 6.0) / 6.0, "guadagno al target finale": min(rr2, 15.0) / 15.0,
+                    **{f"target {t}": float(ob.tipo == t) for t in ("gap", "liquidazione", "key level", "range")}},
+    }
+    m.fatti["rr"] = round(0.5 * rr1 + 0.5 * rr2, 4) if ob.prezzo != s.tp1 else round(rr1, 4)
+    m.fatti["obiettivo"] = (ob.nome, float(ob.prezzo))
+    return m

@@ -1,20 +1,27 @@
-"""I timeframe e i loro confini: la giornata chiude alle 17:00 di New York.
+"""I timeframe e i loro confini: le candele aprono come quelle dei future, alle 18:00 di New York.
 
-Regola in `spec/dati.md`. Ogni candela sopra il minuto si costruisce da qui,
-con un solo modo di tagliare il tempo:
+Il proprietario, 06/10/2026: *"devono partire come sul futures"*. Sui future (CME) la giornata apre alle
+18:00 di New York, cioe' a mezzanotte italiana; fino al 06/10/2026 le nostre candele aprivano alle 17:00
+come quelle di MT5, e tre esempi suoi sull'oro a 4 ore erano CRT solo con le candele del future
+(`casi/ESEMPI-PROPRIETARIO.md`). Ogni candela sopra il minuto si costruisce da qui:
 
-    giornaliero   apre alle 17:00 di New York del giorno prima
-    4 ore         apre alle 17, 21, 1, 5, 9, 13 di New York
+    giornaliero   apre alle 18:00 di New York del giorno prima
+    12 ore        alle 18 e alle 6 di New York
+    6 ore         alle 18, 0, 6, 12 di New York
+    4 ore         alle 18, 22, 2, 6, 10, 14 di New York
     1h, 15m, 5m   allo scoccare dell'ora o del quarto
-    settimanale   da domenica 17:00 a venerdi' 17:00 di New York
+    settimanale   da domenica 18:00 a venerdi' di New York
     mensile       la prima giornata di trading del mese
+    3, 6, 12 mesi i trimestri (gennaio, aprile, luglio, ottobre), i semestri e l'anno
 
-Il trucco e' una sola linea del tempo "di sessione": l'ora di New York
-spostata avanti di 7 ore. Li' le 17:00 di New York diventano mezzanotte, e
-giorni, settimane e mesi di trading si tagliano come quelli del calendario.
-L'ora legale la segue `zoneinfo`: i cambi cadono la domenica alle 2 di
-notte, a mercato chiuso, quindi nessuna candela di trading ne attraversa
-uno.
+Il trucco e' una sola linea del tempo "di sessione": l'ora di New York spostata avanti di 6 ore. Li' le
+18:00 di New York diventano mezzanotte, e giorni, settimane e mesi di trading si tagliano come quelli del
+calendario. L'ora legale la segue `zoneinfo`: i cambi cadono la domenica alle 2 di notte, a mercato chiuso.
+
+Il forex riapre la domenica alle 17:00 di New York, un'ora prima dei future: quell'ora va nella prima
+candela della settimana (sabato e domenica di sessione si spostano al lunedi'), cosi' non nasce una
+candela di un'ora sola. Le crypto, che scambiano anche il fine settimana, tengono i loro giorni
+(`weekend=True`).
 """
 
 from __future__ import annotations
@@ -27,7 +34,9 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 NEW_YORK = ZoneInfo("America/New_York")
-SPOSTAMENTO = 7 * 3600  # 17:00 di New York -> mezzanotte di sessione
+SPOSTAMENTO = 6 * 3600  # 18:00 di New York -> mezzanotte di sessione
+# La giornata del forex, per i controlli sui dati (`nvm/dati/controlli.py`): chiude alle 17:00 di New York.
+SPOSTAMENTO_FOREX = 7 * 3600
 
 
 class TF(str, Enum):
@@ -36,9 +45,14 @@ class TF(str, Enum):
     M15 = "M15"
     H1 = "H1"
     H4 = "H4"
+    H6 = "H6"
+    H12 = "H12"
     D1 = "D1"
     W1 = "W1"
     MN = "MN"
+    Q3 = "3M"
+    S6 = "6M"
+    Y1 = "12M"
 
 
 # Timeframe che si tagliano a passo fisso sulla linea di sessione.
@@ -48,8 +62,19 @@ PASSO = {
     TF.M15: 900,
     TF.H1: 3600,
     TF.H4: 4 * 3600,
+    TF.H6: 6 * 3600,
+    TF.H12: 12 * 3600,
     TF.D1: 86400,
 }
+# Quanti mesi dura una candela dei timeframe del calendario.
+MESI = {TF.MN: 1, TF.Q3: 3, TF.S6: 6, TF.Y1: 12}
+# Dal piu' piccolo al piu' grande: per dire quale timeframe sta sopra a un altro.
+ORDINE = (TF.M1, TF.M5, TF.M15, TF.H1, TF.H4, TF.H6, TF.H12, TF.D1, TF.W1, TF.MN, TF.Q3, TF.S6, TF.Y1)
+
+
+def sopra_a(tf: TF) -> tuple[TF, ...]:
+    """I timeframe piu' grandi di `tf`, dal piu' vicino."""
+    return ORDINE[ORDINE.index(tf) + 1:]
 
 
 @lru_cache(maxsize=None)
@@ -77,8 +102,18 @@ def _utc_da_sessione(sessione: int) -> int:
     return int(locale.replace(tzinfo=NEW_YORK).timestamp())
 
 
-def inizio_candela(t_utc: np.ndarray, tf: TF) -> np.ndarray:
-    """L'istante UTC in cui apre la candela `tf` che contiene ogni istante."""
+def _al_lunedi(sessione: np.ndarray) -> np.ndarray:
+    """Sabato e domenica di sessione vanno al lunedi' a mezzanotte di sessione (la domenica alle 18 di NY)."""
+    giorno = sessione // 86400
+    # Il 1/1/1970 era giovedi': (giorno + 3) % 7 e' 0 di lunedi'.
+    dow = (giorno + 3) % 7
+    return np.where(dow >= 5, (giorno + 7 - dow) * 86400, sessione)
+
+
+def inizio_candela(t_utc: np.ndarray, tf: TF, weekend: bool = False) -> np.ndarray:
+    """L'istante UTC in cui apre la candela `tf` che contiene ogni istante.
+
+    `weekend`: lo strumento scambia anche sabato e domenica (le crypto)."""
     t_utc = np.asarray(t_utc, dtype=np.int64)
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         # Gli scarti di New York sono ore intere: questi confini coincidono
@@ -87,16 +122,19 @@ def inizio_candela(t_utc: np.ndarray, tf: TF) -> np.ndarray:
         return t_utc - t_utc % passo
 
     sessione = t_utc + scarti_ny(t_utc) + SPOSTAMENTO
-    if tf in (TF.H4, TF.D1):
+    if not weekend:
+        sessione = _al_lunedi(sessione)
+    if tf in (TF.H4, TF.H6, TF.H12, TF.D1):
         passo = PASSO[tf]
         inizio = sessione - sessione % passo
     elif tf is TF.W1:
         giorno = sessione // 86400
-        # Il 1/1/1970 era giovedi': (giorno + 3) % 7 e' 0 di lunedi'.
         inizio = (giorno - (giorno + 3) % 7) * 86400
-    elif tf is TF.MN:
+    elif tf in MESI:
         giorni = (sessione // 86400).astype("datetime64[D]")
-        inizio = giorni.astype("datetime64[M]").astype("datetime64[D]").astype(np.int64) * 86400
+        mesi = giorni.astype("datetime64[M]").astype(np.int64)
+        mesi = mesi - mesi % MESI[tf]          # 1970-01 e' il mese 0: trimestri e semestri partono da gennaio
+        inizio = mesi.astype("datetime64[M]").astype("datetime64[D]").astype(np.int64) * 86400
     else:  # pragma: no cover - enum chiuso
         raise ValueError(tf)
 
@@ -105,19 +143,19 @@ def inizio_candela(t_utc: np.ndarray, tf: TF) -> np.ndarray:
     return utc[indici]
 
 
-def fine_candela(inizio_utc: int, tf: TF) -> int:
+def fine_candela(inizio_utc: int, tf: TF, weekend: bool = False) -> int:
     """L'istante UTC in cui chiude la candela `tf` che apre a `inizio_utc`."""
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         return inizio_utc + PASSO[tf]
     sessione = inizio_utc + _scarto_ny(inizio_utc // 3600) + SPOSTAMENTO
-    if tf in (TF.H4, TF.D1):
+    if tf in PASSO:
         return _utc_da_sessione(sessione + PASSO[tf])
     if tf is TF.W1:
-        # La settimana di trading finisce venerdi' alle 17:00 di New York,
-        # cioe' 5 giorni di sessione dopo l'apertura di domenica sera.
-        return _utc_da_sessione(sessione + 5 * 86400)
+        # La settimana di trading finisce venerdi' sera (5 giorni di sessione dopo l'apertura di domenica);
+        # quella delle crypto dopo 7.
+        return _utc_da_sessione(sessione + (7 if weekend else 5) * 86400)
     giorno = np.datetime64(sessione // 86400, "D")
-    mese_dopo = (giorno.astype("datetime64[M]") + 1).astype("datetime64[D]")
+    mese_dopo = (giorno.astype("datetime64[M]") + MESI[tf]).astype("datetime64[D]")
     return _utc_da_sessione(int(mese_dopo.astype(np.int64)) * 86400)
 
 

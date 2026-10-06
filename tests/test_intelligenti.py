@@ -1,6 +1,6 @@
-"""La squadra col metodo dei 17 video di Romeo: entra quando c'e' il setup, tutte le volte e solo allora;
-mai senza stop; ogni agente impara il suo giudizio dal vivo; si confrontano e cambiano idea; il Capo lascia
-un'A+ solo con le prove; i risultati veri contano piu' di quelli sulla carta."""
+"""La squadra col metodo delle foto del proprietario: entra quando c'e' il setup, tutte le volte e solo
+allora; mai senza stop; ogni agente impara il suo giudizio dal vivo; si confrontano e cambiano idea; il Capo
+lascia un'A+ solo con le prove; i risultati veri contano piu' di quelli sulla carta."""
 
 from types import SimpleNamespace as NS
 
@@ -9,22 +9,21 @@ from nvm.intelligenti.metodo import Domanda, Metodo
 from nvm.intelligenti.squadra import (ESPERIENZA_MINIMA, MINIMO_SIMILI, PIANO_ROMEO, PUNTATA_INIZIALE, VOLTE_IDEA,
                                       Memoria, Squadra, con_stop)
 
-OBBLIGATORIE = (("candela 3", "Cacciatore"), ("oltre l'apertura", "Grilletto"), ("modello d'entrata", "Grilletto"),
-                ("key level", "Key level"), ("direzione", "Bias"), ("ora giusta", "Orario"),
-                ("obiettivo da prendere", "Livelli"))
+OBBLIGATORIE = (("CRT", "Cacciatore"), ("key level", "Key level"), ("direzione", "Bias"))
 
 
-def _metodo(mancano=(), confluenze=("SMT", "FVG col Model#1"), **fatti) -> Metodo:
-    """Un'occasione: tutte le domande di Romeo dicono si', tranne `mancano`."""
-    ob = [Domanda(n, a, "V9 02:43", n not in mancano, f"risposta su {n}") for n, a in OBBLIGATORIE]
-    co = [Domanda(n, "Grilletto", "V8 02:04", True, f"c'è {n}") for n in confluenze]
-    f = {"strumento": "EURUSD", "coppia": "D1-H1", "verso": "acquisto", "giorno": "martedì", "ora": "03",
-         "modello": "candela 3"}
+def _metodo(mancano=(), confluenze=("DXY a favore", "dentro un gap a favore"), **fatti) -> Metodo:
+    """Un'occasione: tutte le domande del metodo dicono si', tranne `mancano`."""
+    ob = [Domanda(n, a, "le foto", n not in mancano, f"risposta su {n}") for n, a in OBBLIGATORIE]
+    co = [Domanda(n, "Gap", "le foto", True, f"c'è {n}") for n in confluenze]
+    f = {"strumento": "EURUSD", "coppia": "D1", "verso": "acquisto", "giorno": "martedì", "ora": "03",
+         "modello": "apertura N3"}
     f.update(fatti)
-    numeri = {"Grilletto": {"SMT": float("SMT" in confluenze), "FVG": float("FVG col Model#1" in confluenze),
-                            "spessore": 0.4},
-              "Orario": {"Londra": 1.0}, "Livelli": {"guadagno al primo obiettivo": 0.3},
-              "Bias": {"grafico sopra a favore": 1.0}, "Key level": {"livelli": 1 / 3}, "Cacciatore": {}}
+    numeri = {"Gap": {"dentro un gap a favore": float("dentro un gap a favore" in confluenze), "fase 2": 0.0},
+              "DXY": {"DXY a favore": float("DXY a favore" in confluenze)},
+              "Orario": {"Londra": 1.0}, "Livelli": {"guadagno al TP1": 0.3},
+              "Bias": {"sopra a favore": 0.5}, "Key level": {"preso D": 1.0}, "Cacciatore": {"CRT giornaliero": 1.0},
+              "Grilletto": {"finta oltre il range": 0.2}}
     return Metodo(ob, co, f, numeri)
 
 
@@ -32,20 +31,20 @@ def _op(stop=1.0950, ingresso=1.1000, tp1=1.1050):
     return NS(stop=stop, ingresso=ingresso, tp1=tp1, tp2=tp1, parziale=0.5)
 
 
-def test_col_setup_di_romeo_si_entra_e_ognuno_dice_la_sua(tmp_path):
+def test_col_setup_delle_foto_si_entra_e_ognuno_dice_la_sua(tmp_path):
     sq = Squadra(tmp_path)
     v = sq.riunione("k1", "EURUSD", _metodo(), 1_700_000_000, op=_op())
     assert v.entra and v.a_piu and v.puntata == PUNTATA_INIZIALE and all(v.lista.values())
     chi = [c for c, _ in v.voci]
-    assert chi[:7] == [a for _, a in OBBLIGATORIE] and chi[-2:] == ["Capo", "Rischio"]
-    assert all(t.startswith("✅") for _, t in v.voci[:7])
+    assert chi[:3] == [a for _, a in OBBLIGATORIE] and chi[-2:] == ["Capo", "Rischio"]
+    assert all(t.startswith("✅") for _, t in v.voci[:3])
     # Senza esperienza lo dicono, invece di inventarsi un giudizio.
-    assert all("non ho ancora un giudizio mio" in t for _, t in v.voci[:7])
-    assert v.voci[-2][1].startswith("Tutte e 7 le regole di Romeo dicono sì. Compriamo EURUSD")
+    assert all("non ho ancora un giudizio mio" in t for _, t in v.voci[:3])
+    assert v.voci[-2][1].startswith("Tutte e 3 le regole del metodo dicono sì. Compriamo EURUSD")
     assert "casi simili dal vivo non ne abbiamo ancora" in v.voci[-2][1]
-    v2 = sq.riunione("k2", "GBPUSD", _metodo(strumento="GBPUSD", verso="vendita", modello="kiss of death"),
+    v2 = sq.riunione("k2", "GBPUSD", _metodo(strumento="GBPUSD", verso="vendita", modello="dal DXY"),
                      1_700_000_100, op=_op(1.1050, 1.1000, 1.0950))
-    assert v2.entra and "Vendiamo GBPUSD (entrata: kiss of death)" in v2.voci[-2][1]
+    assert v2.entra and "Vendiamo GBPUSD (il setup l'ha fatto il DXY)" in v2.voci[-2][1]
     sq.salva()
     assert {"k1", "k2"} <= set(Memoria.carica(tmp_path).discusse)
 
@@ -56,16 +55,16 @@ def test_nessun_limite_di_operazioni_al_giorno(tmp_path):
     assert all(prese)
 
 
-def test_se_manca_una_regola_di_romeo_non_si_entra_e_si_dice_cosa_manca(tmp_path):
+def test_se_manca_una_regola_non_si_entra_e_si_dice_cosa_manca(tmp_path):
     sq = Squadra(tmp_path)
     for manca in [n for n, _ in OBBLIGATORIE]:
         v = sq.riunione(f"m {manca}", "EURUSD", _metodo(mancano=(manca,)), 1_700_000_000, op=_op())
         assert not v.entra and not v.a_piu and v.puntata == 0
-        assert v.voci[-1][0] == "Capo" and v.voci[-1][1].startswith("Non entriamo. Romeo vuole")
+        assert v.voci[-1][0] == "Capo" and v.voci[-1][1].startswith("Non entriamo. Il metodo vuole")
         assert any(t.startswith("❌") for _, t in v.voci)
 
 
-def test_le_regole_di_romeo_non_si_disimparano_ma_si_controllano(tmp_path):
+def test_le_regole_non_si_disimparano_ma_si_controllano(tmp_path):
     sq = Squadra(tmp_path)
     senza = _metodo(mancano=("key level",))
     for i in range(200):
@@ -81,37 +80,37 @@ def test_le_regole_di_romeo_non_si_disimparano_ma_si_controllano(tmp_path):
 
 def test_ogni_agente_impara_il_suo_giudizio_dal_vivo(tmp_path):
     sq = Squadra(tmp_path)
-    # Dal vivo: con l'SMT va quasi sempre bene, senza quasi sempre male.
+    # Dal vivo: dentro un gap a favore va quasi sempre bene, fuori quasi sempre male.
     for i in range(300):
         con = i % 2 == 0
-        m = _metodo(confluenze=("SMT",) if con else ())
+        m = _metodo(confluenze=("dentro un gap a favore",) if con else ())
         sq.riunione(f"a{i}", "EURUSD", m, 0, op=_op())
         sq.rifletti(f"a{i}", 1.5 if (con and i % 10) else -1.0, preso=False)
-    g_con, g_senza = sq.giudizi(_metodo(confluenze=("SMT",)))["Grilletto"], sq.giudizi(_metodo(confluenze=()))["Grilletto"]
+    g_con = sq.giudizi(_metodo(confluenze=("dentro un gap a favore",)))["Gap"]
+    g_senza = sq.giudizi(_metodo(confluenze=()))["Gap"]
     assert g_con["prima"] > 0.6 > 0.4 > g_senza["prima"]
-    assert sq.memoria.agenti["Grilletto"]["n"] == 300
-    # E lo dice in equipe, coi numeri veri.
-    v = sq.riunione("dopo", "EURUSD", _metodo(confluenze=("SMT",)), 0, op=_op())
-    testo = dict(v.voci)["Grilletto"]
-    assert "Dai 300 casi che ho visto dal vivo" in testo
-    # Il Capo ha imparato a fidarsi del Grilletto piu' di chi non vedeva differenze.
-    assert sq.memoria.capo["fiducia"]["Grilletto"] > sq.memoria.capo["fiducia"]["Orario"]
+    assert sq.memoria.agenti["Gap"]["n"] == 300
+    # E lo dice in equipe, coi numeri veri (il Gap parla quando c'e' una sua confluenza: con la regola del Bias).
+    v = sq.riunione("dopo", "EURUSD", _metodo(confluenze=("dentro un gap a favore",)), 0, op=_op())
+    assert any("Dai 300 casi che ho visto dal vivo" in t for _, t in v.voci)
+    # Il Capo ha imparato a fidarsi del Gap piu' di chi non vedeva differenze.
+    assert sq.memoria.capo["fiducia"]["Gap"] > sq.memoria.capo["fiducia"]["Orario"]
 
 
-def test_si_confrontano_e_cambiano_idea_con_le_regole_di_romeo(tmp_path):
+def test_si_confrontano_e_cambiano_idea(tmp_path):
     sq = Squadra(tmp_path)
-    g = sq.giudizi(_metodo(confluenze=("SMT",)))
-    # Il Bias sente l'SMT del Grilletto: "SMT equals expansion" (V11 13:01).
+    g = sq.giudizi(_metodo(confluenze=("DXY a favore",)))
+    # Il Bias sente il DXY: *"è un grafico fondamentale"* (il proprietario, 06/10/2026).
     assert g["Bias"]["dopo"] > g["Bias"]["prima"]
-    assert any(da == "Grilletto" and cosa == "SMT" for da, cosa, _ in g["Bias"]["sentiti"])
-    v = sq.riunione("c", "EURUSD", _metodo(confluenze=("SMT",)), 0, op=_op())
-    assert "sentito Grilletto («SMT») passo al" in dict(v.voci)["Bias"] and "V11 13:01" in dict(v.voci)["Bias"]
-    # Se sentire l'SMT non aiuta il Bias, il suo peso scende da solo.
-    prima = sq._prior("Bias", "Grilletto: SMT")
+    assert any(da == "DXY" and cosa == "DXY a favore" for da, cosa, _ in g["Bias"]["sentiti"])
+    v = sq.riunione("c", "EURUSD", _metodo(confluenze=("DXY a favore",)), 0, op=_op())
+    assert "sentito DXY («DXY a favore») passo al" in dict(v.voci)["Bias"]
+    # Se sentire il DXY non aiuta il Bias, il suo peso scende da solo.
+    prima = sq._prior("Bias", "DXY: DXY a favore")
     for i in range(300):
-        sq.riunione(f"x{i}", "EURUSD", _metodo(confluenze=("SMT",)), 0, op=_op())
+        sq.riunione(f"x{i}", "EURUSD", _metodo(confluenze=("DXY a favore",)), 0, op=_op())
         sq.rifletti(f"x{i}", -1.0, preso=False)
-    assert sq.memoria.agenti["Bias"]["pesi"]["Grilletto: SMT"] < prima
+    assert sq.memoria.agenti["Bias"]["pesi"]["DXY: DXY a favore"] < prima
 
 
 def test_il_capo_lascia_un_a_piu_solo_con_le_prove(tmp_path):
@@ -129,7 +128,7 @@ def test_il_capo_lascia_un_a_piu_solo_con_le_prove(tmp_path):
     v = sq.riunione("lasciata", "EURUSD", _metodo(), 0, op=_op())
     assert not v.entra and v.a_piu and "lose, journal, avoid" in v.voci[-1][1] and "casi simili" in v.voci[-1][1]
     # Su un altro grafico o un'altra entrata i casi non sono simili: si entra.
-    assert sq.riunione("altra", "EURUSD", _metodo(coppia="W1-H4"), 0, op=_op()).entra
+    assert sq.riunione("altra", "EURUSD", _metodo(coppia="W1"), 0, op=_op()).entra
     assert sq.memoria.rischio["base"] < PUNTATA_INIZIALE
 
 
@@ -171,7 +170,7 @@ def test_inventano_idee_nuove_dagli_errori_che_si_ripetono(tmp_path):
     assert sq.stima(_metodo(giorno="lunedì")) < sq.stima(_metodo(giorno="giovedì"))
 
 
-def test_livelli_sceglie_fra_i_piani_di_romeo(tmp_path):
+def test_livelli_sceglie_fra_i_piani(tmp_path):
     sq = Squadra(tmp_path)
     piani = [_op() for _ in range(3)]
     seguire = {"strumento": "EURUSD", "basso": "H1", "scadenza": 0, "piani": [None] * 3}
@@ -180,9 +179,9 @@ def test_livelli_sceglie_fra_i_piani_di_romeo(tmp_path):
         sq.riunione(f"b{i}", "EURUSD", _metodo(), 0, piani, da_seguire=seguire)
         sq.impara_piani(f"b{i}", [1.0, 0.2, 0.1])
     v = sq.riunione("c", "EURUSD", _metodo(), 0, piani, da_seguire=seguire)
-    assert v.piano == 0 and any(chi == "Livelli" and "chiudo tutto al 50%" in t for chi, t in v.voci)
-    # Su un'altra entrata Livelli non ha ancora visto niente: resta il piano di Romeo.
-    assert sq.riunione("d", "EURUSD", _metodo(modello="vera rottura"), 0, piani, da_seguire=seguire).piano == PIANO_ROMEO
+    assert v.piano == 0 and any(chi == "Livelli" and "chiudo tutto al TP1" in t for chi, t in v.voci)
+    # Su un'altra entrata Livelli non ha ancora visto niente: resta il piano delle foto.
+    assert sq.riunione("d", "EURUSD", _metodo(modello="dal DXY"), 0, piani, da_seguire=seguire).piano == PIANO_ROMEO
 
 
 def test_un_ordine_non_partito_conta_come_non_preso(tmp_path):
@@ -195,7 +194,7 @@ def test_un_ordine_non_partito_conta_come_non_preso(tmp_path):
 
 
 def test_la_memoria_di_prima_si_butta(tmp_path):
-    (tmp_path / "memoria.json").write_text('{"versione": "video-1", "capo": {"prudenza": -5}}', encoding="utf-8")
+    (tmp_path / "memoria.json").write_text('{"versione": "video-2", "capo": {"prudenza": -5}}', encoding="utf-8")
     m = Memoria.carica(tmp_path)
     assert m.rischio["base"] == PUNTATA_INIZIALE and all(g["n"] == 0 for g in m.agenti.values())
 
@@ -207,15 +206,20 @@ def test_nessuna_ai_esterna():
         assert "anthropic" not in testo and "openai" not in testo
 
 
-def test_la_squadra_si_riunisce_sulle_occasioni_della_candela_3(tmp_path):
+def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
     from nvm.vivo.giro import giro
+    from nvm.intelligenti.squadra import AGENTI
     from tests.test_vivo import CapoFinto, ore_finte
     import vivo
     base = ore_finte(giorni=400)
     decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
-    from nvm.agenti.grilletto import MODELLI_ROMEO
-    assert decisioni and all(d.r.scatto.modello in MODELLI_ROMEO for d in decisioni)
+    assert decisioni and all(d.foto and d.r.scatto.modello == "apertura N3" for d in decisioni)
     assert all(d.piani_romeo is not None and len(d.piani_romeo) == 3 for d in decisioni)
+    # Si entra all'apertura della candela 3, con lo stop oltre la candela 2 e il TP1 all'altro lato del range.
+    for d in decisioni:
+        s = d.foto["setup"]
+        assert d.r.quando == s.n3_inizio and d.op.stop == s.stop and d.op.tp1 == s.tp1
+        assert (s.stop > s.n2_alto - 1e-9) if s.short else (s.stop <= s.n2_basso + 1e-9)
     sq = Squadra(tmp_path)
     verdetti = al_lavoro.riunioni(sq, decisioni, {"EURUSD": base}, {})
     assert not sq.ultimo_errore and set(verdetti) == {d.chiave for d in decisioni}
@@ -223,10 +227,11 @@ def test_la_squadra_si_riunisce_sulle_occasioni_della_candela_3(tmp_path):
         m = verdetti[d.chiave].metodo
         assert [x.nome for x in m.obbligatorie] == [n for n, _ in OBBLIGATORIE]
         assert all(x.perche for x in m.obbligatorie + m.confluenze)
-        # La candela 3, la finta oltre l'apertura e il modello d'entrata ci sono per costruzione.
-        assert all(x.si for x in m.obbligatorie[:3])
-        assert set(m.numeri) == {"Cacciatore", "Grilletto", "Key level", "Bias", "Orario", "Livelli"}
+        # Il CRT c'e' per costruzione.
+        assert m.obbligatorie[0].si
+        assert set(m.numeri) == set(AGENTI)
         assert verdetti[d.chiave].entra == (m.a_piu and verdetti[d.chiave].puntata > 0)
+    assert any(verdetti[d.chiave].entra for d in decisioni) and not all(verdetti[d.chiave].entra for d in decisioni)
     al_lavoro.valuta_piani(sq, {"EURUSD": base}, {}, max(d.scadenza for d in decisioni) + 1)
     assert not sq.ultimo_errore and not sq.memoria.da_vedere
     finto = NS(_verdetti=verdetti, _decidono_i_cervelli=False, squadra=sq)
@@ -248,14 +253,14 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     from nvm.vivo.ambiente import Impostazioni
     from tests.test_vivo import CapoFinto, ore_finte
     monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
-    vero = metodo.valuta
+    vero = metodo.valuta_foto
 
-    def tutto_si(d, ore, quarti=None, gemello=None):
-        m = vero(d, ore, quarti, gemello)
+    def tutto_si(d):
+        m = vero(d)
         for x in m.obbligatorie:
             x.si = True
         return m
-    monkeypatch.setattr(metodo, "valuta", tutto_si)
+    monkeypatch.setattr(metodo, "valuta_foto", tutto_si)
     base = ore_finte(giorni=400)
     decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())[-2:]
     assert decisioni
@@ -283,26 +288,28 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot._lezioni_oggi, bot._diario, bot._prove = [], ThreadPoolExecutor(1), None
     bot.strumenti = ["EURUSD"]
     bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
-    bot._decidi(decisioni, int(decisioni[-1].r.quando), 10**12)
-    assert len(aperte) == len(decisioni) and all(x > 0 and p == 1.0 and not riduci for x, p, riduci in aperte)
+    bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
+    assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci for x, p, riduci in aperte)
+    # Un'operazione alla volta per strumento: con una gia' aperta la seconda non si apre.
+    bot._decidi(decisioni[1:], int(decisioni[1].r.quando), 10**12)
+    assert len(aperte) == 1 and bot.stato.saltate.get("c'era già un'operazione aperta su quello strumento") == 1
     equipe = [t for c, t in mandati if c == "-2"]
-    assert any("Tutte e 7 le regole di Romeo dicono sì" in t for t in equipe)
+    assert any("Tutte e 3 le regole del metodo dicono sì" in t for t in equipe)
     assert any("Metto in gioco" in t and "EUR" in t for t in equipe)
-    # Sul grafico: la candela 1, il 50%, la finta, il Model#1, l'entrata, lo stop, gli obiettivi.
+    # Sul grafico: il range, la finta, l'entrata all'apertura della candela 3, lo stop, il TP1, il target finale.
     csv = (tmp_path / "comune" / disegni.FILE).read_text(encoding="cp1252")
-    for parola in ("Candela 1", "Finta della candela 2", "Stop", "Obiettivo 1 (50%)", "Obiettivo 2", "EURUSD.x"):
+    for parola in ("Range", "Finta della candela 2", "all'apertura della candela 3", "Stop (oltre la candela 2)",
+                   "TP1: chiusura del CRT", "EURUSD.x"):
         assert parola in csv, parola
-    assert any(nome in csv for nome in ("Model#1", "Kiss of death", "vera rottura"))
-    # A ogni giro: i CRT guardati, le operazioni aperte e la settimana; e il controllo del programma in MT5.
-    bot.terminale.simbolo = lambda s: s + ".x"
+    # A ogni giro: le operazioni aperte e la settimana; e il controllo del programma in MT5.
     bot._avviso_disegni = 0.0
     bot.aggiorna_disegni(int(decisioni[-1].r.quando))
-    assert any(g.startswith("aperta ") or g in bot.disegni.gruppi for g in bot.disegni.gruppi)
     assert any(g.startswith("settimana ") for g in bot.disegni.gruppi)
     bot.controlla_disegni(float(decisioni[-1].r.quando))
     assert any("NvmDisegni" in t and "Start" in t for c, t in mandati if c == "-1")
     s = bot.stato.seguite[0]
     s.esito = {"erre": -1.0, "quando": int(base.t[-1]), "tp1": False, "tp2": False, "uscita": "stop"}
+    bot.stato.vive = [NS(chiave=s.chiave, strumento="EURUSD")]
     bot._finita(s, int(base.t[-1]))
     # Sulla carta e' finita, ma sul conto e' ancora aperta: la squadra aspetta il risultato vero.
     assert bot.squadra.memoria.discusse[s.chiave]["aspetta_vero"]
@@ -372,10 +379,13 @@ def test_con_l_smt_confermato_contro_si_chiude_prima_dell_obiettivo(tmp_path, mo
 
 
 def test_dopo_il_primo_obiettivo_si_esce_se_il_kod_e_superato(tmp_path, monkeypatch):
+    """Il metodo dei video (col metodo delle foto si esce solo a stop, pareggio o target)."""
     import vivo
     from nvm.tempo import ny
+    from nvm.vivo import giro
     from tests.aiuti import minuti
     monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    monkeypatch.setattr(giro, "METODO", "candela 3")
     t0 = ny(2026, 9, 15, 3)
     righe = [(1.1060, 1.1061, 1.1049, 1.1050),     # il primo obiettivo
              (1.1050, 1.1051, 1.1040, 1.1042), (1.1042, 1.1048, 1.1041, 1.1047),
