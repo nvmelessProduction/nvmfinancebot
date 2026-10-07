@@ -597,9 +597,13 @@ class Bot:
                 self.stato.chiuse.append([int(time.time()), float(f.erre), None if netto is None else float(netto)])
             if f.libro is not None:
                 self._nel_libro("chiusura", **f.libro)
+                # Le chiusure fatte a mano non sono il metodo: la squadra impara da come sarebbe finita sulla carta.
                 if self.squadra is not None and f.erre is not None and f.libro.get("chiave"):
-                    self._risultato_vero(f.libro["chiave"], float(f.erre), f.libro.get("strumento", ""),
-                                         f.libro.get("verso", ""))
+                    if f.libro.get("a_mano"):
+                        self._chiusa_a_mano(f.libro["chiave"], f.libro.get("strumento", ""), f.libro.get("verso", ""))
+                    else:
+                        self._risultato_vero(f.libro["chiave"], float(f.erre), f.libro.get("strumento", ""),
+                                             f.libro.get("verso", ""))
         adesso = time.time()
         quarto = _su(adesso, 900)
         if quarto > self.stato.ultimo_quarto and adesso - quarto >= RITARDO_GIRO:
@@ -1149,6 +1153,18 @@ class Bot:
             if d is not None and d.get("aspetta_vero"):
                 nome = f"{strumento} ({'vendita' if verso == 'short' else 'acquisto'})"
                 self._diario.submit(self._lezioni_della_squadra, chiave, erre, True, nome)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _chiusa_a_mano(self, chiave: str, strumento: str, verso: str) -> None:
+        """Un'operazione chiusa a mano: se sulla carta era gia' finita e la squadra aspettava il risultato vero,
+        impara da quello sulla carta (come sarebbe andata col metodo); se no lo fara' quando finisce sulla carta."""
+        try:
+            d = self.squadra.memoria.discusse.get(chiave)
+            s = next((x for x in self.stato.seguite if x.chiave == chiave and x.esito is not None), None)
+            if d is not None and d.get("aspetta_vero") and s is not None:
+                nome = f"{strumento} ({'vendita' if verso == 'short' else 'acquisto'})"
+                self._diario.submit(self._lezioni_della_squadra, chiave, float(s.esito["erre"]), True, nome)
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
 

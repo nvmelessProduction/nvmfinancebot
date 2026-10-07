@@ -326,6 +326,18 @@ class Terminale:
             return None
         return float(np.asarray(barre["high"])[dopo].max()), float(np.asarray(barre["low"])[dopo].min())
 
+    def chiusa_a_mano(self, ticket: int) -> bool:
+        """La posizione l'ha chiusa una persona (dal terminale, dal telefono o dal web), non lo stop, il target o
+        il bot: il suo risultato non dice niente del metodo."""
+        affari = self.mt5.history_deals_get(position=int(ticket)) or []
+        uscite = [d for d in affari if int(d.entry) == self.mt5.DEAL_ENTRY_OUT]
+        if not uscite:
+            return False
+        a_mano = {getattr(self.mt5, n, None) for n in ("DEAL_REASON_CLIENT", "DEAL_REASON_MOBILE", "DEAL_REASON_WEB")}
+        a_mano.discard(None)
+        motivo = getattr(uscite[-1], "reason", None)
+        return motivo is not None and int(motivo) in a_mano
+
     def chiusura(self, ticket: int) -> tuple[float, float]:
         """Profitto netto (con commissioni e swap) e prezzo d'uscita di una posizione chiusa."""
         affari = self.mt5.history_deals_get(position=int(ticket))

@@ -829,3 +829,27 @@ def test_il_controllo_degli_aggiornamenti_non_dipende_dal_giro(monkeypatch):
     sorgente = inspect.getsource(vivo.main)
     assert sorgente.index("bot.controlla_versione()") > sorgente.index("bot.minuto()")
     assert "aggiorna_se_serve" not in inspect.getsource(vivo.Bot.minuto)
+
+
+def test_una_posizione_chiusa_a_mano_si_riconosce():
+    # Il proprietario ha chiuso tutto a mano: quei risultati non sono il metodo e la squadra non li conta.
+    d = _una_decisione()
+    m = MT5Finto()
+    m.DEAL_REASON_CLIENT, m.DEAL_REASON_MOBILE, m.DEAL_REASON_WEB, m.DEAL_REASON_SL = 0, 1, 2, 4
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    (a,) = viva.tickets
+    m.chiudi(a, viva.ingresso + (0.0002 if viva.short else -0.0002))
+    m.affari[a][-1].reason = m.DEAL_REASON_MOBILE          # dal telefono
+    vive, fatti = e.sorveglia([viva])
+    assert vive == [] and fatti[0].libro["a_mano"] and "a mano" in fatti[0].testo
+    # Allo stop invece e' un risultato vero.
+    viva2, _ = e.apri(replace(d, r=replace(d.r, quando=d.r.quando + 86400)), t.conto())
+    (b,) = viva2.tickets
+    m.chiudi(b, viva2.stop)
+    m.affari[b][-1].reason = m.DEAL_REASON_SL
+    vive, fatti = e.sorveglia([viva2])
+    assert not fatti[0].libro["a_mano"] and "a mano" not in fatti[0].testo

@@ -69,6 +69,8 @@ class Viva:
     # operazioni di prima con due posizioni) e se l'ha gia' fatto.
     meta: float = 0.0
     meta_fatta: bool = False
+    # Chiusa da una persona (dal terminale o dal telefono): il risultato non insegna niente alla squadra.
+    a_mano: bool = False
 
     @property
     def gambe(self) -> dict[str, float]:
@@ -260,6 +262,11 @@ class Esecutore:
                             "La conto chiusa a zero: controlla nella cronologia di MT5.")))
                     v.chiusi.append(ticket)
                     v.incassato += netto
+                    try:
+                        if not v.uscita_anticipata and self.t.chiusa_a_mano(ticket):
+                            v.a_mano = True
+                    except Exception:
+                        pass
             if any(x not in aperte and x not in v.chiusi for x in v.tickets):
                 # Una parte e' chiusa ma MT5 non ne da' ancora il risultato: si aspetta, senza toccarla.
                 restano.append(v)
@@ -268,7 +275,9 @@ class Esecutore:
             if not ancora:
                 r = v.incassato / v.rischio if v.rischio else 0.0
                 motivo = "stop" if r <= -0.8 else ("pareggio" if abs(r) < 0.1 else "target")
-                if v.uscita_anticipata:
+                if v.a_mano:
+                    motivo = "chiusa a mano"
+                elif v.uscita_anticipata:
                     motivo = v.uscita_anticipata
                 elif v.pareggio_fatto and r > 0.1:
                     motivo = "primo target e poi " + ("secondo target" if r > 0.5 * abs(v.tp1 - v.ingresso) / abs(v.ingresso - v.stop) + 0.1 else "pareggio")
@@ -276,7 +285,7 @@ class Esecutore:
                                    libro={"strumento": v.strumento, "verso": v.verso, "tickets": v.tickets,
                                           "volume": v.volume, "ingresso": v.ingresso, "rischio": v.rischio,
                                           "netto": v.incassato, "erre": r, "motivo": motivo, "valuta": v.valuta,
-                                          "chiave": v.chiave}))
+                                          "chiave": v.chiave, "a_mano": v.a_mano}))
                 continue
             bid, ask = self.t.prezzo(v.strumento)
             sola = len(v.tickets) == 1

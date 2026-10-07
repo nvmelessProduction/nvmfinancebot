@@ -107,7 +107,8 @@ def _candela_range(d: Decisione) -> str:
 _MOTIVI = {"stop": "è arrivata allo stop", "target": "ha raggiunto l'obiettivo",
            "pareggio": "è tornata al prezzo d'entrata",
            "primo target e poi secondo target": "ha raggiunto tutti e due gli obiettivi",
-           "primo target e poi pareggio": "metà chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata"}
+           "primo target e poi pareggio": "metà chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata",
+           "chiusa a mano": "l'hai chiusa a mano: la squadra non la conta come risultato del metodo"}
 
 
 def avvio(login: int, server: str, saldo: float, valuta: str, strumenti: list[str], scarto: int) -> str:
