@@ -31,6 +31,17 @@ riassunte in `casi/ESEMPI-PROPRIETARIO.md`) e alle domande ha risposto così:
     parzializzare, altrimenti no. E continua fino al TP"*; lo stop dopo il parziale va a pareggio; più operazioni
     sullo stesso strumento: una per CRT. Dopo il primo giorno dal vivo (62 operazioni in 30 ore nella prova):
     **"Max 1 aperta per strumento"**.
+13. 07/10/2026, tre esempi dal vivo (cartelle `eurjpy`, `euraud`, `chfjpy`): *"attualmente il bot fa bene l'entry
+    ... lo stoploss lo mette bene, il tp1 lo mette bene ma sbaglia la percentuale e deve prendere il 25%
+    dell'operazione al posto del 50%"*; euro-yen: *"il tp finale non può essere il gap weekly visto che è già stato
+    usato (quindi mitigato) per andare sell, quindi non essendoci gap il target è il kl cioè il DH"*, *"il gap è già
+    stato mitigato quindi non può essere un target"*; euro-australiano: *"la terza candela accetta la precedente e
+    quindi il target non è il gap bensì il kl quindi il dh"*, *"per quanto riguarda i gap invece devi guardare
+    sempre la terza candela che crea il gap, si vale per ogni gap"*; franco-yen: *"tutto giusto ma la bias errata
+    visto che la candela trimestrale ha accettato a ribasso quindi ci aspettiamo che il minimo trimestrale venga
+    preso e solo dopo ha senso cercare buy"*, *"la candela giornaliera che devi guardare è sempre la precedente"*,
+    *"il bot ogni giorno, settimana, mese deve rianalizzare la bias"*, *"anche 1 mese, tre mesi, dodici mesi"*;
+    *"quelle tre valute ... erano esempi ... cose che ti ho spiegato valgono per tutto"*.
 
 Dove i video e le foto dicono cose diverse vincono le foto (risposta 1). Il metodo dei video resta nel
 codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa questo.
@@ -45,12 +56,12 @@ codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa quest
 | Il range è la candela madre se la candela 1 è una inside bar (e così via) | risposta 5, foto 2/7 | `foto._madre` |
 | Entrata all'apertura della candela 3, a qualunque ora | risposte 1 e 10; tutte le foto | `foto.trova`, `giro.occasioni_foto` |
 | Stop oltre l'estremo della candela 2 | tutte le foto | `foto.trova` |
-| TP1 = l'altro lato del range, metà chiusa e stop a pareggio; una posizione sola, la metà la chiude il bot (se il lotto non si divide, solo il pareggio) | risposte 4 e 12; tutte le foto ("TP1 PARZ + BE") | `foto.trova`, `giro.piani_foto`, `esecutore.Esecutore` |
+| TP1 = l'altro lato del range, il 25% chiuso e stop a pareggio; una posizione sola, il 25% lo chiude il bot (se il lotto non si divide, solo il pareggio) | risposte 4, 12 e 13; tutte le foto ("TP1 PARZ + BE"), euro-australiano ("tp1 parz (25%) + be") | `foto.PARZIALE`, `giro.piani_foto`, `esecutore.Esecutore` |
 | Key level = massimo o minimo del periodo prima (giorno, settimana, mese, 3 mesi, anno), almeno giornaliero e almeno grande come il CRT, preso dal CRT (candela 1 o 2) o dalla candela appena prima; per 4, 6 e 12 ore anche il massimo (minimo) di oggi fatto prima del range | tutte le foto ("KL preso: DH, WH, ML, max annuale…"); foto 3/4 ("per l'entry H4 come KL ho usato il DH") | `foto.key_level_presi` |
 | Il CRT a 1 ora vale solo se prende il key level del giorno e il massimo (minimo) dell'ultima candela a 4 ore | risposta 9, foto 4/6 | `foto._h4_preso`, `giro.setup_buono` |
-| Target finale: il gap ancora intatto del timeframe sopra il CRT (al massimo 1-2 anni di età: 120 giorni, 52 settimane, 24 mesi, 8 trimestri, 6 semestri, 6 anni), oltre il TP1; se davanti c'è un gap già toccato che ha appena reagito contro di noi, l'estremo della sua aggressione (la liquidazione); il più vicino dei due | risposta 4; cartella 2; foto 3/4, 4/1, 4/6 | `foto.obiettivo_finale`, `gap_target`, `liquidazione` |
+| Target finale: il gap del timeframe sopra il CRT (al massimo 1-2 anni di età: 120 giorni, 52 settimane, 24 mesi, 8 trimestri, 6 semestri, 6 anni), oltre il TP1, mai toccato (un gap toccato è mitigato) e la cui terza candela non ha accettato la precedente. La liquidazione dentro un gap toccato non è più un target (dal 07/10/2026: cambiano le foto 3/4, 4/1, 4/6) | risposte 4 e 13; cartella 2; euro-yen, euro-australiano | `foto.obiettivo_finale`, `gap_target`, `Gap.terza_accetta` |
 | Senza gap: il key level, l'altro lato del periodo più grande di cui la finta ha preso la liquidità (presa del ML → MH; presa del DH → DL); l'anno solo per i CRT della settimana e del mese. Senza neanche quello, tutto al TP1 | risposta 4; cartella 3 | `foto.kl_target` |
-| Direzione: almeno un timeframe sopra il CRT (giorno, settimana, mese, 3, 6, 12 mesi) dalla nostra parte, o un gap da riempire nel nostro verso (ritracciamento), o una liquidazione in corso | risposta 6; le foto ("bias comando") | `foto.direzione`, `foto.bias_candela` |
+| Direzione: per giorno, settimana, 1, 3 e 12 mesi (sopra il CRT) si guarda la candela precedente; se ha accettato contro di noi (chiuso oltre la candela prima; dopo inside bar vale la candela prima) e il prezzo non ha ancora preso il suo massimo (minimo), non si entra. Se nessuna blocca: almeno un timeframe sopra dalla nostra parte (quelli col livello già preso non contano più), o un gap valido da riempire nel nostro verso (ritracciamento). Con questa regola le foto 2/1, 3/4, 4/1, 4/6 (bloccate dal mensile), 5/8 e CASO-009 (dal 3 mesi) non si prendono più | risposte 6 e 13; franco-yen | `foto.direzione`, `foto.accettazione` |
 | La direzione di una candela: chiude oltre la candela prima = accetta; prende un lato e chiude dentro = non accetta, va dall'altra parte; inside bar = non accetta, resta la direzione di prima; prende tutti e due i lati = nessuna | risposta 6; Romeo V1 35:12 | `foto.bias_candela` |
 | Le fasi del gap, lette due timeframe sotto il gap (3 mesi sul giornaliero, settimana sul 4 ore, giorno sull'orario): aggressione, reazione automatica (prima chiusura oltre il massimo della candela del minimo), liquidazione (preso il minimo dell'aggressione), continuazione (più la divergenza RSI 14) | risposte 7 e 8; foto 4/1 (il minimo dei 3 mesi è quello di giugno) | `foto.fase`, `foto.rsi` |
 | DXY sintetico dalle coppie (formula ICE, la corona svedese ferma a 10); un suo setup vale per EURUSD, GBPUSD, AUDUSD, NZDUSD, XAUUSD, XAGUSD (verso opposto) e USDJPY, USDCHF, USDCAD (stesso verso), con stop e TP1 della coppia | risposta 8, foto 2/6 | `foto.dxy`, `foto.dal_dxy`, `giro.occasioni_foto` |

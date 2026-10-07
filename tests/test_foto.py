@@ -179,24 +179,79 @@ def test_le_fasi_del_gap_aggressione_reazione_liquidazione_continuazione():
     assert f.numero == 4 and f.divergenza
 
 
-def test_davanti_a_un_gap_che_ha_appena_reagito_il_target_e_la_liquidazione():
-    """Foto 1 della cartella 4 e 4 della cartella 3: il gap toccato ha reagito contro di noi; il target del short
-    e' il minimo dell'aggressione (la liquidazione), non oltre."""
+def test_un_gap_gia_toccato_non_e_un_target():
+    """Il proprietario, 07/10/2026 (euro-yen): *"il gap è già stato mitigato quindi non può essere un target"*. Prima
+    il target era l'estremo dell'aggressione nel gap toccato (la liquidazione): ora no, si va al key level."""
     g = F.Gap(TF.W1, True, 4120.0, 4310.0, 0, toccato=1)
     s = F.Setup("XAUUSD", TF.H4, Verso.SHORT, 0, 4495.0, 4419.0, 0, 0, 10, 20, 4510.0, 4458.0, 4486.0, 4486.0, 0.3,
                 4511.0, 4419.0)
 
     class Q:
         pass
-    orig_contro, orig_fase, orig_target = F.gap_contro, F.fase, F.gap_target
+    orig = F.gap_contro, F.fase, F.gap_di, F.kl_target
     try:
         F.gap_contro = lambda q, s, t=None: [g]
         F.fase = lambda q, g, t: F.Fase(2, False, "reazione", 4282.0)
-        F.gap_target = lambda q, s, t=None: []
+        F.gap_di = lambda q, tf, t: [g]
+        F.kl_target = lambda q, s: F.Livello(TF.D1, False, 4341.0, 0)
         ob = F.obiettivo_finale(Q(), s)
     finally:
-        F.gap_contro, F.fase, F.gap_target = orig_contro, orig_fase, orig_target
-    assert ob.tipo == "liquidazione" and ob.prezzo == 4282.0
+        F.gap_contro, F.fase, F.gap_di, F.kl_target = orig
+    assert ob.tipo == "key level" and ob.prezzo == 4341.0
+
+
+def test_un_gap_la_cui_terza_candela_accetta_non_e_un_target():
+    """Il proprietario, 07/10/2026 (euro-australiano): *"la terza candela accetta la precedente e quindi il target
+    non è il gap bensì il kl"*, *"si vale per ogni gap"*."""
+    giorni = [ny(2026, 9, 21 + k, 18) for k in range(4)]
+    # Un gap ribassista giornaliero: candela 1 col minimo 1.1050, candela 2 grande giu', candela 3 col massimo 1.1000.
+    def quadro(chiusura_3):
+        c = candele("EURUSD", TF.D1, [
+            (giorni[0], 1.1100, 1.1120, 1.1050, 1.1060),
+            (giorni[1], 1.1060, 1.1065, 1.0980, 1.0990),
+            (giorni[2], 1.0990, 1.1000, 1.0940, chiusura_3),
+        ])
+        q = F.Quadro("EURUSD", giorni[3], {TF.D1: c, TF.H1: candele("EURUSD", TF.H1, [(giorni[3], 1.0950, 1.0951, 1.0949, 1.0950)])})
+        return F.gap_di(q, TF.D1, giorni[3])
+    (accetta,) = quadro(1.0950)          # chiude sotto il minimo della candela 2: accetta
+    (non_accetta,) = quadro(1.0985)      # chiude dentro la candela 2
+    assert accetta.terza_accetta and not non_accetta.terza_accetta
+
+
+def test_la_candela_precedente_che_ha_accettato_contro_blocca_finche_non_prende_il_suo_livello():
+    """Il proprietario, 07/10/2026 (franco-yen): *"la candela trimestrale ha accettato a ribasso quindi ci aspettiamo
+    che il minimo trimestrale venga preso e solo dopo ha senso cercare buy"*; vale per giorno, settimana, 1, 3 e 12
+    mesi."""
+    trimestri = [ny(2026, 3, 31, 18), ny(2026, 6, 30, 18), ny(2026, 9, 30, 18)]
+    c = candele("EURUSD", TF.Q3, [
+        (trimestri[0], 1.10, 1.12, 1.08, 1.11),
+        (trimestri[1], 1.11, 1.115, 1.06, 1.07),     # chiude sotto il minimo di prima: accetta giu', livello 1.06
+    ])
+    def quadro(minimo_dopo):
+        ore = candele("EURUSD", TF.H1, [(trimestri[2] + k * ORA, 1.07, 1.075, minimo_dopo if k == 5 else 1.065, 1.07)
+                                        for k in range(10)])
+        return F.Quadro("EURUSD", trimestri[2] + 10 * ORA, {TF.Q3: c, TF.H1: ore})
+    a = F.accettazione(quadro(1.065), TF.Q3, trimestri[2] + 10 * ORA)
+    assert a.verso == -1 and a.livello == 1.06 and not a.preso
+    assert F.accettazione(quadro(1.0590), TF.Q3, trimestri[2] + 10 * ORA).preso
+    s = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.07, 1.064, 1.068,
+                1.068, 0.0001, 1.064, 1.075)
+    d = F.direzione(quadro(1.065), s)
+    assert not d.ok and d.comando is TF.Q3 and "prima si aspetta" in d.testo
+    # Preso il minimo, il trimestre non blocca piu'; e per vendere e' dalla nostra parte.
+    assert F.direzione(quadro(1.0590), s).comando is not TF.Q3
+    s_short = F.Setup("EURUSD", TF.H4, Verso.SHORT, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.076, 1.066,
+                      1.07, 1.07, 0.0001, 1.0761, 1.065)
+    assert F.direzione(quadro(1.065), s_short).ok
+
+
+def test_al_tp1_si_chiude_il_25_per_cento():
+    # Il proprietario, 07/10/2026: *"deve prendere il 25% dell'operazione al posto del 50%"*.
+    from nvm.vivo.giro import piani_foto
+    s = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.1020, 1.0995, 0, 0, 10, 20, 1.1015, 1.0980, 1.1005, 1.1005, 0.0001,
+                1.0980, 1.1020)
+    piani = piani_foto(s, F.Obiettivo(1.1060, "key level", "DH"), None, 10)
+    assert piani[0].parziale == 1.0 and piani[1].parziale == 0.25 and piani[1].pareggio and piani[1].tp2 == 1.1060
 
 
 # --- La direzione di una candela -------------------------------------------------------------------
@@ -259,6 +314,17 @@ ESEMPI = [
     ("5/8", "XAUUSD", TF.H4, "2026-09-02 08:00", "L", 4475.6),
     ("CASO-009", "XAUUSD", TF.H4, "2022-11-08 12:00", "L", 1683.7),
 ]
+# Con le regole del 07/10/2026 ("valgono per tutto") questi esempi non si prendono piu' o cambiano target. Il
+# proprietario lo sa (`registro/tentativi.md`, 07/10/2026): se una regola va ristretta lo dice lui.
+# id -> (timeframe che blocca, o None; target nuovo, o None se resta quello della foto)
+CAMBIATI = {
+    "2/1": (TF.MN, None),          # il mensile di gennaio 2026 ha accettato al rialzo e non ha preso il suo massimo
+    "3/4": (TF.MN, 4418.915),      # il mensile ha accettato al rialzo; il gap toccato non e' piu' un target
+    "4/1": (TF.MN, 1.15662),       # come 2/1 (agosto 2026); la liquidazione nel gap dei 3 mesi non e' piu' un target
+    "4/6": (TF.MN, 4340.965),      # il mensile; target il DL (il gap settimanale toccato non e' piu' un target)
+    "5/8": (TF.Q3, None),          # il 3 mesi (dati dell'oro di marzo 2026 mancanti: puo' essere un errore dei dati)
+    "CASO-009": (TF.Q3, None),     # il 3 mesi di luglio-settembre 2022 ha accettato al ribasso, minimo non preso
+}
 
 
 @pytest.mark.skipif(not (DATI / "ore" / "EURUSD").exists(), reason="servono i dati di Dukascopy in dati/grezzi")
@@ -272,7 +338,15 @@ def test_gli_esempi_del_proprietario(nome, strumento, tf, quando, verso, finale)
     q = F.Quadro.da(m, n3)
     s = next(x for x in F.trova(q, tf, n3, n3) if x.verso is (Verso.SHORT if verso == "S" else Verso.LONG))
     assert s.presi and setup_buono(s), nome
-    assert F.direzione(q, s).ok, nome
+    blocca, nuovo = CAMBIATI.get(nome, (None, None))
+    d = F.direzione(q, s)
+    if blocca is None:
+        assert d.ok, nome
+    else:
+        assert not d.ok and d.comando is blocca, (nome, d.testo)
     ob = F.obiettivo_finale(q, s)
+    if nuovo is not None:
+        assert ob.prezzo == pytest.approx(nuovo, rel=1e-6), (nome, ob)
+        return
     # Il target del proprietario sta sul future: si confronta entro mezzo range.
     assert abs(ob.prezzo - finale) <= 0.5 * (s.range_alto - s.range_basso) + 0.004 * finale, (nome, ob)

@@ -289,7 +289,7 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        versione = "7" if self.squadra is not None else "2"
+        versione = "8" if self.squadra is not None else "2"
         if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
             testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
                      else conversazione.benvenuto(len(self.strumenti)))

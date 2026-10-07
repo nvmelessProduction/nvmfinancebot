@@ -331,7 +331,8 @@ class Esecutore:
                     fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso, tp1=True)))
                 else:
                     fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
-                                                             None if v.pareggio_fatto else livello)))
+                                                             None if v.pareggio_fatto else livello,
+                                                             parte=(v.meta / v.volume) if sola and v.meta and v.volume else None)))
             elif sposta:
                 fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
             restano.append(v)

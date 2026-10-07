@@ -217,6 +217,10 @@ class Gap:
     # Il primo istante in cui il prezzo ci entra, e quando lo attraversa tutto (None: non ancora).
     toccato: Optional[int] = None
     riempito: Optional[int] = None
+    # La terza candela che crea il gap ha chiuso oltre la candela prima (accetta): il gap non e' un target
+    # (il proprietario, 07/10/2026, euro-australiano: *"la terza candela accetta la precedente e quindi il target
+    # non è il gap bensì il kl"*; *"si vale per ogni gap"*).
+    terza_accetta: bool = False
 
     @property
     def bordo(self) -> float:
@@ -242,10 +246,11 @@ def gap_di(q: Quadro, tf: TF, t: int) -> list[Gap]:
     o_ini, o_h, o_l = ore.inizio[:m], ore.bid[:m, MASSIMO], ore.bid[:m, MINIMO]
     fuori = []
     for i in range(a, n):
+        chiude = float(c.bid[i, CHIUSURA])
         if h[i - 2] < l[i]:
-            g = Gap(tf, True, float(h[i - 2]), float(l[i]), int(c.fine[i]))
+            g = Gap(tf, True, float(h[i - 2]), float(l[i]), int(c.fine[i]), terza_accetta=chiude > h[i - 1])
         elif l[i - 2] > h[i]:
-            g = Gap(tf, False, float(h[i]), float(l[i - 2]), int(c.fine[i]))
+            g = Gap(tf, False, float(h[i]), float(l[i - 2]), int(c.fine[i]), terza_accetta=chiude < l[i - 1])
         else:
             continue
         j = int(np.searchsorted(o_ini, g.nato))
@@ -518,8 +523,10 @@ def gap_contro(q: Quadro, s: Setup, t: Optional[int] = None) -> list[Gap]:
 
 def gap_target(q: Quadro, s: Setup, t: Optional[int] = None) -> list[Gap]:
     """I gap ancora intatti nel verso dell'operazione, oltre il primo target, dei timeframe sopra il CRT
-    (almeno il giornaliero): per vendere i gap rialzisti sotto, per comprare quelli ribassisti sopra. Quelli
-    oltre un gap che fa pressione contro di noi (`gap_contro`) non si contano: prima c'e' quello."""
+    (almeno il giornaliero): per vendere i gap rialzisti sotto, per comprare quelli ribassisti sopra. Non contano:
+    i gap gia' toccati (mitigati: *"il gap è già stato mitigato quindi non può essere un target"*), quelli la cui
+    terza candela ha accettato la precedente, e quelli oltre un gap che fa pressione contro di noi
+    (`gap_contro`): prima c'e' quello."""
     t = s.n3_inizio if t is None else t
     muro = gap_contro(q, s, t)
     fuori = []
@@ -527,7 +534,7 @@ def gap_target(q: Quadro, s: Setup, t: Optional[int] = None) -> list[Gap]:
         if not _sopra(tf, s.tf):
             continue
         for g in gap_di(q, tf, t):
-            if g.toccato is not None:
+            if g.toccato is not None or g.terza_accetta:
                 continue
             if s.short and g.rialzista and g.bordo < s.tp1:
                 fuori.append(g)
@@ -571,12 +578,11 @@ def liquidazione(q: Quadro, s: Setup) -> list[tuple[float, Gap]]:
 def obiettivo_finale(q: Quadro, s: Setup) -> Obiettivo:
     """Il proprietario: *"il gap il target finale, ovvio che se non c'è gap il target è il kl"*.
 
-    Il gap ancora intatto piu' vicino oltre il primo target; o, se davanti c'e' un gap toccato che ha appena
-    reagito contro di noi, l'estremo della sua aggressione (la liquidazione): il piu' vicino dei due. Senza
-    gap, il key level (`kl_target`). Senza neanche quello, tutto al primo target (foto 1 della cartella 3)."""
+    Il gap valido piu' vicino oltre il primo target (`gap_target`: intatto, la sua terza candela non ha
+    accettato). Senza gap, il key level (`kl_target`). Senza neanche quello, tutto al primo target (foto 1 della
+    cartella 3). L'estremo dell'aggressione in un gap gia' toccato (la "liquidazione") non e' piu' un target:
+    il proprietario, 07/10/2026, euro-yen: *"il gap è già stato mitigato quindi non può essere un target"*."""
     candidati = [(g.bordo, Obiettivo(g.bordo, "gap", g.nome, g.tf)) for g in gap_target(q, s)]
-    candidati += [(p, Obiettivo(p, "liquidazione", f"l'estremo dell'aggressione nel {g.nome}", g.tf))
-                  for p, g in liquidazione(q, s)]
     if candidati:
         return min(candidati, key=lambda c: abs(c[0] - s.tp1))[1]
     k = kl_target(q, s)
@@ -602,10 +608,12 @@ def target_dopo(q: Quadro, s: Setup, ob: Obiettivo) -> Optional[Obiettivo]:
 # range; cambia dove va il resto. Si parte da quello delle foto e si cambia solo se un altro rende di piu' dal vivo.
 PIANI = (
     ("tutto al TP1", "chiudo tutto al TP1, l'altro lato del range"),
-    ("metà al TP1 e il resto al target finale", "metà al TP1 col pareggio e il resto al target finale, come nelle foto"),
-    ("metà al TP1 e il resto più in là", "metà al TP1 col pareggio e il resto al target ancora più in là"),
+    ("il 25% al TP1 e il resto al target finale", "il 25% al TP1 col pareggio e il resto al target finale, come nelle foto"),
+    ("il 25% al TP1 e il resto più in là", "il 25% al TP1 col pareggio e il resto al target ancora più in là"),
 )
 PIANO_FOTO = 1
+# Quanto si chiude al TP1: il proprietario, 07/10/2026: *"deve prendere il 25% dell'operazione al posto del 50%"*.
+PARZIALE = 0.25
 
 
 # --- la direzione: il timeframe di comando -----------------------------------------------------------
@@ -633,6 +641,55 @@ def biases(q: Quadro, t: int) -> dict:
     return fuori
 
 
+# I timeframe di cui si guarda ogni volta la candela precedente (il proprietario, 07/10/2026: *"il bot ogni giorno,
+# settimana, mese deve rianalizzare la bias"*, *"anche 1 mese, tre mesi, dodici mesi"*).
+TF_ACCETTA = (TF.D1, TF.W1, TF.MN, TF.Q3, TF.Y1)
+
+
+@dataclass
+class Accettazione:
+    tf: TF
+    verso: int               # +1 ha accettato piu' in alto, -1 piu' in basso
+    livello: float           # l'estremo della candela che ha accettato: il key level che ci si aspetta preso
+    inizio: int              # quando apre la candela che ha accettato
+    preso: bool              # il prezzo l'ha gia' preso (dopo la sua chiusura, fino a ora)
+    dentro: int = 0          # quante inside bar dopo di lei (non accettano: resta la sua direzione)
+
+
+def accettazione(q: Quadro, tf: TF, t: int) -> Optional[Accettazione]:
+    """La candela precedente di `tf` (l'ultima chiusa a `t`) ha accettato la sua precedente? Chiude sopra il suo
+    massimo: accetta piu' in alto, e ci si aspetta che il suo massimo venga preso; lo specchio sotto. Se e' una
+    inside bar vale la candela prima (non accetta, rimanda). Se ha preso un lato e chiuso dentro non accetta:
+    None."""
+    c = q.candele.get(tf)
+    if c is None or len(c) < 2:
+        return None
+    k = int(np.searchsorted(c.fine, t, side="right")) - 1
+    j, dentro = k, 0
+    while j >= 1 and dentro <= 3:
+        p, x = c.bid[j - 1], c.bid[j]
+        if x[CHIUSURA] > p[MASSIMO]:
+            verso, livello = 1, float(x[MASSIMO])
+            break
+        if x[CHIUSURA] < p[MINIMO]:
+            verso, livello = -1, float(x[MINIMO])
+            break
+        if not (x[MASSIMO] <= p[MASSIMO] and x[MINIMO] >= p[MINIMO]):
+            return None
+        j, dentro = j - 1, dentro + 1
+    else:
+        return None
+    # Preso dopo? Sulle orarie, dalla chiusura della candela che ha accettato fino a `t`.
+    ore = q.ore
+    a = int(np.searchsorted(ore.inizio, int(c.fine[j])))
+    b = int(np.searchsorted(ore.inizio, t))
+    if verso > 0:
+        preso = bool(b > a and ore.bid[a:b, MASSIMO].max() > livello)
+    else:
+        preso = bool(b > a and ore.bid[a:b, MINIMO].min() < livello)
+    return Accettazione(tf, verso, livello, int(c.inizio[j]), preso, dentro)
+
+
 def direzione(q: Quadro, s: Setup) -> Direzione:
     """Il timeframe di comando deve essere dalla nostra parte. Nelle foto il comando cambia (settimana, mese,
     3, 6, 12 mesi; per il CRT del giorno, della settimana e del mese anche il suo timeframe) e i timeframe
@@ -640,10 +697,45 @@ def direzione(q: Quadro, s: Setup) -> Direzione:
     dalla nostra parte, o che ci sia un gap da riempire nel nostro verso. Quale conta di piu' lo impara il
     Bias dal vivo (`Metodo.numeri`)."""
     segno = -1 if s.short else 1
+    # Prima di tutto la candela precedente di giorno, settimana, 1, 3 e 12 mesi: se una ha accettato contro di noi
+    # e il prezzo non ha ancora preso il suo livello, non si entra (il proprietario, 07/10/2026, franco-yen: *"la
+    # candela trimestrale ha accettato a ribasso quindi ci aspettiamo che il minimo trimestrale venga preso e solo
+    # dopo ha senso cercare buy"*; *"il bot ogni giorno, settimana, mese deve rianalizzare la bias"*; *"anche 1
+    # mese, tre mesi, dodici mesi"*; *"valgono per tutto"*). Si dice la piu' grande.
+    attive, fatte = [], set()
+    for tf in reversed(TF_ACCETTA):
+        if not _sopra(tf, s.tf):
+            continue
+        a = accettazione(q, tf, s.n3_inizio)
+        if a is not None and not a.preso:
+            attive.append(a)
+        elif a is not None:
+            fatte.add(tf)      # il livello e' gia' stato preso: quella candela non spinge piu' da nessuna parte
+
+    def racconto(a: Accettazione) -> tuple[str, str]:
+        lato = "massimo" if a.verso > 0 else "minimo"
+        come = "ha accettato più in alto (ha chiuso sopra il massimo della candela prima)" if a.verso > 0 else \
+            "ha accettato più in basso (ha chiuso sotto il minimo della candela prima)"
+        if a.dentro:
+            come += f", poi {a.dentro} inside bar"
+        return lato, come
+    contrarie = [a for a in attive if a.verso != segno]
+    if contrarie:
+        a = contrarie[0]
+        lato, come = racconto(a)
+        return Direzione(False, a.tf, f"il {NOMI[a.tf]} {come}: prima si aspetta che il prezzo prenda il suo {lato} "
+                                      f"({numero(a.livello)}), solo dopo ha senso "
+                                      f"{'vendere' if s.short else 'comprare'}")
+    if attive:
+        a = attive[0]
+        lato, come = racconto(a)
+        return Direzione(True, a.tf, f"il {NOMI[a.tf]} {come}: il prezzo va a prendere il suo {lato} "
+                                     f"({numero(a.livello)}), dalla nostra parte")
+    # Nessuna accettazione in corso: basta un timeframe sopra dalla nostra parte, o un gap da riempire.
     b = biases(q, s.n3_inizio)
     a_favore, contro = [], []
     for tf, (v, testo) in b.items():
-        if not _sopra(tf, s.tf):
+        if not _sopra(tf, s.tf) or tf in fatte:
             continue
         if v == segno:
             a_favore.append((tf, testo))
@@ -657,12 +749,6 @@ def direzione(q: Quadro, s: Setup) -> Direzione:
         g = gaps[0]
         return Direzione(True, g.tf, f"c'è un {g.nome} ancora da riempire: il prezzo ci deve andare "
                                      "(ritracciamento)", a_favore, contro)
-    liq = liquidazione(q, s)
-    if liq:
-        p, g = liq[0]
-        return Direzione(True, g.tf, f"nel {g.nome} il prezzo ha fatto l'aggressione e la reazione automatica: "
-                                     f"ora va a prendere l'estremo dell'aggressione ({numero(p)}), la liquidazione",
-                         a_favore, contro)
     if contro:
         tf, testo = contro[0]
         return Direzione(False, tf, f"il {NOMI[tf]} {testo}: tutti i timeframe sopra spingono dall'altra parte",

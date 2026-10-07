@@ -5,6 +5,13 @@ _Aggiornato il 06/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 07/10/2026 (sera): TP1 al 25%, gap mitigati, la candela precedente comanda
+
+Dai tre esempi dal vivo del proprietario (regole per tutto): al TP1 il 25%; un gap toccato o con la terza candela
+che ha accettato non è un target (si va al key level); per giorno, settimana, 1, 3 e 12 mesi, se la candela
+precedente ha accettato contro di noi e il suo livello non è preso, non si entra. Sei esempi vecchi non si
+prendono più (il proprietario lo sa). Dettagli in `registro/tentativi.md`.
+
 ## 07/10/2026: una posizione sola per CRT, al massimo una aperta per strumento
 
 Il bot apriva euro-dollaro di continuo e due posizioni per ogni CRT. Ora: una posizione sola (stop e target

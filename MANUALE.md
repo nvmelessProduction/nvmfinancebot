@@ -23,16 +23,18 @@ le regole, impara dai risultati dal vivo e decide.
   - *Key level*: la finta ha preso un livello importante: il massimo o minimo del giorno, della settimana,
     del mese, dei 3 mesi o dell'anno prima (il CRT a 1 ora vale solo se prende quello del giorno e il
     massimo o minimo delle 4 ore: anticipa la candela a 4 ore dopo);
-  - *Bias*: il timeframe di comando (settimana, mese, 3, 6, 12 mesi) è dalla nostra parte, o c'è un gap
-    da riempire nel nostro verso.
+  - *Bias*: ogni giorno, settimana, mese, 3 e 12 mesi il bot guarda la candela precedente. Se ha accettato
+    contro di noi (ha chiuso oltre la candela prima) e il prezzo non ha ancora preso il suo massimo o minimo,
+    non si entra: prima si aspetta la presa di quel livello. Se nessuna blocca, basta un timeframe sopra
+    dalla nostra parte o un gap da riempire nel nostro verso.
   Se manca anche una regola non si entra; se ci sono tutte decide la squadra. Al massimo un'operazione aperta
   per strumento (il proprietario, 07/10/2026): le altre occasioni su quello strumento si seguono sulla carta, e
   la squadra impara anche da quelle. Si entra solo entro 10 minuti dall'apertura della candela 3.
 - **Stop e obiettivi come nelle foto**: stop oltre la candela 2; **TP1** all'altro lato del range, dove si
-  chiude metà e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande se
-  c'è, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la liquidità). Se davanti
-  c'è un gap già toccato che ha appena reagito contro di noi, il target è il minimo (massimo) della sua
-  aggressione: la liquidazione.
+  chiude il **25%** e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande
+  se c'è ed è valido, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la
+  liquidità). Un gap non è un target se il prezzo ci è già entrato (è mitigato) o se la terza candela che lo
+  ha creato ha accettato la precedente.
 - **Il gap** (agente *Gap*): le fasi aggressione, reazione automatica, liquidazione, continuazione; l'RSI
   serve solo lì, per la continuazione (minimi decrescenti sul grafico, crescenti sull'RSI).
 - **Il DXY** (agente *DXY*): l'indice del dollaro, calcolato dalle coppie; un suo setup rialzista vende le
@@ -50,9 +52,8 @@ le regole, impara dai risultati dal vivo e decide.
   - Livelli sceglie fra tre modi di uscire (tutto al TP1; metà al TP1 e il resto al target finale, come nelle
     foto; metà al TP1 e il resto più in là); il Rischio parte dall'1% del conto e si corregge coi risultati.
 - **Una posizione sola per CRT** (il proprietario, 07/10/2026): sul broker stanno lo stop e il target finale;
-  quando il prezzo arriva al TP1 il bot chiude metà e mette lo stop al prezzo d'entrata. Se il lotto è il
-  più piccolo che il broker accetta e non si può dividere, al TP1 sposta solo lo stop e tiene tutto fino al
-  target finale. Lo stesso CRT non si apre mai due volte (il commento della posizione dice quale CRT è).
+  quando il prezzo arriva al TP1 il bot chiude il 25% e mette lo stop al prezzo d'entrata. Se il lotto è
+  troppo piccolo per chiuderne il 25%, al TP1 sposta solo lo stop e tiene tutto fino al target finale. Lo stesso CRT non si apre mai due volte (il commento della posizione dice quale CRT è).
 - **Esce** allo stop, al pareggio dopo il TP1, o al target finale.
 - **Protegge il conto**:
   - stop e obiettivi stanno sempre sul broker, anche se il computer si spegne;

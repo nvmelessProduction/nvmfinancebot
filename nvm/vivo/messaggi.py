@@ -107,7 +107,7 @@ def _candela_range(d: Decisione) -> str:
 _MOTIVI = {"stop": "è arrivata allo stop", "target": "ha raggiunto l'obiettivo",
            "pareggio": "è tornata al prezzo d'entrata",
            "primo target e poi secondo target": "ha raggiunto tutti e due gli obiettivi",
-           "primo target e poi pareggio": "metà chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata",
+           "primo target e poi pareggio": "una parte chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata",
            "chiusa a mano": "l'hai chiusa a mano: la squadra non la conta come risultato del metodo"}
 
 
@@ -190,7 +190,7 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
     elif uscita == "secondo target" and getattr(d, "foto", None) and 0 < op.parziale < 1:
         ob = d.foto.get("obiettivo")
         righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop al prezzo d'entrata. "
-                     "Il lotto è il più piccolo che il broker accetta: non si può chiudere metà")
+                     f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → tutto, "
                      f"circa {guadagno(op.tp2, 1.0)}")
     elif uscita == "secondo target":
@@ -198,11 +198,12 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
         righe.append(f"🛡 A {prezzo(k, op.tp1)} sposto lo stop al prezzo d'entrata: da lì non può più perdere")
     elif getattr(d, "foto", None):
         ob = d.foto.get("obiettivo")
+        p = op.parziale if 0 < op.parziale < 1 else 0.5
         mezzo = f" ({_it(meta, 2)} lotti)" if meta else ""
-        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo metà{mezzo}, circa "
-                     f"{guadagno(op.tp1, 0.5)}, e metto lo stop al prezzo d'entrata")
-        righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → l'altra metà, "
-                     f"circa {guadagno(op.tp2, 0.5)}")
+        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo il {_it(100 * p, 0)}%{mezzo}, circa "
+                     f"{guadagno(op.tp1, p)}, e metto lo stop al prezzo d'entrata")
+        righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → il resto, "
+                     f"circa {guadagno(op.tp2, 1 - p)}")
     else:
         righe.append(f"🎯 Obiettivo 1: {prezzo(k, op.tp1)} → chiudo metà, circa {guadagno(op.tp1, 0.5)}")
         righe.append(f"🎯 Obiettivo 2: {prezzo(k, op.tp2)} → l'altra metà, circa {guadagno(op.tp2, 0.5)}")
@@ -210,8 +211,10 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
     return "\n".join(righe)
 
 
-def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None) -> str:
-    testa = f"🎯 {k}: primo obiettivo raggiunto, ho chiuso metà in guadagno."
+def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None,
+                 parte: Optional[float] = None) -> str:
+    quanto = f"il {_it(100 * parte, 0)}%" if parte else "metà"
+    testa = f"🎯 {k}: primo obiettivo raggiunto, ho chiuso {quanto} in guadagno."
     if a_pareggio:
         return f"{testa}\nSul resto lo stop ora è al prezzo d'entrata ({prezzo(k, ingresso)}): da qui non può più perdere."
     return f"{testa}\nSul resto lo stop andrà al prezzo d'entrata quando il prezzo arriva a {prezzo(k, livello)}."

@@ -232,7 +232,7 @@ def operazione_foto(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -
               testo=("Vendita" if short else "Acquisto") + " all'apertura della candela 3"),
         Segno("linea", dopo + sv, float(op.stop), inizio_3 + sv, float(op.stop), ROSSO, 0, 2, "Stop (oltre la candela 2)"),
         Segno("linea", dopo + sv, float(op.tp1), inizio_3 + sv, float(op.tp1), VERDE, 1, 2,
-              "TP1: chiusura del CRT" + (" (metà + pareggio)" if float(op.tp2) != float(op.tp1) else "")),
+              "TP1: chiusura del CRT" + (f" ({round(100 * op.parziale)}% + pareggio)" if float(op.tp2) != float(op.tp1) else "")),
     ]
     if float(op.tp2) != float(op.tp1):
         segni.append(Segno("linea", dopo + sv, float(op.tp2), inizio_3 + sv, float(op.tp2), VERDE, 0, 2,

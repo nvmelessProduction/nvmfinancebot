@@ -230,7 +230,7 @@ def operazione_foto(d, viva=None) -> bytes:
     quadro.linee += [
         Linea(stop, "Stop", ROSSO, "-", int(s.n3_inizio)),
         Linea(ingresso, "Entrata", NERO, "--", int(s.n3_inizio)),
-        Linea(float(op.tp1), "TP1 (metà + pareggio)" if float(op.tp2) != float(op.tp1) else "TP1", VERDE, "--",
+        Linea(float(op.tp1), f"TP1 ({round(100 * op.parziale)}% + pareggio)" if float(op.tp2) != float(op.tp1) else "TP1", VERDE, "--",
               int(s.n3_inizio)),
     ]
     if float(op.tp2) != float(op.tp1):
