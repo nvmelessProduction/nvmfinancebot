@@ -953,7 +953,16 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: candela 3 aperta da {int(adesso - d.r.quando)} s")
-            if self._entra(d, g) and adesso - d.r.quando <= finestra:
+            occupato = any(x.strumento == d.r.strumento for x in self.stato.vive)
+            if self._entra(d, g) and adesso - d.r.quando <= finestra and occupato:
+                # Il proprietario, 07/10/2026: al massimo un'operazione aperta per strumento. Le altre occasioni
+                # su quello strumento si seguono solo sulla carta.
+                chiave_s = "già un'operazione aperta sullo strumento"
+                self.stato.saltate[chiave_s] = self.stato.saltate.get(chiave_s, 0) + 1
+                if v is not None and self.squadra is not None:
+                    self.squadra.annulla(d.chiave)
+                registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
+            elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,

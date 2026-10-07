@@ -29,7 +29,8 @@ riassunte in `casi/ESEMPI-PROPRIETARIO.md`) e alle domande ha risposto così:
 11. la routine dei vent'anni *"a tua discrezione"*: spenta il 06/10/2026.
 12. 07/10/2026: *"vorrei che apri una sola operazione. Quando arriva [al TP1], parzializza. Se si può
     parzializzare, altrimenti no. E continua fino al TP"*; lo stop dopo il parziale va a pareggio; più operazioni
-    sullo stesso strumento: una per CRT.
+    sullo stesso strumento: una per CRT. Dopo il primo giorno dal vivo (62 operazioni in 30 ore nella prova):
+    **"Max 1 aperta per strumento"**.
 
 Dove i video e le foto dicono cose diverse vincono le foto (risposta 1). Il metodo dei video resta nel
 codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa questo.
@@ -55,7 +56,7 @@ codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa quest
 | DXY sintetico dalle coppie (formula ICE, la corona svedese ferma a 10); un suo setup vale per EURUSD, GBPUSD, AUDUSD, NZDUSD, XAUUSD, XAGUSD (verso opposto) e USDJPY, USDCHF, USDCAD (stesso verso), con stop e TP1 della coppia | risposta 8, foto 2/6 | `foto.dxy`, `foto.dal_dxy`, `giro.occasioni_foto` |
 | Timeframe allineati (una confluenza): un altro timeframe con un CRT nello stesso verso | tutte le foto ("TF allineati") | `foto.allineati` |
 | Un'occasione per apertura e verso (il timeframe più grande) | lo stesso movimento su 1, 4 e 6 ore è la stessa idea | `giro.occasioni_foto` |
-| Più operazioni sullo stesso strumento: le decide il Rischio, che punta meno se lo strumento ha già un'operazione aperta e impara quanto | il proprietario, 07/10/2026: *"lo gestisce l'agente rischio. decisione sua"* | `squadra._rischio` |
+| Al massimo un'operazione aperta per strumento: le altre occasioni su quello strumento si seguono sulla carta | il proprietario, 07/10/2026 (prima *"lo gestisce l'agente rischio"*, poi, visto il numero di operazioni, *"Max 1 aperta per strumento"*) | `vivo.Bot._decidi` |
 
 Le domande obbligatorie (`metodo.valuta_foto`): **CRT**, **key level**, **direzione**. Le altre sono
 confluenze: timeframe allineati, inside bar, key level grande, dentro un gap a favore, continuazione col RSI,

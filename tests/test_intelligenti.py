@@ -303,12 +303,14 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot.tg.foto = lambda canale, dati, didascalia: foto.append((canale, dati, didascalia))
     bot.manda_foto_operazioni()
     assert len(foto) == 1 and foto[0][0] == "operativo" and foto[0][1].startswith(b"\x89PNG")
-    # Con un'operazione gia' aperta sullo stesso strumento decide il Rischio (il proprietario: *"lo gestisce
-    # l'agente rischio"*): apre, ma punta meno, e lo dice.
+    # Con un'operazione gia' aperta sullo stesso strumento non se ne apre un'altra (il proprietario, 07/10/2026:
+    # "Max 1 aperta per strumento"): l'occasione si segue sulla carta.
+    bot.stato.vive = [NS(chiave="un altro CRT", strumento="EURUSD", pareggio_fatto=False, rischio=10.0)]
     bot._decidi(decisioni[1:], int(decisioni[1].r.quando), 10**12)
-    assert len(aperte) == 2 and 0 < aperte[1][0] < aperte[0][0]
+    assert len(aperte) == 1 and bot.stato.saltate.get("già un'operazione aperta sullo strumento") == 1
+    assert any(s.chiave == decisioni[1].chiave for s in bot.stato.seguite)
+    bot.stato.vive = []
     equipe = [t for c, t in mandati if c == "-2"]
-    assert any("su EURUSD c'è già un'operazione aperta" in t for t in equipe)
     assert any("Tutte e 3 le regole del metodo dicono sì" in t for t in equipe)
     assert any("Metto in gioco" in t and "EUR" in t for t in equipe)
     # Sul grafico: il range, la finta, l'entrata all'apertura della candela 3, lo stop, il TP1, il target finale.

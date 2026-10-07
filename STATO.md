@@ -5,13 +5,15 @@ _Aggiornato il 06/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
-## 07/10/2026: una posizione sola per CRT
+## 07/10/2026: una posizione sola per CRT, al massimo una aperta per strumento
 
 Il bot apriva euro-dollaro di continuo e due posizioni per ogni CRT. Ora: una posizione sola (stop e target
 finale sul broker; al TP1 il bot chiude metà e mette lo stop a pareggio, se il lotto si divide); lo stesso CRT
 non si apre mai due volte; un errore su uno strumento non fa più ripartire il giro dell'ora. Le foto per
 Telegram le disegna il bot (`nvm/vivo/foto_grafico.py`: sfondo bianco, candele verdi e rosse, solo
-l'operazione); la foto di MT5 resta solo se il disegno non riesce. Dettagli in `registro/tentativi.md`.
+l'operazione). Il giro dell'ora non si rompe più (l'errore 34/31 del Capo di prima), non si entra oltre 10
+minuti dall'apertura della candela 3, e al massimo un'operazione aperta per strumento (scelta del
+proprietario dopo 62 operazioni in 30 ore nella prova del bot intero). Dettagli in `registro/tentativi.md`.
 
 ## 06/10/2026: il metodo delle foto del proprietario
 

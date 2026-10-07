@@ -25,8 +25,9 @@ le regole, impara dai risultati dal vivo e decide.
     massimo o minimo delle 4 ore: anticipa la candela a 4 ore dopo);
   - *Bias*: il timeframe di comando (settimana, mese, 3, 6, 12 mesi) è dalla nostra parte, o c'è un gap
     da riempire nel nostro verso.
-  Se manca anche una regola non si entra; se ci sono tutte si entra. Se lo strumento ha già un'operazione
-  aperta decide il Rischio quanto puntare (impara lui quanto ridurre).
+  Se manca anche una regola non si entra; se ci sono tutte decide la squadra. Al massimo un'operazione aperta
+  per strumento (il proprietario, 07/10/2026): le altre occasioni su quello strumento si seguono sulla carta, e
+  la squadra impara anche da quelle. Si entra solo entro 10 minuti dall'apertura della candela 3.
 - **Stop e obiettivi come nelle foto**: stop oltre la candela 2; **TP1** all'altro lato del range, dove si
   chiude metà e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande se
   c'è, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la liquidità). Se davanti
