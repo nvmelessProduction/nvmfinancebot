@@ -154,6 +154,21 @@ def test_le_orarie_arrivano_in_utc_e_senza_quella_in_formazione():
     assert o.passo == 3600 and int(o.bid[-1, 3]) == 110100 and int(o.ask[-1, 3]) == 110112
 
 
+def test_il_grafico_del_dollaro_si_trova_col_nome_del_broker():
+    """Su FP Markets il DXY si chiama USDX: il bot lo trova da solo e ne legge le orarie."""
+    adesso = utc(2026, 10, 8, 10, 30)
+    m, orologio = _terminale_con_barre(adesso)
+    m.barre["USDX"] = m.barre["EURUSD"].copy()
+    m.tick["USDX"] = NS(time=adesso + 3 * ORA - 5, bid=99.1, ask=99.11)
+    t = Terminale(mt5=m, orologio=lambda: orologio[0])
+    t.scarto = 3
+    assert t.esiste("DXY") and t.simbolo("DXY") == "USDX"
+    assert t.orarie("DXY", 100).strumento == "DXY"
+    del m.tick["USDX"]
+    t2 = Terminale(mt5=m, orologio=lambda: orologio[0])
+    assert not t2.esiste("DXY")
+
+
 # --- il giro fa quello che fa lo storico ---
 
 def test_il_giro_decide_come_lo_storico():
@@ -782,7 +797,7 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     bot.allarme = allarmi.append
     finestre = []
     bot._decidi = lambda dd, adesso, finestra: (decise.extend(d.chiave for d in dd), finestre.append((adesso, finestra)))
-    for nome in ("aggiorna_lunghe", "uscite", "aggiorna_disegni", "controlla_disegni", "parla"):
+    for nome in ("aggiorna_lunghe", "aggiorna_dxy", "uscite", "aggiorna_disegni", "controlla_disegni", "parla"):
         setattr(bot, nome, lambda *a: None)
     ora = utc(2025, 1, 1, 5)
     bot.giro(ora)

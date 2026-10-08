@@ -200,7 +200,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
             if ore.passo > 3600:
                 continue
             decisioni += occasioni_foto(strumento, ore, dal, adesso, capo, gemelli or orarie,
-                                        (lunghe or {}).get(strumento))
+                                        (lunghe or {}).get(strumento), (lunghe or {}).get("DXY"))
         decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
         return decisioni
     decisioni = []
@@ -265,16 +265,13 @@ def _quadro(ore: Minuti, adesso: int, lunghe: Optional[Minuti] = None):
                            lambda: foto.Quadro.da(ore, adesso, lunghe))
 
 
-def _dxy(gemelli: Optional[dict], adesso: int):
-    """Il quadro del DXY sintetico, se il bot ha le coppie che servono."""
-    if not gemelli or not all(k in gemelli for k in foto.PESI_DXY):
+def _dxy(gemelli: Optional[dict], adesso: int, lunghe: Optional[Minuti] = None):
+    """Il quadro del DXY: il grafico del broker (su FP Markets USDX), sotto la chiave "DXY" di `gemelli`. Non si
+    calcola piu' dalle coppie (il proprietario, 08/10/2026): se il grafico non c'e', il DXY non c'e'."""
+    m = (gemelli or {}).get("DXY")
+    if m is None or len(m) < 200:
         return None
-    chiave = ("dxy", adesso, tuple(_impronta(gemelli[k]) for k in foto.PESI_DXY if len(gemelli[k])))
-
-    def fai():
-        m = foto.dxy(gemelli)
-        return None if m is None or len(m) < 200 else foto.Quadro.da(m, adesso)
-    return _ricorda_quadro(chiave, fai)
+    return _quadro(m, adesso, lunghe)
 
 
 def setup_buono(s) -> bool:
@@ -331,7 +328,8 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=()) -> Optional[Decisi
 
 
 def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Capo,
-                   gemelli: Optional[dict] = None, lunghe: Optional[Minuti] = None) -> list[Decisione]:
+                   gemelli: Optional[dict] = None, lunghe: Optional[Minuti] = None,
+                   lunghe_dxy: Optional[Minuti] = None) -> list[Decisione]:
     """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso], su uno strumento.
 
     Se piu' timeframe danno lo stesso verso alla stessa apertura, l'occasione e' una (quella del timeframe
@@ -341,7 +339,7 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
         return []
     q = _quadro(ore, adesso, lunghe)
     trovati = [s for tf in foto.TF_CRT for s in foto.trova(q, tf, dal, adesso) if setup_buono(s)]
-    qd = _dxy(gemelli, adesso) if strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA else None
+    qd = _dxy(gemelli, adesso, lunghe_dxy) if strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA else None
     dxy_setup = []
     if qd is not None:
         dxy_setup = [s for tf in foto.TF_CRT for s in foto.trova(qd, tf, dal, adesso) if setup_buono(s)]

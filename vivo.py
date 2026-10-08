@@ -108,6 +108,15 @@ def _unisci(base: Minuti, nuove: Minuti, quante: int) -> Minuti:
     return tutte.fra(int(tutte.t[max(0, len(tutte) - quante)]), int(tutte.t[-1]) + 1)
 
 
+def di(testo: str) -> None:
+    """Una riga nella finestra di `avvia.bat`, con l'ora: si vede a che punto e' il bot (il resto lo scrive su
+    Telegram). Una scritta non deve mai fermare il bot."""
+    try:
+        print(f"{datetime.now():%d/%m %H:%M:%S}  {testo}", flush=True)
+    except Exception:
+        pass
+
+
 def _leggi(nome: str) -> dict:
     """Prima quello riaddestrato dal vivo; se manca o e' di una versione vecchia, quello del repository.
     Per il Rischio vale il piu' recente dei due: si riallena sia qui il sabato sia in palestra."""
@@ -202,6 +211,8 @@ class Bot:
         self.versione = _versione()
         self.basi: dict[str, Minuti] = {}
         self.fini: dict[str, Minuti] = {}
+        # Il grafico del dollaro del broker (USDX su FP Markets): lo legge l'agente DXY, il bot non ci opera.
+        self.dxy: Optional[Minuti] = None
         # Le giornaliere di tanti anni (per i 3, 6, 12 mesi del metodo delle foto) e il giorno in cui si sono prese.
         self.lunghe: dict[str, Minuti] = {}
         self._lunghe_del = 0
@@ -220,27 +231,35 @@ class Bot:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
         if time.time() - self._allarmi.get(testo, 0) > 3600:
             self._allarmi[testo] = time.time()
+            di(f"Allarme: {testo}")
             self.tg.operativo(messaggi.allarme(testo))
 
     # --- avvio ---
 
     def avvia(self) -> None:
+        di("Mi collego a MT5 (il terminale deve essere aperto e collegato al conto)...")
         self.terminale.connetti()
         conto = self.terminale.conto()
+        di(f"Collegato: conto {conto.login} su {conto.server}, {conto.saldo:.2f} {conto.valuta}, "
+           f"{'demo' if conto.demo else 'REALE'}.")
         if not conto.demo:
+            di("Il conto è reale: il bot opera solo sul demo. Mi fermo.")
             self.tg.operativo(messaggi.allarme(
                 f"Il conto {conto.login} è un conto reale: il bot opera solo sul demo. Mi fermo."))
             # Codice 2: fermo per scelta, avvia.bat non riparte da solo.
             sys.exit(FERMO)
         if self.stato.scarto is not None:
             self.terminale.scarto = self.stato.scarto
+        di("Misuro l'ora del server del broker...")
         while self.terminale.misura_scarto("EURUSD") is None:
             self.allarme("Non so ancora l'ora del server del broker: aspetto che il mercato si muova.")
             time.sleep(60)
         self.stato.scarto = self.terminale.scarto
+        di(f"Ora del server: UTC{self.terminale.scarto:+d}.")
         # Il broker puo' non avere tutti gli strumenti: quelli che mancano si saltano, e si dice quali.
         self.strumenti, mancanti = [], []
-        for strumento in STRUMENTI_VIVO:
+        for i, strumento in enumerate(STRUMENTI_VIVO, 1):
+            di(f"Scarico le candele: {i}/{len(STRUMENTI_VIVO)} {strumento}")
             if not self.terminale.esiste(strumento):
                 mancanti.append(strumento)
                 continue
@@ -257,6 +276,13 @@ class Bot:
                     self.terminale.esiste(v.strumento)
                 except Exception:
                     registra(CARTELLA, "errore", testo=traceback.format_exc())
+        if mancanti:
+            di(f"Il broker non ha: {', '.join(mancanti)}.")
+        di("Cerco il grafico del dollaro (USDX)...")
+        self.aggiorna_dxy()
+        if self.dxy is not None:
+            di(f"Dollaro: leggo il grafico {self.terminale.simbolo('DXY')}.")
+        di("Scarico le giornaliere di tanti anni (3, 6 e 12 mesi)...")
         self.aggiorna_lunghe(time.time())
         adesso = time.time()
         if self.stato.ultimo_giro is None:
@@ -274,6 +300,7 @@ class Bot:
             self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(self.strumenti), self.terminale.scarto))
         if mancanti:
             self.tg.operativo(messaggi.mancanti(mancanti, len(self.strumenti)))
+        di("Mando il messaggio di avvio su Telegram e preparo disegni e foto...")
         self.prova_collegamento(solo_se_non_va=da_aggiornamento)
         self.prepara_disegni()
         self.prepara_foto()
@@ -308,11 +335,31 @@ class Bot:
         if giorno == self._lunghe_del:
             return
         self._lunghe_del = giorno
-        for s in self.strumenti:
+        for s in self.strumenti + (["DXY"] if getattr(self, "dxy", None) is not None else []):
             try:
                 self.lunghe[s] = self.terminale.giornaliere(s, LUNGHE)
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def aggiorna_dxy(self) -> None:
+        """Il grafico del dollaro del broker (`terminale.GRAFICI`): all'avvio le ore di due anni, poi ogni ora le
+        nuove. Se il conto non ce l'ha, l'agente DXY resta neutro e lo si dice (al massimo una volta l'ora)."""
+        self.dxy = getattr(self, "dxy", None)
+        try:
+            if self.dxy is None:
+                if self.terminale.esiste("DXY"):
+                    self.dxy = self.terminale.orarie("DXY", ORARIE)
+            else:
+                self.dxy = _unisci(self.dxy, self.terminale.orarie("DXY", 50), ORARIE)
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        if self.dxy is None:
+            self.allarme("Sul conto non trovo il grafico del dollaro (USDX): l'agente DXY resta neutro finché non c'è.")
+
+    def gemelli(self) -> dict[str, Minuti]:
+        """Le ore di tutti gli strumenti e, se c'e', del grafico del dollaro (chiave "DXY")."""
+        dxy = getattr(self, "dxy", None)
+        return self.basi if dxy is None else {**self.basi, "DXY": dxy}
 
     def manda_simboli(self, canale: str = "operativo") -> None:
         """Tutti gli strumenti del broker, su Telegram (comando /strumenti), e nel registro (arriva a Claude con
@@ -689,6 +736,7 @@ class Bot:
             self.allarme(f"non riesco a controllare se c'è una versione nuova: {type(errore).__name__}")
         if titolo:
             (CARTELLA / "riavvio").write_text(titolo, encoding="utf-8")
+            di(f"C'è una versione nuova ({titolo}): mi riavvio.")
             sys.exit(AGGIORNATO)
 
     def giro_veloce(self, quarto: int) -> None:
@@ -702,7 +750,7 @@ class Bot:
                 # dell'ora: decide il giro orario.
                 continue
             self._decidi(giro_orario({s: self.fini[s]}, dal, quarto, self.capo, (COPPIA_VELOCE,), {s: self.basi[s]},
-                                     gemelli=self.basi),
+                                     gemelli=self.gemelli()),
                          quarto, 900)
         self.uscite(quarto)
         self.stato.ultimo_quarto = quarto
@@ -713,6 +761,7 @@ class Bot:
         # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini. Un errore su uno
         # strumento non ferma gli altri e non fa ripartire il giro (prima rifaceva da capo anche gli strumenti
         # gia' guardati); se non va nessuno (MT5 staccato) si riprova al minuto dopo.
+        self.aggiorna_dxy()
         self.aggiorna_lunghe(time.time())
         andati, ultimo_errore = 0, None
         foto_metodo = il_metodo() == "foto"
@@ -722,7 +771,7 @@ class Bot:
         for s in self.strumenti:
             try:
                 self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
-                tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
+                tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.gemelli(),
                                        lunghe=self.lunghe)
                 andati += 1
             except Exception as errore:
@@ -1353,12 +1402,16 @@ def cane_da_guardia(bot, controlla_ogni: float = 30.0, uscita=os._exit) -> threa
 
 
 def main() -> None:
+    di("Avvio il bot...")
     bot = Bot()
     try:
         bot.avvia()
     except ErroreMT5 as errore:
+        di(f"Non parto: {errore}")
         bot.tg.operativo(messaggi.allarme(f"Non parto: {errore}"))
         sys.exit(1)
+    di(f"Partito: lavoro su {len(bot.strumenti)} mercati. Da qui scrivo su Telegram; questa finestra resta aperta "
+       "(chiuderla ferma il bot).")
     bot.battito = time.time()
     cane_da_guardia(bot)
     while True:

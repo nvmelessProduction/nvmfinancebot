@@ -5,6 +5,18 @@ _Aggiornato l'08/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 08/10/2026 (sera): il DXY dal grafico USDX del broker; la finestra di avvia.bat dice a che punto è
+
+- Il proprietario: *"il dxy non dovrà più essere generato ma bisognerà far sì che l'agente dxy analizzi il grafico che
+  su fptrading si chiama USDX"*. Dal vivo l'agente DXY legge il grafico del broker (`terminale.GRAFICI`: USDX, DXY,
+  DX, col suffisso o senza): all'avvio due anni di ore, poi ogni ora le nuove, e le giornaliere lunghe. Non si
+  calcola più dalle coppie: se il conto non ha USDX, l'agente DXY resta neutro e arriva un allarme. Il DXY calcolato
+  (`foto.dxy`) resta solo per le prove sullo storico, dove il grafico non c'è.
+- Il proprietario: *"quando faccio avvia.bat rimane bloccato"* (e su Telegram niente). Ora la finestra scrive ogni
+  passo dell'avvio con l'ora (MT5, conto, ora del server, candele strumento per strumento, USDX, Telegram) e gli
+  allarmi: si vede dove si ferma. `avvia.bat` non è cambiato.
+- 303 prove passano.
+
 ## 08/10/2026 (pomeriggio): le crypto con gli orari crypto
 
 Il bot alle 6 di New York ha comprato BTC su un CRT a 6 ore. Il proprietario: *"nel tf h6 non abbiamo avuto una

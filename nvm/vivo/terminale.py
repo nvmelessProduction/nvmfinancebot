@@ -25,6 +25,11 @@ from nvm.dati.candele import weekend
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.dati.strumenti import STRUMENTI
 
+# I grafici che il bot guarda ma non opera, con i nomi che hanno sui broker. Il DXY: su FP Markets si chiama USDX
+# (il proprietario, 08/10/2026: *"il dxy non dovrà più essere generato ma bisognerà far sì che l'agente dxy analizzi
+# il grafico che su fptrading si chiama USDX"*).
+GRAFICI = {"DXY": ("USDX", "DX")}
+
 # Lo scarto del server del broker rispetto a UTC, in ore: i valori credibili.
 SCARTI_CREDIBILI = range(0, 5)
 
@@ -105,7 +110,7 @@ class Terminale:
         nomi con cui i broker lo chiamano (`nvm/dati/strumenti.py`), col suffisso e senza; il
         primo che il conto ha diventa il suo nome."""
         s = STRUMENTI.get(strumento)
-        nomi = [strumento] + list(s.mt5 if s is not None else ())
+        nomi = [strumento] + list(s.mt5 if s is not None else ()) + list(GRAFICI.get(strumento, ()))
         for nome in dict.fromkeys([n + self.suffisso for n in nomi] + nomi):
             try:
                 if self.mt5.symbol_select(nome, True) and self.mt5.symbol_info(nome) is not None:

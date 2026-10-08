@@ -380,3 +380,28 @@ def test_le_crypto_si_leggono_con_gli_orari_crypto():
     assert len(a4) == 1 and a4[0].verso is Verso.LONG
     s = a4[0]
     assert (s.range_basso, s.range_alto, s.stop, s.tp1, s.entrata) == (82593, 83471, 82215, 83471, 82935)
+
+
+# --- Il DXY dal grafico del broker (USDX su FP Markets), non piu' calcolato ----------------------------------
+
+def test_l_agente_dxy_legge_il_grafico_usdx_e_non_lo_calcola_piu():
+    """Il proprietario, 08/10/2026: *"il dxy non dovrà più essere generato ma bisognerà far sì che l'agente dxy
+    analizzi il grafico che su fptrading si chiama USDX"*. Il DXY fa il CRT rialzista della foto base (prende il DL e
+    rientra): l'euro, che gli va contro, vende e l'agente DXY ha il suo setup. Senza il grafico, niente DXY, anche se
+    ci sono tutte le coppie da cui prima lo si calcolava."""
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    ore, n3 = _foto_base()
+    righe = [(int(t), *(float(x) * ore.punto for x in b)) for t, b in zip(ore.t, ore.bid)]
+    prima = [(int(ore.t[0]) - k * ORA, 1.1000, 1.1003, 1.0997, 1.1000) for k in range(240, 0, -1)]
+    righe = prima + righe
+    dxy = _ore([(t, 90 * o, 90 * h, 90 * l, 90 * c) for t, o, h, l, c in righe], "DXY", spread=0.0)
+    euro = _ore([(t, 1.21 / o, 1.21 / l, 1.21 / h, 1.21 / c) for t, o, h, l, c in righe], "EURUSD")
+    coppie = {k: euro for k in F.PESI_DXY}
+    assert G._dxy(coppie, n3) is None
+    assert G._dxy({**coppie, "DXY": dxy}, n3).strumento == "DXY"
+    con = [d for d in G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), {**coppie, "DXY": dxy})
+           if d.r.verso is Verso.SHORT]
+    senza = [d for d in G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), coppie) if d.r.verso is Verso.SHORT]
+    assert con and con[0].foto["dxy"] is not None and con[0].foto["dxy"].verso is Verso.LONG
+    assert senza and senza[0].foto["dxy"] is None

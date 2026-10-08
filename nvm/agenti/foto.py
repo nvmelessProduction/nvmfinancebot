@@ -770,7 +770,8 @@ PUNTO.setdefault("DXY", 1e-3)
 
 
 def dxy(basi: dict) -> Optional[Minuti]:
-    """Le orarie del DXY dalle coppie che il bot ha; None se ne manca una."""
+    """Le orarie del DXY dalle coppie che il bot ha; None se ne manca una. Solo per le prove sullo storico (dove il
+    grafico del DXY non c'e'): dal vivo l'agente DXY legge il grafico del broker (USDX su FP Markets)."""
     if not all(k in basi and len(basi[k]) for k in PESI_DXY):
         return None
     t = None
