@@ -1,9 +1,36 @@
 # Dove siamo
 
-_Aggiornato il 06/10/2026._
+_Aggiornato l'08/10/2026._
 
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
+
+## 08/10/2026: la squadra parla davvero e decide il Capo; mai contro la previsione della domenica
+
+Il proprietario, dopo i dieci stop del 07/10: *"gli agenti non parlano tra di loro realmente e ... non seguono le
+previsioni che fanno la domenica"*; *"il capo deve decidere quali CRT hanno più probabilità"*; Telegram con foto e
+messaggi sfasati e l'équipe in cui non si capisce di che asset si parla. Fatto (`nvm/intelligenti/pareri.py`):
+
+- **Primo giro**: ogni agente vota da −2 a +2 col suo mestiere e dice perché. **Secondo giro**: si sentono fra
+  colleghi e chi ha un motivo cambia voto dicendolo per nome; un ascolto che dal vivo non aiuta si spegne.
+- **Il Bias è fedele alle previsioni**: quella del giorno (fatta all'apertura, tenuta fino a sera) e quella della
+  domenica, contro la quale il Capo non entra mai.
+- **Il Capo** pesa tutti (impara dal vivo di chi fidarsi), entra con almeno +3 punti, in ogni giro mette i CRT in
+  ordine di probabilità e prende i migliori; in équipe dice cosa prende e cosa lascia, e se ne prende la
+  responsabilità. Il giro raccoglie le occasioni di tutti gli strumenti prima di decidere.
+- **Il Rischio** toglie per le aperte sulla stessa valuta (non per tutte), tetto 5% del conto, stop dopo il 3% perso
+  in un giorno, arrotonda il lotto per poter chiudere il 25% al TP1.
+- **Telegram**: l'apertura è la didascalia della sua foto; ogni messaggio in équipe comincia con 📌 e l'asset.
+
+**Misura** (`registro/misure/2026-10-08-squadra.txt`, 6 strumenti): la squadra prende circa 3 operazioni a settimana
+invece di 14 e perde molto meno del bot di adesso (2008–2018 −120 R contro −1098; 2019–2023 −161 contro −574;
+2024–2026 −2 contro −287), ma per operazione non è ancora positiva (−0,07, −0,18, −0,005 R). La previsione della
+domenica, nella storia, non separa le occasioni buone dalle cattive: si segue perché lo vuole il proprietario.
+
+Da sapere: oltre ai due punti chiesti, ho messo anche regole che il proprietario non aveva chiesto (l'Orario
+sull'apertura di Wall Street e sul rollover, Livelli sullo stop sotto 0,3 del range, una sola idea per valuta, il
+tetto e lo stop del giorno del Rischio): il proprietario ha detto di finire e poi vedere. Si tolgono una per una se
+non le vuole.
 
 ## 07/10/2026 (sera): TP1 al 25%, gap mitigati, la candela precedente comanda
 

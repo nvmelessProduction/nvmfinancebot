@@ -34,7 +34,7 @@ from nvm.agenti import livelli, manopole
 from nvm.agenti.grilletto import MODELLI_ROMEO, apertura_romeo, kod_superato
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
-from nvm.intelligenti import al_lavoro, fine_settimana
+from nvm.intelligenti import al_lavoro, fine_settimana, pareri
 from nvm.intelligenti.squadra import MANCA_IN_PAROLE
 from nvm.vivo import libro
 from nvm.dati.candele import costruisci
@@ -77,6 +77,8 @@ RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo 
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
 RITARDO_MASSIMO = 600     # metodo delle foto: oltre 10 minuti dall'apertura della candela 3 non si entra piu'
+# Telegram accetta didascalie fino a 1024 caratteri: il messaggio d'apertura ci sta, se no parte subito dopo la foto.
+DIDASCALIA = 1000
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
@@ -289,7 +291,7 @@ class Bot:
                 "canale. Finché manca, l'équipe parla solo sullo schermo della VPS."))
         # All'avvio a mano, e la prima volta dopo questo aggiornamento, il Capo dice come lavora la squadra:
         # un messaggio solo, non una presentazione per agente.
-        versione = "8" if self.squadra is not None else "2"
+        versione = "9" if self.squadra is not None else "2"
         if not da_aggiornamento or not presentati.exists() or presentati.read_text(encoding="utf-8") != versione:
             testo = (al_lavoro.benvenuto(len(self.strumenti)) if self.squadra is not None
                      else conversazione.benvenuto(len(self.strumenti)))
@@ -352,12 +354,18 @@ class Bot:
             self.allarme(f"non sono riuscito a preparare i disegni per MT5 ({type(errore).__name__}: {errore}): "
                          "il bot lavora lo stesso, ma senza disegni sul grafico.")
 
-    def _disegna(self, d, viva, adesso: int) -> None:
+    @staticmethod
+    def _tema(d) -> str:
+        """Di quale operazione si parla, in testa a ogni messaggio in equipe."""
+        return conversazione.tema(d.r.strumento, d.r.verso.value, d.r.alto_tf.value)
+
+    def _disegna(self, d, viva, adesso: int, testo: Optional[str] = None) -> None:
         if getattr(d, "foto", None):
             # La foto per il telefono la disegna il bot (`foto_grafico`), a fine giro: gli ordini non aspettano.
+            # `testo`: il messaggio d'apertura, che parte con la sua foto.
             if not hasattr(self, "_foto_da_fare"):
                 self._foto_da_fare = []
-            self._foto_da_fare.append((d, viva))
+            self._foto_da_fare.append((d, viva, testo))
         if self.disegni is None or (getattr(d.r.scatto, "modello", "") not in MODELLI_ROMEO and not getattr(d, "foto", None)):
             return
         try:
@@ -379,13 +387,23 @@ class Bot:
         l'operazione (il proprietario: *"quando manda le foto non si legge un cazzo"*). Le foto di MT5 non si
         mandano piu': se il disegno non riesce, lo si dice."""
         da_fare, self._foto_da_fare = getattr(self, "_foto_da_fare", []), []
-        for d, viva in da_fare:
-            didascalia = f"📸 {d.r.strumento}: l'operazione sul grafico, come nelle foto."
+        for lavoro in da_fare:
+            d, viva, testo = lavoro if len(lavoro) == 3 else (*lavoro, None)
             try:
-                self.tg.foto("operativo", foto_grafico.operazione_foto(d, viva), didascalia)
+                png = foto_grafico.operazione_foto(d, viva)
             except Exception as errore:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+                if testo:
+                    self.tg.operativo(testo)
                 self.allarme(_foto_non_riuscita(errore))
+                continue
+            # Il messaggio d'apertura e' la didascalia della sua foto: arrivano insieme, una operazione alla volta.
+            if testo and len(testo) <= DIDASCALIA:
+                self.tg.foto("operativo", png, testo)
+            else:
+                self.tg.foto("operativo", png, f"📸 {d.r.strumento}: l'operazione sul grafico, come nelle foto.")
+                if testo:
+                    self.tg.operativo(testo)
 
     def prepara_foto(self) -> None:
         """Le foto le disegna matplotlib: se manca (l'installazione di `avvia.bat` non e' andata), il bot lo
@@ -698,17 +716,14 @@ class Bot:
         self.aggiorna_lunghe(time.time())
         andati, ultimo_errore = 0, None
         foto_metodo = il_metodo() == "foto"
+        # Prima le occasioni di tutti gli strumenti, poi si decide su tutte insieme: il Capo sceglie le migliori del
+        # giro (il proprietario, 07/10/2026: *"il capo deve selezionare i crt"*).
+        tutte: dict[str, list] = {}
         for s in self.strumenti:
             try:
                 self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
-                decisioni = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
-                                        lunghe=self.lunghe)
-                if foto_metodo:
-                    # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi
-                    # (riavvio, MT5 lento) non si entra a un prezzo che non e' piu' quello.
-                    self._decidi(decisioni, int(time.time()), RITARDO_MASSIMO)
-                else:
-                    self._decidi(decisioni, ora, 3600)
+                tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.basi,
+                                       lunghe=self.lunghe)
                 andati += 1
             except Exception as errore:
                 ultimo_errore = errore
@@ -716,6 +731,28 @@ class Bot:
                 self.allarme(f"{s}: errore nel giro dell'ora ({errore!r}). Gli altri strumenti vanno avanti.")
         if not andati and ultimo_errore is not None:
             raise ultimo_errore
+        # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi (riavvio, MT5
+        # lento) non si entra a un prezzo che non e' piu' quello.
+        adesso, finestra = (int(time.time()), RITARDO_MASSIMO) if foto_metodo else (ora, 3600)
+        decisioni = sorted((d for ds in tutte.values() for d in ds), key=lambda d: (d.r.quando, d.r.strumento))
+        try:
+            self._decidi(decisioni, adesso, finestra)
+        except Exception as errore:
+            # Se qualcosa si rompe sul giro intero, si riprova uno strumento alla volta (le occasioni gia' decise non
+            # tornano: `_decidi` salta quelle gia' viste).
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+            for s, ds in tutte.items():
+                try:
+                    self._decidi(ds, int(time.time()) if foto_metodo else ora, finestra)
+                except Exception as errore_s:
+                    registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
+                    self.allarme(f"{s}: errore nel giro dell'ora ({errore_s!r}). Gli altri strumenti vanno avanti.")
+        if self.squadra is not None and foto_metodo:
+            # Il Bias dice le sue previsioni del giorno, una volta al giorno, dopo gli ordini.
+            try:
+                self._previsioni_del_giorno(ora)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
         # Le decisioni dell'ora sono fatte: il giro non si ripete, qualunque cosa succeda dopo.
         self.stato.ultimo_giro = ora
         self.stato.scarto = self.terminale.scarto
@@ -726,6 +763,36 @@ class Bot:
                 passo()
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _previsioni_del_giorno(self, adesso: int) -> None:
+        """Le previsioni del Bias su tutti gli strumenti, all'apertura del giorno (le tiene fino a sera)."""
+        if self.squadra.memoria.previsioni_dette == pareri.apertura_giorno(adesso):
+            return
+        from nvm.agenti import foto
+        quadri = {}
+        for s in self.strumenti:
+            try:
+                if s in self.basi and len(self.basi[s]) >= 200:
+                    quadri[s] = foto.Quadro.da(self.basi[s], adesso, self.lunghe.get(s))
+            except Exception:
+                registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
+        testo = al_lavoro.previsioni_del_giorno(self.squadra, quadri, adesso)
+        if testo:
+            self.tg.voci([conversazione.Voce("Bias", testo)])
+
+    def _contesto(self, conto) -> "pareri.Contesto":
+        """Quello che la squadra deve sapere oltre l'occasione: il conto, le aperte che rischiano ancora, quanto si e'
+        perso oggi, la previsione della domenica, i lotti del broker."""
+        saldo = float(conto.saldo) if conto is not None else 0.0
+        aperte = [(v.strumento, -1 if getattr(v, "verso", "long") == "short" else 1, v.rischio / saldo)
+                  for v in self.stato.vive if not getattr(v, "pareggio_fatto", False) and saldo > 0]
+        giorno = pareri.apertura_giorno(int(time.time()))
+        netto = sum(c[2] for c in self.stato.chiuse if len(c) > 2 and c[2] is not None and c[0] >= giorno)
+        perso = max(-netto, 0.0) / saldo if saldo > 0 else 0.0
+
+        def lotti(k, verso, prezzo, stop):
+            return self.terminale.lotti(k)[0], self.terminale.perdita_per_lotto(k, verso, prezzo, stop)
+        return pareri.Contesto(saldo, aperte, perso, dict(self.stato.previsioni or {}), lotti)
 
     def _segui_carta(self, ora: int) -> None:
         """Le occasioni seguite sulla carta: come sono finite, cosa impara la squadra, l'archivio."""
@@ -926,7 +993,11 @@ class Bot:
                     if not v.pareggio_fatto and conto is not None and conto.saldo:
                         per_strumento[v.strumento] = per_strumento.get(v.strumento, 0.0) + v.rischio / conto.saldo
                 self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini, esposizione,
-                                                    per_strumento)
+                                                    per_strumento, self._contesto(conto),
+                                                    {v.strumento for v in self.stato.vive})
+                if self.squadra.ultima_scelta:
+                    # La scelta del Capo fra le occasioni del giro, in equipe: chi prende, chi lascia e perche'.
+                    self.tg.voci([conversazione.Voce("Capo", self.squadra.ultima_scelta)])
             except Exception:
                 self.squadra.ultimo_errore = traceback.format_exc()
             if self.squadra.ultimo_errore:
@@ -968,9 +1039,11 @@ class Bot:
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
-                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
+                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce. Arrotonda in su il
+                    # lotto, se serve e se il conto lo regge, per poter chiudere il 25% al TP1.
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,
-                                                      parte=1.0, fiducia_minima=0.0, riduci=False)
+                                                      parte=1.0, fiducia_minima=0.0, riduci=False,
+                                                      dividi_fino_a=al_lavoro.divisibile_fino_a(v))
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
                     # Quanto puntare lo dice il cervello del Rischio.
@@ -979,7 +1052,11 @@ class Bot:
                                                       parte=r.get("parte"), fiducia_minima=r.get("minimo"))
                 else:
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
-                da_dire.append(fatto)
+                # L'apertura del metodo delle foto parte insieme alla sua foto, come didascalia (`manda_foto_operazioni`):
+                # con piu' operazioni aperte insieme foto e messaggi non si sfasano piu' (il proprietario, 07/10/2026).
+                con_foto = viva is not None and bool(getattr(d, "foto", None)) and foto_grafico.pronto()
+                if not con_foto:
+                    da_dire.append(fatto)
                 if viva is None and v is not None and self.squadra is not None:
                     # L'ordine non e' partito: per imparare conta come non presa.
                     self.squadra.annulla(d.chiave)
@@ -991,7 +1068,7 @@ class Bot:
                         self.stato.salva(CARTELLA)
                     except Exception:
                         registra(CARTELLA, "errore", testo=traceback.format_exc())
-                    self._disegna(d, viva, adesso)
+                    self._disegna(d, viva, adesso, fatto.testo if con_foto else None)
                     conto = self.terminale.conto()
                     self._nel_libro("apertura", strumento=viva.strumento, verso=viva.verso, tickets=viva.tickets,
                                     volume=viva.volume, ingresso=viva.ingresso, stop=viva.stop, tp1=viva.tp1,
@@ -1027,7 +1104,8 @@ class Bot:
                     # il Rischio coi soldi veri dell'ordine.
                     aperte_ora, quota_totale = self._esposizione(saldo)
                     self.tg.voci(al_lavoro.voci(self._verdetti[d.chiave], viva.rischio, viva.valuta,
-                                                viva.rischio / saldo if saldo else None, aperte_ora, quota_totale))
+                                                viva.rischio / saldo if saldo else None, aperte_ora, quota_totale),
+                                 tema=self._tema(d))
                     voci = []
                 elif g is not None:
                     # Il ragionamento dei cervelli, prima che il Capo chiuda.
@@ -1043,7 +1121,7 @@ class Bot:
                         else:
                             voci[k] = conversazione.Voce("Livelli", voci[k].testo + " " + testo)
                 if voci:
-                    self.tg.voci(voci)
+                    self.tg.voci(voci, tema=self._tema(d))
             op = d.op
             crt = d.r.scatto.crt if d.r.scatto is not None else None
             s = Seguita(d.chiave, d.r.strumento, d.r.alto_tf.value, d.r.basso_tf.value, d.r.verso.value, d.r.quando,
@@ -1113,7 +1191,8 @@ class Bot:
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
         if s.entrata:
-            self.tg.voci(conversazione.chiusura(s, alt, torto, self._prove_dei_segnali()))
+            self.tg.voci(conversazione.chiusura(s, alt, torto, self._prove_dei_segnali()),
+                         tema=conversazione.tema(s.strumento, s.verso, s.alto))
         # Le lezioni della giornata, per il riepilogo della sera: chi, con quale scelta, avrebbe fatto meglio.
         for agente, voci_alt in alt.items():
             nome, v, r = max(voci_alt, key=lambda a: a[2])

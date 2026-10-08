@@ -6,8 +6,9 @@ from types import SimpleNamespace as NS
 
 from nvm.intelligenti import al_lavoro
 from nvm.intelligenti.metodo import Domanda, Metodo
-from nvm.intelligenti.squadra import (ESPERIENZA_MINIMA, MINIMO_SIMILI, PIANO_ROMEO, PUNTATA_INIZIALE, VOLTE_IDEA,
-                                      Memoria, Squadra, con_stop)
+from nvm.intelligenti.pareri import VOTANO, Parere
+from nvm.intelligenti.squadra import (ESPERIENZA_MINIMA, MINIMO_SIMILI, PIANO_ROMEO, PUNTATA_INIZIALE, SOGLIA_PUNTI,
+                                      VOLTE_IDEA, Memoria, Squadra, con_stop)
 
 OBBLIGATORIE = (("CRT", "Cacciatore"), ("key level", "Key level"), ("direzione", "Bias"))
 
@@ -230,7 +231,10 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
         # Il CRT c'e' per costruzione.
         assert m.obbligatorie[0].si
         assert set(m.numeri) == set(AGENTI)
-        assert verdetti[d.chiave].entra == (m.a_piu and verdetti[d.chiave].puntata > 0)
+        v = verdetti[d.chiave]
+        # Entra solo con tutte le regole del metodo, abbastanza punti dalla squadra e se il Capo la sceglie nel giro.
+        assert v.entra == (m.a_piu and v.puntata > 0 and v.punti >= SOGLIA_PUNTI and not v.lasciata)
+        assert [x.agente for x in v.pareri_squadra] == list(VOTANO)
     assert any(verdetti[d.chiave].entra for d in decisioni) and not all(verdetti[d.chiave].entra for d in decisioni)
     al_lavoro.valuta_piani(sq, {"EURUSD": base}, {}, max(d.scadenza for d in decisioni) + 1)
     assert not sq.ultimo_errore and not sq.memoria.da_vedere
@@ -261,6 +265,8 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
             x.si = True
         return m
     monkeypatch.setattr(metodo, "valuta_foto", tutto_si)
+    # La squadra e' d'accordo (qui si prova il bot, non i voti: quelli sono in `test_pareri.py`).
+    monkeypatch.setattr(al_lavoro.P, "tutti", lambda d, ctx, prev, puntata: [Parere(a, 1, ["prova"]) for a in VOTANO])
     base = ore_finte(giorni=400)
     tutte = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
     decisioni, tardiva = tutte[-2:], tutte[-3]
@@ -268,7 +274,7 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     mandati, aperte = [], []
 
     class Esecutore:
-        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True):
+        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True, dividi_fino_a=0.0):
             assert con_stop(d.op)
             aperte.append((pieno, parte, riduci))
             viva = NS(chiave=d.chiave, strumento="EURUSD", verso=d.r.verso.value, tickets=[1], volume=0.1,
@@ -295,24 +301,33 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
     assert len(aperte) == 1
     # In ritardo (il bot ripartito 40 minuti dopo l'apertura della candela 3) non si entra: si segue sulla carta.
+    vive, bot.stato.vive = bot.stato.vive, []
     bot._decidi([tardiva], int(tardiva.r.quando) + 40 * 60, vivo.RITARDO_MASSIMO)
     assert len(aperte) == 1 and bot.stato.saltate.get("arrivato tardi") == 1
     assert any(s.chiave == tardiva.chiave for s in bot.stato.seguite)
-    # La foto per il telefono la disegna il bot, a fine giro (dopo tutti gli ordini).
+    bot.stato.vive = vive
+    # La foto per il telefono la disegna il bot, a fine giro (dopo tutti gli ordini), e il messaggio d'apertura ne e'
+    # la didascalia: arrivano insieme (il proprietario, 07/10/2026: *"mi si sfasa tutto tra foto e messaggio"*).
+    assert not any(t == "aperta" for c, t in mandati if c == "-1")
     foto = []
     bot.tg.foto = lambda canale, dati, didascalia: foto.append((canale, dati, didascalia))
     bot.manda_foto_operazioni()
     assert len(foto) == 1 and foto[0][0] == "operativo" and foto[0][1].startswith(b"\x89PNG")
+    assert foto[0][2] == "aperta"
     # Con un'operazione gia' aperta sullo stesso strumento non se ne apre un'altra (il proprietario, 07/10/2026:
-    # "Max 1 aperta per strumento"): l'occasione si segue sulla carta.
+    # "Max 1 aperta per strumento"): il Capo la lascia e lo dice, l'occasione si segue sulla carta.
     bot.stato.vive = [NS(chiave="un altro CRT", strumento="EURUSD", pareggio_fatto=False, rischio=10.0)]
     bot._decidi(decisioni[1:], int(decisioni[1].r.quando), 10**12)
-    assert len(aperte) == 1 and bot.stato.saltate.get("già un'operazione aperta sullo strumento") == 1
+    assert len(aperte) == 1
     assert any(s.chiave == decisioni[1].chiave for s in bot.stato.seguite)
     bot.stato.vive = []
     equipe = [t for c, t in mandati if c == "-2"]
-    assert any("Tutte e 3 le regole del metodo dicono sì" in t for t in equipe)
-    assert any("Metto in gioco" in t and "EUR" in t for t in equipe)
+    assert any("su EURUSD c'è già un'operazione aperta" in t and t.startswith("👔 Capo: Giro delle") for t in equipe)
+    # La discussione sull'operazione aperta: ognuno dice la sua, il Capo decide e se ne prende la responsabilita',
+    # e ogni messaggio dice di quale asset si parla.
+    discussione = [t for t in equipe if t.startswith("📌 EURUSD · ")]
+    assert any("Ho sentito tutti" in t and "la responsabilità è mia" in t for t in discussione)
+    assert any("Metto in gioco" in t and "EUR" in t for t in discussione)
     # Sul grafico: il range, la finta, l'entrata all'apertura della candela 3, lo stop, il TP1, il target finale.
     csv = (tmp_path / "comune" / disegni.FILE).read_text(encoding="cp1252")
     for parola in ("Range", "Finta della candela 2", "all'apertura della candela 3", "Stop (oltre la candela 2)",

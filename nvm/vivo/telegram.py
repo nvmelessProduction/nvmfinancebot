@@ -146,17 +146,21 @@ class Telegram:
     def equipe(self, testo: str) -> None:
         self._manda("equipe", self._imp.chat_equipe, testo)
 
-    def voci(self, voci: list) -> None:
+    def voci(self, voci: list, tema: str = "") -> None:
         """Gli agenti che parlano in equipe (`conversazione.Voce`). Chi ha il suo bot parla con
-        quello, come un collega in una chat; senza bot propri, un messaggio solo con tutte le voci."""
+        quello, come un collega in una chat; senza bot propri, un messaggio solo con tutte le voci.
+        `tema`: di quale operazione si parla (strumento e verso). Ogni messaggio comincia da li': con piu'
+        operazioni insieme si sa sempre di che asset si parla (il proprietario, 07/10/2026: *"in NvmFinance bot
+        equipe non si capisce mai di che asset parla"*)."""
         if not voci:
             return
+        testa = f"📌 {tema}\n" if tema else ""
         if not any(v.chi in self._imp.voci for v in voci):
-            self.equipe("\n".join(v.riga() for v in voci))
+            self.equipe(testa + "\n".join(v.riga() for v in voci))
             return
         for v in voci:
             token = self._imp.voci.get(v.chi)
-            self._manda("equipe", self._imp.chat_equipe, v.testo if token else v.riga(), token, v.chi)
+            self._manda("equipe", self._imp.chat_equipe, testa + (v.testo if token else v.riga()), token, v.chi)
 
     def _manda(self, canale: str, chat: tuple[str, ...], testo: str, token: Optional[str] = None,
                chi: str = "") -> None:

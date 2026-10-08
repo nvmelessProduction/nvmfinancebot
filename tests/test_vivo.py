@@ -764,7 +764,8 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     import vivo
     from nvm.vivo.stato import Stato
     monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
-    monkeypatch.setattr(vivo, "giro_orario", lambda basi, *a, **k: [NS(chiave=f"{next(iter(basi))} H4 1")])
+    monkeypatch.setattr(vivo, "giro_orario", lambda basi, *a, **k: [NS(chiave=f"{next(iter(basi))} H4 1",
+                                                                       r=NS(quando=0, strumento=next(iter(basi))))])
     bot = object.__new__(vivo.Bot)
     allarmi, decise = [], []
 
@@ -785,7 +786,8 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
         setattr(bot, nome, lambda *a: None)
     ora = utc(2025, 1, 1, 5)
     bot.giro(ora)
-    assert decise == ["EURUSD H4 1", "AUDUSD H4 1"] and bot.stato.ultimo_giro == ora
+    # Le occasioni di tutti gli strumenti si decidono insieme (il Capo sceglie le migliori del giro).
+    assert sorted(decise) == ["AUDUSD H4 1", "EURUSD H4 1"] and len(finestre) == 1 and bot.stato.ultimo_giro == ora
     assert len(allarmi) == 1 and "GBPUSD" in allarmi[0]
     # Col metodo delle foto si entra solo vicino all'apertura della candela 3, contando l'ora vera.
     if vivo.il_metodo() == "foto":

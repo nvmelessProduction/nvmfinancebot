@@ -103,6 +103,10 @@ def _giu(x: float, passo: float) -> float:
     return round(math.floor(x / passo + 1e-9) * passo, 8)
 
 
+def _su(x: float, passo: float) -> float:
+    return round(math.ceil(x / passo - 1e-9) * passo, 8)
+
+
 class Esecutore:
     def __init__(self, terminale: Terminale, parte: float = 1.0, correlazioni: Optional[dict] = None,
                  minimo: float = 0.0):
@@ -118,10 +122,12 @@ class Esecutore:
 
     def apri(self, d: Decisione, conto: Conto, aperte: list = (), pieno: Optional[float] = None,
              parte: Optional[float] = None, fiducia_minima: Optional[float] = None,
-             riduci: bool = True) -> tuple[Optional[Viva], Fatto]:
+             riduci: bool = True, dividi_fino_a: float = 0.0) -> tuple[Optional[Viva], Fatto]:
         """Apre la decisione sul conto. `aperte`: le operazioni gia' aperte (`Viva`), perche' il
         Rischio punti sul conto intero e non su un'operazione alla volta. `riduci=False`: la puntata
-        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce."""
+        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce.
+        `dividi_fino_a`: se il lotto e' troppo piccolo per chiudere la parte al TP1, il Rischio lo arrotonda in su
+        quanto basta, purche' il rischio resti sotto questa parte del conto."""
         k, op, verso = d.r.strumento, d.op, d.r.verso
         if not conto.demo:
             return None, Fatto(messaggi.allarme(f"il conto {conto.login} non è un demo: non apro {k}."))
@@ -168,6 +174,11 @@ class Esecutore:
             return None, Fatto(messaggi.saltata(d, "siamo già troppo esposti con " + ", ".join(legate or ["le altre aperte"])),
                                equipe=True, saltata="già troppo esposti su operazioni legate")
         volume = min(_giu(conto.saldo * f / per_lotto, passo), massimo)
+        if dividi_fino_a > 0 and 0.0 < op.parziale < 1.0 and f > 0:
+            # Il lotto piu' piccolo che si divide: la parte al TP1 e il resto, almeno un lotto minimo l'uno.
+            serve = max(_su(minimo / op.parziale, passo), _su(minimo / (1.0 - op.parziale), passo))
+            if volume < serve <= massimo and serve * per_lotto <= conto.saldo * dividi_fino_a:
+                volume = serve
         meta = 0.0
         if op.parziale in (0.0, 1.0) and volume >= minimo:
             # Il piano scelto: tutto al primo obiettivo, o tutto al secondo col pareggio.

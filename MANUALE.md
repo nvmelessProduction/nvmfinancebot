@@ -27,9 +27,10 @@ le regole, impara dai risultati dal vivo e decide.
     contro di noi (ha chiuso oltre la candela prima) e il prezzo non ha ancora preso il suo massimo o minimo,
     non si entra: prima si aspetta la presa di quel livello. Se nessuna blocca, basta un timeframe sopra
     dalla nostra parte o un gap da riempire nel nostro verso.
-  Se manca anche una regola non si entra; se ci sono tutte decide la squadra. Al massimo un'operazione aperta
-  per strumento (il proprietario, 07/10/2026): le altre occasioni su quello strumento si seguono sulla carta, e
-  la squadra impara anche da quelle. Si entra solo entro 10 minuti dall'apertura della candela 3.
+  Se manca anche una regola non si entra; se ci sono tutte decide la squadra (sotto, *Come decide la squadra*).
+  Al massimo un'operazione aperta per strumento (il proprietario, 07/10/2026): le altre occasioni su quello
+  strumento si seguono sulla carta, e la squadra impara anche da quelle. Si entra solo entro 10 minuti
+  dall'apertura della candela 3.
 - **Stop e obiettivi come nelle foto**: stop oltre la candela 2; **TP1** all'altro lato del range, dove si
   chiude il **25%** e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande
   se c'è ed è valido, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la
@@ -39,18 +40,29 @@ le regole, impara dai risultati dal vivo e decide.
   serve solo lì, per la continuazione (minimi decrescenti sul grafico, crescenti sull'RSI).
 - **Il DXY** (agente *DXY*): l'indice del dollaro, calcolato dalle coppie; un suo setup rialzista vende le
   coppie col dollaro al denominatore (e l'oro) e compra quelle col dollaro al numeratore.
-- **Come impara, esattamente** (niente intelligenza artificiale esterna):
-  - ogni agente stima quanto spesso un'occasione come quella va bene, guardando i numeri del suo mestiere,
-    e corregge la stima dopo ogni occasione finita (presa o lasciata). All'inizio non sa niente e lo dice;
-  - gli agenti si ascoltano con le regole che legano i mestieri (per esempio il DXY a favore o il gap a
-    favore rafforzano il Bias). Quanto pesa ogni collega lo imparano dai risultati, e su Telegram si dice chi
-    cambia idea e perché;
-  - il Capo mette insieme i giudizi e guarda i casi simili già finiti dal vivo. Lascia un'occasione con
-    tutte le regole solo quando i casi simili sono abbastanza e perdono con certezza (*"lose, journal,
-    avoid"*);
+- **Come decide la squadra** (il proprietario, 07/10/2026: *"ognuno dà le proprie opinioni e poi il capo decide
+  ma tutti vengono presi in considerazione"*; niente intelligenza artificiale esterna; `nvm/intelligenti/pareri.py`):
+  - **primo giro**: ognuno guarda l'occasione col suo mestiere e vota da −2 a +2, dicendo perché. Il
+    Cacciatore guarda quanto è grande il CRT e se è allineato coi grafici grandi; il Key level che liquidità
+    ha preso; il Bias la sua previsione del giorno e quella della domenica; il Gap i gap; il DXY il dollaro;
+    l'Orario l'ora (l'apertura di Wall Street, il rollover); Livelli lo stop e i target; il Grilletto come la
+    candela 2 ha fatto la finta; il Rischio quanto siamo già esposti sulla stessa valuta;
+  - **secondo giro**: si sentono fra colleghi. Chi ha un motivo cambia voto e lo dice per nome (per esempio
+    il Cacciatore che sente il Bias contro, o il Key level che sente le inside bar del Cacciatore). Se dal
+    vivo sentire un collega non aiuta, quell'ascolto si spegne;
+  - **il Bias è fedele alle sue previsioni**: quella del giorno la fa all'apertura (le 18 di New York) e la
+    tiene fino a sera, cambia solo quando il livello è preso; la **previsione della domenica** non si tradisce
+    mai: contro quella il Capo non entra;
+  - **il Capo** pesa i voti di tutti, ognuno per quanto ci ha preso dal vivo, stima quanto spesso il CRT va
+    bene ed entra solo con abbastanza punti a favore. In ogni giro mette in ordine i CRT per probabilità e
+    sceglie i migliori (al massimo 3, una sola idea per valuta); in équipe dice chi prende, chi lascia e
+    perché. Decide lui e se ne prende la responsabilità; dopo ogni occasione finita impara di chi fidarsi;
+  - **il Rischio** parte dall'1% del conto, punta di più quando il Capo è più convinto del solito, toglie per
+    le aperte sulla stessa valuta, non supera il 5% del conto a rischio insieme, si ferma dopo il 3% perso in
+    un giorno, e arrotonda il lotto quanto basta (fino a 1,5 volte la puntata) per poter chiudere il 25% al TP1;
   - i risultati veri del broker contano più di quelli calcolati sulla carta;
-  - Livelli sceglie fra tre modi di uscire (tutto al TP1; metà al TP1 e il resto al target finale, come nelle
-    foto; metà al TP1 e il resto più in là); il Rischio parte dall'1% del conto e si corregge coi risultati.
+  - Livelli sceglie fra tre modi di uscire (tutto al TP1; il 25% al TP1 e il resto al target finale, come
+    nelle foto; il 25% al TP1 e il resto più in là).
 - **Una posizione sola per CRT** (il proprietario, 07/10/2026): sul broker stanno lo stop e il target finale;
   quando il prezzo arriva al TP1 il bot chiude il 25% e mette lo stop al prezzo d'entrata. Se il lotto è
   troppo piccolo per chiuderne il 25%, al TP1 sposta solo lo stop e tiene tutto fino al target finale. Lo stesso CRT non si apre mai due volte (il commento della posizione dice quale CRT è).
@@ -101,10 +113,13 @@ Lascia aperta la finestra nera:
 - **Operativo**: ogni operazione aperta (ingresso, stop, obiettivi, lotti, rischio in euro e in
   percentuale del conto) e ogni chiusura, con il risultato in euro e in "R" (1 R = quanto si
   rischiava).
-- **Équipe**:
-  - su ogni operazione aperta: ogni agente dice la sua regola (il CRT, il key level preso, la
-    direzione del timeframe di comando) e i punti in più (timeframe allineati, gap, DXY), poi il
-    Capo e il Rischio con i soldi in gioco;
+- **Operativo**, in più: il messaggio di ogni apertura arriva come didascalia della sua foto, così con più
+  operazioni insieme foto e messaggi non si mescolano.
+- **Équipe** (ogni messaggio comincia con 📌 e l'asset di cui si parla):
+  - a ogni giro con CRT validi: il Capo dice quali sceglie, quali lascia e perché;
+  - su ogni operazione aperta: ogni agente dice il suo voto e perché (e chi ha cambiato idea sentendo un
+    collega), poi il Capo che decide e il Rischio con i soldi in gioco;
+  - ogni giorno all'apertura: le previsioni del Bias su tutti gli strumenti;
   - su ogni operazione chiusa: cosa impara la squadra;
   - ogni sera alle 17 di New York: il riepilogo della giornata;
   - il sabato (come Romeo nel video CRTology SS): giorno e ora del massimo e del minimo della
@@ -132,14 +147,13 @@ bot non può toccare.
 
 ## 6. Domande frequenti
 
-**Il bot apre poche operazioni.** È voluto. Rischia solo quando la squadra ci crede
-abbastanza, e mai più di quanto il conto regge. Su conti piccoli il lotto minimo del broker
+**Il bot apre poche operazioni.** È voluto. Il Capo sceglie solo i CRT su cui la squadra è convinta,
+al massimo tre per giro, e mai più di quanto il conto regge. Su conti piccoli il lotto minimo del broker
 può essere troppo grande per la puntata giusta: in quel caso l'operazione si lascia.
 
 **Quanto rischia?** Il Rischio parte dall'1% del conto per operazione, punta un po' di più quando
-il Capo è più convinto del solito e meno quando ci sono altre operazioni aperte, e si corregge coi
-risultati veri. Non c'è un tetto fisso al rischio totale: con molte operazioni aperte insieme il
-conto può scendere molto.
+il Capo è più convinto del solito, toglie per le aperte sulla stessa valuta, e si corregge coi
+risultati veri. Insieme non rischia mai più del 5% del conto, e dopo il 3% perso in un giorno si ferma.
 
 **Il metodo di Romeo guadagna?** Nessuno lo sa ancora. Sui vent'anni di prezzi il CRT preso alla
 lettera perdeva un po' dopo i costi; nella prova sul 2023 della versione precedente le occasioni

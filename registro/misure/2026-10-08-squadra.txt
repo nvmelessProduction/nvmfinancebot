@@ -1,0 +1,52 @@
+# La squadra che parla e decide (08/10/2026): misura sui prezzi storici
+
+Occasioni A+ del metodo delle foto su EURUSD, GBPUSD, USDJPY, USDCHF, AUDUSD, XAUUSD. 25% al TP1 col pareggio, il resto al target finale, costi veri. Il 'bot di adesso' prende tutte le A+ (una aperta per strumento); la 'squadra nel bot' fa primo giro, secondo giro, il no della domenica, il Capo che entra da +3 punti e sceglie al massimo 3 CRT per giro in ordine di probabilita' (fiducia di partenza uguale per tutti: dal vivo la impara). Regole e soglie scritte prima di guardare questi numeri.
+
+## 2008-2023 (Dukascopy, bid e ask veri)
+```
+29978 occasioni A+ su 6 strumenti
+                                     |                     2008-2018                      |                     2019-2023                     
+bot di adesso (tutte le A+)          |  13.9/sett -0.138R (±0.046) tot  -1098R anni+ 1/11 |  14.3/sett -0.154R (±0.068) tot   -574R anni+ 0/5
+squadra nel bot (soglia 3)           |   2.9/sett -0.071R (±0.074) tot   -120R anni+ 4/11 |   3.4/sett -0.181R (±0.087) tot   -161R anni+ 0/5
+  stessa squadra, soglia 1           |   4.4/sett -0.072R (±0.066) tot   -183R anni+ 3/11 |   5.0/sett -0.115R (±0.091) tot   -148R anni+ 1/5
+  stessa squadra, soglia 2           |   3.6/sett -0.083R (±0.072) tot   -171R anni+ 2/11 |   4.1/sett -0.124R (±0.096) tot   -130R anni+ 1/5
+  stessa squadra, soglia 4           |   2.2/sett -0.036R (±0.088) tot    -47R anni+ 4/11 |   2.5/sett -0.103R (±0.133) tot    -67R anni+ 1/5
+  stessa squadra, soglia 5           |   1.6/sett -0.018R (±0.102) tot    -17R anni+ 5/11 |   1.8/sett -0.095R (±0.171) tot    -45R anni+ 1/5
+  senza il no della domenica         |   2.9/sett -0.071R (±0.074) tot   -120R anni+ 4/11 |   3.4/sett -0.181R (±0.087) tot   -161R anni+ 0/5
+
+R medio delle A+ secondo il voto di ognuno (primo giro):
+  Cacciatore -2:   -    -1:-0.12(8678) +0:-0.08(379) +1:-0.12(6360) +2:-0.06(4880) | -2:   -    -1:-0.15(3935) +0:+0.01(221) +1:-0.15(3203) +2:-0.08(2322)
+  Key level  -2:   -    -1:-0.16(3237) +0:-0.11(12344) +1:-0.09(650) +2:-0.05(4066) | -2:   -    -1:-0.21(1555) +0:-0.10(5950) +1:-0.04(294) +2:-0.15(1882)
+  Bias       -2:-0.08(10626) -1:   -    +0:-0.29(389) +1:-0.07(897) +2:-0.14(8385) | -2:-0.13(4590) -1:   -    +0:+0.17(261) +1:-0.16(548) +2:-0.15(4282)
+  Gap        -2:   -    -1:-0.09(8279) +0:-0.13(6096) +1:-0.12(4622) +2:-0.05(1300) | -2:   -    -1:-0.17(3783) +0:-0.16(3177) +1:-0.01(2285) +2:-0.15(436)
+  DXY        -2:   -    -1:   -    +0:-0.11(20297) +1:   -    +2:   -    | -2:   -    -1:   -    +0:-0.13(9681) +1:   -    +2:   -   
+  Orario     -2:-0.30(529) -1:-0.17(4842) +0:-0.06(10451) +1:-0.13(4475) +2:   -    | -2:-0.20(244) -1:-0.20(2376) +0:-0.10(5044) +1:-0.10(2017) +2:   -   
+  Livelli    -2:-0.23(4591) -1:-0.22(2307) +0:-0.03(6207) +1:-0.06(7192) +2:   -    | -2:-0.20(2388) -1:-0.20(1409) +0:-0.06(2936) +1:-0.11(2948) +2:   -   
+  Grilletto  -2:-0.06(124) -1:-0.18(4973) +0:-0.12(6255) +1:-0.06(8945) +2:   -    | -2:-0.21(58) -1:-0.15(2433) +0:-0.17(2859) +1:-0.09(4331) +2:   -   
+Contro la previsione della domenica 2008-2018: 7696 A+, R medio -0.071; le altre -0.128
+Contro la previsione della domenica 2019-2023: 3428 A+, R medio -0.126; le altre -0.131
+```
+
+## 2024-2026 (Yahoo, orarie con lo spread mediano del 2023 per ora; oro dai future da maggio 2024). Periodo sigillato aperto su richiesta del proprietario (07/10/2026: *"E misura questo 2024-2026"*), guardato una volta sola a regole ferme.
+```
+4283 occasioni A+ su 6 strumenti
+                                     |                     2024-2026                     
+bot di adesso (tutte le A+)          |  13.2/sett -0.151R (±0.090) tot   -287R anni+ 0/3
+squadra nel bot (soglia 3)           |   3.5/sett -0.005R (±0.142) tot     -2R anni+ 2/3
+  stessa squadra, soglia 1           |   5.1/sett -0.041R (±0.127) tot    -30R anni+ 0/3
+  stessa squadra, soglia 2           |   4.2/sett -0.000R (±0.139) tot     -0R anni+ 1/3
+  stessa squadra, soglia 4           |   2.7/sett +0.032R (±0.159) tot    +12R anni+ 2/3
+  stessa squadra, soglia 5           |   2.0/sett +0.066R (±0.190) tot    +19R anni+ 3/3
+  senza il no della domenica         |   3.5/sett -0.005R (±0.142) tot     -2R anni+ 2/3
+
+R medio delle A+ secondo il voto di ognuno (primo giro):
+  Cacciatore -2:   -    -1:-0.13(1753) +0:-0.44(82) +1:-0.16(1438) +2:-0.17(1010)
+  Key level  -2:   -    -1:-0.24(660) +0:-0.17(2567) +1:+0.13(141) +2:-0.09(915)
+  Bias       -2:-0.19(2017) -1:   -    +0:+0.03(101) +1:-0.18(195) +2:-0.13(1970)
+  Gap        -2:   -    -1:-0.21(1415) +0:-0.08(1456) +1:-0.12(1067) +2:-0.35(345)
+  DXY        -2:   -    -1:   -    +0:-0.16(4283) +1:   -    +2:   -   
+  Orario     -2:-0.18(101) -1:-0.30(1071) +0:-0.09(2222) +1:-0.13(889) +2:   -   
+  Livelli    -2:-0.32(1050) -1:-0.22(664) +0:-0.08(1299) +1:-0.06(1270) +2:   -   
+  Grilletto  -2:   -    -1:-0.33(1128) +0:-0.13(1233) +1:-0.06(1896) +2:   -   
+Contro la previsione della domenica 2024-2026: 1511 A+, R medio -0.161; le altre -0.152
+```

@@ -42,6 +42,12 @@ class Voce:
         return f"{VOLTI.get(self.chi, '•')} {self.chi}: {self.testo}"
 
 
+def tema(strumento: str, verso: str, tf: str = "") -> str:
+    """La riga in testa a ogni messaggio in equipe: di quale operazione si parla."""
+    vende = verso in ("short", "vendita", "SHORT")
+    return f"{strumento} · {'🔴 vendita' if vende else '🟢 acquisto'}" + (f" · CRT {tf}" if tf else "")
+
+
 def insieme(voci: list[Voce]) -> str:
     """Le voci in un messaggio solo, quando gli agenti parlano dallo stesso bot."""
     return "\n".join(v.riga() for v in voci)

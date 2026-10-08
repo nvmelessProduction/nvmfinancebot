@@ -41,7 +41,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from nvm.agenti import portafoglio
 from nvm.intelligenti.metodo import Metodo
+from nvm.intelligenti.pareri import PERDITA_GIORNO, TETTO_APERTO, VOTANO, Contesto, Parere, confronto
 
 VERSIONE = "foto-1"
 AGENTI = ("Cacciatore", "Grilletto", "Key level", "Bias", "Gap", "DXY", "Orario", "Livelli")
@@ -87,6 +89,27 @@ PASSO_RISCHIO = 0.01
 PIANO_ROMEO = 1
 # Il peso dei risultati veri rispetto a quelli sulla carta.
 PESO_VERO, PESO_CARTA = 1.0, 0.5
+# Il Capo pesa i voti di tutti (`pareri.py`): quanto si fida di ognuno, in logit per punto di voto. Parte uguale per
+# tutti e lo impara dal vivo: chi ci prende pesa di piu', chi sbaglia di meno (mai sotto zero: nessuno si ascolta
+# al contrario).
+FIDUCIA_VOTO = 0.25
+FIDUCIA_MASSIMA = 1.0
+# Da dove parte la stima del Capo prima di sentire i voti: il 40% (le A+ finite dal vivo fino al 07/10/2026).
+BASE_VOTI = math.log(0.4 / 0.6)
+# Il Capo entra con almeno questi punti pesati a favore (un punto = un voto +1 di chi ha la fiducia di partenza).
+SOGLIA_PUNTI = 3.0
+# In un giro il Capo sceglie al massimo queste operazioni nuove, le migliori; e una sola idea per valuta.
+MASSIMO_PER_GIRO = 3
+# Il Rischio: quanto toglie alla puntata per ogni parte del conto gia' a rischio sulla stessa valuta.
+LEGATE_INIZIALE = 0.5
+# Per poter chiudere il 25% al TP1 il Rischio puo' arrotondare il lotto in su, fino a 1,5 volte la sua puntata e
+# mai oltre l'1,5% del conto.
+DIVIDI_FINO_A = 1.5
+DIVIDI_MASSIMO = 0.015
+# Un ascolto del secondo giro si spegne se dal vivo, dopo almeno tante volte, ha cambiato il voto nel verso giusto
+# meno di questa parte delle volte (sentire quel collega non aiuta).
+ASCOLTO_MINIMO = 20
+ASCOLTO_UTILE = 0.45
 # Le idee.
 VOLTE_IDEA = 20
 CERTEZZA_IDEA = 3.0
@@ -117,6 +140,10 @@ def _p(x: float) -> str:
 
 def _erre(x: float) -> str:
     return f"{x:+.1f}".replace(".", ",")
+
+
+def _virgola(x: float) -> str:
+    return f"{x:.2f}".replace(".", ",")
 
 
 def _cap(testo: str) -> str:
@@ -172,9 +199,22 @@ class Memoria:
     veri: dict = field(default_factory=dict)
     sabato: dict = field(default_factory=dict)
     storia: list = field(default_factory=list)
+    # Le previsioni del Bias, per strumento: quella del giorno (`pareri.Previsione`), tenuta fino a sera.
+    previsioni: dict = field(default_factory=dict)
+    # Il giorno (apertura, UTC) delle previsioni gia' dette in equipe.
+    previsioni_dette: int = 0
+    # Come vanno i voti di ognuno dal vivo: {"si": [volte, andate bene], "no": [volte, andate male]}.
+    pagella: dict = field(default_factory=dict)
+    # Il secondo giro: per ogni ascolto ("Bias sente Gap"), [volte usato, volte che ha cambiato nel verso giusto].
+    ascolti: dict = field(default_factory=dict)
 
     CAMPI = ("versione", "agenti", "capo", "rischio", "piani", "idee", "pesi_idee", "ombra", "lezioni", "discusse",
-             "da_vedere", "casi", "controprova", "a_piu", "veri", "sabato", "storia")
+             "da_vedere", "casi", "controprova", "a_piu", "veri", "sabato", "storia", "previsioni", "previsioni_dette",
+             "pagella", "ascolti")
+
+    def ascolti_spenti(self) -> set:
+        """Gli ascolti che dal vivo non aiutano: nel secondo giro non si usano piu'."""
+        return {k for k, (n, giuste) in self.ascolti.items() if n >= ASCOLTO_MINIMO and giuste / n < ASCOLTO_UTILE}
 
     def __post_init__(self):
         for a in AGENTI:
@@ -186,9 +226,15 @@ class Memoria:
         self.capo.setdefault("base", 0.0)
         self.capo.setdefault("fiducia", {a: FIDUCIA_INIZIALE for a in AGENTI})
         self.capo.setdefault("errori", [0, 0.0, 0.0])
+        self.capo.setdefault("voti", {})
+        for a in VOTANO:
+            self.capo["voti"].setdefault(a, FIDUCIA_VOTO)
+        self.capo.setdefault("base_voti", BASE_VOTI)
         for k, v in (("base", PUNTATA_INIZIALE), ("convinzione", 0.2), ("aperte", 0.2), ("stesso", 0.2), ("media", 0.0),
-                     ("scarto", 0.1), ("volte", 0)):
+                     ("scarto", 0.1), ("volte", 0), ("legate", LEGATE_INIZIALE)):
             self.rischio.setdefault(k, v)
+        for a in VOTANO:
+            self.pagella.setdefault(a, {"si": [0, 0], "no": [0, 0]})
 
     @classmethod
     def carica(cls, cartella: Path) -> "Memoria":
@@ -249,6 +295,11 @@ class Verdetto:
     chiamate: int = 0
     # Le domande di Romeo su cui si e' deciso (per i disegni e la revisione).
     metodo: Optional[Metodo] = None
+    # I pareri di tutti (`pareri.py`) e quanti punti pesati fanno per il Capo.
+    pareri_squadra: list = field(default_factory=list)
+    punti: float = 0.0
+    # Perche' il Capo l'ha lasciata quando ha scelto le migliori del giro ("" se non l'ha lasciata per questo).
+    lasciata: str = ""
 
     def come_dati(self) -> dict:
         return {"entra": self.entra, "piano": self.piano, "puntata": self.puntata, "fiducia": self.fiducia,
@@ -287,6 +338,8 @@ class Squadra:
     def __init__(self, cartella: Path):
         self.memoria = Memoria.carica(cartella)
         self.ultimo_errore = ""
+        # Il riassunto dell'ultima scelta del Capo fra le occasioni del giro (`al_lavoro.scegli`).
+        self.ultima_scelta = ""
         self._lucchetto = threading.RLock()
 
     def salva(self) -> None:
@@ -354,6 +407,33 @@ class Squadra:
         idee = sum(self.memoria.pesi_idee.get(k, 0.0) for k in self.memoria.idee if _idea_vera(k, visti))
         return p * vinto - (1 - p) + idee
 
+    # --- il Capo ascolta tutti ---
+
+    def voti(self, pareri: list[Parere]) -> tuple[float, float]:
+        """Il Capo mette insieme i voti di tutti, ognuno pesato da quanto se ne fida: (quanto spesso stima che vada
+        bene, punti pesati). Un punto e' un voto +1 di chi ha la fiducia di partenza."""
+        c = self.memoria.capo
+        w = c["voti"]
+        logit = c["base_voti"] + sum(w.get(x.agente, FIDUCIA_VOTO) * x.voto for x in pareri)
+        punti = sum(w.get(x.agente, FIDUCIA_VOTO) / FIDUCIA_VOTO * x.voto for x in pareri)
+        return _sig(logit), punti
+
+    def puntata(self, p: float, ctx: Contesto, strumento: str, short: bool) -> tuple[float, float, float]:
+        """Il Rischio: (parte del conto, quanto e' convinto il Capo rispetto al solito, parte gia' a rischio sulla stessa
+        valuta). Parte dalla sua puntata base, piu' se il Capo e' piu' convinto del solito; toglie per le aperte sulla
+        stessa valuta nello stesso verso (non per tutte: le altre non vanno insieme); non supera il tetto del conto;
+        niente dopo una giornata gia' persa."""
+        ri = self.memoria.rischio
+        z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0) if ri.get("volte", 0) >= 10 else 0.0
+        gamba = portafoglio.gambe(strumento, -1 if short else 1)
+        legame = sum(q for k, v, q in ctx.aperte if portafoglio.in_comune(gamba, portafoglio.gambe(k, v)) >= 0.5)
+        aperto = sum(q for _, _, q in ctx.aperte)
+        parte = ri["base"] * math.exp(_stretto(ri["convinzione"] * z, -1.0, 1.0)) - max(ri.get("legate", 0.5), 0.0) * legame
+        parte = min(parte, TETTO_APERTO - aperto)
+        if ctx.perso_oggi >= PERDITA_GIORNO:
+            parte = 0.0
+        return max(parte, 0.0), z, legame
+
     # --- la riunione ---
 
     def _piano(self, coppia: str, modello: str, piani: Optional[list]) -> int:
@@ -380,8 +460,13 @@ class Squadra:
         return ri["base"] * math.exp(_stretto(esponente, -5.0, 3.0)), z
 
     def riunione(self, chiave: str, strumento: str, m: Metodo, quando: int, piani: Optional[list] = None,
-                 esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None, stesso: float = 0.0) -> Verdetto:
-        """La riunione su un'occasione: le domande di Romeo gia' risposte (`metodo.valuta`)."""
+                 esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None, stesso: float = 0.0,
+                 pareri: Optional[list] = None, contesto: Optional[Contesto] = None) -> Verdetto:
+        """La riunione su un'occasione: le domande di Romeo gia' risposte (`metodo.valuta`).
+
+        Con i `pareri` di tutti (`pareri.py`, il metodo delle foto) decide il Capo: le regole del metodo devono esserci
+        tutte, poi pesa i voti di ognuno (quanto si fida di chi lo impara dal vivo) ed entra solo con abbastanza punti a
+        favore. Il Rischio decide quanto, con le aperte sulla stessa valuta, il tetto del conto e la giornata."""
         t0 = time.time()
         with self._lucchetto:
             mem = self.memoria
@@ -397,12 +482,28 @@ class Squadra:
                 rr2 = abs(float(getattr(scelta, "tp2", scelta.tp1)) - float(scelta.ingresso)) / rischio
                 m.fatti["rr"] = round(parz * rr1 + (1 - parz) * rr2, 4)
             giudizi = self.giudizi(m)
-            p = self._capo(giudizi)
-            stima = self.stima(m)
             n_s, vinte_s, media_s, t_s = self.simili(m)
-            evita = m.a_piu and n_s >= MINIMO_SIMILI and media_s < 0 and t_s <= -CERTEZZA_EVITA
-            capo_entra = m.a_piu and stop_ok and not evita
-            parte, z = self._rischio(p, esposizione, stesso)
+            punti, legame = 0.0, 0.0
+            usati, veto = [], ""
+            if pareri is not None:
+                # Il secondo giro: si sentono fra colleghi e chi ha un motivo cambia idea, dicendolo.
+                usati = confronto(pareri, self.memoria.ascolti_spenti())
+                veto = next((x.veto for x in pareri if x.veto), "")
+                # Decide il Capo, dopo aver sentito tutti.
+                p, punti = self.voti(pareri)
+                visti = set(m.atomi())
+                idee = sum(self.memoria.pesi_idee.get(k, 0.0) for k in self.memoria.idee if _idea_vera(k, visti))
+                stima = p * float(m.fatti.get("rr", 1.0)) - (1 - p) + idee
+                evita = False
+                capo_entra = m.a_piu and stop_ok and punti >= SOGLIA_PUNTI and not veto
+                parte, z, legame = self.puntata(p, contesto or Contesto(), strumento,
+                                                m.fatti.get("verso") == "vendita")
+            else:
+                p = self._capo(giudizi)
+                stima = self.stima(m)
+                evita = m.a_piu and n_s >= MINIMO_SIMILI and media_s < 0 and t_s <= -CERTEZZA_EVITA
+                capo_entra = m.a_piu and stop_ok and not evita
+                parte, z = self._rischio(p, esposizione, stesso)
             puntata = max(parte, 0.0) if capo_entra else 0.0
             entra = capo_entra and puntata > 0
             if entra:
@@ -410,18 +511,26 @@ class Squadra:
                 ri["volte"] = ri.get("volte", 0) + 1
                 ri["media"] = round(p if ri["volte"] == 1 else 0.95 * ri["media"] + 0.05 * p, 6)
                 ri["scarto"] = round(max(math.sqrt(0.95 * ri["scarto"] ** 2 + 0.05 * (p - ri["media"]) ** 2), 0.02), 6)
-            voci = self._voci(m, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano,
-                              (n_s, vinte_s, media_s), stesso)
+            if pareri is not None:
+                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, legame, veto)
+            else:
+                voci = self._voci(m, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano,
+                                  (n_s, vinte_s, media_s), stesso)
             lista = {d.nome: bool(d.si) for d in m.obbligatorie}
-            pareri = {"Capo": {"entra": capo_entra, "p": round(p, 4), "stima": round(stima, 4), "a_piu": m.a_piu,
-                               "evita": evita, "mancano": [d.nome for d in m.mancano],
-                               "simili": [n_s, vinte_s, round(media_s, 4)]},
-                      "Rischio": {"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6),
-                                  "stesso": round(stesso, 6)},
-                      "agenti": {a: {"prima": round(g["prima"], 4), "dopo": round(g["dopo"], 4)}
-                                 for a, g in giudizi.items()}}
-            v = Verdetto(entra, piano, round(puntata, 6), round(p, 3), voci, pareri, lista, time.time() - t0,
-                         a_piu=m.a_piu)
+            dati = {"Capo": {"entra": capo_entra, "p": round(p, 4), "stima": round(stima, 4), "a_piu": m.a_piu,
+                             "evita": evita, "mancano": [d.nome for d in m.mancano],
+                             "simili": [n_s, vinte_s, round(media_s, 4)], "punti": round(punti, 3)},
+                    "Rischio": {"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6),
+                                "stesso": round(stesso, 6), "legame": round(legame, 6)},
+                    "agenti": {a: {"prima": round(g["prima"], 4), "dopo": round(g["dopo"], 4)}
+                               for a, g in giudizi.items()}}
+            if pareri is not None:
+                dati["voti"] = {x.agente: x.voto for x in pareri}
+                dati["ragioni"] = {x.agente: x.ragioni[:1] for x in pareri}
+                dati["ascolti"] = [[k, q] for k, q in usati]
+                dati["Capo"]["veto"] = veto
+            v = Verdetto(entra, piano, round(puntata, 6), round(p, 3), voci, dati, lista, time.time() - t0,
+                         a_piu=m.a_piu, pareri_squadra=list(pareri or []), punti=round(punti, 3))
             colonne = {a: dict(zip(("proprie", "sentite"), _colonne(a, m))) for a in AGENTI}
             mem.discusse[chiave] = {"quando": int(time.time()), "momento": int(quando), "strumento": strumento,
                                     "coppia": coppia, "modello": modello, "verso": m.fatti.get("verso", ""),
@@ -432,6 +541,67 @@ class Squadra:
             if da_seguire and piani:
                 mem.da_vedere[chiave] = {"quando": int(time.time()), "coppia": f"{coppia} {modello}", **da_seguire}
         return v
+
+    def _voci_della_squadra(self, m: Metodo, pareri: list[Parere], entra: bool, stop_ok: bool, p: float, punti: float,
+                            puntata: float, z: float, legame: float, veto: str = "") -> list:
+        """La riunione in equipe col metodo delle foto: ogni agente dice il suo voto e perche' (e, quando ha
+        abbastanza casi dal vivo, quante volte ci prende); il Capo dice chi ha sentito, decide e se ne prende la
+        responsabilita'; il Rischio dice quanto."""
+        voci = []
+        rischio = next((x for x in pareri if x.agente == "Rischio"), None)
+        for x in pareri:
+            if x.agente == "Rischio":
+                continue
+            voci.append((x.agente, x.frase() + self._come_ci_prende(x.agente)))
+        if not stop_ok:
+            voci.append(("Capo", "Non entriamo: senza uno stop giusto non si entra, mai."))
+            return voci
+        if not m.a_piu:
+            voci.append(("Capo", "Non entriamo. Il metodo vuole " + ", ".join(MANCA_IN_PAROLE.get(d.nome, d.nome)
+                                                                            for d in m.mancano) + "."))
+            return voci
+        voci.append(("Capo", self.decisione_in_parole(m, pareri, entra, p, punti, puntata, veto)))
+        testo = rischio.frase() if rischio is not None else ""
+        if entra:
+            if z > 0.5:
+                testo += " Il Capo è più convinto del solito: punto un po' di più."
+            elif z < -0.5:
+                testo += " Il Capo è meno convinto del solito: punto un po' di meno."
+            if legame > 0:
+                testo += " Tolgo una parte per le aperte sulla stessa valuta."
+        voci.append(("Rischio", testo.strip()))
+        return voci
+
+    def _come_ci_prende(self, agente: str) -> str:
+        pag = self.memoria.pagella.get(agente, {})
+        si, no = pag.get("si", [0, 0]), pag.get("no", [0, 0])
+        parti = []
+        if si[0] >= ESPERIENZA_MINIMA:
+            parti.append(f"quando dico sì va bene {si[1]} volte su {si[0]}")
+        if no[0] >= ESPERIENZA_MINIMA:
+            parti.append(f"quando dico no va male {no[1]} volte su {no[0]}")
+        return (" Dal vivo: " + "; ".join(parti) + ".") if parti else ""
+
+    def decisione_in_parole(self, m: Metodo, pareri: list[Parere], entra: bool, p: float, punti: float,
+                            puntata: float, veto: str = "") -> str:
+        """Il Capo: chi era a favore e chi contro, quanti punti fanno pesati, cosa decide e perche'."""
+        compra = m.fatti.get("verso") == "acquisto"
+        favore = [f"{x.agente} ({x.voto:+d})" for x in pareri if x.voto > 0]
+        contro = [f"{x.agente} ({x.voto:+d})" for x in pareri if x.voto < 0]
+        sentiti = (f"A favore: {', '.join(favore) if favore else 'nessuno'}. Contro: {', '.join(contro) if contro else 'nessuno'}. "
+                   f"Pesando quanto ognuno ci ha preso finora fanno {_erre(punti)} punti (entro da "
+                   f"{_erre(SOGLIA_PUNTI)}): stimo che vada bene il {_p(p)} delle volte.")
+        if entra:
+            fine = (f" {'Compriamo' if compra else 'Vendiamo'} {m.fatti.get('strumento')}: decido io e la responsabilità è mia.")
+            if contro:
+                fine += f" Se va male, chi era contro peserà di più."
+            return "Ho sentito tutti. " + sentiti + fine
+        if veto:
+            return "Ho sentito tutti. " + sentiti + f" Non entro: {veto}."
+        if punti < SOGLIA_PUNTI:
+            return ("Ho sentito tutti. " + sentiti + " Le regole del metodo ci sono, ma la squadra non è convinta "
+                    "abbastanza: la lascio.")
+        return "Ho sentito tutti. " + sentiti + " Il Rischio non trova una puntata possibile: la lascio."
 
     def annulla(self, chiave: str) -> None:
         """L'ordine non e' partito (mercato chiuso, margine...): per imparare conta come non presa."""
@@ -586,22 +756,27 @@ class Squadra:
                 ap[0] += 1
                 ap[1] = round(ap[1] + r, 4)
                 ap[2] += int(bene)
-                # Chi ha imparato qualcosa: chi si era sbagliato di piu' dice di quanto cambia idea.
-                for c in sorted(cambiati, key=lambda c: -abs(c["dopo"] - c["prima"]))[:3]:
-                    sbagliato = (c["prima"] >= 0.5) != bene
-                    fatte.append({"agente": c["agente"], "giusto": not sbagliato, "lezione":
-                                  f"pensavo che andasse bene il {_p(c['prima'])} delle volte ed è andata "
-                                  f"{'bene' if bene else 'male'}: per occasioni così ora dico {_p(c['dopo'])}."})
                 entrato = bool(capo.get("entra")) and bool(d.get("entra"))
-                if entrato:
-                    lezione = ("Siamo entrati con tutte le regole del metodo ed è andata bene." if bene else
-                               "Siamo entrati con tutte le regole del metodo ed è andata male: capita, lo stop ci ha "
-                               "protetti. Lo segno nel diario.")
+                voti = d.get("pareri", {}).get("voti")
+                if voti:
+                    # La squadra coi pareri: il Capo impara di chi fidarsi, ognuno dice se aveva ragione.
+                    fatte += self._impara_dai_voti(d, voti, bene, peso, entrato, reale)
                 else:
-                    lezione = ("L'avevamo lasciata e sarebbe andata bene: lo segno, la prossima volta pesa di meno." if bene
-                               else "L'avevamo lasciata e abbiamo fatto bene.")
-                fatte.append({"agente": "Capo", "lezione": lezione + (" (risultato vero dal broker)" if reale else ""),
-                              "giusto": entrato == bene})
+                    # Chi ha imparato qualcosa: chi si era sbagliato di piu' dice di quanto cambia idea.
+                    for c in sorted(cambiati, key=lambda c: -abs(c["dopo"] - c["prima"]))[:3]:
+                        sbagliato = (c["prima"] >= 0.5) != bene
+                        fatte.append({"agente": c["agente"], "giusto": not sbagliato, "lezione":
+                                      f"pensavo che andasse bene il {_p(c['prima'])} delle volte ed è andata "
+                                      f"{'bene' if bene else 'male'}: per occasioni così ora dico {_p(c['dopo'])}."})
+                    if entrato:
+                        lezione = ("Siamo entrati con tutte le regole del metodo ed è andata bene." if bene else
+                                   "Siamo entrati con tutte le regole del metodo ed è andata male: capita, lo stop ci ha "
+                                   "protetti. Lo segno nel diario.")
+                    else:
+                        lezione = ("L'avevamo lasciata e sarebbe andata bene: lo segno, la prossima volta pesa di meno."
+                                   if bene else "L'avevamo lasciata e abbiamo fatto bene.")
+                    fatte.append({"agente": "Capo", "lezione": lezione + (" (risultato vero dal broker)" if reale else ""),
+                                  "giusto": entrato == bene})
                 if entrato and preso:
                     ri, g = mem.rischio, d.get("pareri", {}).get("Rischio", {})
                     prima = ri["base"]
@@ -612,6 +787,9 @@ class Squadra:
                     ri["convinzione"] = round(ri["convinzione"] + spinta * float(g.get("z", 0.0)), 6)
                     ri["aperte"] = round(ri["aperte"] - spinta * 100 * float(g.get("esposizione", 0.0)), 6)
                     ri["stesso"] = round(ri.get("stesso", 0.2) - spinta * 100 * float(g.get("stesso", 0.0)), 6)
+                    # Con le aperte sulla stessa valuta: se va male toglie di piu' la prossima volta, se va bene meno.
+                    ri["legate"] = round(_stretto(ri.get("legate", LEGATE_INIZIALE)
+                                                  - spinta * 100 * float(g.get("legame", 0.0)), 0.0, 2.0), 6)
                     fatte.append({"agente": "Rischio", "giusto": bene, "lezione":
                                   f"Dopo questa {'vincita' if bene else 'perdita'} la mia puntata base passa da "
                                   f"{_pct(prima)} a {_pct(ri['base'])} del conto."})
@@ -632,6 +810,71 @@ class Squadra:
                 mem.impara(l["agente"], {"quando": int(time.time()), "strumento": d.get("strumento", ""),
                                          "esito": round(erre, 3), "preso": preso, "reale": reale, "lezione": l["lezione"]})
             mem.salva()
+        return fatte
+
+    def _impara_dai_voti(self, d: dict, voti: dict, bene: bool, peso: float, entrato: bool, reale: bool) -> list[dict]:
+        """Il Capo corregge quanto si fida di ognuno (regressione logistica sui voti: chi aveva ragione pesa di piu'),
+        la pagella di ogni agente si aggiorna, e le lezioni dicono le cose come stanno: chi era contro e aveva
+        ragione, chi era a favore e ha sbagliato, e il Capo che se ne prende la responsabilita'."""
+        mem = self.memoria
+        c = mem.capo
+        w = c["voti"]
+        y = 1.0 if bene else 0.0
+        prima = dict(w)
+        p = _sig(c["base_voti"] + sum(w.get(a, FIDUCIA_VOTO) * v for a, v in voti.items()))
+        errore = (y - p) * peso
+        c["base_voti"] = round(c["base_voti"] + PASSO_CAPO * errore, 6)
+        for a, v in voti.items():
+            f = w.get(a, FIDUCIA_VOTO)
+            w[a] = round(_stretto(f + PASSO_CAPO * (errore * v - FRENO * (f - FIDUCIA_VOTO)), 0.0, FIDUCIA_MASSIMA), 6)
+            pag = mem.pagella.setdefault(a, {"si": [0, 0], "no": [0, 0]})
+            if v > 0:
+                pag["si"][0] += 1
+                pag["si"][1] += int(bene)
+            elif v < 0:
+                pag["no"][0] += 1
+                pag["no"][1] += int(not bene)
+        for k, q in d.get("pareri", {}).get("ascolti", []):
+            a = mem.ascolti.setdefault(k, [0, 0])
+            a[0] += 1
+            a[1] += int((q > 0) == bene)
+        ragioni = d.get("pareri", {}).get("ragioni", {})
+
+        def perche(a: str) -> str:
+            r = ragioni.get(a) or []
+            return f" ({r[0]})" if r else ""
+        favore = [a for a, v in voti.items() if v > 0]
+        contro = [a for a, v in voti.items() if v < 0]
+        punti = float(d.get("pareri", {}).get("Capo", {}).get("punti", 0.0))
+        fatte = []
+        vero = " (risultato vero dal broker)" if reale else ""
+        if entrato and not bene:
+            for a in contro[:3]:
+                fatte.append({"agente": a, "giusto": True, "lezione": f"Avevo detto di no{perche(a)}: avevo ragione."})
+            for a in [a for a in favore if voti[a] >= 2][:2]:
+                fatte.append({"agente": a, "giusto": False,
+                              "lezione": f"Avevo detto sì con forza{perche(a)} ed è andata male: il Capo mi peserà un po' meno."})
+            piu = [a for a in contro if w[a] > prima.get(a, FIDUCIA_VOTO) + 1e-9]
+            testo = "Sono entrato io ed è andata male: la responsabilità è mia."
+            if piu:
+                testo += " Da ora peso di più " + ", ".join(f"{a} ({_virgola(prima[a])} → {_virgola(w[a])})" for a in piu[:3]) + "."
+            fatte.append({"agente": "Capo", "giusto": False, "lezione": testo + vero})
+        elif entrato:
+            testo = "Sono entrato ed è andata bene." + (f" Avevano visto giusto: {', '.join(favore[:4])}." if favore else "")
+            for a in contro[:2]:
+                fatte.append({"agente": a, "giusto": False,
+                              "lezione": f"Avevo detto di no{perche(a)} ed è andata bene lo stesso: lo segno."})
+            fatte.append({"agente": "Capo", "giusto": True, "lezione": testo + vero})
+        elif d.get("pareri", {}).get("Capo", {}).get("veto"):
+            fatte.append({"agente": "Capo", "giusto": not bene, "lezione":
+                          f"L'ho lasciata perché andava contro la nostra previsione della domenica: sarebbe andata "
+                          f"{'bene' if bene else 'male'}. La previsione la seguiamo sempre." + vero})
+        elif bene:
+            fatte.append({"agente": "Capo", "giusto": False, "lezione":
+                          f"L'avevo lasciata ({_erre(punti)} punti) e sarebbe andata bene: da ora peso un po' di più chi "
+                          f"era a favore ({', '.join(favore[:4]) or 'nessuno'})." + vero})
+        else:
+            fatte.append({"agente": "Capo", "giusto": True, "lezione": "L'avevo lasciata e ho fatto bene." + vero})
         return fatte
 
     def impara_piani(self, chiave: str, risultati: list) -> None:
