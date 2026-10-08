@@ -13,7 +13,7 @@ import pytest
 from nvm.agenti import foto as F
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.minuti import Minuti
-from nvm.tempo import TF, ny
+from nvm.tempo import TF, ny, utc
 from tests.aiuti import candele
 
 ORA = 3600
@@ -350,3 +350,33 @@ def test_gli_esempi_del_proprietario(nome, strumento, tf, quando, verso, finale)
         return
     # Il target del proprietario sta sul future: si confronta entro mezzo range.
     assert abs(ob.prezzo - finale) <= 0.5 * (s.range_alto - s.range_basso) + 0.004 * finale, (nome, ob)
+
+
+# --- Le crypto con gli orari crypto: BTC la notte del 7-8 ottobre 2026 ------------------------------------
+
+# Le orarie di BTC-USD (Yahoo, arrotondate al dollaro): (giorno, ora UTC, apertura, massimo, minimo, chiusura).
+_BTC_7_8_OTTOBRE = [
+    (7, 12, 83700, 83734, 83382, 83464), (7, 13, 83464, 83523, 82733, 83140), (7, 14, 83162, 83254, 82877, 82971),
+    (7, 15, 82907, 83421, 82765, 83417), (7, 16, 83406, 83645, 83317, 83347), (7, 17, 83340, 83581, 82999, 83116),
+    (7, 18, 83099, 83434, 83099, 83373), (7, 19, 83392, 83482, 83254, 83392), (7, 20, 83398, 83568, 83280, 83379),
+    (7, 21, 83384, 83410, 83071, 83110), (7, 22, 83118, 83288, 83088, 83197), (7, 23, 83188, 83371, 83082, 83275),
+    (8, 0, 83276, 83391, 83164, 83324), (8, 1, 83319, 83471, 83042, 83057), (8, 2, 83064, 83234, 82876, 83116),
+    (8, 3, 83116, 83154, 82593, 82696), (8, 4, 82711, 82874, 82215, 82593), (8, 5, 82594, 82971, 82522, 82625),
+    (8, 6, 82618, 82903, 82439, 82814), (8, 7, 82814, 83230, 82654, 82939), (8, 8, 82935, 82999, 82726, 82812),
+    (8, 9, 82820, 83113, 82766, 83060),
+]
+
+
+def test_le_crypto_si_leggono_con_gli_orari_crypto():
+    """Il proprietario, 08/10/2026: il bot ha comprato BTC a 6 ore alle 6 di New York con le candele dalle 18 di New
+    York, ma *"nel tf h6 non abbiamo avuto una presa liquidita' ma bensi' il prezzo ha accettato a ribasso"*. Con
+    gli orari crypto (6 ore alle 2, 8, 14, 20 italiane) la candela 2 delle 2-8 chiude sotto il range: niente CRT.
+    A 4 ore invece (2-6 e 6-10 italiane) c'e' il CRT rialzista con entrata alle 10 italiane."""
+    righe = [(utc(2026, 10, g, h), o, a, b, c) for g, h, o, a, b, c in _BTC_7_8_OTTOBRE]
+    q = F.Quadro.da(_ore(righe, "BTCUSD", spread=10.0), utc(2026, 10, 8, 10))
+    assert all(int(x) % (6 * ORA) == 0 for x in q.candele[TF.H6].inizio)
+    assert not [s for s in F.trova(q, TF.H6, utc(2026, 10, 8, 0), utc(2026, 10, 8, 10)) if s.verso is Verso.LONG]
+    a4 = F.trova(q, TF.H4, utc(2026, 10, 8, 8), utc(2026, 10, 8, 8))
+    assert len(a4) == 1 and a4[0].verso is Verso.LONG
+    s = a4[0]
+    assert (s.range_basso, s.range_alto, s.stop, s.tp1, s.entrata) == (82593, 83471, 82215, 83471, 82935)

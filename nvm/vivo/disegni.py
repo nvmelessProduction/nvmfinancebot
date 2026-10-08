@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from nvm.agenti.cacciatore import Verso
+from nvm.dati.candele import weekend
 from nvm.tempo import TF, fine_candela
 
 FILE = "nvm_disegni.csv"
@@ -151,7 +152,7 @@ def operazione(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> lis
     short = crt.verso is Verso.SHORT
     sv = int(scarto_ore) * 3600
     inizio_1 = int(crt.range_inizio)
-    fine_1 = int(fine_candela(inizio_1, crt.alto_tf))
+    fine_1 = int(fine_candela(inizio_1, crt.alto_tf, weekend(crt.strumento)))
     inizio_3 = int(crt.armato_quando)
     fine_3 = int(crt.fine_candela_3) if crt.fine_candela_3 < 2 ** 60 else inizio_3 + (inizio_3 - fine_1)
     dopo = fine_3 + max(fine_3 - inizio_3, 3600)
@@ -252,7 +253,7 @@ def in_attesa(crt, apertura_3: Optional[float], scarto_ore: int) -> list[Segno]:
     short = crt.verso is Verso.SHORT
     sv = int(scarto_ore) * 3600
     inizio_1 = int(crt.range_inizio)
-    fine_1 = int(fine_candela(inizio_1, crt.alto_tf))
+    fine_1 = int(fine_candela(inizio_1, crt.alto_tf, weekend(crt.strumento)))
     inizio_3 = int(crt.armato_quando)
     fine_3 = int(crt.fine_candela_3) if crt.fine_candela_3 < 2 ** 60 else inizio_3 + (inizio_3 - fine_1)
     nome = {TF.MN: "mensile", TF.W1: "settimanale", TF.D1: "giornaliero", TF.H4: "a 4 ore"}.get(crt.alto_tf, "")

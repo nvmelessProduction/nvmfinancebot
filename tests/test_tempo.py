@@ -63,8 +63,8 @@ def test_l_ora_della_domenica_prima_delle_18_va_nella_prima_candela():
     # Il forex riapre la domenica alle 17 di New York, un'ora prima dei future: quell'ora non fa una candela da sola.
     for tf in (TF.H4, TF.H6, TF.D1, TF.W1):
         assert _inizio(ny(2026, 9, 13, 17, 30), tf) == ny(2026, 9, 13, 18), tf
-    # Le crypto tengono il loro fine settimana.
-    assert _inizio(ny(2026, 9, 13, 17, 30), TF.D1, weekend=True) == ny(2026, 9, 12, 18)
+    # Le crypto tengono il loro fine settimana (e i loro orari, sotto): la domenica e' un giorno come gli altri.
+    assert _inizio(ny(2026, 9, 13, 17, 30), TF.D1, weekend=True) == utc(2026, 9, 13)
 
 
 def test_mese_di_trading():
@@ -97,3 +97,34 @@ def test_minuti_e_ore_restano_allineati_all_utc():
     assert _inizio(t, TF.M5) == utc(2026, 9, 10, 13, 45)
     assert _inizio(t, TF.M15) == utc(2026, 9, 10, 13, 45)
     assert _inizio(t, TF.H1) == utc(2026, 9, 10, 13)
+
+
+def test_le_crypto_hanno_gli_orari_crypto():
+    # Il proprietario, 08/10/2026: la giornata crypto apre alle 2 italiane (mezzanotte UTC), le 4 ore alle 2, 6, 10,
+    # 14, le 6 ore alle 2, 8, 14, 20, le 12 ore alle 2 e alle 14. Il forex resta alle 18 di New York.
+    t = utc(2026, 10, 8, 5, 30)          # giovedi', le 7:30 italiane
+    assert _inizio(t, TF.D1, weekend=True) == utc(2026, 10, 8)
+    assert fine_candela(utc(2026, 10, 8), TF.D1, weekend=True) == utc(2026, 10, 9)
+    assert _inizio(t, TF.H4, weekend=True) == utc(2026, 10, 8, 4)
+    assert fine_candela(utc(2026, 10, 8, 4), TF.H4, weekend=True) == utc(2026, 10, 8, 8)
+    assert _inizio(t, TF.H6, weekend=True) == utc(2026, 10, 8, 0)
+    assert _inizio(utc(2026, 10, 8, 7), TF.H6, weekend=True) == utc(2026, 10, 8, 6)
+    assert fine_candela(utc(2026, 10, 8, 0), TF.H6, weekend=True) == utc(2026, 10, 8, 6)
+    assert _inizio(utc(2026, 10, 8, 13), TF.H12, weekend=True) == utc(2026, 10, 8, 12)
+    assert fine_candela(utc(2026, 10, 8, 12), TF.H12, weekend=True) == utc(2026, 10, 9)
+    # La settimana da lunedi' a mezzanotte UTC, sette giorni: la domenica sera e' ancora la stessa settimana.
+    assert _inizio(t, TF.W1, weekend=True) == utc(2026, 10, 5)
+    assert _inizio(utc(2026, 10, 11, 23), TF.W1, weekend=True) == utc(2026, 10, 5)
+    assert fine_candela(utc(2026, 10, 5), TF.W1, weekend=True) == utc(2026, 10, 12)
+    # Mese, 3, 6 e 12 mesi dal giorno 1 a mezzanotte UTC.
+    assert _inizio(t, TF.MN, weekend=True) == utc(2026, 10, 1)
+    assert fine_candela(utc(2026, 10, 1), TF.MN, weekend=True) == utc(2026, 11, 1)
+    assert _inizio(utc(2026, 8, 20), TF.Q3, weekend=True) == utc(2026, 7, 1)
+    assert fine_candela(utc(2026, 7, 1), TF.Q3, weekend=True) == utc(2026, 10, 1)
+    assert _inizio(utc(2026, 8, 20), TF.S6, weekend=True) == utc(2026, 7, 1)
+    assert _inizio(utc(2026, 8, 20), TF.Y1, weekend=True) == utc(2026, 1, 1)
+    assert fine_candela(utc(2026, 1, 1), TF.Y1, weekend=True) == utc(2027, 1, 1)
+    # L'ora solare non le sposta: restano a mezzanotte UTC (l'1 italiana d'inverno).
+    assert _inizio(utc(2026, 11, 2, 12), TF.D1, weekend=True) == utc(2026, 11, 2)
+    # Il forex no: 6 ore alle 18, 0, 6, 12 di New York.
+    assert _inizio(t, TF.H6) == ny(2026, 10, 8, 0)

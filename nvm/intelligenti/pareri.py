@@ -22,6 +22,7 @@ from typing import Optional
 
 import numpy as np
 
+from nvm.dati.candele import weekend
 from nvm.dati.minuti import CHIUSURA, MASSIMO, MINIMO
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import NEW_YORK, ORDINE, TF, inizio_candela
@@ -124,9 +125,9 @@ def _ny(t: int) -> datetime:
     return datetime.fromtimestamp(int(t), tz=NEW_YORK)
 
 
-def apertura_giorno(t: int) -> int:
-    """L'apertura del giorno di sessione (le 18 di New York) che contiene `t`."""
-    return int(inizio_candela(np.array([int(t)], np.int64), TF.D1)[0])
+def apertura_giorno(t: int, strumento: str = "") -> int:
+    """L'apertura del giorno di sessione (le 18 di New York; per le crypto la mezzanotte UTC) che contiene `t`."""
+    return int(inizio_candela(np.array([int(t)], np.int64), TF.D1, weekend(strumento))[0])
 
 
 # --- il Bias: la previsione del giorno -------------------------------------------------------------------
@@ -189,7 +190,7 @@ def previsione(q, t: int) -> Previsione:
     il timeframe piu' grande con un movimento non ancora compiuto (Romeo: *"the higher timeframe is always more
     important"*; il proprietario: *"la candela trimestrale ha accettato a ribasso quindi ci aspettiamo che il minimo
     trimestrale venga preso e solo dopo ha senso cercare buy"*)."""
-    giorno = apertura_giorno(t)
+    giorno = apertura_giorno(t, q.strumento)
     for tf in TF_PREVISIONE:
         x = segnale(q, tf, giorno)
         if x is None or x[2]:
@@ -210,7 +211,7 @@ def settimana(q, t: int) -> Optional[str]:
     c = q.candele.get(TF.W1)
     if c is None or len(c) < 2:
         return None
-    inizio = int(inizio_candela(np.array([int(t)], np.int64), TF.W1)[0])
+    inizio = int(inizio_candela(np.array([int(t)], np.int64), TF.W1, weekend(q.strumento))[0])
     k = int(np.searchsorted(c.fine, inizio, side="right")) - 1
     if k < 1:
         return None
@@ -348,7 +349,8 @@ def dxy(s, sd) -> Parere:
 def orario(s) -> Parere:
     """L'ora dell'entrata: le sessioni di Romeo, le ore asiatiche, il venerdi'."""
     if s.tf in TF_GRANDI:
-        return Parere("Orario", 0, [f"la candela 3 del CRT {NOMI[s.tf]} apre alle 18 di New York: l'ora la fa il grafico"])
+        apre = "a mezzanotte UTC" if weekend(s.strumento) else "alle 18 di New York"
+        return Parere("Orario", 0, [f"la candela 3 del CRT {NOMI[s.tf]} apre {apre}: l'ora la fa il grafico"])
     ny = _ny(s.n3_inizio)
     h, giorno = ny.hour, ny.weekday()
     rag, punti = [], 0.0

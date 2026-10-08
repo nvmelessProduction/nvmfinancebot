@@ -86,7 +86,7 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
 def previsione_di(squadra: Squadra, strumento: str, q, t: int) -> P.Previsione:
     """La previsione del Bias per oggi su `strumento`: quella gia' fatta, o la fa adesso con le candele chiuse
     all'apertura del giorno (e' la stessa a qualunque ora la si faccia) e la tiene fino a sera."""
-    giorno = P.apertura_giorno(t)
+    giorno = P.apertura_giorno(t, strumento)
     d = squadra.memoria.previsioni.get(strumento)
     if d is not None and int(d.get("giorno", 0)) == giorno:
         return P.Previsione.da_dati(d)

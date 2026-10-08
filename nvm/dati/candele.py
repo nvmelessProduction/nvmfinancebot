@@ -1,7 +1,7 @@
 """Dalle candele da un minuto a quelle di ogni timeframe, bid e ask.
 
 I confini vengono tutti da `nvm.tempo`: le candele aprono come quelle dei future,
-alle 18:00 di New York. Qui si raggruppa e basta.
+alle 18:00 di New York; quelle delle crypto sul calendario UTC. Qui si raggruppa e basta.
 """
 
 from __future__ import annotations

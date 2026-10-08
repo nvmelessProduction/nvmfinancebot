@@ -5,6 +5,25 @@ _Aggiornato l'08/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 08/10/2026 (pomeriggio): le crypto con gli orari crypto
+
+Il bot alle 6 di New York ha comprato BTC su un CRT a 6 ore. Il proprietario: *"nel tf h6 non abbiamo avuto una
+presa liquidità ma bensì il prezzo ha accettato a ribasso"*; *"la candela giornaliera delle crypto apre alle 2 e non
+a 00, quindi la prima candela h4 apre alle 2,6,10,14 ... la prima candela h6 apre alle 2,8 ... h12 che apre alle 2"*;
+*"basati solo sulle crypto, per la total poi vedremo"*. Il bot tagliava anche le crypto dalle 18 di New York: con
+quelle candele la notte del 7-8/10 era un CRT, con quelle crypto la candela 2 (2-8 italiane) chiudeva sotto il range.
+
+- Solo per le crypto (BTCUSD, ETHUSD), `nvm/tempo.py`: candele sul calendario UTC, giornata a mezzanotte UTC (le 2
+  italiane d'estate, l'1 d'inverno), 4 ore alle 0-4-8-12-16-20 UTC, 6 ore alle 0-6-12-18, 12 ore alle 0 e alle 12,
+  settimana da lunedì a mezzanotte UTC, mese, 3, 6 e 12 mesi dal giorno 1 a mezzanotte UTC. Forex, oro, indici
+  restano dalle 18 di New York.
+- Le giornaliere lunghe del broker per le crypto vanno al giorno UTC che coprono (`terminale.giornaliere`); il
+  giorno e la settimana del Bias per le crypto sono quelli crypto (`pareri.apertura_giorno`, `pareri.settimana`); i
+  disegni e il controllo della candela 2 passano il segno "crypto".
+- Ogni crypto sui suoi CRT; il TOTAL (market cap) per ora no.
+- Prova col caso vero (`tests/test_foto.py`, orarie BTC di Yahoo): a 6 ore niente CRT, a 4 ore il CRT rialzista
+  con entrata alle 10 italiane. 301 prove passano.
+
 ## 08/10/2026: la squadra parla davvero e decide il Capo; mai contro la previsione della domenica
 
 Il proprietario, dopo i dieci stop del 07/10: *"gli agenti non parlano tra di loro realmente e ... non seguono le

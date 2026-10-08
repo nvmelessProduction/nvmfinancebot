@@ -21,6 +21,7 @@ from typing import Any, Optional
 import numpy as np
 
 from nvm.agenti.cacciatore import Verso
+from nvm.dati.candele import weekend
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.dati.strumenti import STRUMENTI
 
@@ -182,9 +183,11 @@ class Terminale:
     def giornaliere(self, strumento: str, quante: int) -> Minuti:
         """Le candele giornaliere di tanti anni, per i 3, 6 e 12 mesi del metodo delle foto. Il broker le apre
         alle 17 di New York; le nostre candele aprono alle 18 (`nvm/tempo.py`): si spostano di un'ora, cosi'
-        ogni giornata cade nel suo giorno di sessione."""
+        ogni giornata cade nel suo giorno di sessione. Le crypto hanno i giorni UTC: la giornata del broker
+        (dalle 21 o 22 UTC) va al giorno UTC che copre quasi tutto, la mezzanotte UTC piu' vicina."""
         m = self.barre(strumento, quante, 86400)
-        return Minuti(strumento, m.t + 3600, m.bid, m.ask, m.volume_bid, m.volume_ask, passo=86400)
+        t = (m.t + 43200) // 86400 * 86400 if weekend(strumento) else m.t + 3600
+        return Minuti(strumento, t, m.bid, m.ask, m.volume_bid, m.volume_ask, passo=86400)
 
     # --- gli ordini -----------------------------------------------------------
 

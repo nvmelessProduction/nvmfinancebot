@@ -20,8 +20,20 @@ calendario. L'ora legale la segue `zoneinfo`: i cambi cadono la domenica alle 2 
 
 Il forex riapre la domenica alle 17:00 di New York, un'ora prima dei future: quell'ora va nella prima
 candela della settimana (sabato e domenica di sessione si spostano al lunedi'), cosi' non nasce una
-candela di un'ora sola. Le crypto, che scambiano anche il fine settimana, tengono i loro giorni
-(`weekend=True`).
+candela di un'ora sola.
+
+Le crypto (`weekend=True`) hanno i loro orari, quelli dei grafici crypto: il proprietario, 08/10/2026,
+*"la candela giornaliera delle crypto apre alle 2 e non a 00, quindi la prima candela h4 apre alle
+2,6,10,14 e cosi via la prima candela h6 apre alle 2,8 e cosi via e stessa cosa vale per h12 che apre alle
+2"*. Le 2 italiane d'estate sono la mezzanotte UTC (d'inverno l'1): per le crypto ogni candela si taglia
+sul calendario UTC, sabato e domenica compresi.
+
+    giornaliero   a mezzanotte UTC
+    12 ore        a mezzanotte e a mezzogiorno UTC
+    6 ore         alle 0, 6, 12, 18 UTC
+    4 ore         alle 0, 4, 8, 12, 16, 20 UTC
+    settimanale   da lunedi' a mezzanotte UTC, sette giorni
+    mensile       dal giorno 1 a mezzanotte UTC; 3, 6, 12 mesi come sopra
 """
 
 from __future__ import annotations
@@ -110,20 +122,38 @@ def _al_lunedi(sessione: np.ndarray) -> np.ndarray:
     return np.where(dow >= 5, (giorno + 7 - dow) * 86400, sessione)
 
 
+def _inizio_mese(giorni: np.ndarray, mesi_per_candela: int) -> np.ndarray:
+    """Il primo giorno (in giorni dal 1/1/1970) del mese, trimestre, semestre o anno che contiene ogni giorno."""
+    mesi = giorni.astype("datetime64[D]").astype("datetime64[M]").astype(np.int64)
+    mesi = mesi - mesi % mesi_per_candela      # 1970-01 e' il mese 0: trimestri e semestri partono da gennaio
+    return mesi.astype("datetime64[M]").astype("datetime64[D]").astype(np.int64)
+
+
+def _inizio_crypto(t_utc: np.ndarray, tf: TF) -> np.ndarray:
+    """Le candele delle crypto: il calendario UTC (vedi in cima)."""
+    if tf in PASSO:
+        return t_utc - t_utc % PASSO[tf]
+    giorno = t_utc // 86400
+    if tf is TF.W1:
+        # Il 1/1/1970 era giovedi': (giorno + 3) % 7 e' 0 di lunedi'.
+        return (giorno - (giorno + 3) % 7) * 86400
+    return _inizio_mese(giorno, MESI[tf]) * 86400
+
+
 def inizio_candela(t_utc: np.ndarray, tf: TF, weekend: bool = False) -> np.ndarray:
     """L'istante UTC in cui apre la candela `tf` che contiene ogni istante.
 
-    `weekend`: lo strumento scambia anche sabato e domenica (le crypto)."""
+    `weekend`: lo strumento e' una crypto (scambia anche sabato e domenica, candele sul calendario UTC)."""
     t_utc = np.asarray(t_utc, dtype=np.int64)
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         # Gli scarti di New York sono ore intere: questi confini coincidono
         # con quelli UTC.
         passo = PASSO[tf]
         return t_utc - t_utc % passo
+    if weekend:
+        return _inizio_crypto(t_utc, tf)
 
-    sessione = t_utc + scarti_ny(t_utc) + SPOSTAMENTO
-    if not weekend:
-        sessione = _al_lunedi(sessione)
+    sessione = _al_lunedi(t_utc + scarti_ny(t_utc) + SPOSTAMENTO)
     if tf in (TF.H4, TF.H6, TF.H12, TF.D1):
         passo = PASSO[tf]
         inizio = sessione - sessione % passo
@@ -131,10 +161,7 @@ def inizio_candela(t_utc: np.ndarray, tf: TF, weekend: bool = False) -> np.ndarr
         giorno = sessione // 86400
         inizio = (giorno - (giorno + 3) % 7) * 86400
     elif tf in MESI:
-        giorni = (sessione // 86400).astype("datetime64[D]")
-        mesi = giorni.astype("datetime64[M]").astype(np.int64)
-        mesi = mesi - mesi % MESI[tf]          # 1970-01 e' il mese 0: trimestri e semestri partono da gennaio
-        inizio = mesi.astype("datetime64[M]").astype("datetime64[D]").astype(np.int64) * 86400
+        inizio = _inizio_mese(sessione // 86400, MESI[tf]) * 86400
     else:  # pragma: no cover - enum chiuso
         raise ValueError(tf)
 
@@ -147,16 +174,26 @@ def fine_candela(inizio_utc: int, tf: TF, weekend: bool = False) -> int:
     """L'istante UTC in cui chiude la candela `tf` che apre a `inizio_utc`."""
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         return inizio_utc + PASSO[tf]
+    if weekend:
+        # Le crypto: il calendario UTC, sette giorni su sette.
+        if tf in PASSO:
+            return inizio_utc + PASSO[tf]
+        if tf is TF.W1:
+            return inizio_utc + 7 * 86400
+        return int(_mese_dopo(inizio_utc // 86400, MESI[tf])) * 86400
     sessione = inizio_utc + _scarto_ny(inizio_utc // 3600) + SPOSTAMENTO
     if tf in PASSO:
         return _utc_da_sessione(sessione + PASSO[tf])
     if tf is TF.W1:
-        # La settimana di trading finisce venerdi' sera (5 giorni di sessione dopo l'apertura di domenica);
-        # quella delle crypto dopo 7.
-        return _utc_da_sessione(sessione + (7 if weekend else 5) * 86400)
-    giorno = np.datetime64(sessione // 86400, "D")
-    mese_dopo = (giorno.astype("datetime64[M]") + MESI[tf]).astype("datetime64[D]")
-    return _utc_da_sessione(int(mese_dopo.astype(np.int64)) * 86400)
+        # La settimana di trading finisce venerdi' sera (5 giorni di sessione dopo l'apertura di domenica).
+        return _utc_da_sessione(sessione + 5 * 86400)
+    return _utc_da_sessione(int(_mese_dopo(sessione // 86400, MESI[tf])) * 86400)
+
+
+def _mese_dopo(giorno: int, mesi: int) -> int:
+    """Il primo giorno (in giorni dal 1/1/1970) `mesi` mesi dopo il mese che contiene `giorno`."""
+    g = np.datetime64(int(giorno), "D")
+    return int((g.astype("datetime64[M]") + mesi).astype("datetime64[D]").astype(np.int64))
 
 
 def come_testo(t_utc: int) -> str:
