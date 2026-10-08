@@ -871,3 +871,31 @@ def test_una_posizione_chiusa_a_mano_si_riconosce():
     m.affari[b][-1].reason = m.DEAL_REASON_SL
     vive, fatti = e.sorveglia([viva2])
     assert not fatti[0].libro["a_mano"] and "a mano" not in fatti[0].testo
+
+
+def test_col_comando_piano_si_cambia_il_piano_di_un_operazione_aperta(tmp_path, monkeypatch):
+    """Il proprietario, 08/10/2026, sull'SPX500 aperto con le candele di prima: *"prendere il TP1, mettere il TP finale
+    e mettere a BE una volta preso il TP1 e preso il 25%"*."""
+    import vivo
+    from nvm.agenti.rischio import USCITE
+    from nvm.vivo.esecutore import Viva
+    from nvm.vivo.stato import Stato
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    bot = object.__new__(vivo.Bot)
+    detti, spostati = [], []
+    bot.tg = NS(operativo=detti.append, equipe=detti.append)
+    bot.imp = NS(chat_operativo=("1",), chat_equipe=("2",))
+    bot.terminale = NS(lotti=lambda s: (0.01, 0.01, 100.0),
+                       sposta_stop=lambda s, t, stop, tp: (spostati.append((s, t, stop, tp)), NS(ok=True, messaggio=""))[1])
+    bot.stato = Stato()
+    v = Viva("k", "SPX500", "long", 0, 7778.29, 7749.44, 7791.89, 7791.89, USCITE[1], [55], 1.10, 28.48, "EUR")
+    bot.stato.vive = [v]
+    bot._piano(NS(chat="1", testo="/piano SPX500 7799 7832,5"))
+    assert spostati == [("SPX500", 55, 7749.44, 7832.5)]
+    assert (v.tp1, v.tp2, v.meta, v.uscita, v.meta_fatta) == (7799.0, 7832.5, 0.27, USCITE[0], False)
+    assert "TP finale 7832.5" in detti[-1] and "0.27 lotti" in detti[-1]
+    # Un TP1 sotto l'entrata di un acquisto non va: il piano resta.
+    bot._piano(NS(chat="1", testo="/piano SPX500 7770 7832"))
+    assert v.tp1 == 7799.0 and "sopra" in detti[-1]
+    bot._piano(NS(chat="1", testo="/piano EURUSD 1.2 1.3"))
+    assert "Non ho operazioni aperte su EURUSD" in detti[-1]

@@ -5,6 +5,13 @@ _Aggiornato l'08/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 08/10/2026 (notte): il comando /piano
+
+Il proprietario: *"puoi modificare quel segnale su mt5? dicendo al bot di prendere il TP1, mettere il TP finale e mettere
+a BE una volta preso il TP1 e preso il 25%"*. Nuovo comando Telegram «/piano STRUMENTO TP1 TPFINALE» (`vivo._piano`):
+sull'operazione aperta il TP finale va su MT5, il bot tiene il TP1 col 25% e il pareggio; lo stop non cambia. Non va se
+il TP1 è già stato preso o se i prezzi sono dal lato sbagliato.
+
 ## 08/10/2026 (sera, ultima): le candele come su MT5, dalle 17 di New York
 
 Il bot ha comprato SPX500 su un CRT a 4 ore alle 16 italiane a 7778.29; su MT5 la candela 2 chiudeva alle 15 a circa

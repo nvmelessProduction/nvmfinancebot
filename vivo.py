@@ -33,6 +33,7 @@ import numpy as np
 from nvm.agenti import foto, livelli, manopole
 from nvm.agenti.grilletto import MODELLI_ROMEO, apertura_romeo, kod_superato
 from nvm.agenti.capo import Capo
+from nvm.agenti.rischio import USCITE
 from nvm.cervello import dal_vivo
 from nvm.intelligenti import al_lavoro, fine_settimana, pareri
 from nvm.intelligenti.squadra import MANCA_IN_PAROLE
@@ -716,6 +717,12 @@ class Bot:
                 except Exception:
                     registra(CARTELLA, "errore", testo=traceback.format_exc())
                 continue
+            if m.testo.lower().split("@")[0].startswith("/piano"):
+                try:
+                    self._piano(m)
+                except Exception:
+                    registra(CARTELLA, "errore", testo=traceback.format_exc())
+                continue
             if not m.testo.lower().startswith("/romeo"):
                 continue
             e = leggi_comando(m.testo, m.quando or int(time.time()))
@@ -726,6 +733,56 @@ class Bot:
             self.stato.romeo.append(e)
             self.tg.equipe(messaggi.romeo_ricevuta(e, s))
             registra(CARTELLA, "romeo dal vivo", **asdict(e))
+
+    def _piano(self, m) -> None:
+        """«/piano STRUMENTO TP1 TPFINALE»: cambia il piano dell'operazione aperta su quello strumento (il proprietario,
+        08/10/2026, sull'SPX500 aperto con le candele di prima: *"prendere il TP1, mettere il TP finale e mettere a BE
+        una volta preso il TP1 e preso il 25%"*). Il TP finale va su MT5; al TP1 il bot chiude il 25% e porta lo stop
+        a pareggio, come nelle operazioni nuove. Lo stop non cambia."""
+        rispondi = self.tg.operativo if m.chat in self.imp.chat_operativo else self.tg.equipe
+        parti = m.testo.split()
+        aiuto = "Scrivi per esempio «/piano SPX500 7799 7832»: lo strumento, il TP1 (25% e pareggio) e il TP finale."
+        if len(parti) != 4:
+            rispondi(aiuto)
+            return
+        strumento = parti[1].upper()
+        try:
+            tp1, tp2 = (float(x.replace(",", ".")) for x in parti[2:])
+        except ValueError:
+            rispondi(aiuto)
+            return
+        vive = [v for v in self.stato.vive if v.strumento == strumento]
+        if not vive:
+            rispondi(f"Non ho operazioni aperte su {strumento}.")
+            return
+        v = vive[-1]
+        ancora = [x for x in v.tickets if x not in v.chiusi]
+        if len(ancora) != 1:
+            rispondi(f"{strumento}: questa operazione non è una posizione sola, il piano non lo cambio.")
+            return
+        if v.pareggio_fatto or v.meta_fatta:
+            rispondi(f"{strumento}: il TP1 è già stato preso, il piano non lo cambio.")
+            return
+        su = 1 if not v.short else -1
+        if not (su * (tp1 - v.ingresso) > 0 and su * (tp2 - tp1) >= 0):
+            rispondi(f"{strumento}: per {'un acquisto' if su > 0 else 'una vendita'} da {v.ingresso:g} il TP1 deve "
+                     f"stare {'sopra' if su > 0 else 'sotto'} l'entrata e il TP finale oltre il TP1.")
+            return
+        minimo, passo, _ = self.terminale.lotti(strumento)
+        meta = round(int(v.volume * foto.PARZIALE / passo + 1e-9) * passo, 8)
+        if meta < minimo or v.volume - meta < minimo - 1e-9:
+            meta = 0.0
+        e = self.terminale.sposta_stop(strumento, ancora[0], v.stop, tp2)
+        if not e.ok:
+            rispondi(f"{strumento}: non riesco a mettere il TP finale su MT5 ({e.messaggio}). Il piano resta com'era.")
+            return
+        v.tp1, v.tp2, v.meta, v.meta_fatta, v.pareggio_a = tp1, tp2, meta, False, 1.0
+        v.uscita = USCITE[0] if meta > 0 else USCITE[2]
+        self.stato.salva(CARTELLA)
+        registra(CARTELLA, "piano cambiato", strumento=strumento, tp1=tp1, tp2=tp2, meta=meta)
+        parziale = f"chiudo {meta:g} lotti (il 25%) e " if meta > 0 else "(il lotto non si divide: niente 25%) "
+        rispondi(f"✅ {strumento}: TP finale {tp2:g} messo su MT5. Al TP1 {tp1:g} {parziale}porto lo stop a pareggio "
+                 f"({v.ingresso:g}). Lo stop resta {v.stop:g}.")
 
     def aggiorna_se_serve(self) -> None:
         """Se su GitHub c'e' codice nuovo, lo prende ed esce per farsi riavviare
