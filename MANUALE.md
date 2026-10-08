@@ -43,10 +43,9 @@ le regole, impara dai risultati dal vivo e decide.
 - **Come decide la squadra** (il proprietario, 07/10/2026: *"ognuno dà le proprie opinioni e poi il capo decide
   ma tutti vengono presi in considerazione"*; niente intelligenza artificiale esterna; `nvm/intelligenti/pareri.py`):
   - **primo giro**: ognuno guarda l'occasione col suo mestiere e vota da −2 a +2, dicendo perché. Il
-    Cacciatore guarda quanto è grande il CRT e se è allineato coi grafici grandi; il Key level che liquidità
-    ha preso; il Bias la sua previsione del giorno e quella della domenica; il Gap i gap; il DXY il dollaro;
-    l'Orario l'ora (l'apertura di Wall Street, il rollover); Livelli lo stop e i target; il Grilletto come la
-    candela 2 ha fatto la finta; il Rischio quanto siamo già esposti sulla stessa valuta;
+    Cacciatore guarda se altri timeframe fanno il CRT nello stesso verso e le inside bar; il Key level che
+    liquidità ha preso; il Bias la sua previsione del giorno e quella della domenica; il Gap i gap; il DXY il
+    dollaro; l'Orario l'ora; Livelli i costi e i target; il Grilletto come la candela 2 ha fatto la finta;
   - **secondo giro**: si sentono fra colleghi. Chi ha un motivo cambia voto e lo dice per nome (per esempio
     il Cacciatore che sente il Bias contro, o il Key level che sente le inside bar del Cacciatore). Se dal
     vivo sentire un collega non aiuta, quell'ascolto si spegne;
@@ -55,11 +54,10 @@ le regole, impara dai risultati dal vivo e decide.
     mai: contro quella il Capo non entra;
   - **il Capo** pesa i voti di tutti, ognuno per quanto ci ha preso dal vivo, stima quanto spesso il CRT va
     bene ed entra solo con abbastanza punti a favore. In ogni giro mette in ordine i CRT per probabilità e
-    sceglie i migliori (al massimo 3, una sola idea per valuta); in équipe dice chi prende, chi lascia e
-    perché. Decide lui e se ne prende la responsabilità; dopo ogni occasione finita impara di chi fidarsi;
-  - **il Rischio** parte dall'1% del conto, punta di più quando il Capo è più convinto del solito, toglie per
-    le aperte sulla stessa valuta, non supera il 5% del conto a rischio insieme, si ferma dopo il 3% perso in
-    un giorno, e arrotonda il lotto quanto basta (fino a 1,5 volte la puntata) per poter chiudere il 25% al TP1;
+    sceglie i migliori (al massimo 3); in équipe dice chi prende, chi lascia e perché. Decide lui e se ne prende
+    la responsabilità; dopo ogni occasione finita impara di chi fidarsi;
+  - **il Rischio** parte dall'1% del conto, punta un po' di più quando il Capo è più convinto del solito e meno
+    quando ci sono altre operazioni aperte, e si corregge coi risultati;
   - i risultati veri del broker contano più di quelli calcolati sulla carta;
   - Livelli sceglie fra tre modi di uscire (tutto al TP1; il 25% al TP1 e il resto al target finale, come
     nelle foto; il 25% al TP1 e il resto più in là).
@@ -148,12 +146,13 @@ bot non può toccare.
 ## 6. Domande frequenti
 
 **Il bot apre poche operazioni.** È voluto. Il Capo sceglie solo i CRT su cui la squadra è convinta,
-al massimo tre per giro, e mai più di quanto il conto regge. Su conti piccoli il lotto minimo del broker
+al massimo tre per giro. Su conti piccoli il lotto minimo del broker
 può essere troppo grande per la puntata giusta: in quel caso l'operazione si lascia.
 
 **Quanto rischia?** Il Rischio parte dall'1% del conto per operazione, punta un po' di più quando
-il Capo è più convinto del solito, toglie per le aperte sulla stessa valuta, e si corregge coi
-risultati veri. Insieme non rischia mai più del 5% del conto, e dopo il 3% perso in un giorno si ferma.
+il Capo è più convinto del solito e meno quando ci sono altre operazioni aperte, e si corregge coi
+risultati veri. Non c'è un tetto fisso al rischio totale: con molte operazioni aperte insieme il
+conto può scendere molto.
 
 **Il metodo di Romeo guadagna?** Nessuno lo sa ancora. Sui vent'anni di prezzi il CRT preso alla
 lettera perdeva un po' dopo i costi; nella prova sul 2023 della versione precedente le occasioni

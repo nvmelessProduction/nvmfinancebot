@@ -41,9 +41,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from nvm.agenti import portafoglio
 from nvm.intelligenti.metodo import Metodo
-from nvm.intelligenti.pareri import PERDITA_GIORNO, TETTO_APERTO, VOTANO, Contesto, Parere, confronto
+from nvm.intelligenti.pareri import VOTANO, Parere, confronto
 
 VERSIONE = "foto-1"
 AGENTI = ("Cacciatore", "Grilletto", "Key level", "Bias", "Gap", "DXY", "Orario", "Livelli")
@@ -98,14 +97,8 @@ FIDUCIA_MASSIMA = 1.0
 BASE_VOTI = math.log(0.4 / 0.6)
 # Il Capo entra con almeno questi punti pesati a favore (un punto = un voto +1 di chi ha la fiducia di partenza).
 SOGLIA_PUNTI = 3.0
-# In un giro il Capo sceglie al massimo queste operazioni nuove, le migliori; e una sola idea per valuta.
+# In un giro il Capo sceglie al massimo queste operazioni nuove: quelle con piu' probabilita'.
 MASSIMO_PER_GIRO = 3
-# Il Rischio: quanto toglie alla puntata per ogni parte del conto gia' a rischio sulla stessa valuta.
-LEGATE_INIZIALE = 0.5
-# Per poter chiudere il 25% al TP1 il Rischio puo' arrotondare il lotto in su, fino a 1,5 volte la sua puntata e
-# mai oltre l'1,5% del conto.
-DIVIDI_FINO_A = 1.5
-DIVIDI_MASSIMO = 0.015
 # Un ascolto del secondo giro si spegne se dal vivo, dopo almeno tante volte, ha cambiato il voto nel verso giusto
 # meno di questa parte delle volte (sentire quel collega non aiuta).
 ASCOLTO_MINIMO = 20
@@ -231,7 +224,7 @@ class Memoria:
             self.capo["voti"].setdefault(a, FIDUCIA_VOTO)
         self.capo.setdefault("base_voti", BASE_VOTI)
         for k, v in (("base", PUNTATA_INIZIALE), ("convinzione", 0.2), ("aperte", 0.2), ("stesso", 0.2), ("media", 0.0),
-                     ("scarto", 0.1), ("volte", 0), ("legate", LEGATE_INIZIALE)):
+                     ("scarto", 0.1), ("volte", 0)):
             self.rischio.setdefault(k, v)
         for a in VOTANO:
             self.pagella.setdefault(a, {"si": [0, 0], "no": [0, 0]})
@@ -418,22 +411,6 @@ class Squadra:
         punti = sum(w.get(x.agente, FIDUCIA_VOTO) / FIDUCIA_VOTO * x.voto for x in pareri)
         return _sig(logit), punti
 
-    def puntata(self, p: float, ctx: Contesto, strumento: str, short: bool) -> tuple[float, float, float]:
-        """Il Rischio: (parte del conto, quanto e' convinto il Capo rispetto al solito, parte gia' a rischio sulla stessa
-        valuta). Parte dalla sua puntata base, piu' se il Capo e' piu' convinto del solito; toglie per le aperte sulla
-        stessa valuta nello stesso verso (non per tutte: le altre non vanno insieme); non supera il tetto del conto;
-        niente dopo una giornata gia' persa."""
-        ri = self.memoria.rischio
-        z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0) if ri.get("volte", 0) >= 10 else 0.0
-        gamba = portafoglio.gambe(strumento, -1 if short else 1)
-        legame = sum(q for k, v, q in ctx.aperte if portafoglio.in_comune(gamba, portafoglio.gambe(k, v)) >= 0.5)
-        aperto = sum(q for _, _, q in ctx.aperte)
-        parte = ri["base"] * math.exp(_stretto(ri["convinzione"] * z, -1.0, 1.0)) - max(ri.get("legate", 0.5), 0.0) * legame
-        parte = min(parte, TETTO_APERTO - aperto)
-        if ctx.perso_oggi >= PERDITA_GIORNO:
-            parte = 0.0
-        return max(parte, 0.0), z, legame
-
     # --- la riunione ---
 
     def _piano(self, coppia: str, modello: str, piani: Optional[list]) -> int:
@@ -461,12 +438,12 @@ class Squadra:
 
     def riunione(self, chiave: str, strumento: str, m: Metodo, quando: int, piani: Optional[list] = None,
                  esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None, stesso: float = 0.0,
-                 pareri: Optional[list] = None, contesto: Optional[Contesto] = None) -> Verdetto:
+                 pareri: Optional[list] = None) -> Verdetto:
         """La riunione su un'occasione: le domande di Romeo gia' risposte (`metodo.valuta`).
 
         Con i `pareri` di tutti (`pareri.py`, il metodo delle foto) decide il Capo: le regole del metodo devono esserci
         tutte, poi pesa i voti di ognuno (quanto si fida di chi lo impara dal vivo) ed entra solo con abbastanza punti a
-        favore. Il Rischio decide quanto, con le aperte sulla stessa valuta, il tetto del conto e la giornata."""
+        favore. Il Rischio decide quanto, come sempre."""
         t0 = time.time()
         with self._lucchetto:
             mem = self.memoria
@@ -483,7 +460,7 @@ class Squadra:
                 m.fatti["rr"] = round(parz * rr1 + (1 - parz) * rr2, 4)
             giudizi = self.giudizi(m)
             n_s, vinte_s, media_s, t_s = self.simili(m)
-            punti, legame = 0.0, 0.0
+            punti = 0.0
             usati, veto = [], ""
             if pareri is not None:
                 # Il secondo giro: si sentono fra colleghi e chi ha un motivo cambia idea, dicendolo.
@@ -496,8 +473,7 @@ class Squadra:
                 stima = p * float(m.fatti.get("rr", 1.0)) - (1 - p) + idee
                 evita = False
                 capo_entra = m.a_piu and stop_ok and punti >= SOGLIA_PUNTI and not veto
-                parte, z, legame = self.puntata(p, contesto or Contesto(), strumento,
-                                                m.fatti.get("verso") == "vendita")
+                parte, z = self._rischio(p, esposizione, stesso)
             else:
                 p = self._capo(giudizi)
                 stima = self.stima(m)
@@ -512,7 +488,8 @@ class Squadra:
                 ri["media"] = round(p if ri["volte"] == 1 else 0.95 * ri["media"] + 0.05 * p, 6)
                 ri["scarto"] = round(max(math.sqrt(0.95 * ri["scarto"] ** 2 + 0.05 * (p - ri["media"]) ** 2), 0.02), 6)
             if pareri is not None:
-                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, legame, veto)
+                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, esposizione, stesso,
+                                                veto)
             else:
                 voci = self._voci(m, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano,
                                   (n_s, vinte_s, media_s), stesso)
@@ -521,7 +498,7 @@ class Squadra:
                              "evita": evita, "mancano": [d.nome for d in m.mancano],
                              "simili": [n_s, vinte_s, round(media_s, 4)], "punti": round(punti, 3)},
                     "Rischio": {"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6),
-                                "stesso": round(stesso, 6), "legame": round(legame, 6)},
+                                "stesso": round(stesso, 6)},
                     "agenti": {a: {"prima": round(g["prima"], 4), "dopo": round(g["dopo"], 4)}
                                for a, g in giudizi.items()}}
             if pareri is not None:
@@ -543,15 +520,12 @@ class Squadra:
         return v
 
     def _voci_della_squadra(self, m: Metodo, pareri: list[Parere], entra: bool, stop_ok: bool, p: float, punti: float,
-                            puntata: float, z: float, legame: float, veto: str = "") -> list:
+                            puntata: float, z: float, esposizione: float, stesso: float, veto: str = "") -> list:
         """La riunione in equipe col metodo delle foto: ogni agente dice il suo voto e perche' (e, quando ha
         abbastanza casi dal vivo, quante volte ci prende); il Capo dice chi ha sentito, decide e se ne prende la
         responsabilita'; il Rischio dice quanto."""
         voci = []
-        rischio = next((x for x in pareri if x.agente == "Rischio"), None)
         for x in pareri:
-            if x.agente == "Rischio":
-                continue
             voci.append((x.agente, x.frase() + self._come_ci_prende(x.agente)))
         if not stop_ok:
             voci.append(("Capo", "Non entriamo: senza uno stop giusto non si entra, mai."))
@@ -561,15 +535,18 @@ class Squadra:
                                                                             for d in m.mancano) + "."))
             return voci
         voci.append(("Capo", self.decisione_in_parole(m, pareri, entra, p, punti, puntata, veto)))
-        testo = rischio.frase() if rischio is not None else ""
         if entra:
             if z > 0.5:
-                testo += " Il Capo è più convinto del solito: punto un po' di più."
+                testo = "il Capo è più convinto del solito, punto un po' di più"
             elif z < -0.5:
-                testo += " Il Capo è meno convinto del solito: punto un po' di meno."
-            if legame > 0:
-                testo += " Tolgo una parte per le aperte sulla stessa valuta."
-        voci.append(("Rischio", testo.strip()))
+                testo = "il Capo è meno convinto del solito, punto un po' di meno"
+            else:
+                testo = "convinzione nella media, puntata normale"
+            if stesso > 0:
+                testo += f"; su {m.fatti.get('strumento')} c'è già un'operazione aperta: ne tengo conto e punto meno"
+            elif esposizione > 0:
+                testo += "; ci sono già altre operazioni aperte e ne tengo conto"
+            voci.append(("Rischio", _cap(testo) + "."))
         return voci
 
     def _come_ci_prende(self, agente: str) -> str:
@@ -787,9 +764,6 @@ class Squadra:
                     ri["convinzione"] = round(ri["convinzione"] + spinta * float(g.get("z", 0.0)), 6)
                     ri["aperte"] = round(ri["aperte"] - spinta * 100 * float(g.get("esposizione", 0.0)), 6)
                     ri["stesso"] = round(ri.get("stesso", 0.2) - spinta * 100 * float(g.get("stesso", 0.0)), 6)
-                    # Con le aperte sulla stessa valuta: se va male toglie di piu' la prossima volta, se va bene meno.
-                    ri["legate"] = round(_stretto(ri.get("legate", LEGATE_INIZIALE)
-                                                  - spinta * 100 * float(g.get("legame", 0.0)), 0.0, 2.0), 6)
                     fatte.append({"agente": "Rischio", "giusto": bene, "lezione":
                                   f"Dopo questa {'vincita' if bene else 'perdita'} la mia puntata base passa da "
                                   f"{_pct(prima)} a {_pct(ri['base'])} del conto."})

@@ -14,12 +14,10 @@ from typing import Optional
 
 from datetime import datetime
 
-from nvm.agenti import portafoglio
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import costruisci
 from nvm.intelligenti import metodo, pareri as P
-from nvm.intelligenti.squadra import (DIVIDI_FINO_A, DIVIDI_MASSIMO, MASSIMO_PER_GIRO, SOGLIA_PUNTI, Squadra,
-                                      Verdetto)
+from nvm.intelligenti.squadra import MASSIMO_PER_GIRO, SOGLIA_PUNTI, Squadra, Verdetto
 from nvm.prova.campo import Operazione, Uscita, simula
 from nvm.tempo import NEW_YORK, TF
 
@@ -53,8 +51,8 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
     (`pareri.py`), poi decide il Capo. Alla fine il Capo sceglie le migliori del giro (`scegli`): il riassunto della
     scelta resta in `squadra.ultima_scelta`. Restituisce i verdetti per chiave; manca solo l'occasione su cui qualcosa
     si e' rotto (l'errore resta in `squadra.ultimo_errore`). `per_strumento`: la parte del conto gia' a rischio su
-    ogni strumento (per il metodo dei video); `contesto`: il conto, le aperte, la domenica; `occupati`: gli strumenti
-    con un'operazione gia' aperta."""
+    ogni strumento, per il Rischio; `contesto`: la previsione della domenica; `occupati`: gli strumenti con
+    un'operazione gia' aperta."""
     fatte = {}
     ctx = contesto or P.Contesto()
     squadra.ultima_scelta = ""
@@ -65,14 +63,14 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
             if getattr(d, "foto", None):
                 m = metodo.valuta_foto(d)
                 prev = previsione_di(squadra, s, d.foto["quadro"], int(d.r.quando))
-                pareri = P.tutti(d, ctx, prev, squadra.memoria.rischio["base"])
+                pareri = P.tutti(d, ctx, prev)
             else:
                 m = metodo.valuta(d, basi[s], fini.get(s), _gemello(s, basi))
             piani = getattr(d, "piani_romeo", None) or None
             seguire = {"strumento": s, "basso": d.r.basso_tf.value, "scadenza": int(d.scadenza),
                        "piani": [_dati(op) for op in piani]} if piani else None
             v = squadra.riunione(d.chiave, s, m, int(d.r.quando), piani, esposizione, seguire, d.op,
-                                 stesso=(per_strumento or {}).get(s, 0.0), pareri=pareri, contesto=ctx)
+                                 stesso=(per_strumento or {}).get(s, 0.0), pareri=pareri)
             v.metodo = m
             fatte[d.chiave] = v
         except Exception:
@@ -123,9 +121,8 @@ def previsioni_del_giorno(squadra: Squadra, quadri: dict, adesso: int) -> str:
 
 
 def scegli(squadra: Squadra, decisioni, verdetti: dict, ctx: P.Contesto, occupati: set) -> str:
-    """Il Capo sceglie le migliori del giro: in ordine di punti, al massimo `MASSIMO_PER_GIRO`, una sola idea per
-    valuta (non tre acquisti contro lo yen insieme), niente sugli strumenti gia' occupati, e dentro il tetto del conto
-    che tiene il Rischio. Quelle lasciate non si aprono (si seguono sulla carta e la squadra impara lo stesso).
+    """Il Capo sceglie le migliori del giro: in ordine di probabilita', al massimo `MASSIMO_PER_GIRO`, niente sugli
+    strumenti gia' occupati. Quelle lasciate non si aprono (si seguono sulla carta e la squadra impara lo stesso).
     Restituisce il riassunto per l'equipe ("" se nel giro non c'era niente con tutte le regole del metodo)."""
     per_chiave = {d.chiave: d for d in decisioni}
     giri: dict = {}
@@ -140,13 +137,11 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
     # Il Capo sceglie i CRT con piu' probabilita' (il proprietario, 07/10/2026: *"il capo deve decidere quali CRT
     # hanno più probabilità"*).
     a_piu.sort(key=lambda kv: (-kv[1].fiducia, -kv[1].punti))
-    scelte, gambe, aperto = [], [], sum(q for _, _, q in ctx.aperte)
-    lasciate = []
+    scelte, lasciate = [], []
     for k, v in a_piu:
         d = per_chiave[k]
         s = d.r.strumento
         segno = -1 if d.r.verso is Verso.SHORT else 1
-        gamba = portafoglio.gambe(s, segno)
         motivo = ""
         if not v.entra:
             veto = v.pareri.get("Capo", {}).get("veto", "")
@@ -164,11 +159,6 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
             motivo = f"su {s} ho già scelto un'altra occasione in questo giro"
         elif len(scelte) >= MASSIMO_PER_GIRO:
             motivo = f"ho già scelto le {MASSIMO_PER_GIRO} migliori di questo giro"
-        elif any(portafoglio.in_comune(gamba, g) >= 0.5 for _, g in gambe):
-            altra = next(n for n, g in gambe if portafoglio.in_comune(gamba, g) >= 0.5)
-            motivo = f"è la stessa scommessa di {altra}, che ho già scelto"
-        elif aperto + v.puntata > P.TETTO_APERTO + 1e-9:
-            motivo = "il conto è arrivato al tetto di rischio del Rischio"
         if motivo:
             if v.entra:
                 v.entra = False
@@ -177,8 +167,6 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
             lasciate.append((s, segno, v.fiducia, motivo))
             continue
         scelte.append((s, segno, v.fiducia))
-        gambe.append((s, gamba))
-        aperto += v.puntata
     ora = datetime.fromtimestamp(int(min(per_chiave[k].r.quando for k, _ in a_piu)), tz=NEW_YORK).strftime("%H:%M")
     freccia = lambda segno: "🟢" if segno > 0 else "🔴"
     righe = [f"Giro delle {ora} di New York: {len(a_piu)} CRT con tutte le regole del metodo. Li metto in ordine di "
@@ -203,9 +191,6 @@ def _punti(x: float) -> str:
     return f"{x:+.1f}".replace(".", ",")
 
 
-def divisibile_fino_a(v: Verdetto) -> float:
-    """Fin dove il Rischio puo' arrotondare in su il lotto per poter chiudere il 25% al TP1."""
-    return min(v.puntata * DIVIDI_FINO_A, DIVIDI_MASSIMO)
 
 
 def valuta_piani(squadra: Squadra, basi: dict, fini: dict, adesso: int) -> int:
@@ -291,16 +276,16 @@ def benvenuto(strumenti: int) -> str:
             "settimana e mese; il DXY vale per tutte le coppie col dollaro. Se manca una regola, aspettiamo. Mai "
             "senza stop.\n"
             "Come lavoriamo: ognuno guarda l'occasione col suo mestiere e vota, da -2 a +2, dicendo perché. Il "
-            "Cacciatore guarda quanto è grande il CRT, il Key level che liquidità ha preso, il Bias la sua previsione del "
-            "giorno (la dice all'apertura e la tiene fino a sera: contro quella vota no), il Gap i gap, il DXY il dollaro, "
-            "l'Orario l'ora (l'apertura di Wall Street, il rollover), Livelli lo stop e i target, il Grilletto la finta, "
-            "il Rischio quanto siamo già esposti sulla stessa valuta. Il Capo ascolta tutti, pesa ognuno per quanto ci ha "
-            f"preso dal vivo, ed entra solo con almeno {_punti(SOGLIA_PUNTI)} punti a favore; in ogni giro sceglie al "
-            f"massimo le {MASSIMO_PER_GIRO} migliori, una sola idea per valuta, e dice cosa prende e cosa lascia. Decide "
-            "lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. Il Rischio parte "
-            "dall'1% del conto, toglie per le aperte sulla stessa valuta, non supera il 5% del conto a rischio insieme e "
-            "si ferma dopo il 3% perso in un giorno. Non siamo un'intelligenza artificiale che parla: siamo il metodo, "
-            "il mestiere di ognuno e numeri che si correggono coi fatti.")
+            "Cacciatore guarda se altri timeframe fanno il CRT nello stesso verso e le inside bar, il Key level che "
+            "liquidità ha preso, il Bias la sua previsione del giorno (la dice all'apertura e la tiene fino a sera) e "
+            "quella della domenica, il Gap i gap, il DXY il dollaro, l'Orario l'ora, Livelli i costi e i target, il "
+            "Grilletto la finta. Poi ci sentiamo fra colleghi: chi ha un motivo cambia voto e lo dice. Il Capo ascolta "
+            "tutti, pesa ognuno per quanto ci ha preso dal vivo, ed entra solo con almeno "
+            f"{_punti(SOGLIA_PUNTI)} punti a favore e mai contro la previsione della domenica; in ogni giro mette i CRT "
+            f"in ordine di probabilità e sceglie al massimo i {MASSIMO_PER_GIRO} migliori, e dice cosa prende e cosa "
+            "lascia. Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
+            "Il Rischio parte dall'1% del conto e si corregge coi risultati. Non siamo un'intelligenza artificiale che "
+            "parla: siamo il metodo, il mestiere di ognuno e numeri che si correggono coi fatti.")
 
 
 def lezioni_in_breve(lezioni: list[dict], nome: str, erre: float) -> str:

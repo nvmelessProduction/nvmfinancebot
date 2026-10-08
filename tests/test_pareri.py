@@ -1,6 +1,6 @@
-"""I pareri della squadra (`nvm/intelligenti/pareri.py`): ognuno vota col suo mestiere e dice perche'; il Bias resta
-fedele alla previsione del giorno; il Capo pesa tutti, decide, sceglie le migliori del giro e impara di chi
-fidarsi; il Rischio guarda la stessa valuta, il tetto e la giornata."""
+"""I pareri della squadra (`nvm/intelligenti/pareri.py`): ognuno vota col suo mestiere e dice perche'; nel secondo giro
+si sentono; il Bias resta fedele alle sue previsioni; il Capo pesa tutti, decide, sceglie i CRT con piu' probabilita'
+e impara di chi fidarsi."""
 
 from types import SimpleNamespace as NS
 
@@ -25,11 +25,11 @@ def _setup(tf=TF.H4, short=False, strumento="EURUSD", ingresso=1.1000, stop=1.09
               dal_dxy=False)
 
 
-def test_il_cacciatore_preferisce_i_grafici_grandi():
-    assert P.cacciatore(_setup(tf=TF.D1), []).voto == 2
-    da_solo = P.cacciatore(_setup(tf=TF.H4), [])
-    assert da_solo.voto == -1 and "da solo" in da_solo.ragioni[0]
-    assert P.cacciatore(_setup(tf=TF.H4), [TF.D1]).voto == 1
+def test_il_cacciatore_guarda_gli_allineati_e_le_inside_bar():
+    assert P.cacciatore(_setup(tf=TF.H4), []).voto == 0
+    assert P.cacciatore(_setup(tf=TF.H4), [TF.H1]).voto == 1
+    madre = P.cacciatore(_setup(tf=TF.D1, dentro=2), [])
+    assert madre.voto == 1 and "inside bar" in madre.segni
 
 
 def test_il_key_level_pesa_quanto_e_grande_il_periodo():
@@ -39,41 +39,21 @@ def test_il_key_level_pesa_quanto_e_grande_il_periodo():
     assert P.key_level(_setup(presi=[Livello(TF.D1, False, 1.0990, 0, oggi=True)])).voto == -1
 
 
-def test_l_orario_sa_dell_apertura_di_wall_street_e_del_rollover():
-    nove = utc(2026, 1, 6, 14)            # le 9 di New York
-    indice = P.orario(_setup(strumento="NAS100", n3=nove))
-    assert indice.voto == -2 and "Wall Street" in indice.ragioni[0]
+def test_l_orario_guarda_le_ore_di_romeo():
     assert P.orario(_setup(n3=LONDRA)).voto == 1
-    sedici = utc(2026, 1, 6, 21)          # le 16 di New York
-    assert "rollover" in P.orario(_setup(n3=sedici)).ragioni[0]
     # Per il CRT del giorno l'ora la fa il grafico.
-    assert P.orario(_setup(tf=TF.D1, n3=sedici)).voto == 0
+    assert P.orario(_setup(tf=TF.D1, n3=utc(2026, 1, 6, 21))).voto == 0
 
 
-def test_livelli_non_vuole_stop_che_prende_il_rumore():
-    # CADJPY del 07/10: lo stop a 0,06 del range.
-    stretto = P.livelli(_setup(ingresso=1.0985, stop=1.0982, alto=1.1035, basso=1.0985, tp1=1.1035), None, 0.0)
-    assert stretto.voto == -2 and "0,06 del range" in stretto.ragioni[0]
-    giusto = P.livelli(_setup(ingresso=1.1000, stop=1.0970, alto=1.1045, basso=1.0975, tp1=1.1045), None, 0.0)
-    assert giusto.voto == 1
+def test_livelli_guarda_i_costi_e_il_tp1():
+    lontano = P.livelli(_setup(ingresso=1.1000, stop=1.0990, alto=1.1050, basso=1.0995, tp1=1.1050), None, 0.0)
+    assert lontano.voto == -1 and "lontano" in lontano.ragioni[0]
+    assert P.livelli(_setup(), None, 0.0).voto == 0
 
 
 def test_il_grilletto_guarda_quanto_e_rientrata_la_candela_2():
     assert P.grilletto(_setup(n2=(1.0955, 1.1040, 1.1040))).voto == 1
     assert P.grilletto(_setup(n2=(1.0955, 1.1040, 1.0984))).voto == -1
-
-
-def test_il_rischio_non_vuole_tre_scommesse_sullo_stesso_yen():
-    # Il 07/10: CADJPY e NZDJPY comprati insieme, poi ancora CADJPY.
-    ctx = P.Contesto(saldo=1000.0, aperte=[("CADJPY", 1, 0.01), ("NZDJPY", 1, 0.01)])
-    r = P.rischio(_setup(strumento="AUDJPY"), ctx, 0.01)
-    assert r.voto == -2 and "stessa valuta" in r.ragioni[0]
-    libero = P.rischio(_setup(strumento="EURUSD"), P.Contesto(saldo=1000.0), 0.01)
-    assert libero.voto == 1
-    pieno = P.rischio(_setup(), P.Contesto(saldo=1000.0, aperte=[("XAUUSD", 1, 0.045)]), 0.01)
-    assert pieno.voto <= -1 and any("tetto" in x for x in pieno.ragioni)
-    giornata = P.rischio(_setup(), P.Contesto(saldo=1000.0, perso_oggi=0.035), 0.01)
-    assert any("già perso" in x for x in giornata.ragioni)
 
 
 def test_il_bias_resta_fedele_alla_previsione_del_giorno():
@@ -118,21 +98,21 @@ def _pareri(**voti) -> list:
 def test_il_capo_pesa_tutti_e_decide_lui(tmp_path):
     sq = Squadra(tmp_path)
     convinti = _pareri(Cacciatore=2, Key_level=1, Bias=2, Livelli=-1)
-    v = sq.riunione("si", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=convinti, contesto=P.Contesto(saldo=1000.0))
+    v = sq.riunione("si", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=convinti)
     assert v.punti == 4.0 and v.entra and v.puntata > 0
     chi = [c for c, _ in v.voci]
-    assert chi == [a for a in P.VOTANO if a != "Rischio"] + ["Capo", "Rischio"]
+    assert chi == list(P.VOTANO) + ["Capo", "Rischio"]
     capo = v.voci[-2][1]
     assert "Contro: Livelli (-1)" in capo and "la responsabilità è mia" in capo
     poco = _pareri(Cacciatore=2, Bias=-2, Orario=-1)
-    v2 = sq.riunione("no", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=poco, contesto=P.Contesto(saldo=1000.0))
-    assert v2.a_piu and not v2.entra and v2.punti < SOGLIA_PUNTI and "non è convinta" in v2.voci[-2][1]
+    v2 = sq.riunione("no", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=poco)
+    assert v2.a_piu and not v2.entra and v2.punti < SOGLIA_PUNTI and "non è convinta" in v2.voci[-1][1]
 
 
 def test_il_capo_impara_di_chi_fidarsi(tmp_path):
     sq = Squadra(tmp_path)
     voti = _pareri(Cacciatore=2, Key_level=2, Bias=1, Orario=-2)
-    sq.riunione("k", "NAS100", _metodo("NAS100"), LONDRA, op=_op(), pareri=voti, contesto=P.Contesto(saldo=1000.0))
+    sq.riunione("k", "NAS100", _metodo("NAS100"), LONDRA, op=_op(), pareri=voti)
     lezioni = sq.rifletti("k", -1.0, preso=True)
     w = sq.memoria.capo["voti"]
     assert w["Orario"] > FIDUCIA_VOTO and w["Cacciatore"] < FIDUCIA_VOTO
@@ -149,28 +129,28 @@ def test_il_capo_sceglie_le_migliori_del_giro(tmp_path):
     decisioni, verdetti = [], {}
     for i, (s, forza) in enumerate(occasioni):
         v = sq.riunione(s, s, _metodo(s), n3, op=_op(), pareri=_pareri(Cacciatore=2, Key_level=1),
-                        contesto=P.Contesto(saldo=1000.0))
+                        )
         assert v.entra
         v.punti, v.fiducia = forza, forza / 10
         verdetti[s] = v
         decisioni.append(NS(chiave=s, r=NS(strumento=s, quando=n3, verso=Verso.LONG)))
-    testo = al_lavoro.scegli(sq, decisioni, verdetti, P.Contesto(saldo=1000.0), {"USDCHF"})
+    testo = al_lavoro.scegli(sq, decisioni, verdetti, P.Contesto(), {"USDCHF"})
     presi = [s for s, v in verdetti.items() if v.entra]
-    # Una sola idea sullo yen (NZDJPY e' la stessa scommessa di CADJPY), al massimo tre, niente sugli occupati.
-    assert presi == ["CADJPY", "GBPUSD", "EURCHF"] and len(presi) == MASSIMO_PER_GIRO
-    assert "stessa scommessa di CADJPY" in verdetti["NZDJPY"].lasciata
-    assert "già scelto le 3 migliori" in verdetti["AUDCAD"].lasciata
+    # I CRT con piu' probabilita', al massimo tre, niente sugli strumenti gia' occupati.
+    assert presi == ["CADJPY", "NZDJPY", "GBPUSD"] and len(presi) == MASSIMO_PER_GIRO
+    assert "già scelto le 3 migliori" in verdetti["EURCHF"].lasciata
+    assert "già un'operazione aperta" in verdetti["USDCHF"].lasciata
     assert testo.startswith("Giro delle 03:00 di New York") and "Scelgo: CADJPY" in testo and "Lascio:" in testo
 
 
 def test_nel_secondo_giro_si_sentono_e_cambiano_idea_dicendo_perche():
-    pareri = _pareri(Cacciatore=1, Bias=-2, Gap=1, Rischio=1)
+    pareri = _pareri(Cacciatore=1, Bias=-2, Gap=1)
     usati = P.confronto(pareri)
     per = {x.agente: x for x in pareri}
     assert per["Cacciatore"].voto == 0 and per["Cacciatore"].primo == 1 and "Sentito il Bias" in per["Cacciatore"].sentito
     assert per["Gap"].voto == 0 and "Sentito il Bias" in per["Gap"].sentito
     assert "passo a +0" in per["Cacciatore"].frase()
-    assert ("Cacciatore sente Bias", -1) in usati and ("Rischio sente Bias", -1) in usati
+    assert ("Cacciatore sente Bias", -1) in usati and ("Gap sente Bias", -1) in usati
     # Un ascolto che dal vivo non aiuta si spegne.
     pareri = _pareri(Cacciatore=1, Bias=-2)
     assert not P.confronto(pareri, {"Cacciatore sente Bias"}) and pareri[0].voto == 1
@@ -186,5 +166,5 @@ def test_la_squadra_non_va_mai_contro_la_previsione_della_domenica(tmp_path):
     sq = Squadra(tmp_path)
     voti = _pareri(Cacciatore=2, Key_level=2, Gap=2, DXY=1, Livelli=2, Grilletto=1)
     voti[2] = b
-    v = sq.riunione("contro", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=voti, contesto=P.Contesto(saldo=1000.0))
-    assert v.a_piu and not v.entra and "non andiamo contro la nostra previsione" in v.voci[-2][1]
+    v = sq.riunione("contro", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=voti)
+    assert v.a_piu and not v.entra and "non andiamo contro la nostra previsione" in v.voci[-1][1]

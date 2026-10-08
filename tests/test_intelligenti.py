@@ -266,7 +266,7 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
         return m
     monkeypatch.setattr(metodo, "valuta_foto", tutto_si)
     # La squadra e' d'accordo (qui si prova il bot, non i voti: quelli sono in `test_pareri.py`).
-    monkeypatch.setattr(al_lavoro.P, "tutti", lambda d, ctx, prev, puntata: [Parere(a, 1, ["prova"]) for a in VOTANO])
+    monkeypatch.setattr(al_lavoro.P, "tutti", lambda d, ctx, prev: [Parere(a, 1, ["prova"]) for a in VOTANO])
     base = ore_finte(giorni=400)
     tutte = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
     decisioni, tardiva = tutte[-2:], tutte[-3]
@@ -274,7 +274,7 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     mandati, aperte = [], []
 
     class Esecutore:
-        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True, dividi_fino_a=0.0):
+        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True):
             assert con_stop(d.op)
             aperte.append((pieno, parte, riduci))
             viva = NS(chiave=d.chiave, strumento="EURUSD", verso=d.r.verso.value, tickets=[1], volume=0.1,

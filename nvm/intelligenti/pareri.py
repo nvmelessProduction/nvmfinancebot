@@ -6,9 +6,7 @@ restino fedeli alle loro previsioni e a ciò che analizzano ... L'agente rischio
 selezionare i crt"*.
 
 Ogni agente da' un voto da -2 (forte contro) a +2 (forte a favore) con le ragioni del suo mestiere, in parole
-semplici. Le regole vengono dal metodo (Romeo, le foto del proprietario) e da quello che si e' visto dal vivo
-(07/10/2026: dieci stop, tutti CRT da 1, 4 o 6 ore; stop stretti presi dal rumore; l'apertura di Wall Street; il
-rollover; tre scommesse sullo stesso yen). Il Capo pesa tutti i voti (`squadra.py`) e decide lui.
+semplici. Il Capo pesa tutti i voti (`squadra.py`) e decide lui. Il Rischio non vota: decide quanto puntare.
 
 Il Bias e' fedele alla sua previsione: la fa all'apertura del giorno (le 18 di New York) leggendo la candela
 precedente di giorno, settimana, mese, 3 mesi e anno, e la tiene tutto il giorno. Non cambia idea a meta' giornata:
@@ -20,18 +18,16 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 
-from nvm.agenti import portafoglio
 from nvm.dati.minuti import CHIUSURA, MASSIMO, MINIMO
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import NEW_YORK, ORDINE, TF, inizio_candela
 
-# Chi vota, nell'ordine in cui parla in equipe. Il Rischio vota anche lui (quanto siamo gia' esposti); poi
-# decide la puntata.
-VOTANO = ("Cacciatore", "Key level", "Bias", "Gap", "DXY", "Orario", "Livelli", "Grilletto", "Rischio")
+# Chi vota, nell'ordine in cui parla in equipe.
+VOTANO = ("Cacciatore", "Key level", "Bias", "Gap", "DXY", "Orario", "Livelli", "Grilletto")
 
 TF_GRANDI = (TF.D1, TF.W1, TF.MN)
 # I timeframe di cui il Bias legge la candela precedente, dal piu' grande (comanda) al piu' piccolo.
@@ -40,20 +36,11 @@ NOMI = {TF.H1: "a 1 ora", TF.H4: "a 4 ore", TF.H6: "a 6 ore", TF.H12: "a 12 ore"
         TF.W1: "settimanale", TF.MN: "mensile", TF.Q3: "dei 3 mesi", TF.S6: "dei 6 mesi", TF.Y1: "annuale"}
 CANDELA = {TF.D1: "il giorno", TF.W1: "la settimana", TF.MN: "il mese", TF.Q3: "il trimestre", TF.Y1: "l'anno"}
 
-# Livelli: lo stop sotto 0,3 del range lo prende il rumore (la riunione del sabato, dal vivo: *"con «stop almeno a
-# 0,3 del range dall'ingresso» avrei fatto +0,12 R a operazione"*); sotto 0,15 basta lo spread (CADJPY, 07/10).
-STOP_GIUSTO = 0.30
-STOP_RUMORE = 0.15
 # Spread e commissione, in parte del rischio.
 COSTO_ALTO = 0.15
 COSTO_TROPPO = 0.30
 # Un TP1 oltre 3 volte il rischio arriva di rado (la riunione del sabato: *"primo target oltre 3 R" 0 su 5*).
 TP1_LONTANO = 3.0
-# Il Rischio: quanto del conto puo' essere a rischio tutto insieme, e quanto si puo' perdere in un giorno.
-TETTO_APERTO = 0.05
-PERDITA_GIORNO = 0.03
-# Per chiudere il 25% al TP1 serve un lotto da almeno 4 lotti minimi.
-PARTI_MINIME = 4
 
 
 QUANTO = {2: "Forte a favore", 1: "A favore", 0: "Neutro", -1: "Contro", -2: "Forte contro"}
@@ -68,7 +55,7 @@ class Parere:
     agente: str
     voto: int
     ragioni: list[str] = field(default_factory=list)
-    # Cosa ha visto, in breve: serve ai colleghi nel secondo giro ("inside bar", "rsi", "stop rumore"...).
+    # Cosa ha visto, in breve: serve ai colleghi nel secondo giro ("inside bar", "rsi"...).
     segni: set = field(default_factory=set)
     # Il voto del primo giro (solo il suo mestiere) e cosa ha detto dopo aver sentito un collega.
     primo: Optional[int] = None
@@ -117,17 +104,10 @@ class Previsione:
 
 @dataclass
 class Contesto:
-    """Quello che la squadra sa oltre l'occasione: il conto, le aperte, le previsioni."""
-    saldo: float = 0.0
-    # Le operazioni aperte che rischiano ancora: (strumento, verso +1/-1, parte del conto a rischio).
-    aperte: list = field(default_factory=list)
-    # Quanto del conto si e' perso oggi (positivo = perdita).
-    perso_oggi: float = 0.0
+    """Quello che la squadra sa oltre l'occasione."""
     # La previsione della domenica (`fine_settimana.domenica`): strumento -> "rialzista" / "ribassista". Per gli
     # strumenti che non ci sono, il Bias la rilegge lui dalla candela della settimana (`settimana`).
     domenica: dict = field(default_factory=dict)
-    # (strumento, verso, prezzo, stop) -> (lotto minimo, perdita per lotto in valuta del conto), se si sa.
-    lotti: Optional[Callable] = None
 
 
 def _numero(x: Optional[float]) -> str:
@@ -255,26 +235,17 @@ def _ordina(ragioni: list[tuple[float, str]]) -> list[str]:
 
 
 def cacciatore(s, allineati) -> Parere:
-    """Il CRT: quanto e' grande il grafico, se e' allineato coi grafici grandi, se il range ha caricato."""
+    """Il CRT: se altri timeframe fanno il CRT nello stesso verso, se il range ha caricato (inside bar)."""
     punti, rag = 0.0, []
-    grandi = sorted((t for t in allineati if ORDINE.index(t) >= ORDINE.index(TF.D1)), key=ORDINE.index)
-    if s.tf in TF_GRANDI:
-        punti += 2
-        rag.append((2, f"è un CRT {NOMI[s.tf]}: il grafico grande, quello che muove davvero"))
-    elif grandi:
+    if allineati:
         punti += 1
-        rag.append((1, f"CRT {NOMI[s.tf]} con anche il {NOMI[grandi[-1]]} che fa il CRT nello stesso verso"))
-    elif s.tf is TF.H1 and any(t in (TF.H4, TF.H6) for t in allineati):
-        rag.append((0, "CRT a 1 ora con il 4 ore allineato, ma nessun grafico grande"))
-    else:
-        punti -= 1
-        rag.append((-1, f"CRT {NOMI[s.tf]} da solo: sui grafici piccoli il rumore prende lo stop "
-                        "(il 07/10 tutti e dieci gli stop erano CRT da 1, 4 o 6 ore)"))
+        rag.append((1, f"anche il CRT {', '.join(NOMI.get(x, x.value) for x in allineati[:3])} va nello stesso verso"))
     if s.dentro:
         punti += 0.5
         rag.append((0.5, f"il range è una candela madre con {s.dentro} inside bar: il prezzo ha caricato"))
-    segni = ({"inside bar"} if s.dentro else set()) | ({"grafico grande"} if s.tf in TF_GRANDI or grandi else set())
-    return Parere("Cacciatore", _voto(punti), _ordina(rag), segni=segni)
+    if not rag:
+        rag.append((0, f"CRT {NOMI.get(s.tf, s.tf.value)}, senza altri timeframe allineati"))
+    return Parere("Cacciatore", _voto(punti), _ordina(rag), segni={"inside bar"} if s.dentro else set())
 
 
 def key_level(s) -> Parere:
@@ -375,7 +346,7 @@ def dxy(s, sd) -> Parere:
 
 
 def orario(s) -> Parere:
-    """L'ora dell'entrata: le sessioni di Romeo, l'apertura di Wall Street sugli indici, il rollover, il venerdi'."""
+    """L'ora dell'entrata: le sessioni di Romeo, le ore asiatiche, il venerdi'."""
     if s.tf in TF_GRANDI:
         return Parere("Orario", 0, [f"la candela 3 del CRT {NOMI[s.tf]} apre alle 18 di New York: l'ora la fa il grafico"])
     ny = _ny(s.n3_inizio)
@@ -383,23 +354,12 @@ def orario(s) -> Parere:
     rag, punti = [], 0.0
     fam = STRUMENTI[s.strumento].famiglia if s.strumento in STRUMENTI else "forex"
     asiatica = any(v in s.strumento for v in ("JPY", "AUD", "NZD"))
-    if fam == "indici" and 9 <= h < 10:
-        punti -= 2
-        rag.append((-2, "entriamo alle 9 di New York: alle 9:30 apre Wall Street e lo scossone prende gli stop "
-                        "(il 07/10 US30 e NAS100)"))
-    elif fam == "indici" and 8 <= h < 9:
-        punti -= 1
-        rag.append((-1, "alle 8:30 di New York escono i dati americani e alle 9:30 apre Wall Street"))
-    elif 2 <= h < 5:
+    if 2 <= h < 5:
         punti += 1
         rag.append((1, f"sono le {h} di New York: sessione di Londra, le ore di Romeo"))
     elif 8 <= h < 11:
         punti += 1
         rag.append((1, f"sono le {h} di New York: la mattina di New York, le ore di Romeo"))
-    elif 14 <= h < 18:
-        punti -= 1
-        rag.append((-1, f"sono le {h} di New York: si va verso il rollover delle 17, quando lo spread si allarga "
-                        "(il 07/10 AUDNZD è uscita così)"))
     elif (h >= 18 or h < 2) and not asiatica and fam == "forex":
         punti -= 1
         rag.append((-1, "ore asiatiche su una coppia che non è asiatica: consolidamento"))
@@ -412,22 +372,14 @@ def orario(s) -> Parere:
 
 
 def livelli(s, ob, costo_erre: float) -> Parere:
-    """Lo stop e i target: lo stop deve stare lontano dal rumore, i costi non devono mangiare il rischio, il TP1
-    deve essere raggiungibile."""
+    """I costi e i target: i costi non devono mangiare il rischio, il TP1 deve essere raggiungibile."""
     rischio = abs(s.ingresso - s.stop)
     amp = s.range_alto - s.range_basso
     rag, punti = [], 0.0
     if rischio <= 0 or amp <= 0:
         return Parere("Livelli", -2, ["lo stop non è dalla parte giusta"])
-    quota = rischio / amp
     costo = (s.spread + 0.0) / rischio + costo_erre
     rr1 = abs(s.tp1 - s.ingresso) / rischio
-    if quota < STOP_RUMORE:
-        punti -= 2
-        rag.append((-2, f"lo stop è a {_virgola(quota)} del range: lo prende anche lo spread"))
-    elif quota < STOP_GIUSTO:
-        punti -= 1
-        rag.append((-1, f"stop stretto, a {_virgola(quota)} del range: sotto 0,3 si esce col rumore"))
     if costo >= COSTO_TROPPO:
         punti -= 2
         rag.append((-2, f"spread e commissione si mangiano {_virgola(costo)} volte il rischio"))
@@ -437,14 +389,11 @@ def livelli(s, ob, costo_erre: float) -> Parere:
     if rr1 > TP1_LONTANO:
         punti -= 1
         rag.append((-1, f"il TP1 è a {_virgola(rr1, 1)} volte il rischio: lontano, ci arriva di rado"))
-    elif rr1 >= 1.0 and quota >= STOP_GIUSTO and costo < COSTO_ALTO:
-        punti += 1
-        rag.append((1, f"stop a {_virgola(quota)} del range e TP1 a {_virgola(rr1, 1)} volte il rischio: giusto"))
     if ob is not None and ob.tipo in ("gap", "key level") and not rag:
         rag.append((0, f"target finale {ob.nome} ({_numero(ob.prezzo)})"))
     if not rag:
         rag.append((0, f"TP1 a {_virgola(rr1, 1)} volte il rischio"))
-    return Parere("Livelli", _voto(punti), _ordina(rag), segni={"stop rumore"} if quota < STOP_RUMORE else set())
+    return Parere("Livelli", _voto(punti), _ordina(rag))
 
 
 def grilletto(s) -> Parere:
@@ -470,46 +419,6 @@ def grilletto(s) -> Parere:
     return Parere("Grilletto", _voto(punti), _ordina(rag))
 
 
-def rischio(s, ctx: Contesto, puntata: float) -> Parere:
-    """Quanto siamo gia' esposti: la stessa valuta nello stesso verso, il tetto del conto, la perdita del giorno, se
-    il lotto si puo' dividere per il 25% al TP1."""
-    segno = -1 if s.short else 1
-    gamba = portafoglio.gambe(s.strumento, segno)
-    rag, punti = [], 0.0
-    legate = [k for k, v, _ in ctx.aperte if portafoglio.in_comune(gamba, portafoglio.gambe(k, v)) >= 0.5]
-    opposte = [k for k, v, _ in ctx.aperte if portafoglio.in_comune(gamba, portafoglio.gambe(k, v)) <= -0.5]
-    if len(legate) >= 2:
-        punti -= 2
-        rag.append((-2, f"sarebbe la {len(legate) + 1}ª scommessa sulla stessa valuta (con {', '.join(legate[:3])})"))
-    elif legate:
-        punti -= 1
-        rag.append((-1, f"va insieme a {legate[0]}, già aperta: se va male una, va male anche l'altra"))
-    if opposte:
-        punti -= 0.5
-        rag.append((-0.5, f"va contro {opposte[0]}, già aperta: una delle due ha torto"))
-    aperto = sum(q for _, _, q in ctx.aperte)
-    if aperto + puntata > TETTO_APERTO:
-        punti -= 2
-        rag.append((-2, f"il conto ha già {_virgola(100 * aperto, 1)}% a rischio: il mio tetto è "
-                        f"{_virgola(100 * TETTO_APERTO, 0)}%"))
-    if ctx.perso_oggi >= PERDITA_GIORNO:
-        punti -= 2
-        rag.append((-2, f"oggi abbiamo già perso il {_virgola(100 * ctx.perso_oggi, 1)}% del conto"))
-    if ctx.lotti is not None and ctx.saldo > 0 and puntata > 0:
-        try:
-            minimo, per_lotto = ctx.lotti(s.strumento, s.verso, s.ingresso, s.stop)
-            lotto = ctx.saldo * puntata / per_lotto if per_lotto > 0 else 0.0
-            if 0 < lotto < PARTI_MINIME * minimo:
-                rag.append((0, f"col {_virgola(100 * puntata)}% del conto il lotto è {_virgola(lotto)}: per chiudere il "
-                               f"25% al TP1 servono {_virgola(PARTI_MINIME * minimo)} lotti"))
-        except Exception:
-            pass
-    if not legate and not opposte and aperto + puntata <= TETTO_APERTO and ctx.perso_oggi < PERDITA_GIORNO:
-        punti += 1
-        rag.append((1, "nessuna operazione legata aperta e il conto ha spazio"))
-    return Parere("Rischio", _voto(punti), _ordina(rag))
-
-
 # --- il secondo giro: si sentono fra colleghi --------------------------------------------------------------
 
 # Chi ascolta chi, quando, di quanto cambia, e perche' (le regole che legano i mestieri, dal metodo). Se dal vivo
@@ -530,12 +439,6 @@ def _ascolti():
          1, "dopo le inside bar la finta prende più liquidità"),
         ("Livelli", "Gap", lambda x: {"rsi", "target gap"} <= p(x, "Gap").segni and p(x, "Livelli").voto < 2, 1,
          "con l'RSI che conferma la continuazione il target sul gap arriva più spesso"),
-        ("Grilletto", "Livelli", lambda x: "stop rumore" in p(x, "Livelli").segni and p(x, "Grilletto").voto >= 0, -1,
-         "con lo stop così vicino la finta non ha spazio"),
-        ("Orario", "Cacciatore", lambda x: "grafico grande" in p(x, "Cacciatore").segni and p(x, "Orario").voto < 0, 1,
-         "il CRT è del grafico grande: l'ora pesa poco"),
-        ("Rischio", "Bias", lambda x: p(x, "Bias").voto <= -2 and p(x, "Rischio").voto > 0, -1,
-         "se l'operazione va contro la previsione, non è il caso di aggiungere rischio"),
     )
 
 
@@ -571,7 +474,7 @@ def confronto(pareri: list[Parere], spenti=()) -> list[tuple[str, int]]:
     return usati
 
 
-def tutti(d, ctx: Contesto, p: Optional[Previsione], puntata: float) -> list[Parere]:
+def tutti(d, ctx: Contesto, p: Optional[Previsione]) -> list[Parere]:
     """I pareri di tutta la squadra sull'occasione delle foto `d` (`giro.occasioni_foto`)."""
     from nvm.agenti import foto
     from nvm.intelligenti.metodo import _gap_a_favore
@@ -582,4 +485,4 @@ def tutti(d, ctx: Contesto, p: Optional[Previsione], puntata: float) -> list[Par
     domenica = ctx.domenica.get(s.strumento) or settimana(q, s.n3_inizio)
     return [cacciatore(s, allineati), key_level(s), bias(s, q, p, domenica),
             gap(s, q, ob, _gap_a_favore(q, s)), dxy(s, info.get("dxy")), orario(s), livelli(s, ob, costo),
-            grilletto(s), rischio(s, ctx, puntata)]
+            grilletto(s)]

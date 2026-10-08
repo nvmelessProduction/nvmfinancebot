@@ -780,19 +780,9 @@ class Bot:
         if testo:
             self.tg.voci([conversazione.Voce("Bias", testo)])
 
-    def _contesto(self, conto) -> "pareri.Contesto":
-        """Quello che la squadra deve sapere oltre l'occasione: il conto, le aperte che rischiano ancora, quanto si e'
-        perso oggi, la previsione della domenica, i lotti del broker."""
-        saldo = float(conto.saldo) if conto is not None else 0.0
-        aperte = [(v.strumento, -1 if getattr(v, "verso", "long") == "short" else 1, v.rischio / saldo)
-                  for v in self.stato.vive if not getattr(v, "pareggio_fatto", False) and saldo > 0]
-        giorno = pareri.apertura_giorno(int(time.time()))
-        netto = sum(c[2] for c in self.stato.chiuse if len(c) > 2 and c[2] is not None and c[0] >= giorno)
-        perso = max(-netto, 0.0) / saldo if saldo > 0 else 0.0
-
-        def lotti(k, verso, prezzo, stop):
-            return self.terminale.lotti(k)[0], self.terminale.perdita_per_lotto(k, verso, prezzo, stop)
-        return pareri.Contesto(saldo, aperte, perso, dict(self.stato.previsioni or {}), lotti)
+    def _contesto(self) -> "pareri.Contesto":
+        """Quello che la squadra deve sapere oltre l'occasione: la previsione della domenica."""
+        return pareri.Contesto(dict(self.stato.previsioni or {}))
 
     def _segui_carta(self, ora: int) -> None:
         """Le occasioni seguite sulla carta: come sono finite, cosa impara la squadra, l'archivio."""
@@ -993,7 +983,7 @@ class Bot:
                     if not v.pareggio_fatto and conto is not None and conto.saldo:
                         per_strumento[v.strumento] = per_strumento.get(v.strumento, 0.0) + v.rischio / conto.saldo
                 self._verdetti = al_lavoro.riunioni(self.squadra, decisioni, self.basi, self.fini, esposizione,
-                                                    per_strumento, self._contesto(conto),
+                                                    per_strumento, self._contesto(),
                                                     {v.strumento for v in self.stato.vive})
                 if self.squadra.ultima_scelta:
                     # La scelta del Capo fra le occasioni del giro, in equipe: chi prende, chi lascia e perche'.
@@ -1039,11 +1029,9 @@ class Bot:
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
-                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce. Arrotonda in su il
-                    # lotto, se serve e se il conto lo regge, per poter chiudere il 25% al TP1.
+                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,
-                                                      parte=1.0, fiducia_minima=0.0, riduci=False,
-                                                      dividi_fino_a=al_lavoro.divisibile_fino_a(v))
+                                                      parte=1.0, fiducia_minima=0.0, riduci=False)
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
                     # Quanto puntare lo dice il cervello del Rischio.
