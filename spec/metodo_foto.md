@@ -50,7 +50,7 @@ codice (`spec/metodo_romeo.md`, `giro.METODO = "candela 3"`) ma il bot usa quest
 
 | Regola | Da dove | Codice |
 | --- | --- | --- |
-| Candele come sui future: il giorno alle 18 di New York (mezzanotte italiana), 4 ore alle 18-22-2-6-10-14, 6 e 12 ore, 3-6-12 mesi; l'ora della domenica prima delle 18 va nella prima candela | risposta 2; foto 5/5, 5/7, 5/8: CRT solo con queste candele | `nvm/tempo.py` |
+| Candele come su MT5 (dall'08/10/2026): il giorno alle 17 di New York (le 23 italiane), 4 ore alle 23-3-7-11-15-19 italiane, 6 e 12 ore, 3-6-12 mesi. Dal 06 all'08/10 erano quelle dei future (alle 18): con MT5 l'esempio 5/8 non è più un CRT | il proprietario, 08/10/2026: *"mi adatti immediatamente l'orario"* (CRT 4 ore di SPX500) | `nvm/tempo.py` |
 | Le crypto con gli orari crypto: il giorno a mezzanotte UTC (le 2 italiane d'estate), 4 ore alle 2-6-10-14, 6 ore alle 2-8-14-20, 12 ore alle 2 e alle 14, settimana da lunedì | il proprietario, 08/10/2026 (BTC a 6 ore) | `nvm/tempo.py` |
 | CRT sui timeframe 1 ora, 4 ore, 6 ore, giorno, settimana, mese | le foto | `foto.TF_CRT` |
 | La candela 2 prende il massimo (minimo) del range e chiude dentro, senza toccare l'altro lato e senza sforare (la chiusura sul lato conta dentro, un filo oltre no) | tutte; il proprietario, 07/10/2026: *"non deve sforare"* | `foto.trova`, `TOLLERANZA_CHIUSURA` |

@@ -8,7 +8,7 @@ selezionare i crt"*.
 Ogni agente da' un voto da -2 (forte contro) a +2 (forte a favore) con le ragioni del suo mestiere, in parole
 semplici. Il Capo pesa tutti i voti (`squadra.py`) e decide lui. Il Rischio non vota: decide quanto puntare.
 
-Il Bias e' fedele alla sua previsione: la fa all'apertura del giorno (le 18 di New York) leggendo la candela
+Il Bias e' fedele alla sua previsione: la fa all'apertura del giorno (le 17 di New York) leggendo la candela
 precedente di giorno, settimana, mese, 3 mesi e anno, e la tiene tutto il giorno. Non cambia idea a meta' giornata:
 se il livello della previsione viene preso, la previsione e' compiuta e per quel giorno non spinge piu'.
 """
@@ -80,7 +80,7 @@ class Parere:
 @dataclass
 class Previsione:
     """La previsione del Bias su uno strumento, fatta all'apertura del giorno e tenuta fino a sera."""
-    giorno: int                 # l'apertura del giorno (le 18 di New York), UTC
+    giorno: int                 # l'apertura del giorno (le 17 di New York), UTC
     verso: int                  # +1 rialzista, -1 ribassista, 0 nessuna direzione
     livello: Optional[float] = None
     tf: Optional[str] = None
@@ -126,7 +126,7 @@ def _ny(t: int) -> datetime:
 
 
 def apertura_giorno(t: int, strumento: str = "") -> int:
-    """L'apertura del giorno di sessione (le 18 di New York; per le crypto la mezzanotte UTC) che contiene `t`."""
+    """L'apertura del giorno di sessione (le 17 di New York; per le crypto la mezzanotte UTC) che contiene `t`."""
     return int(inizio_candela(np.array([int(t)], np.int64), TF.D1, weekend(strumento))[0])
 
 
@@ -394,7 +394,7 @@ def dxy(s, sd) -> Parere:
 def orario(s) -> Parere:
     """L'ora dell'entrata: le sessioni di Romeo, le ore asiatiche, il venerdi'."""
     if s.tf in TF_GRANDI:
-        apre = "a mezzanotte UTC" if weekend(s.strumento) else "alle 18 di New York"
+        apre = "a mezzanotte UTC" if weekend(s.strumento) else "alle 17 di New York"
         return Parere("Orario", 0, [f"la candela 3 del CRT {NOMI[s.tf]} apre {apre}: l'ora la fa il grafico"])
     ny = _ny(s.n3_inizio)
     h, giorno = ny.hour, ny.weekday()

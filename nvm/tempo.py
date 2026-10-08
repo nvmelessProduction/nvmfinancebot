@@ -1,26 +1,26 @@
-"""I timeframe e i loro confini: le candele aprono come quelle dei future, alle 18:00 di New York.
+"""I timeframe e i loro confini: le candele aprono come quelle di MT5, alle 17:00 di New York.
 
-Il proprietario, 06/10/2026: *"devono partire come sul futures"*. Sui future (CME) la giornata apre alle
-18:00 di New York, cioe' a mezzanotte italiana; fino al 06/10/2026 le nostre candele aprivano alle 17:00
-come quelle di MT5, e tre esempi suoi sull'oro a 4 ore erano CRT solo con le candele del future
-(`casi/ESEMPI-PROPRIETARIO.md`). Ogni candela sopra il minuto si costruisce da qui:
+Il proprietario, 08/10/2026, su un CRT a 4 ore di SPX500 entrato un'ora dopo la chiusura della candela che
+vedeva su MT5: *"mi adatti immediatamente l'orario, per favore, perché se no così sta cosa non si risolverà mai"*.
+Dal 06/10 al 08/10/2026 le candele aprivano alle 18:00 come sui future (*"devono partire come sul futures"*, per
+tre esempi sull'oro a 4 ore, `casi/ESEMPI-PROPRIETARIO.md`); prima e di nuovo ora alle 17:00, come il server di
+MT5 (la mezzanotte del broker), cioe' le 23 italiane. Ogni candela sopra il minuto si costruisce da qui:
 
-    giornaliero   apre alle 18:00 di New York del giorno prima
-    12 ore        alle 18 e alle 6 di New York
-    6 ore         alle 18, 0, 6, 12 di New York
-    4 ore         alle 18, 22, 2, 6, 10, 14 di New York
+    giornaliero   apre alle 17:00 di New York del giorno prima
+    12 ore        alle 17 e alle 5 di New York
+    6 ore         alle 17, 23, 5, 11 di New York
+    4 ore         alle 17, 21, 1, 5, 9, 13 di New York (23, 3, 7, 11, 15, 19 italiane)
     1h, 15m, 5m   allo scoccare dell'ora o del quarto
-    settimanale   da domenica 18:00 a venerdi' di New York
+    settimanale   da domenica 17:00 a venerdi' 17:00 di New York
     mensile       la prima giornata di trading del mese
     3, 6, 12 mesi i trimestri (gennaio, aprile, luglio, ottobre), i semestri e l'anno
 
-Il trucco e' una sola linea del tempo "di sessione": l'ora di New York spostata avanti di 6 ore. Li' le
-18:00 di New York diventano mezzanotte, e giorni, settimane e mesi di trading si tagliano come quelli del
+Il trucco e' una sola linea del tempo "di sessione": l'ora di New York spostata avanti di 7 ore. Li' le
+17:00 di New York diventano mezzanotte, e giorni, settimane e mesi di trading si tagliano come quelli del
 calendario. L'ora legale la segue `zoneinfo`: i cambi cadono la domenica alle 2 di notte, a mercato chiuso.
 
-Il forex riapre la domenica alle 17:00 di New York, un'ora prima dei future: quell'ora va nella prima
-candela della settimana (sabato e domenica di sessione si spostano al lunedi'), cosi' non nasce una
-candela di un'ora sola.
+Il forex riapre la domenica alle 17:00 di New York, gli indici e l'oro alle 18: tutto va nella prima candela
+della settimana (sabato e domenica di sessione si spostano al lunedi').
 
 Le crypto (`weekend=True`) hanno i loro orari, quelli dei grafici crypto: il proprietario, 08/10/2026,
 *"la candela giornaliera delle crypto apre alle 2 e non a 00, quindi la prima candela h4 apre alle
@@ -46,7 +46,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 NEW_YORK = ZoneInfo("America/New_York")
-SPOSTAMENTO = 6 * 3600  # 18:00 di New York -> mezzanotte di sessione
+SPOSTAMENTO = 7 * 3600  # 17:00 di New York (la mezzanotte di MT5) -> mezzanotte di sessione
 # La giornata del forex, per i controlli sui dati (`nvm/dati/controlli.py`): chiude alle 17:00 di New York.
 SPOSTAMENTO_FOREX = 7 * 3600
 
@@ -115,7 +115,7 @@ def _utc_da_sessione(sessione: int) -> int:
 
 
 def _al_lunedi(sessione: np.ndarray) -> np.ndarray:
-    """Sabato e domenica di sessione vanno al lunedi' a mezzanotte di sessione (la domenica alle 18 di NY)."""
+    """Sabato e domenica di sessione vanno al lunedi' a mezzanotte di sessione (la domenica alle 17 di NY)."""
     giorno = sessione // 86400
     # Il 1/1/1970 era giovedi': (giorno + 3) % 7 e' 0 di lunedi'.
     dow = (giorno + 3) % 7

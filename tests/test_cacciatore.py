@@ -14,8 +14,8 @@ from tests.aiuti import candele, passeggiata
 
 Q = 15 * 60  # un quarto d'ora
 
-# Tre candele a 4 ore: 2:00, 6:00, 10:00 di New York del 10/09/2026 (le 4 ore aprono alle 18, 22, 2, 6, 10, 14).
-C1, C2, C3 = ny(2026, 9, 10, 2), ny(2026, 9, 10, 6), ny(2026, 9, 10, 10)
+# Tre candele a 4 ore: 1:00, 5:00, 9:00 di New York del 10/09/2026.
+C1, C2, C3 = ny(2026, 9, 10, 1), ny(2026, 9, 10, 5), ny(2026, 9, 10, 9)
 
 
 def _quarti(inizio, prezzi):
@@ -94,7 +94,7 @@ def test_senza_lato_opposto_scade_con_la_candela_3():
     alte, basse = _schema_short(tocca_il_basso=False)
     crt = _solo(caccia(alte, basse), Verso.SHORT)
     assert crt.motivo is Motivo.SCADENZA
-    assert crt.decaduto_quando == ny(2026, 9, 10, 14)
+    assert crt.decaduto_quando == ny(2026, 9, 10, 13)
 
 
 def test_variante_chiusura_dentro_arma_alla_chiusura_della_candela_2():

@@ -51,13 +51,13 @@ def _candela_in_ore(t0, ore, o, h, l, c):
 # --- Il CRT della foto base (CASO-009): 4 ore, la candela 2 prende il DL e rientra ----------------------
 
 def _foto_base():
-    """Martedi' 8/9/2026 (sessione): lunedi' ha DL 1.0990 e DH 1.1060; martedi' a 4 ore la candela 1 (22-2 NY)
-    fa 1.0995-1.1020, la candela 2 (2-6 NY) scende a 1.0980 (prende la candela 1 e il DL) e chiude 1.1005."""
+    """Martedi' 8/9/2026 (sessione): lunedi' ha DL 1.0990 e DH 1.1060; martedi' a 4 ore la candela 1 (21-1 NY)
+    fa 1.0995-1.1020, la candela 2 (1-5 NY) scende a 1.0980 (prende la candela 1 e il DL) e chiude 1.1005."""
     righe = []
-    lunedi = ny(2026, 9, 6, 18)          # la giornata di lunedi' apre domenica alle 18 di New York
+    lunedi = ny(2026, 9, 6, 17)          # la giornata di lunedi' apre domenica alle 17 di New York
     righe += _candela_in_ore(lunedi, 24, 1.1000, 1.1060, 1.0990, 1.1002)
-    martedi = ny(2026, 9, 7, 18)
-    righe += _candela_in_ore(martedi, 4, 1.1002, 1.1006, 1.0998, 1.1003)            # 18-22: niente
+    martedi = ny(2026, 9, 7, 17)
+    righe += _candela_in_ore(martedi, 4, 1.1002, 1.1006, 1.0998, 1.1003)            # 17-21: niente
     righe += _candela_in_ore(martedi + 4 * ORA, 4, 1.1003, 1.1020, 1.0995, 1.1010)  # candela 1
     righe += _candela_in_ore(martedi + 8 * ORA, 4, 1.1010, 1.1015, 1.0980, 1.1005)  # candela 2
     righe += _candela_in_ore(martedi + 12 * ORA, 4, 1.1005, 1.1040, 1.1001, 1.1030)  # candela 3
@@ -95,11 +95,11 @@ def test_la_candela_2_non_deve_sforare():
     """Il proprietario, 07/10/2026: *"non deve sforare"*. La chiusura sul lato e' ancora dentro, un filo oltre no
     (la foto 6 della cartella 5 chiudeva 0,1 sopra: non e' un CRT)."""
     def con_chiusura(c2):
-        righe = [(ny(2026, 9, 8, 2) - 8 * ORA, 1.1000, 1.1005, 1.0995, 1.1000)]
-        righe += _candela_in_ore(ny(2026, 9, 8, 2) - 4 * ORA, 4, 1.1000, 1.1100, 1.1000, 1.1090)    # candela 1
-        righe += _candela_in_ore(ny(2026, 9, 8, 2), 4, 1.1090, 1.1140, 1.1040, c2)                  # candela 2
+        righe = [(ny(2026, 9, 8, 1) - 8 * ORA, 1.1000, 1.1005, 1.0995, 1.1000)]
+        righe += _candela_in_ore(ny(2026, 9, 8, 1) - 4 * ORA, 4, 1.1000, 1.1100, 1.1000, 1.1090)    # candela 1
+        righe += _candela_in_ore(ny(2026, 9, 8, 1), 4, 1.1090, 1.1140, 1.1040, c2)                  # candela 2
         return _ore(righe)
-    n3 = ny(2026, 9, 8, 6)
+    n3 = ny(2026, 9, 8, 5)
     for c2, crt in ((1.1100, True), (1.1101, False), (1.1060, True)):
         q = F.Quadro.da(con_chiusura(c2), n3)
         assert bool([s for s in F.trova(q, TF.H4, n3, n3) if s.verso is Verso.SHORT]) is crt, c2
@@ -107,7 +107,7 @@ def test_la_candela_2_non_deve_sforare():
 
 def test_il_range_e_la_candela_madre_se_ci_sono_inside_bar():
     """Foto 7 della cartella 2: il TP1 e' il "range low H6", il minimo della candela madre."""
-    t0 = ny(2026, 5, 11, 12)
+    t0 = ny(2026, 5, 11, 11)
     righe = []
     righe += _candela_in_ore(t0 - 6 * ORA, 6, 4700.0, 4705.0, 4695.0, 4700.0)
     righe += _candela_in_ore(t0, 6, 4700.0, 4758.0, 4664.0, 4740.0)            # la madre
@@ -327,6 +327,11 @@ CAMBIATI = {
 }
 
 
+# Con le candele di MT5 (dalle 17 di New York, dall'08/10/2026) questo esempio non e' piu' un CRT: era uno dei tre
+# sull'oro a 4 ore che lo erano solo con le candele del future (e il 3 mesi lo bloccava comunque, sopra).
+NON_CRT_MT5 = {"5/8"}
+
+
 @pytest.mark.skipif(not (DATI / "ore" / "EURUSD").exists(), reason="servono i dati di Dukascopy in dati/grezzi")
 @pytest.mark.parametrize("nome,strumento,tf,quando,verso,finale", ESEMPI)
 def test_gli_esempi_del_proprietario(nome, strumento, tf, quando, verso, finale):
@@ -334,9 +339,17 @@ def test_gli_esempi_del_proprietario(nome, strumento, tf, quando, verso, finale)
     from nvm.vivo.giro import setup_buono
     U = dt.timezone.utc
     n3 = int(dt.datetime.strptime(quando, "%Y-%m-%d %H:%M").replace(tzinfo=ROMA).timestamp())
+    # Le ore delle foto sono quelle delle candele dei future (mezzanotte italiana); dall'08/10/2026 le candele sono
+    # quelle di MT5, che aprono un'ora prima (le 23 italiane). Le orarie non cambiano.
+    if tf is not TF.H1:
+        n3 -= 3600
     m, _ = carica(DATI, strumento, int(dt.datetime(2010, 1, 1, tzinfo=U).timestamp()), n3 + 1, solo_bid=True)
     q = F.Quadro.da(m, n3)
-    s = next(x for x in F.trova(q, tf, n3, n3) if x.verso is (Verso.SHORT if verso == "S" else Verso.LONG))
+    trovati = [x for x in F.trova(q, tf, n3, n3) if x.verso is (Verso.SHORT if verso == "S" else Verso.LONG)]
+    if nome in NON_CRT_MT5:
+        assert not trovati, nome
+        return
+    s = trovati[0]
     assert s.presi and setup_buono(s), nome
     blocca, nuovo = CAMBIATI.get(nome, (None, None))
     d = F.direzione(q, s)

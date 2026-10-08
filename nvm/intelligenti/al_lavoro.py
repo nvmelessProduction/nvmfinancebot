@@ -112,7 +112,7 @@ def previsioni_del_giorno(squadra: Squadra, quadri: dict, adesso: int) -> str:
         (su if p.verso > 0 else giu if p.verso < 0 else niente).append((s, p))
     squadra.memoria.previsioni_dette = giorno
     squadra.salva()
-    data = datetime.fromtimestamp(giorno + 6 * 3600, tz=NEW_YORK).strftime("%d/%m")
+    data = datetime.fromtimestamp(giorno + 7 * 3600, tz=NEW_YORK).strftime("%d/%m")
     righe = [f"Le mie previsioni per oggi ({data}). Le tengo tutto il giorno: cambio idea solo quando il livello "
              "viene preso. Contro queste voto no."]
     righe += [f"⬆ {s} verso {P._numero(p.livello)}: {p.motivo}" for s, p in su]

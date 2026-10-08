@@ -11,7 +11,7 @@ from nvm.tempo import TF, ny
 from tests.aiuti import candele
 
 Q = 15 * 60
-C1, C2, C3 = ny(2026, 9, 10, 2), ny(2026, 9, 10, 6), ny(2026, 9, 10, 10)
+C1, C2, C3 = ny(2026, 9, 10, 1), ny(2026, 9, 10, 5), ny(2026, 9, 10, 9)
 # Candela 1 rialzista, candela 2 prende il massimo (1.1140) e richiude dentro (1.1060).
 ALTE = [(C1, 1.1000, 1.1100, 1.1000, 1.1090), (C2, 1.1090, 1.1140, 1.1040, 1.1060)]
 CANDELA_2 = [(1.1080, 1.1086, 1.1078, 1.1084), (1.1084, 1.1088, 1.1080, 1.1081)] * 8

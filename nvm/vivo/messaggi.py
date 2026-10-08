@@ -90,7 +90,7 @@ def leggibile(d: Decisione) -> str:
 
 
 def _candela_range(d: Decisione) -> str:
-    t = datetime.fromtimestamp(d.r.scatto.crt.range_inizio + 6 * 3600, tz=timezone.utc).astimezone(NEW_YORK)
+    t = datetime.fromtimestamp(d.r.scatto.crt.range_inizio + 7 * 3600, tz=timezone.utc).astimezone(NEW_YORK)
     if d.r.alto_tf is TF.MN:
         return f"la candela mensile di {MESI[t.month - 1]} {t.year}"
     if d.r.alto_tf is TF.W1:

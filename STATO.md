@@ -5,6 +5,16 @@ _Aggiornato l'08/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 08/10/2026 (sera, ultima): le candele come su MT5, dalle 17 di New York
+
+Il bot ha comprato SPX500 su un CRT a 4 ore alle 16 italiane a 7778.29; su MT5 la candela 2 chiudeva alle 15 a circa
+7768 e il TP1 (massimo della candela 1) era più in alto: il bot tagliava le 4 ore alle 0-4-8-12-16-20 italiane (i
+future, dal 06/10), MT5 alle 23-3-7-11-15-19. Il proprietario: *"mi adatti immediatamente l'orario, per favore, perché
+se no così sta cosa non si risolverà mai"*. Fatto (`nvm/tempo.py`, SPOSTAMENTO 7 ore): forex, oro e indici con le
+candele di MT5, giorno dalle 17 di New York; le giornaliere del broker non si spostano più. Le crypto restano sul
+calendario UTC. Degli esempi delle foto 13 su 14 tornano uguali; il 5/8 (oro 4 ore, 02/09/2026) non è più un CRT (era
+uno dei tre che lo erano solo coi future, e il 3 mesi lo bloccava già). 305 prove passano.
+
 ## 08/10/2026 (sera, dopo): via BTC ed ETH; le correlazioni col DXY
 
 - Il proprietario: *"togliamo dagli asset del bot btc e ethusd"*: tolti (`vivo.TOLTI`), il bot guarda 35 mercati.
