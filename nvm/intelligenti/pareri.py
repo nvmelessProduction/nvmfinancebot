@@ -273,20 +273,45 @@ def key_level(s) -> Parere:
     return Parere("Key level", _voto(punti), _ordina(rag))
 
 
-def bias(s, q, p: Optional[Previsione], domenica: Optional[str]) -> Parere:
+def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional[Previsione] = None,
+         qd=None) -> Parere:
     """Fedele alla previsione del giorno (e a quella della domenica): a favore se l'operazione va dove ha detto,
-    contro se va dall'altra parte. Non cambia idea a meta' giornata."""
+    contro se va dall'altra parte. Non cambia idea a meta' giornata.
+
+    Sulle coppie forex col dollaro conta di piu' la previsione del DXY (`p_dxy`, sul suo grafico `qd`): il
+    proprietario, 08/10/2026, *"è più importante il grafico del DXY per determinare la bias delle coppie forex"*. Il
+    DXY pesa 2, la previsione della coppia 1."""
+    from nvm.agenti import foto
     segno = -1 if s.short else 1
     rag, punti = [], 0.0
+    peso = 2
+    if p_dxy is not None and qd is not None and s.strumento in foto.FOREX_DOLLARO:
+        peso = 1
+        if not p_dxy.verso:
+            rag.append((0, f"il DXY oggi non ha una direzione ({p_dxy.motivo})" if p_dxy.motivo
+                        else "il DXY oggi non ha una direzione"))
+        elif compiuta(qd, p_dxy, s.n3_inizio):
+            rag.append((0, f"la previsione di oggi sul DXY ({p_dxy.testo}) si è già compiuta"))
+        else:
+            v = p_dxy.verso * (-1 if s.strumento in foto.DOLLARO_SOTTO else 1)
+            dove = "sale" if p_dxy.verso > 0 else "scende"
+            if v == segno:
+                punti += 2
+                rag.append((2, f"il DXY all'apertura del giorno l'ho detto {p_dxy.testo}: se il dollaro {dove}, "
+                               f"{s.strumento} va dove va l'operazione"))
+            else:
+                punti -= 2
+                rag.append((-2, f"il DXY all'apertura del giorno l'ho detto {p_dxy.testo}: se il dollaro {dove}, "
+                                f"{s.strumento} va contro l'operazione"))
     if p is not None and p.verso:
         if compiuta(q, p, s.n3_inizio):
             rag.append((0, f"la mia previsione di oggi ({p.testo}) si è già compiuta: per oggi non ho più una direzione"))
         elif p.verso == segno:
-            punti += 2
-            rag.append((2, f"all'apertura del giorno ho detto {p.testo}: l'operazione va dove ho detto"))
+            punti += peso
+            rag.append((peso, f"all'apertura del giorno ho detto {p.testo}: l'operazione va dove ho detto"))
         else:
-            punti -= 2
-            rag.append((-2, f"all'apertura del giorno ho detto {p.testo}: resto della mia idea, questa va contro"))
+            punti -= peso
+            rag.append((-peso, f"all'apertura del giorno ho detto {p.testo}: resto della mia idea, questa va contro"))
     elif p is not None:
         rag.append((0, f"per oggi non ho una direzione: {p.motivo}" if p.motivo else "per oggi non ho una direzione"))
     veto = ""
@@ -332,18 +357,23 @@ def gap(s, q, ob, dentro) -> Parere:
 
 
 def dxy(s, sd) -> Parere:
-    """Il dollaro, sulle coppie col dollaro."""
+    """Il dollaro (il grafico USDX del broker). Sulle coppie forex col dollaro la correlazione e' piena e il DXY pesa
+    2; su oro, argento, S&P 500, Dow e Nasdaq e' circa l'85% (*"a volte può capitare che il DXY va long e anche gold
+    esempio va long"*) e pesa 1 (la foto delle correlazioni del proprietario, 08/10/2026)."""
     from nvm.agenti import foto
     if s.strumento not in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA:
-        return Parere("DXY", 0, [f"{s.strumento} non è una coppia col dollaro"])
+        return Parere("DXY", 0, [f"{s.strumento} non è legato al dollaro"])
+    forex = s.strumento in foto.FOREX_DOLLARO
+    peso = 2 if forex else 1
+    nota = "" if forex else " (con il dollaro va di solito al contrario, non sempre)"
     if s.dal_dxy:
-        return Parere("DXY", 1, ["il setup l'ha fatto il DXY: il dollaro ci dà ragione"])
+        return Parere("DXY", peso, ["il setup l'ha fatto il DXY: quando il dollaro si muove le coppie forex lo seguono"])
     if sd is None:
         return Parere("DXY", 0, ["il DXY adesso non fa un CRT"])
     verso = foto.verso_dal_dxy(s.strumento, sd.verso)
     if verso is s.verso:
-        return Parere("DXY", 1, [f"il DXY fa il CRT {NOMI.get(sd.tf, '')} che ci dà ragione"])
-    return Parere("DXY", -1, [f"il DXY fa il CRT {NOMI.get(sd.tf, '')} dall'altra parte"])
+        return Parere("DXY", peso, [f"il DXY fa il CRT {NOMI.get(sd.tf, '')} che ci dà ragione{nota}"])
+    return Parere("DXY", -peso, [f"il DXY fa il CRT {NOMI.get(sd.tf, '')} dall'altra parte{nota}"])
 
 
 def orario(s) -> Parere:
@@ -476,7 +506,7 @@ def confronto(pareri: list[Parere], spenti=()) -> list[tuple[str, int]]:
     return usati
 
 
-def tutti(d, ctx: Contesto, p: Optional[Previsione]) -> list[Parere]:
+def tutti(d, ctx: Contesto, p: Optional[Previsione], p_dxy: Optional[Previsione] = None) -> list[Parere]:
     """I pareri di tutta la squadra sull'occasione delle foto `d` (`giro.occasioni_foto`)."""
     from nvm.agenti import foto
     from nvm.intelligenti.metodo import _gap_a_favore
@@ -485,6 +515,6 @@ def tutti(d, ctx: Contesto, p: Optional[Previsione]) -> list[Parere]:
     allineati = list(info.get("allineati", [])) + [t for t in foto.allineati(q, s) if t not in info.get("allineati", [])]
     costo = float(getattr(d.r, "costo_erre", 0.0) or 0.0)
     domenica = ctx.domenica.get(s.strumento) or settimana(q, s.n3_inizio)
-    return [cacciatore(s, allineati), key_level(s), bias(s, q, p, domenica),
+    return [cacciatore(s, allineati), key_level(s), bias(s, q, p, domenica, p_dxy, info.get("quadro_dxy")),
             gap(s, q, ob, _gap_a_favore(q, s)), dxy(s, info.get("dxy")), orario(s), livelli(s, ob, costo),
             grilletto(s)]

@@ -765,12 +765,13 @@ def test_la_lista_degli_strumenti_del_broker(tmp_path, monkeypatch):
     assert mandati and mandati[0][0] == "eq" and "✅ EURUSD.x" in mandati[0][1]
 
 
-def test_il_bot_non_guarda_brent_ftse_e_nikkei():
-    """Il proprietario, 07/10/2026: *"togliamo ukoil uk100 jpn225, per il resto tutto ok"*."""
+def test_il_bot_non_guarda_brent_ftse_nikkei_e_le_crypto():
+    """Il proprietario, 07/10/2026: *"togliamo ukoil uk100 jpn225, per il resto tutto ok"*; 08/10/2026: *"togliamo
+    dagli asset del bot btc e ethusd"*."""
     import vivo
-    assert len(vivo.STRUMENTI_VIVO) == 37
-    assert not {"UKOIL", "UK100", "JPN225"} & set(vivo.STRUMENTI_VIVO)
-    assert {"USOIL", "GER40", "BTCUSD", "XAGUSD", "EURUSD"} <= set(vivo.STRUMENTI_VIVO)
+    assert len(vivo.STRUMENTI_VIVO) == 35
+    assert not {"UKOIL", "UK100", "JPN225", "BTCUSD", "ETHUSD"} & set(vivo.STRUMENTI_VIVO)
+    assert {"USOIL", "GER40", "XAGUSD", "EURUSD"} <= set(vivo.STRUMENTI_VIVO)
 
 
 def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monkeypatch):

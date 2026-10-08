@@ -764,8 +764,15 @@ PESI_DXY = {"EURUSD": -0.576, "USDJPY": 0.136, "GBPUSD": -0.119, "USDCAD": 0.091
 COSTANTE_DXY = 50.14348112 * 10 ** 0.042
 # Le coppie col dollaro: un setup rialzista del DXY vende quelle col dollaro al denominatore e compra
 # quelle col dollaro al numeratore (il proprietario, 06/10/2026). L'oro e l'argento sono "XAU/USD".
-DOLLARO_SOTTO = ("EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "XAUUSD", "XAGUSD")
+# Le correlazioni col DXY (la foto del proprietario, 08/10/2026): *"quando lui sale tutte le coppie forex scendono e
+# viceversa"* (le coppie forex col dollaro: correlazione piena); oro, argento, S&P 500, Dow e Nasdaq *"non hanno il
+# 100% di correlazione come le coppie forex ma hanno circa l'85% di correlazione, quindi a volte può capitare che il
+# DXY va long e anche gold esempio va long"*.
+FOREX_SOTTO = ("EURUSD", "GBPUSD", "AUDUSD", "NZDUSD")
+CORRELATI_85 = ("XAUUSD", "XAGUSD", "SPX500", "US30", "NAS100")
+DOLLARO_SOTTO = FOREX_SOTTO + CORRELATI_85
 DOLLARO_SOPRA = ("USDJPY", "USDCHF", "USDCAD")
+FOREX_DOLLARO = FOREX_SOTTO + DOLLARO_SOPRA
 PUNTO.setdefault("DXY", 1e-3)
 
 

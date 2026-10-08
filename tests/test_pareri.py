@@ -168,3 +168,28 @@ def test_la_squadra_non_va_mai_contro_la_previsione_della_domenica(tmp_path):
     voti[2] = b
     v = sq.riunione("contro", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=voti)
     assert v.a_piu and not v.entra and "non andiamo contro la nostra previsione" in v.voci[-1][1]
+
+
+def test_le_correlazioni_col_dxy():
+    """La foto delle correlazioni del proprietario (08/10/2026): il forex segue il DXY al 100% (il DXY pesa 2), oro,
+    argento e indici circa all'85% (pesa 1); per il forex conta di piu' la previsione del DXY."""
+    from nvm.agenti import foto
+    sd = NS(verso=Verso.LONG, tf=TF.H4)                    # il DXY sale
+    assert P.dxy(_setup(short=True, strumento="EURUSD"), sd).voto == 2
+    assert P.dxy(_setup(strumento="EURUSD"), sd).voto == -2
+    assert P.dxy(_setup(strumento="USDCAD"), sd).voto == 2
+    oro = P.dxy(_setup(short=True, strumento="XAUUSD"), sd)
+    assert oro.voto == 1 and "non sempre" in oro.ragioni[0]
+    assert P.dxy(_setup(short=True, strumento="NAS100"), sd).voto == 1
+    assert {"SPX500", "US30", "NAS100", "XAGUSD"} <= set(foto.CORRELATI_85)
+    # Il Bias del forex: la previsione del DXY pesa 2, quella della coppia 1.
+    ore = ore_finte(giorni=500)
+    q = Quadro.da(ore, int(ore.t[-1]) + 3600)
+    giorno = P.apertura_giorno(int(ore.t[-24 * 5]))
+    dxy_su = P.Previsione(giorno, 1, 1e9, "W1", "accetta", "la settimana ha chiuso sopra")
+    euro_su = P.Previsione(giorno, 1, 1e9, "D1", "accetta", "ieri ha chiuso sopra")
+    b = P.bias(_setup(n3=giorno + 3600), q, euro_su, None, dxy_su, q)
+    assert b.voto == -1 and "dollaro sale" in b.ragioni[0]
+    assert P.bias(_setup(short=True, n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 1
+    # Fuori dal forex (l'oro) il DXY non entra nel Bias.
+    assert P.bias(_setup(strumento="XAUUSD", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 2

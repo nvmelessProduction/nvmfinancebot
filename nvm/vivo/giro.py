@@ -298,7 +298,7 @@ def piani_foto(s, ob, altro, quando: int) -> list:
     return fuori
 
 
-def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=()) -> Optional[Decisione]:
+def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None) -> Optional[Decisione]:
     """Il setup delle foto come `Decisione`, con gli stessi oggetti che il resto del bot usa gia'."""
     ob = foto.obiettivo_finale(q, s)
     altro = foto.target_dopo(q, s, ob)
@@ -323,7 +323,7 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=()) -> Optional[Decisi
     x = np.zeros(len(capo.media)) if getattr(capo, "media", None) is not None else np.zeros(1)
     return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
                      piani_romeo=piani,
-                     foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy,
+                     foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy, "quadro_dxy": quadro_dxy,
                            "allineati": list(allineati)})
 
 
@@ -347,7 +347,9 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
             if not sd.presi:
                 continue
             gia = any(s.tf is sd.tf and s.n3_inizio == sd.n3_inizio for s in trovati)
-            if not gia:
+            # Un setup del DXY ne fa uno sulla coppia solo sul forex (correlazione piena): oro e indici a volte vanno
+            # con il dollaro, li' il DXY da' solo il parere.
+            if not gia and strumento in foto.FOREX_DOLLARO:
                 x = foto.dal_dxy(q, sd)
                 if x is not None:
                     trovati.append(x)
@@ -363,7 +365,7 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
         stessi = [x.tf for x in gruppo[1:]]
         dxy = next((sd for sd in dxy_setup if sd.tf is s.tf and sd.n3_inizio == s.n3_inizio), None)
         try:
-            d = _decisione_foto(s, qq, capo, dxy, stessi)
+            d = _decisione_foto(s, qq, capo, dxy, stessi, qd)
         except Exception:
             d = None
         if d is not None:

@@ -64,7 +64,8 @@ RADICE = Path(__file__).resolve().parent
 # (`nvm/dati/strumenti.py`: forex, oro e argento, petrolio, indici, crypto) che il broker ha.
 # L'utente, 25/09/2026: "testare tutto sul live sempre su mt5". Il proprietario, 07/10/2026: *"togliamo ukoil
 # uk100 jpn225, per il resto tutto ok"*.
-TOLTI = ("UKOIL", "UK100", "JPN225")
+# Tolti dal proprietario: Brent, FTSE e Nikkei (07/10/2026); BTC ed ETH (08/10/2026).
+TOLTI = ("UKOIL", "UK100", "JPN225", "BTCUSD", "ETHUSD")
 STRUMENTI_VIVO = tuple(s for s in STRUMENTI if s not in TOLTI)
 # Per quanto le decisioni finite restano nello stato, prima dell'archivio.
 TENERE = 14 * 86400

@@ -5,6 +5,17 @@ _Aggiornato l'08/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 08/10/2026 (sera, dopo): via BTC ed ETH; le correlazioni col DXY
+
+- Il proprietario: *"togliamo dagli asset del bot btc e ethusd"*: tolti (`vivo.TOLTI`), il bot guarda 35 mercati.
+- La foto delle correlazioni del proprietario: il forex col dollaro segue il DXY al 100% (*"quando lui sale tutte le
+  coppie forex scendono e viceversa"*); oro, argento, S&P 500, Dow e Nasdaq circa all'85% (*"a volte può capitare che
+  il DXY va long e anche gold va long"*); *"è più importante il grafico del DXY per determinare la bias delle coppie
+  forex"*. Fatto: l'agente DXY pesa 2 sul forex e 1 su oro, argento e indici (`foto.CORRELATI_85`); un setup del DXY
+  ne crea uno sulla coppia solo sul forex; il Bias delle coppie forex mette prima la previsione del giorno del DXY
+  (pesa 2) e poi quella della coppia (pesa 1). La previsione della domenica resta quella di ogni strumento.
+- Da chiarire col proprietario: *"il DXY è un asset prettamente short nei TF alti"*, come usarlo.
+
 ## 08/10/2026 (sera): il DXY dal grafico USDX del broker; la finestra di avvia.bat dice a che punto è
 
 - Il proprietario: *"il dxy non dovrà più essere generato ma bisognerà far sì che l'agente dxy analizzi il grafico che

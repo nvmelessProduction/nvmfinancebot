@@ -63,7 +63,9 @@ def riunioni(squadra: Squadra, decisioni, basi: dict, fini: dict, esposizione: f
             if getattr(d, "foto", None):
                 m = metodo.valuta_foto(d)
                 prev = previsione_di(squadra, s, d.foto["quadro"], int(d.r.quando))
-                pareri = P.tutti(d, ctx, prev)
+                qd = d.foto.get("quadro_dxy")
+                prev_dxy = previsione_di(squadra, "DXY", qd, int(d.r.quando)) if qd is not None else None
+                pareri = P.tutti(d, ctx, prev, prev_dxy)
             else:
                 m = metodo.valuta(d, basi[s], fini.get(s), _gemello(s, basi))
             piani = getattr(d, "piani_romeo", None) or None

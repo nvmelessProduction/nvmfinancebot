@@ -266,7 +266,7 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
         return m
     monkeypatch.setattr(metodo, "valuta_foto", tutto_si)
     # La squadra e' d'accordo (qui si prova il bot, non i voti: quelli sono in `test_pareri.py`).
-    monkeypatch.setattr(al_lavoro.P, "tutti", lambda d, ctx, prev: [Parere(a, 1, ["prova"]) for a in VOTANO])
+    monkeypatch.setattr(al_lavoro.P, "tutti", lambda d, ctx, prev, *altro: [Parere(a, 1, ["prova"]) for a in VOTANO])
     base = ore_finte(giorni=400)
     tutte = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
     decisioni, tardiva = tutte[-2:], tutte[-3]
