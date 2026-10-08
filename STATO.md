@@ -14,7 +14,11 @@ file. Il piano completo è in `PIANO.md`.
   forex"*. Fatto: l'agente DXY pesa 2 sul forex e 1 su oro, argento e indici (`foto.CORRELATI_85`); un setup del DXY
   ne crea uno sulla coppia solo sul forex; il Bias delle coppie forex mette prima la previsione del giorno del DXY
   (pesa 2) e poi quella della coppia (pesa 1). La previsione della domenica resta quella di ogni strumento.
-- Da chiarire col proprietario: *"il DXY è un asset prettamente short nei TF alti"*, come usarlo.
+- Poi il proprietario: *"il dxy comanda la bias di tutti gli asset forex usd"*, e la foto del mensile del DXY come
+  esempio di struttura e di cosa si aspetta nei prossimi anni (un CRT ribassista nei TF alti da cavalcare comprando
+  EURUSD, GBPUSD). Fatto: sulle coppie forex col dollaro la previsione del giorno del DXY decide (pesa 2; quella della
+  coppia conta solo se il DXY non ha direzione); la domenica vale quella del DXY, nel messaggio e nel veto; di fondo
+  il DXY è ribassista (`foto.FONDO_DXY`, pesa 1). Nessun livello della foto è scritto nel bot.
 
 ## 08/10/2026 (sera): il DXY dal grafico USDX del broker; la finestra di avvia.bat dice a che punto è
 

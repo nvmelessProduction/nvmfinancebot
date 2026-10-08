@@ -30,7 +30,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.agenti import livelli, manopole
+from nvm.agenti import foto, livelli, manopole
 from nvm.agenti.grilletto import MODELLI_ROMEO, apertura_romeo, kod_superato
 from nvm.agenti.capo import Capo
 from nvm.cervello import dal_vivo
@@ -1307,6 +1307,7 @@ class Bot:
         try:
             operati = [p[0] for p in self._prese_in_settimana(adesso)]
             testo, previsioni = fine_settimana.domenica(self.basi, adesso, operati)
+            testo = self._domenica_dxy(adesso, testo, previsioni)
             self.tg.equipe(testo)
             self.stato.previsioni = previsioni
             registra(CARTELLA, "domenica di Romeo", settimana=settimana, previsioni=previsioni)
@@ -1315,6 +1316,29 @@ class Bot:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         self.stato.ultima_domenica = settimana
         self.stato.salva(CARTELLA)
+
+    def _domenica_dxy(self, adesso: int, testo: str, previsioni: dict) -> str:
+        """Il DXY comanda le coppie forex col dollaro (il proprietario, 08/10/2026): la sua previsione della settimana
+        va nel messaggio della domenica e diventa quella di ogni coppia forex col dollaro."""
+        dxy = getattr(self, "dxy", None)
+        p = fine_settimana.previsione(dxy, adesso) if dxy is not None and len(dxy) else None
+        if p is None:
+            return testo
+        direzione, alto, basso, perche = p
+        previsioni["DXY"] = direzione
+        if direzione not in ("rialzista", "ribassista"):
+            return testo + (f"\n• DXY: la settimana {perche}: nessuna direzione chiara. Le coppie forex col dollaro "
+                            "tengono la loro.")
+        su, giu = [], []
+        for s in self.strumenti:
+            col = foto.segno_col_dxy(s) if s in foto.FOREX_DOLLARO else 0
+            if col:
+                v = (1 if direzione == "rialzista" else -1) * col
+                previsioni[s] = "rialzista" if v > 0 else "ribassista"
+                (su if v > 0 else giu).append(s)
+        return testo + (f"\n• DXY (comanda le coppie forex col dollaro): la settimana {perche}: {direzione}. Livelli "
+                        f"da guardare: massimo {alto:.3f}, minimo {basso:.3f}. Quindi in settimana cerchiamo "
+                        f"acquisti su {', '.join(su) or 'nessuna'} e vendite su {', '.join(giu) or 'nessuna'}.")
 
     def riunione(self, settimana: str, adesso: int) -> None:
         if self.squadra is not None:

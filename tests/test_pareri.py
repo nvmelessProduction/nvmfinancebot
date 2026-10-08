@@ -65,12 +65,13 @@ def test_il_bias_resta_fedele_alla_previsione_del_giorno():
     b = P.previsione(q.taglia(giorno + 15 * 3600), giorno + 15 * 3600)
     assert a == b and a.giorno == giorno
     contro = P.Previsione(giorno, -1, 1e9 * -1, "3M", "accetta", "il trimestre ha chiuso sotto il minimo")
-    vota = P.bias(_setup(n3=giorno + 3600), q, contro, None)
+    # Una coppia senza dollaro: conta solo la sua previsione (sul forex col dollaro comanda il DXY, prova sotto).
+    vota = P.bias(_setup(strumento="EURJPY", n3=giorno + 3600), q, contro, None)
     assert vota.voto == -2 and "resto della mia idea" in vota.ragioni[0]
-    assert P.bias(_setup(short=True, n3=giorno + 3600), q, contro, None).voto == 2
+    assert P.bias(_setup(strumento="EURJPY", short=True, n3=giorno + 3600), q, contro, None).voto == 2
     # Se il livello e' gia' stato preso la previsione e' compiuta: non spinge piu', e non cambia verso.
     compiuta = P.Previsione(giorno, -1, 1e9, "3M", "accetta", "prova")
-    assert P.bias(_setup(n3=giorno + 5 * 3600), q, compiuta, None).voto == 0
+    assert P.bias(_setup(strumento="EURJPY", n3=giorno + 5 * 3600), q, compiuta, None).voto == 0
     # Gia' fatta oggi, resta quella anche se la si chiede di nuovo (la memoria della squadra la tiene).
     sq = Squadra.__new__(Squadra)
     sq.memoria = NS(previsioni={})
@@ -193,3 +194,19 @@ def test_le_correlazioni_col_dxy():
     assert P.bias(_setup(short=True, n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 1
     # Fuori dal forex (l'oro) il DXY non entra nel Bias.
     assert P.bias(_setup(strumento="XAUUSD", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 2
+
+
+def test_il_dxy_comanda_il_bias_del_forex_anche_la_domenica_e_di_fondo_e_ribassista():
+    """Il proprietario, 08/10/2026: *"il dxy comanda la bias di tutti gli asset forex usd"*; sul mensile il DXY e' fra
+    A e B, nel gap mensile sotto il 50% della candela annuale: *"mi aspetto che si formi un CRT ribassista nei TF alti
+    che dovremo cavalcare quindi buy sulle coppie come EURUSD, GBPUSD"*."""
+    ore = ore_finte(giorni=500)
+    q = Quadro.da(ore, int(ore.t[-1]) + 3600)
+    giorno = P.apertura_giorno(int(ore.t[-24 * 5]))
+    # Di fondo: l'euro in acquisto ha +1, l'USDCAD in acquisto -1 (il dollaro di fondo scende).
+    assert P.bias(_setup(n3=giorno + 3600), q, None, None).voto == 1
+    assert P.bias(_setup(strumento="USDCAD", n3=giorno + 3600), q, None, None).voto == -1
+    # La domenica del DXY rialzista vale per l'euro come ribassista: comprare l'euro e' contro, veto.
+    giu = P.bias(_setup(n3=giorno + 3600), q, None, None, None, q, "rialzista")
+    assert giu.veto and "il DXY domenica l'abbiamo detto rialzista" in giu.veto
+    assert not P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista").veto

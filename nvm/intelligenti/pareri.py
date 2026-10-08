@@ -274,26 +274,35 @@ def key_level(s) -> Parere:
 
 
 def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional[Previsione] = None,
-         qd=None) -> Parere:
+         qd=None, domenica_dxy: Optional[str] = None) -> Parere:
     """Fedele alla previsione del giorno (e a quella della domenica): a favore se l'operazione va dove ha detto,
     contro se va dall'altra parte. Non cambia idea a meta' giornata.
 
-    Sulle coppie forex col dollaro conta di piu' la previsione del DXY (`p_dxy`, sul suo grafico `qd`): il
-    proprietario, 08/10/2026, *"è più importante il grafico del DXY per determinare la bias delle coppie forex"*. Il
-    DXY pesa 2, la previsione della coppia 1."""
+    Sulle coppie forex col dollaro comanda il DXY (il proprietario, 08/10/2026: *"il dxy comanda la bias di tutti gli
+    asset forex usd"*): la previsione del giorno del DXY (`p_dxy`, sul suo grafico `qd`) pesa 2 e quella della coppia
+    conta solo se il DXY oggi non ha una direzione; la domenica vale quella del DXY (`domenica_dxy`); e nei timeframe
+    alti il DXY e' ribassista (`foto.FONDO_DXY`), che pesa 1."""
     from nvm.agenti import foto
     segno = -1 if s.short else 1
     rag, punti = [], 0.0
-    peso = 2
-    if p_dxy is not None and qd is not None and s.strumento in foto.FOREX_DOLLARO:
-        peso = 1
+    col_dxy = foto.segno_col_dxy(s.strumento) if s.strumento in foto.FOREX_DOLLARO else 0
+    dxy_decide = False
+    if col_dxy:
+        f = foto.FONDO_DXY * col_dxy
+        dove = "su" if f > 0 else "giù"
+        rag.append((f * segno, f"nei timeframe alti ci aspettiamo il DXY "
+                               f"{'ribassista' if foto.FONDO_DXY < 0 else 'rialzista'} nei prossimi anni: "
+                               f"{s.strumento} di fondo va {dove}"))
+        punti += f * segno
+    if col_dxy and p_dxy is not None and qd is not None:
         if not p_dxy.verso:
             rag.append((0, f"il DXY oggi non ha una direzione ({p_dxy.motivo})" if p_dxy.motivo
                         else "il DXY oggi non ha una direzione"))
         elif compiuta(qd, p_dxy, s.n3_inizio):
             rag.append((0, f"la previsione di oggi sul DXY ({p_dxy.testo}) si è già compiuta"))
         else:
-            v = p_dxy.verso * (-1 if s.strumento in foto.DOLLARO_SOTTO else 1)
+            dxy_decide = True
+            v = p_dxy.verso * col_dxy
             dove = "sale" if p_dxy.verso > 0 else "scende"
             if v == segno:
                 punti += 2
@@ -303,27 +312,33 @@ def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional
                 punti -= 2
                 rag.append((-2, f"il DXY all'apertura del giorno l'ho detto {p_dxy.testo}: se il dollaro {dove}, "
                                 f"{s.strumento} va contro l'operazione"))
-    if p is not None and p.verso:
+    if p is not None and p.verso and not dxy_decide:
         if compiuta(q, p, s.n3_inizio):
             rag.append((0, f"la mia previsione di oggi ({p.testo}) si è già compiuta: per oggi non ho più una direzione"))
         elif p.verso == segno:
-            punti += peso
-            rag.append((peso, f"all'apertura del giorno ho detto {p.testo}: l'operazione va dove ho detto"))
+            punti += 2
+            rag.append((2, f"all'apertura del giorno ho detto {p.testo}: l'operazione va dove ho detto"))
         else:
-            punti -= peso
-            rag.append((-peso, f"all'apertura del giorno ho detto {p.testo}: resto della mia idea, questa va contro"))
-    elif p is not None:
+            punti -= 2
+            rag.append((-2, f"all'apertura del giorno ho detto {p.testo}: resto della mia idea, questa va contro"))
+    elif p is not None and not dxy_decide:
         rag.append((0, f"per oggi non ho una direzione: {p.motivo}" if p.motivo else "per oggi non ho una direzione"))
     veto = ""
+    da = ""
+    if col_dxy and domenica_dxy in ("rialzista", "ribassista"):
+        v = (1 if domenica_dxy == "rialzista" else -1) * col_dxy
+        domenica = "rialzista" if v > 0 else "ribassista"
+        da = f" (il DXY domenica l'abbiamo detto {domenica_dxy})"
     if domenica in ("rialzista", "ribassista"):
         v = 1 if domenica == "rialzista" else -1
         if v == segno:
             punti += 0.5
-            rag.append((0.5, f"e domenica la settimana di {s.strumento} l'abbiamo detta {domenica}"))
+            rag.append((0.5, f"e domenica la settimana di {s.strumento} l'abbiamo detta {domenica}{da}"))
         else:
             # Il proprietario, 07/10/2026: la squadra non deve andare contro le previsioni che fa la domenica.
             punti -= 4
-            veto = f"domenica abbiamo detto {s.strumento} {domenica} per la settimana: non andiamo contro la nostra previsione"
+            veto = (f"domenica abbiamo detto {s.strumento} {domenica} per la settimana{da}: non andiamo contro la "
+                    "nostra previsione")
             rag.append((-4, veto))
     segni = {"contro previsione"} if punti < 0 else set()
     return Parere("Bias", _voto(punti), _ordina(rag), segni=segni, veto=veto)
@@ -515,6 +530,8 @@ def tutti(d, ctx: Contesto, p: Optional[Previsione], p_dxy: Optional[Previsione]
     allineati = list(info.get("allineati", [])) + [t for t in foto.allineati(q, s) if t not in info.get("allineati", [])]
     costo = float(getattr(d.r, "costo_erre", 0.0) or 0.0)
     domenica = ctx.domenica.get(s.strumento) or settimana(q, s.n3_inizio)
-    return [cacciatore(s, allineati), key_level(s), bias(s, q, p, domenica, p_dxy, info.get("quadro_dxy")),
+    qd = info.get("quadro_dxy")
+    domenica_dxy = (ctx.domenica.get("DXY") or settimana(qd, s.n3_inizio)) if qd is not None else None
+    return [cacciatore(s, allineati), key_level(s), bias(s, q, p, domenica, p_dxy, qd, domenica_dxy),
             gap(s, q, ob, _gap_a_favore(q, s)), dxy(s, info.get("dxy")), orario(s), livelli(s, ob, costo),
             grilletto(s)]

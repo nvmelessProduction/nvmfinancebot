@@ -773,6 +773,16 @@ CORRELATI_85 = ("XAUUSD", "XAGUSD", "SPX500", "US30", "NAS100")
 DOLLARO_SOTTO = FOREX_SOTTO + CORRELATI_85
 DOLLARO_SOPRA = ("USDJPY", "USDCHF", "USDCAD")
 FOREX_DOLLARO = FOREX_SOTTO + DOLLARO_SOPRA
+# La direzione di fondo del DXY nei timeframe alti, quella che il proprietario si aspetta nei prossimi anni (08/10/2026:
+# *"il DXY è un asset prettamente short nei TF alti"*; sul mensile si aspetta un CRT ribassista nei TF alti *"che
+# dovremo cavalcare quindi buy sulle coppie come EURUSD, GBPUSD"*; la foto era un esempio di struttura, non livelli da
+# copiare): -1 ribassista. Pesa 1 nel Bias delle coppie forex col dollaro. Si cambia qui se il proprietario cambia idea.
+FONDO_DXY = -1
+
+
+def segno_col_dxy(strumento: str) -> int:
+    """Come si muove lo strumento quando il DXY sale: -1 al contrario, 1 con lui, 0 se non e' legato al dollaro."""
+    return -1 if strumento in DOLLARO_SOTTO else 1 if strumento in DOLLARO_SOPRA else 0
 PUNTO.setdefault("DXY", 1e-3)
 
 
