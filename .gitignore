@@ -25,3 +25,6 @@ dati/vps/
 
 # I video di Romeo mentre si lavorano sulla VPS (video.py)
 dati/video_tmp/
+
+# I pesi e i resoconti della rete neurale (nvm/rete/scuola.py): si rifanno allenandola
+dati/rete/
