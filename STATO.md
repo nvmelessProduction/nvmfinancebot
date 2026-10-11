@@ -5,6 +5,14 @@ _Aggiornato l'08/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 11/10/2026: la rete neurale, prima parte (scuole 1 e 2)
+
+Il proprietario: *"iniziamo creando la rete neurale"*. Fatto `nvm/rete/` (scheda `spec/rete.md`): la rete vede le
+ultime 40 candele chiuse a 1 ora, 4 ore, giorno, settimana e mese (candele di MT5, senza futuro); scuola 1 indovina
+le candele nascoste, scuola 2 risponde come gli agenti (direzione di giorno, settimana e mese; CRT a 4 ore e del
+giorno; setup completo). Transformer piccolo (166 mila pesi); impara fino al 2019, controllo 2020-2022, esame dal
+2023. PyTorch solo per allenare (`requirements-rete.txt`), il bot dal vivo non la usa. Primo allenamento in corso.
+
 ## 08/10/2026 (notte): il comando /piano
 
 Il proprietario: *"puoi modificare quel segnale su mt5? dicendo al bot di prendere il TP1, mettere il TP finale e mettere

@@ -1,0 +1,5 @@
+# Solo per allenare la rete neurale (`nvm/rete/`), non per il bot dal vivo: avvia.bat non lo installa.
+# Versione per processore (senza scheda grafica):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.4
+numpy>=2.0
