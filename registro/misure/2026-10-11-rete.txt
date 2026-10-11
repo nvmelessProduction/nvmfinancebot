@@ -1,0 +1,22 @@
+Rete neurale, primo allenamento (11/10/2026): 6 strumenti (EURUSD, GBPUSD, AUDUSD, USDCHF, USDJPY, XAUUSD),
+impara fino al 2019, controllo 2020-2022, esame dal 2023; 45 minuti su 4 processori, 2171 passi da 128.
+Comando: python -m nvm.rete.scuola --minuti 45
+
+materiale pronto in 21 s: impara 99000, controlla 28052, esame 33957
+pesi della rete: 166489
+passo 300: scuola 1 1.094, scuola 2 0.930, controllo 0.555
+passo 600: scuola 1 0.971, scuola 2 0.743, controllo 0.654
+passo 900: scuola 1 0.765, scuola 2 0.773, controllo 0.680
+passo 1200: scuola 1 0.768, scuola 2 0.755, controllo 0.680
+passo 1500: scuola 1 0.580, scuola 2 0.715, controllo 0.698
+passo 1800: scuola 1 0.505, scuola 2 0.569, controllo 0.727
+passo 2100: scuola 1 0.426, scuola 2 0.539, controllo 0.741
+
+ESAME (dal 2023, anni mai visti), 2171 passi:
+  direzione D1   giuste 69.0% (sempre la risposta piu' comune 47.8%), media richiami 61.4%, precisione classi 1/2: 20%, 78%
+  direzione W1   giuste 65.1% (sempre la risposta piu' comune 47.4%), media richiami 59.1%, precisione classi 1/2: 15%, 76%
+  direzione MN   giuste 60.1% (sempre la risposta piu' comune 51.7%), media richiami 54.2%, precisione classi 1/2: 8%, 82%
+  crt H4         giuste 56.8% (sempre la risposta piu' comune 71.2%), media richiami 72.2%, precisione classi 1/2: 39%, 37%
+  crt D1         giuste 91.5% (sempre la risposta piu' comune 94.7%), media richiami 93.0%, precisione classi 1/2: 38%, 37%
+  setup H4       giuste 61.1% (sempre la risposta piu' comune 93.3%), media richiami 79.7%, precisione classi 1/2: 12%, 15%
+  setup D1       giuste 89.3% (sempre la risposta piu' comune 97.4%), media richiami 93.2%, precisione classi 1/2: 17%, 21%

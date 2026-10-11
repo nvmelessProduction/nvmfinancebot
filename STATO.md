@@ -11,7 +11,12 @@ Il proprietario: *"iniziamo creando la rete neurale"*. Fatto `nvm/rete/` (scheda
 ultime 40 candele chiuse a 1 ora, 4 ore, giorno, settimana e mese (candele di MT5, senza futuro); scuola 1 indovina
 le candele nascoste, scuola 2 risponde come gli agenti (direzione di giorno, settimana e mese; CRT a 4 ore e del
 giorno; setup completo). Transformer piccolo (166 mila pesi); impara fino al 2019, controllo 2020-2022, esame dal
-2023. PyTorch solo per allenare (`requirements-rete.txt`), il bot dal vivo non la usa. Primo allenamento in corso.
+2023. PyTorch solo per allenare (`requirements-rete.txt`), il bot dal vivo non la usa.
+
+Primo allenamento (45 minuti, 6 strumenti, `registro/misure/2026-10-11-rete.txt`), all'esame dal 2023: i CRT e i setup
+del giorno li trova quasi tutti (richiamo medio 93%) ma con tanti falsi allarmi (quando dice "c'e'", c'e' 2-4 volte su
+10); a 4 ore richiamo 72% (CRT) e 80% (setup); la direzione di giorno, settimana e mese solo in parte (59-61% medio
+per giorno e settimana, 54% per il mese). Il controllo saliva ancora a ogni misura: va allenata piu' a lungo.
 
 ## 08/10/2026 (notte): il comando /piano
 
