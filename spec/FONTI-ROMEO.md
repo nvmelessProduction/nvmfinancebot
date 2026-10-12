@@ -231,6 +231,28 @@ Esempio: "4H CRT all'1 di notte, manipolazione alle 5, espansione alle 9"
 
 ---
 
+### Il PDF "Romeo's Private Mentorship Content - 1" (12/10/2026)
+
+Trovato dal proprietario nei suoi file. 20 pagine, solo immagini, fatto da **@ict_nandhu** (uno studente su
+Instagram) con il materiale della mentorship privata di Romeo; nei crediti Romeo, Sham e Krish. Non è di Romeo
+direttamente: vale come gli altri studenti. Contiene:
+
+- ogni candela è un range su ogni timeframe; chiusura sopra = prezzi più alti, ombra sopra = prezzi più bassi
+  (e lo specchio); PO3/AMD su tre candele: 1 range, 2 turtle soup (*"advanced traders only trade this candle"*),
+  3 distribuzione (*"highest probability"*); in buy si entra sotto l'apertura della candela che si opera, in
+  sell sopra;
+- cinque protocolli per scegliere il CRT: **macro-micro** (CRT piccoli dentro quello grande nello stesso
+  timeframe confermano il verso), **key level del timeframe sopra** (CRT a 4 ore → livelli del giorno: massimi e
+  minimi, rejection block, order block, FVG, breaker), **orari** (4 ore il migliore; formazione alle 21, 1 e 5 di
+  New York, presa di liquidità alle 1, 3, 6 e 9; niente Asia), **HTF → LTF** (*"a MUST"*: un CRT basso dentro
+  quello alto, poi un CSD; target il 50% dei CRT bassi, poi gli estremi di quello alto), **inside bar** (più ce
+  ne sono, più forte l'espansione);
+- l'entrata a sequenza **TSQ**: turtle soup → CSD (crea l'order block) → OTE → continuazione → KOD → turtle soup
+  opposto (*"everything begins with a TS, everything ends with a TS"*).
+
+Nuovo rispetto al bot: il numero di inside bar come misura, gli orari 1-5-9 / 1-3-6-9, la sequenza TSQ, il
+target al 50% dei CRT bassi. Da misurare prima di usarli.
+
 ## 3. Cosa resta da chiarire
 
 Sono le domande in fondo a `spec/cacciatore.md`. Le più importanti:

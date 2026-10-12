@@ -5,6 +5,16 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (sera, dopo): il libro di Terence e il PDF della mentorship di Romeo
+
+Il proprietario: *"addestriamo la rete neurale sui video di Romeo"* e sul materiale di Terence (il socio); poi ha
+caricato sul ramo `main` il libro di Terence, *L'arte dell'1%* (*"non c'entra il crt ma la sua strategia"*), e i 17
+video di Romeo già lavorati (gli stessi di `spec/metodo_romeo.md`). La strategia del libro, in regole e con cosa
+manca nel bot, è in `spec/metodo_terence.md`; il PDF "Romeo's Private Mentorship" (di uno studente, @ict_nandhu) è
+in `spec/FONTI-ROMEO.md`. Niente codice ancora: prima le risposte di Terence alle domande in fondo al file, poi i
+rivelatori, le domande nuove nella scheda della rete e la misura sui vent'anni. I sottotitoli di tutto il canale di
+Terence (158 tra video e short) si stanno scaricando.
+
 ## 12/10/2026 (notte, fine): tutto automatico su TradingView, decide la rete
 
 Il proprietario: *"metti tutto automatico sul bot, niente più richieste"*, *"no automatico con tw"*. Sulla risposta di
