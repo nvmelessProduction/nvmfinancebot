@@ -508,3 +508,21 @@ def test_la_rete_vera_giudica_un_setup_e_spiega_cosa_vede():
     assert g.occhi["crt H4"][0] == "acquisto"
     testo = "\n".join(g.righe())
     assert "LA RETE:" in testo and "Gli occhi vedono" in testo and g.ingressi[0].shape == (1, 5, 40, 7)
+
+
+
+def test_se_pytorch_non_parte_il_bot_va_avanti_senza_rete(monkeypatch):
+    """Sulla VPS, 12/10/2026: PyTorch installato ma Windows non lo avvia (WinError 1114 su c10.dll). La rete non deve
+    fermare il bot: si spegne e si dice perche'."""
+    import builtins
+    from nvm.vivo.rete_vivo import Rete
+    vera = builtins.__import__
+
+    def finta(nome, *a, **k):
+        if nome == "torch":
+            raise OSError("[WinError 1114] A dynamic link library (DLL) initialization routine failed")
+        return vera(nome, *a, **k)
+    monkeypatch.setattr(builtins, "__import__", finta)
+    monkeypatch.delitem(__import__("sys").modules, "torch", raising=False)
+    rete, perche = Rete.carica()
+    assert rete is None and "vc_redist" in perche

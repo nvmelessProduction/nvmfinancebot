@@ -135,11 +135,23 @@ class Rete:
 
     @classmethod
     def carica(cls, percorso: Path = PESI) -> tuple[Optional["Rete"], str]:
-        """(la rete, '') oppure (None, perche' non c'e')."""
+        """(la rete, '') oppure (None, perche' non c'e'). Non solleva mai: una rete che non parte non ferma il bot."""
+        try:
+            return cls._carica(percorso)
+        except Exception as errore:
+            return None, f"la rete non si carica ({type(errore).__name__}: {str(errore)[:150]})"
+
+    @classmethod
+    def _carica(cls, percorso: Path) -> tuple[Optional["Rete"], str]:
         try:
             import torch
         except ImportError:
             return None, "manca PyTorch sulla VPS: fai doppio clic su rete_installa.bat, poi riavvia il bot"
+        except OSError:
+            # Su Windows (WinError 1114, c10.dll): manca o e' vecchio il Visual C++ di Microsoft che PyTorch usa.
+            return None, ("PyTorch è installato ma Windows non lo fa partire: manca il pacchetto Visual C++ di "
+                          "Microsoft. Scarica e installa https://aka.ms/vs/17/release/vc_redist.x64.exe, poi "
+                          "riavvia la VPS e il bot")
         if not percorso.exists():
             return None, f"mancano i pesi della rete ({percorso.name})"
         from kaggle_rete.esperienza import SCHEDA

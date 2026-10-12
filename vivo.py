@@ -249,7 +249,10 @@ class Bot:
         self._giudizi_rete: dict = {}
 
     def _accendi_rete(self) -> None:
-        self.rete, perche = rete_vivo.Rete.carica()
+        try:
+            self.rete, perche = rete_vivo.Rete.carica()
+        except Exception as errore:
+            self.rete, perche = None, f"la rete non si carica ({errore!r})"
         if self.rete is None:
             self.allarme(f"🧠 Rete neurale spenta: {perche}. Finché manca, decide la squadra come prima.")
             return
