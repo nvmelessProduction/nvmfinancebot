@@ -244,14 +244,15 @@ def ora_italiana(t: int) -> str:
     return datetime.fromtimestamp(int(t), tz=timezone.utc).astimezone(ROMA).strftime("%H:%M")
 
 
-def proposta(d: Decisione, scade: int, grafico: str, rete: Optional[list] = None) -> str:
-    """Il canale operativo quando si analizza su TradingView: il setup coi prezzi del grafico, e la scelta a voi
-    (pulsanti Apri / Lascia sotto il messaggio)."""
+def proposta(d: Decisione, scade: int, grafico: str, rete: Optional[list] = None, tradingview: bool = True,
+             lasciata: bool = False) -> str:
+    """Un setup coi prezzi del grafico e la scelta a voi (pulsanti sotto il messaggio). In automatico arrivano cosi'
+    solo quelli che la rete neurale lascia (`lasciata`): «Apri lo stesso» se non siete d'accordo."""
     k, op, r = d.r.strumento, d.op, d.r
     rischio = abs(op.ingresso - op.stop) or 1e-12
     f = getattr(d, "foto", None) or {}
     ob = f.get("obiettivo")
-    righe = [f"📺 SETUP SU TRADINGVIEW · {grafico}",
+    righe = [f"📺 SETUP SU TRADINGVIEW · {grafico}" if tradingview else f"📊 SETUP · {grafico}",
              f"{'🔴 VENDITA' if r.verso is Verso.SHORT else '🟢 ACQUISTO'} {k} · {coppia(d)}"]
     allineati = [NOMI_TF.get(x, getattr(x, "value", str(x))) for x in f.get("allineati", [])]
     if allineati:
@@ -261,20 +262,31 @@ def proposta(d: Decisione, scade: int, grafico: str, rete: Optional[list] = None
               f"🎯 TP1: {prezzo(k, op.tp1)} (RR 1:{_it(abs(op.tp1 - op.ingresso) / rischio, 1)})",
               f"🎯 Target finale{f' ({ob.nome})' if ob is not None else ''}: {prezzo(k, op.tp2)} "
               f"(RR 1:{_it(abs(op.tp2 - op.ingresso) / rischio, 1)})",
+              f"La rete l'ha lasciato: se volete entrare lo stesso, «Apri lo stesso» vale fino alle "
+              f"{ora_italiana(scade)} (ora italiana)." if lasciata else
               f"Vale fino alle {ora_italiana(scade)} (ora italiana). Con «Apri» entro su MT5 a mercato, con stop e "
-              "target di TradingView. Senza il vostro «Apri» non apro niente."]
+              "target del grafico. Senza il vostro «Apri» non apro niente."]
     if rete:
         righe = righe[:1] + [rete[0]] + righe[1:] + [""] + rete[1:]
     return "\n".join(righe)
 
 
 def tradingview_acceso(grafici: list[str], dxy: str, totale: str = "") -> str:
-    righe = ["📺 Da adesso analizzo su TradingView, non più sui prezzi di MT5.",
+    righe = ["📺 Da adesso analizzo su TradingView e apro da solo: MT5 serve solo per gli ordini.",
              f"Grafici: {', '.join(grafici)}" + (f"; dollaro: {dxy}" if dxy else "") +
              (f"; crypto: {totale} (guida BTC ed ETH)" if totale else ""),
-             "Quando trovo un setup ve lo propongo qui con i pulsanti «Apri» e «Lascia». Senza il vostro «Apri» "
-             "non apro niente: MT5 serve solo per gli ordini."]
+             "Quando c'è un setup decide la rete neurale: se lo prende apro su MT5 a mercato, con stop e target di "
+             "TradingView, e vi spiego perché; se lo lascia ve lo mando in équipe con «Apri lo stesso». Su tutti "
+             "potete premere «Correggi»."]
     return "\n".join(righe)
+
+
+def perche_aperta(d: Decisione, grafico: str, rete: list) -> str:
+    """Dopo un'apertura in automatico: perche' la rete e' entrata (le sue righe, senza la prima "ENTREREI")."""
+    k, r = d.r.strumento, d.r
+    righe = [f"🧠 PERCHÉ HO APERTO · {grafico}",
+             f"{'🔴 VENDITA' if r.verso is Verso.SHORT else '🟢 ACQUISTO'} {k} · {coppia(d)} · {quando(r.quando)}"]
+    return "\n".join(righe + rete[1:] + ["Se ha visto male qualcosa, premete «Correggi»."])
 
 
 def saltata(d: Decisione, motivo: str) -> str:

@@ -95,54 +95,56 @@ fanno dal **computer di casa**.
    e premi **Commit changes**. Poi dillo a Claude. (In alternativa, se puoi copiarli sulla
    VPS: nella cartella del bot o sul Desktop, e doppio clic su `consegna.bat`.)
 
-## 6. Analizzare su TradingView (pulsanti Apri / Lascia)
+## 6. Analizzare su TradingView, in automatico
 
-Il bot puo' analizzare sui grafici di TradingView che scegliete voi; gli ordini restano su MT5. Le condizioni di
-TradingView vietano il trading automatico sui loro dati senza un permesso scritto: finche' non arriva, il bot vi
-manda ogni setup sul canale operativo con due pulsanti, **Apri** e **Lascia**, e apre solo se premete Apri.
+Il bot analizza sui grafici di TradingView che scegliete voi e apre da solo gli ordini su MT5. Il proprietario, il
+12/10/2026: TradingView ha dato l'ok all'uso automatico tramite il loro server MCP, senza webhook (la mail resta al
+proprietario: conservatela). Webhook il bot non ne usa.
 
 1. **Il login, una volta sola.** Sulla VPS fai doppio clic su `tradingview_accesso.bat`. Si apre il browser: entra
    col vostro account TradingView (serve il piano Essential o superiore) e premi **Allow**. La finestra poi prova a
    leggere i grafici e scrive `OK` o `NO` per ognuno. Le chiavi restano sulla VPS in `dati\vivo\tradingview.json`:
    non mandarle a nessuno.
-2. **I grafici.** Nel file `.env` aggiungi la riga coi grafici, scritti come su TradingView:
-   `TRADINGVIEW_SIMBOLI=OANDA:EURUSD, OANDA:GBPUSD, OANDA:XAUUSD`. Se il nome dopo i due punti e' diverso da
-   quello del bot, aggiungi il nome del bot dopo l'uguale: `OANDA:US30USD=US30`. Per il dollaro:
-   `TRADINGVIEW_DXY=TVC:DXY` (se manca, si usa quello). Per le crypto: `TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL` (un
-   setup CRT sulla TOTAL fa entrare su BTC ed ETH dalla stessa parte; BTC ed ETH vanno messi nella riga dei
-   grafici, per esempio `BINANCE:BTCUSDT=BTCUSD, BINANCE:ETHUSDT=ETHUSD`).
+2. **I grafici.** Nel file `.env` aggiungi la riga coi grafici, scritti come su TradingView (la fonte prima dei due
+   punti come la scrive TradingView: ICE e' `FX_IDC:`, FXCM e' `FX:`, Capital.com e' `CAPITALCOM:`):
+   `TRADINGVIEW_SIMBOLI=FX_IDC:EURUSD, FX:XAUUSD, FX:SPX500, CRYPTO:BTCUSD`. Se il nome dopo i due punti e' diverso
+   da quello del bot, aggiungi il nome del bot dopo l'uguale: `OANDA:US30USD=US30`. Per il dollaro:
+   `TRADINGVIEW_DXY=CAPITALCOM:DXY` (se manca, TVC:DXY). Per le crypto: `TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL` (un
+   setup CRT sulla TOTAL fa entrare su BTC ed ETH dalla stessa parte).
 3. **Riavvia il bot** (chiudi la finestra di `avvia.bat` e rifai doppio clic). Sul canale operativo arriva
-   "📺 Da adesso analizzo su TradingView".
+   "📺 Da adesso analizzo su TradingView e apro da solo".
 
 Come funziona:
-- Quando c'e' un setup arriva il messaggio con entrata, stop, TP1 e target **ai prezzi di TradingView**, e fino a
-  che ora vale (30 minuti dall'apertura della candela 3).
-- **Apri**: il bot entra subito su MT5 a mercato, con stop e target di TradingView. Non entra se su MT5 il prezzo e'
-  gia' oltre lo stop o il TP1, se il target finale renderebbe meno di 1,5 volte il rischio, o se sullo strumento c'e'
-  gia' un'operazione. Il bot legge i pulsanti una volta al minuto: la risposta arriva entro un minuto.
-- **Lascia**: non si apre niente. Ogni scelta (chi, cosa, quando) va nel registro: sono le lezioni per la rete.
-- Se il bot si riavvia (anche per un aggiornamento), le proposte ancora aperte non valgono piu'.
+- Quando c'e' un setup decide la rete neurale (punto 7; senza la rete, la squadra). Se lo prende, il bot entra su MT5
+  a mercato con stop e target **ai prezzi di TradingView**, e manda "🧠 PERCHÉ HO APERTO" con la spiegazione e
+  **Correggi**. Non entra se su MT5 il prezzo e' gia' oltre lo stop o il TP1, o se sullo strumento c'e' gia'
+  un'operazione.
+- Se la rete lo lascia, arriva in équipe con **Apri lo stesso** (vale 30 minuti dall'apertura della candela 3) e
+  **Correggi**. I pulsanti hanno risposta subito.
+- Se il bot si riavvia (anche per un aggiornamento), gli «Apri lo stesso» ancora aperti non valgono piu'.
 - Se TradingView non risponde o l'accesso scade, arriva un allarme e il bot non analizza: non torna mai di nascosto
   ai prezzi di MT5. Le operazioni aperte le segue lo stesso. Per l'accesso scaduto: rifai il punto 1.
-- Per tornare ai prezzi di MT5: togli la riga `TRADINGVIEW_SIMBOLI` dal `.env` e riavvia.
+- Per tornare ai prezzi di MT5: togli la riga `TRADINGVIEW_SIMBOLI` dal `.env` e riavvia (anche li' decide la rete e
+  il bot apre da solo).
 
-## 7. La rete neurale: decide cosa proporvi, e la correggete voi
+## 7. La rete neurale: decide lei, e la correggete voi
 
-La rete allenata su Kaggle guarda ogni setup del bot e dice se entrerebbe, con la sua spiegazione: cosa vedono i suoi
+La rete allenata su Kaggle guarda ogni setup del bot e decide se entrare, con la sua spiegazione: cosa vedono i suoi
 "occhi" (la direzione di giorno, settimana e mese; i CRT a 4 ore e del giorno) e cosa la spinge o la frena rispetto a
 un setup tipico del bot.
 
 1. **Una volta sola:** doppio clic su `rete_installa.bat` (scarica PyTorch, circa 200 MB, qualche minuto). Alla fine
-   scrive "Rete neurale pronta". Poi riavvia il bot: sul canale operativo arriva "🧠 La rete neurale è collegata".
-2. **Come lavora:** i setup che prenderebbe arrivano sul canale operativo con **Apri**, **Lascia** e **Correggi**;
-   quelli che lascia arrivano in équipe con **Apri lo stesso** e **Correggi**. Il dito su Apri lo mettete voi
-   (finché TradingView non dà il permesso per il trading automatico).
+   scrive "Rete neurale pronta". Se esce WinError 1114 (c10.dll), installa il Visual C++ di Microsoft
+   (https://aka.ms/vs/17/release/vc_redist.x64.exe), riavvia la VPS e rifai il doppio clic. Poi riavvia il bot: sul
+   canale operativo arriva "🧠 La rete neurale è collegata".
+2. **Come lavora:** quello che prende lo apre da solo e vi spiega perché («PERCHÉ HO APERTO», con **Correggi**);
+   quello che lascia arriva in équipe con **Apri lo stesso** e **Correggi**.
 3. **Correggi:** arriva un messaggio con una riga di pulsanti per ogni cosa che la rete ha detto (il trade, la
    direzione di giorno, settimana e mese, i CRT): premete la risposta giusta (il punto • segna quella della rete).
    Per spiegare il perché, rispondete a quel messaggio scrivendo. Tutto resta sulla VPS in `dati\vivo\rete\`, con
    quello che la rete aveva visto: sono gli esempi per riallenarla.
-4. **La sera**, nel riepilogo in équipe, c'è la pagella della rete: quante volte ci ha preso e come sarebbe andata se
-   avesse deciso lei.
+4. **La sera**, nel riepilogo in équipe, c'e' la pagella della rete: quante volte ci ha preso e come sono andati i
+   suoi trade.
 
 Senza PyTorch il bot lavora come prima (decide la squadra) e lo dice con un allarme.
 

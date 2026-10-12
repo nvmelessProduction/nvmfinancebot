@@ -5,6 +5,15 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (notte, fine): tutto automatico su TradingView, decide la rete
+
+Il proprietario: *"metti tutto automatico sul bot, niente più richieste"*, *"no automatico con tw"*. Sulla risposta di
+TradingView alla richiesta di permesso il proprietario ha riferito: *"ok, no problem. we can use the system"*, e *"niente
+webhook però"*; la mail non e' stata vista qui (*"non posso mandarti foto"*): il permesso e' quello riferito dal
+proprietario, che conserva la mail. Fatto: con TradingView il bot apre da solo quello che la rete prende (o la squadra,
+se la rete non c'e'), con "🧠 PERCHÉ HO APERTO" e Correggi; quello che la rete lascia va in équipe con «Apri lo stesso».
+Lo stesso sui prezzi del broker. Niente webhook (il bot non ne ha mai usati).
+
 ## 12/10/2026 (notte, ultima): la rete neurale decide cosa proporre, spiega, e si corregge
 
 Il proprietario: *"voglio che sia la rete a decidere, così la addestriamo"*, con la spiegazione della sua analisi e una

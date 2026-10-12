@@ -260,8 +260,8 @@ class Bot:
         if not (CARTELLA / "riavvio").exists():
             e = self.rete.esame
             self.tg.operativo(
-                "🧠 La rete neurale è collegata. Giudica ogni setup del bot e spiega cosa vede: quelli che prenderebbe "
-                "arrivano qui con «Apri», «Lascia» e «Correggi»; quelli che lascia vanno in équipe, con «Apri lo "
+                "🧠 La rete neurale è collegata e decide lei. Giudica ogni setup del bot: quelli che prenderebbe li "
+                "apro da solo e vi spiego perché, con «Correggi»; quelli che lascia vanno in équipe, con «Apri lo "
                 "stesso» e «Correggi». Con «Correggi» le dite cosa ha visto male: è così che la alleniamo.\n"
                 f"Onestamente: all'esame sugli anni 2023-2026 è arrivata a pareggio ({e.get('R medio', 0):+.3f} R a "
                 f"trade contro {e.get('bot R medio', 0):+.3f} del bot da solo). Sta imparando.")
@@ -944,7 +944,8 @@ class Bot:
         scade = int(d.r.quando) + VALIDITA_PROPOSTA
         self.proposte[ident] = {"d": d, "v": v, "scade": scade, "rete": None if rete is None else rete.dati()}
         grafico = self.fonte.simbolo(d.r.strumento) if self._su_tradingview else d.r.strumento
-        testo = messaggi.proposta(d, scade, grafico, None if rete is None else rete.righe())
+        testo = messaggi.proposta(d, scade, grafico, None if rete is None else rete.righe(), self._su_tradingview,
+                                  lasciata=rete is not None and not rete.entra)
         if rete is None:
             self.tg.proposta(testo, [("✅ Apri", f"apri:{ident}"), ("❌ Lascia", f"lascia:{ident}")])
         else:
@@ -1073,6 +1074,21 @@ class Bot:
         G, N, K, R = riga(tutte)
         return (f"🧠 La rete neurale oggi: {n} setup finiti, ci ha preso {g} volte. Se avesse deciso lei: {k} trade, "
                 f"{r:+.2f} R.\nDalle ultime due settimane: {G} giuste su {N}; i suoi {K} trade {R:+.2f} R.")
+
+    def _lascia_la_rete(self, d) -> bool:
+        """In automatico decide la rete neurale: vero se l'ha giudicato e non entrerebbe."""
+        g = getattr(self, "_giudizi_rete", {}).get(d.chiave)
+        return g is not None and not g.entra
+
+    def _spiega_apertura(self, d) -> None:
+        """Dopo un'apertura in automatico: perche' la rete e' entrata, con «Correggi»."""
+        g = getattr(self, "_giudizi_rete", {}).get(d.chiave)
+        if g is None:
+            return
+        ident = secrets.token_hex(4)
+        grafico = self.fonte.simbolo(d.r.strumento) if self._su_tradingview else d.r.strumento
+        self._salva_analisi(ident, d, g, grafico)
+        self.tg.proposta(messaggi.perche_aperta(d, grafico, g.righe()), [("✏️ Correggi", f"correggi:{ident}")])
 
     def _non_presa(self, p: dict) -> None:
         """Una proposta non aperta: per la squadra conta come non presa."""
@@ -1248,11 +1264,16 @@ class Bot:
         """La coppia 4 ore -> 15 minuti, ogni quarto d'ora. Uno strumento alla volta: con tante
         coppie, la prima non aspetta che il bot abbia guardato tutte le altre."""
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
-        for s in self.strumenti:
+        # Su TradingView i quarti d'ora si chiedono a turno, un quarto degli strumenti per volta (12 candele: tre ore):
+        # tutti insieme, con le ore allo scoccare dell'ora, erano troppe richieste.
+        turno = (quarto // 900) % 4
+        for i, s in enumerate(self.strumenti):
             self._pulsanti_subito()
+            if self._su_tradingview and s in self.fini and i % 4 != turno:
+                continue
             try:
-                self.fini[s] = (_unisci(self.fini[s], self._fonte.barre(s, 20, 900), QUARTI) if s in self.fini
-                                else self._fonte.barre(s, QUARTI, 900))
+                self.fini[s] = (_unisci(self.fini[s], self._fonte.barre(s, 12 if self._su_tradingview else 20, 900),
+                                        QUARTI) if s in self.fini else self._fonte.barre(s, QUARTI, 900))
             except ErroreTradingView as errore:
                 self.allarme(f"TradingView: {errore}")
                 continue
@@ -1610,8 +1631,10 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
-            elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._su_tradingview:
-                # Sui grafici di TradingView il bot propone e decidete voi (pulsanti Apri / Lascia).
+            elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._lascia_la_rete(d):
+                # In automatico decide la rete (il proprietario, 12/10/2026: *"voglio che sia la rete a decidere"*):
+                # questo lo lascia. In équipe, con «Apri lo stesso» e «Correggi».
+                self.stato.saltate["la rete neurale lo lascia"] = self.stato.saltate.get("la rete neurale lo lascia", 0) + 1
                 self._proponi(d, v, self._giudizi_rete.get(d.chiave))
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
@@ -1643,6 +1666,7 @@ class Bot:
                     except Exception:
                         registra(CARTELLA, "errore", testo=traceback.format_exc())
                     self._disegna(d, viva, adesso, fatto.testo if con_foto else None)
+                    self._spiega_apertura(d)
                     conto = self.terminale.conto()
                     self._nel_libro("apertura", strumento=viva.strumento, verso=viva.verso, tickets=viva.tickets,
                                     volume=viva.volume, ingresso=viva.ingresso, stop=viva.stop, tp1=viva.tp1,

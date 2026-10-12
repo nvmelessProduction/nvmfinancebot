@@ -50,8 +50,10 @@ MASSIMO = 5000
 INTERVALLI = {900: "15m", 3600: "1h", 86400: "1D"}
 # Quanto prima della scadenza si rinnova l'accesso.
 MARGINE = 120
-# Fra una richiesta e l'altra: TradingView ne accetta circa 100 al minuto.
-INTERVALLO = 0.7
+# Fra una richiesta e l'altra: TradingView ne dichiara circa 100 al minuto, ma con 35 grafici a 0,7 secondi ha
+# chiesto di rallentare (12/10/2026): una al secondo. Se chiede di rallentare, si aspetta e si riprova.
+INTERVALLO = 1.0
+ATTESE_RALLENTA = (20, 60)
 # Il grafico del dollaro, in punti come quello del bot (`nvm/agenti/foto.py`).
 PUNTO.setdefault("DXY", 1e-3)
 PUNTO.setdefault("TOTAL", 1e6)
@@ -279,11 +281,13 @@ class TradingView:
     """Le chiamate al server MCP di TradingView. Una sessione MCP, riaperta da sola se scade."""
 
     def __init__(self, accesso: Accesso, posta: Callable = _richiesta, server: str = SERVER,
-                 intervallo: float = INTERVALLO):
+                 intervallo: float = INTERVALLO, attese: tuple = ATTESE_RALLENTA, dormi: Callable = time.sleep):
         self.accesso = accesso
         self._posta = posta
         self._server = server
         self._intervallo = intervallo
+        self._attese = attese
+        self._dormi = dormi
         self._ultima = 0.0
         self._sessione: Optional[str] = None
         self._numero = 0
@@ -323,7 +327,8 @@ class TradingView:
         with self._lucchetto:
             if self._numero == 0:
                 self._apri_sessione()
-            for tentativo in range(3):
+            rallentato = 0
+            for tentativo in range(3 + len(self._attese)):
                 self._numero += 1
                 codice, intestazioni, corpo = self._manda({
                     "jsonrpc": "2.0", "id": self._numero, "method": "tools/call",
@@ -336,6 +341,10 @@ class TradingView:
                     self._apri_sessione()
                     continue
                 if codice == 429:
+                    if rallentato < len(self._attese):
+                        self._dormi(self._attese[rallentato])
+                        rallentato += 1
+                        continue
                     raise ErroreTradingView("TradingView chiede di rallentare (troppe richieste)")
                 if codice != 200:
                     raise ErroreTradingView(f"TradingView ha risposto {codice} a {nome}")

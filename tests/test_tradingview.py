@@ -253,19 +253,18 @@ def _premi(numero, azione, ident, chi="Marco"):
                                                                 "text": "📺 SETUP", "date": 0}}}
 
 
-def test_su_tradingview_il_bot_propone_e_non_apre_da_solo(tmp_path, monkeypatch):
+def test_su_tradingview_il_bot_apre_da_solo(tmp_path, monkeypatch):
+    """Il proprietario, 12/10/2026: *"metti tutto automatico sul bot, niente più richieste"*, col permesso di
+    TradingView che riferisce. Senza la rete decide la squadra, e il bot apre sui prezzi di TradingView."""
     from tests.test_vivo import CapoFinto
     d = _una_decisione()
     bot = _bot(tmp_path, monkeypatch, d, [])
-    bot.capo = CapoFinto()
+    bot.capo, bot._prove = CapoFinto(), {}
     bot._decidi([d], d.r.quando, 3600)
-    assert bot.mt5.posizioni == {} and not bot.stato.vive                         # niente ordini
-    (ident,) = bot.proposte
-    proposta = next(x for x in bot.mandati if x[0] == "sendMessage")[1]
-    assert "OANDA:EURUSD" in proposta["text"] and "Senza il vostro «Apri» non apro niente" in proposta["text"]
-    assert [b["callback_data"] for b in proposta["reply_markup"]["inline_keyboard"][0]] == [f"apri:{ident}", f"lascia:{ident}"]
+    (p,) = bot.mt5.posizioni.values()
+    assert p.sl == round(d.op.stop, 5) and p.tp == round(d.op.tp2, 5) and not bot.proposte
     (s,) = bot.stato.seguite
-    assert s.chiave == d.chiave and not s.entrata                              # seguita sulla carta
+    assert s.chiave == d.chiave and s.entrata
 
 
 def test_con_apri_si_apre_su_mt5_con_stop_e_target_di_tradingview(tmp_path, monkeypatch):
@@ -422,21 +421,22 @@ def test_la_rete_decide_cosa_proporre_e_spiega_perche(tmp_path, monkeypatch):
     bot = _bot(tmp_path, monkeypatch, d, [])
     bot.capo = CapoFinto()
     bot.rete = NS(giudica=lambda x: _giudizio(entra=False))
-    monkeypatch.setattr("nvm.vivo.messaggi.proposta", lambda d, scade, grafico, rete=None: "SETUP\n" + "\n".join(rete or []))
+    monkeypatch.setattr("nvm.vivo.messaggi.proposta", lambda d, scade, grafico, rete=None, tv=True, lasciata=False: "SETUP\n" + "\n".join(rete or []))
     bot._decidi([d], d.r.quando, 3600)
     # La rete lo lascerebbe: niente sul canale operativo, in équipe con «Apri lo stesso» e «Correggi».
     (proposta,) = [x[1] for x in bot.mandati if x[0] == "sendMessage"]
     assert proposta["chat_id"] == "-2" and "LA RETE: LASCEREI" in proposta["text"] and "la frena" in proposta["text"]
     assert [b["text"] for b in proposta["reply_markup"]["inline_keyboard"][0]] == ["✅ Apri lo stesso", "✏️ Correggi"]
     assert bot.stato.seguite[0].rete["entra"] is False and bot.mt5.posizioni == {}
-    # Se la prenderebbe: sul canale operativo, con «Apri», «Lascia» e «Correggi».
+    # Se la prenderebbe: apre da solo e spiega perché, con «Correggi».
     bot.rete = NS(giudica=lambda x: _giudizio(entra=True))
-    bot.stato.seguite = []
+    bot.stato.seguite, bot._prove = [], {}
     bot._decidi([__import__("dataclasses").replace(d, r=__import__("dataclasses").replace(d.r, quando=d.r.quando + 7))],
                 d.r.quando + 7, 3600)
+    assert len(bot.mt5.posizioni) == 1
     ultima = [x[1] for x in bot.mandati if x[0] == "sendMessage"][-1]
-    assert ultima["chat_id"] == "-1" and "ENTREREI" in ultima["text"]
-    assert [b["text"] for b in ultima["reply_markup"]["inline_keyboard"][0]] == ["✅ Apri", "❌ Lascia", "✏️ Correggi"]
+    assert ultima["chat_id"] == "-1" and "PERCHÉ HO APERTO · OANDA:EURUSD" in ultima["text"] and "ENTREREI" not in ultima["text"]
+    assert [b["text"] for b in ultima["reply_markup"]["inline_keyboard"][0]] == ["✏️ Correggi"]
 
 
 def test_con_correggi_si_dice_alla_rete_cosa_ha_visto_male_e_perche(tmp_path, monkeypatch):
@@ -526,3 +526,72 @@ def test_se_pytorch_non_parte_il_bot_va_avanti_senza_rete(monkeypatch):
     monkeypatch.delitem(__import__("sys").modules, "torch", raising=False)
     rete, perche = Rete.carica()
     assert rete is None and "vc_redist" in perche
+
+
+def test_in_automatico_sui_prezzi_del_broker_decide_la_rete(tmp_path, monkeypatch):
+    """Il proprietario, 12/10/2026: *"metti tutto automatico sul bot, niente più richieste"*. Sui prezzi del broker
+    (senza TradingView) il bot apre da solo quello che la rete prenderebbe, con la spiegazione e «Correggi»; quello che
+    la rete lascia va in équipe con «Apri lo stesso»."""
+    import dataclasses
+    from tests.test_vivo import CapoFinto
+    d = _una_decisione()
+    bot = _bot(tmp_path, monkeypatch, d, [])
+    bot.fonte = None                                          # prezzi del broker: si apre in automatico
+    bot.capo = CapoFinto()
+    bot.rete = NS(giudica=lambda x: _giudizio(entra=True))
+    bot._prove = {}
+    bot._giudica = lambda x: _giudizio(entra=True)
+    bot._decidi([d], d.r.quando, 3600)
+    assert len(bot.mt5.posizioni) == 1                        # aperto da solo
+    spiegazione = [x[1] for x in bot.mandati if x[0] == "sendMessage"][-1]
+    assert "PERCHÉ HO APERTO" in spiegazione["text"] and \
+        spiegazione["reply_markup"]["inline_keyboard"][0][0]["text"] == "✏️ Correggi"
+    # La rete lo lascerebbe: niente ordine, in équipe con «Apri lo stesso».
+    bot2 = _bot(tmp_path / "2", monkeypatch, d, [])
+    bot2.fonte, bot2.capo, bot2._prove = None, CapoFinto(), {}
+    bot2._giudica = lambda x: _giudizio(entra=False)
+    d2 = dataclasses.replace(d, r=dataclasses.replace(d.r, quando=d.r.quando + 7))
+    bot2._decidi([d2], d2.r.quando, 3600)
+    assert bot2.mt5.posizioni == {}
+    lasciata = [x[1] for x in bot2.mandati if x[0] == "sendMessage"][-1]
+    assert lasciata["chat_id"] == "-2" and "📊 SETUP" in lasciata["text"] and "Apri lo stesso" in lasciata["text"]
+    assert bot2.stato.saltate.get("la rete neurale lo lascia") == 1
+
+
+
+def test_se_tradingview_chiede_di_rallentare_si_aspetta_e_si_riprova(tmp_path):
+    """23:01 del 12/10/2026: "TradingView chiede di rallentare (troppe richieste)" con 35 grafici."""
+    barre = [{"t": 3600, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 3}]
+    server = ServerFinto(barre)
+    server.scaduta = True                                    # la sessione non scade
+    risposte = iter([429, 429])
+    vero = server.__call__
+
+    def con_rallenta(url, dati, intestazioni):
+        if json.loads(dati).get("method") == "tools/call":
+            codice = next(risposte, None)
+            if codice:
+                return codice, {}, b""
+        return vero(url, dati, intestazioni)
+    dormite = []
+    tv = TradingView(_accesso(tmp_path), posta=con_rallenta, intervallo=0.0, dormi=dormite.append)
+    assert tv.candele("FX_IDC:EURUSD", 3600, 10) == barre and dormite == [20, 60]
+    tv2 = TradingView(_accesso(tmp_path / "2"), posta=lambda u, d, i: (429, {}, b"") if "tools/call" in d.decode()
+                      else vero(u, d, i), intervallo=0.0, dormi=lambda s: None)
+    with pytest.raises(Exception, match="rallentare"):
+        tv2.candele("FX_IDC:EURUSD", 3600, 10)
+
+
+def test_su_tradingview_i_quarti_d_ora_si_chiedono_a_turno():
+    import vivo
+    chieste = []
+    bot = object.__new__(vivo.Bot)
+    bot.fonte = NS(barre=lambda s, quante, passo: chieste.append((s, quante)) or vivo.Minuti.vuoti(s, 900))
+    bot.strumenti = [f"S{i}" for i in range(8)]
+    bot.fini = {s: vivo.Minuti.vuoti(s, 900) for s in bot.strumenti}
+    bot.stato = Stato()
+    bot.stato.ultimo_quarto = 0
+    for nome in ("uscite", "parla"):
+        setattr(bot, nome, lambda *a: None)
+    bot.giro_veloce(900 * 5)                                 # turno 1: gli strumenti 1 e 5
+    assert chieste == [("S1", 12), ("S5", 12)]
