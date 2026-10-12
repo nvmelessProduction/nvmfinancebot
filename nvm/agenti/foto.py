@@ -30,7 +30,7 @@ import numpy as np
 from nvm.agenti.cacciatore import CRT, Motivo, Verso
 from nvm.dati.candele import Candele, costruisci, weekend
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, PUNTO, Minuti
-from nvm.tempo import ORDINE, TF, fine_candela, inizio_candela
+from nvm.tempo import ORDINE, TF, fine_candela, inizio_candela, scarti_ny
 
 # I timeframe su cui il proprietario opera il CRT (foto: 1 ora, 4 ore, 6 ore, giorno, settimana, mese).
 TF_CRT = (TF.H1, TF.H4, TF.H6, TF.D1, TF.W1, TF.MN)
@@ -417,6 +417,11 @@ def trova(q: Quadro, tf: TF, dal: int, al: int) -> list[Setup]:
         if alto <= basso:
             continue
         o2, h2, l2, c2 = (float(x) for x in c.bid[k2])
+        # La presa (del range e dei key level) si guarda senza l'ora del rollover: lo stop resta sull'estremo vero.
+        pulita = _senza_rollover(q, int(c.inizio[k2]), int(c.fine[k2])) if not we else (h2, l2)
+        if pulita is None:
+            continue
+        h2p, l2p = pulita
         tolleranza = TOLLERANZA_CHIUSURA * (alto - basso)
         n3 = int(aperture[k2])
         n3_fine = fine_candela(n3, tf, we)
@@ -424,22 +429,38 @@ def trova(q: Quadro, tf: TF, dal: int, al: int) -> list[Setup]:
         entrata = _apertura(q, n3, c2)
         for verso in (Verso.SHORT, Verso.LONG):
             if verso is Verso.SHORT:
-                valido = h2 > alto and basso < c2 <= alto + tolleranza and l2 > basso
+                valido = h2p > alto and basso < c2 <= alto + tolleranza and l2 > basso
                 stop, tp1 = float(c.ask[k2, MASSIMO]), basso
                 giusto = stop > entrata > tp1
             else:
-                valido = l2 < basso and basso - tolleranza <= c2 < alto and h2 < alto
+                valido = l2p < basso and basso - tolleranza <= c2 < alto and h2 < alto
                 stop, tp1 = l2, alto
                 giusto = stop < entrata + spread < tp1
             if not (valido and giusto):
                 continue
             s = Setup(q.strumento, tf, verso, int(c.inizio[m]), alto, basso, k1 - m, int(c.inizio[k2]), n3, n3_fine,
-                      h2, l2, c2, entrata, spread, stop, tp1, prima_inizio=int(c.inizio[max(m - 1, 0)]))
+                      h2p, l2p, c2, entrata, spread, stop, tp1, prima_inizio=int(c.inizio[max(m - 1, 0)]))
             s.presi = key_level_presi(q, s)
             if tf is TF.H1:
                 s.h4_preso = _h4_preso(q, s)
             fuori.append(s)
     return fuori
+
+
+def _senza_rollover(q: Quadro, dal: int, al: int) -> Optional[tuple[float, float]]:
+    """Il massimo e il minimo (bid) delle ore in [dal, al) senza l'ora del rollover, le 17 di New York (le 23
+    italiane), quando sui conti raw lo spread si allarga e il bid fa stoppini che il mercato non ha fatto: il
+    proprietario, 12/10/2026, GBPCAD del 9/10, *"il dl non è stato sbilanciato"* (su FP il minimo delle 23 era
+    1.87890; su HistData e Yahoo, 8-10 pip piu' su, il DL non era preso). None se resta solo quell'ora."""
+    ore = q.ore
+    a, b = np.searchsorted(ore.inizio, [dal, al])
+    if b <= a:
+        return None
+    t = ore.inizio[a:b].astype(np.int64)
+    buone = (t + scarti_ny(t)) % 86400 != 17 * 3600
+    if not buone.any():
+        return None
+    return float(ore.bid[a:b, MASSIMO][buone].max()), float(ore.bid[a:b, MINIMO][buone].min())
 
 
 def key_level_presi(q: Quadro, s: Setup) -> list[Livello]:

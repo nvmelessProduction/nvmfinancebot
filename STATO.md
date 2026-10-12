@@ -5,6 +5,17 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (pomeriggio, dopo): lo stoppino del rollover non e' una presa
+
+GBPCAD del 9/10, CRT H6 long: per il bot la candela 2 aveva preso il DL (1.88009) con un minimo a 1.87890. Il
+proprietario: *"il prezzo non ha preso in primis kl, il dl non è stato sbilanciato"*. Era cosi': quel minimo c'e' solo
+su FP, alle 23 italiane (il rollover, le 17 di New York: sui conti raw lo spread si allarga e il bid fa stoppini);
+su HistData e Yahoo quell'ora restava 8-10 pip piu' su (1.87973, 1.87989) e il DL non era preso. Adesso la presa
+del range e dei key level della candela 2 si guarda senza l'ora del rollover (`foto._senza_rollover`); lo stop
+resta sull'estremo vero della candela 2. Il TP1 di quel trade era a 0,6 volte il rischio: con l'1:1,5 non si
+aprirebbe comunque. Gli orari: MT5 di FP mostra l'ora del server, un'ora avanti all'Italia (le 06:00 di MT5 sono le
+05:00 italiane del messaggio).
+
 ## 12/10/2026 (pomeriggio): le regole decidono, la squadra da' solo il parere; target almeno all'altro lato
 
 Un AUDUSD da manuale (presi WH e DH, poi CRT H1 alle 04:00 italiane, stop sul massimo della candela 2, TP1 al

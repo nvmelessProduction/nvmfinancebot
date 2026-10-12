@@ -437,3 +437,14 @@ def test_l_agente_dxy_legge_il_grafico_usdx_e_non_lo_calcola_piu():
     senza = [d for d in G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), coppie) if d.r.verso is Verso.SHORT]
     assert con and con[0].foto["dxy"] is not None and con[0].foto["dxy"].verso is Verso.LONG
     assert senza and senza[0].foto["dxy"] is None
+
+
+def test_lo_stoppino_del_rollover_non_e_una_presa():
+    # Il proprietario, 12/10/2026, GBPCAD del 9/10: *"il dl non è stato sbilanciato"*. Su FP il minimo era uno
+    # stoppino dell'ora del rollover (le 17 di New York): lo spread si allarga, il mercato non ci e' andato.
+    t0 = ny(2026, 9, 8, 17)
+    righe = [(t0 + k * ORA, 1.1000, 1.1050 if k == 0 else 1.1010, 1.0950 if k == 0 else 1.0990, 1.1000)
+             for k in range(6)]
+    q = F.Quadro.da(_ore(righe), t0 + 6 * ORA)
+    assert F._senza_rollover(q, t0, t0 + 6 * ORA) == pytest.approx((1.1010, 1.0990))
+    assert F._senza_rollover(q, t0, t0 + ORA) is None
