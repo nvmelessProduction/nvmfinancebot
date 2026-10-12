@@ -33,8 +33,9 @@ def tutto(ore: float = 6.0, strumenti: list[str] | None = None, dati: Path = Pat
 
 def passo2(minuti: float = 60, minuti_senza_occhi: float = 20, dati: Path = Path("/tmp/dati"),
            uscita: Path = Path("/kaggle/working")) -> dict:
-    """Il passo 2 (la scuola dell'esperienza): riscarica lo storico, prende i casi gia' preparati (`casi.npz`) e gli
-    occhi della prima notte (`occhi.pt`) che stanno nel pacchetto, allena e fa l'esame contro il bot."""
+    """Il passo 2 (la scuola dell'esperienza): riscarica lo storico, prende i casi gia' preparati (`casi.dati`, da
+    `prepara_casi`) e gli occhi della prima notte (`occhi.pesi`) che stanno nel pacchetto, allena e fa l'esame contro
+    il bot."""
     import torch
     from kaggle_rete import trader
     if not torch.cuda.is_available():
@@ -43,5 +44,6 @@ def passo2(minuti: float = 60, minuti_senza_occhi: float = 20, dati: Path = Path
     inizio = time.time()
     scarica_tutto(list(NOMI), dati, scrivi=lambda t: print(t, flush=True))
     print(f"storico scaricato in {(time.time() - inizio) / 60:.0f} minuti", flush=True)
-    return trader.tutto(dati, qui / "casi.npz", qui / "occhi.pt", uscita, minuti, minuti_senza_occhi,
+    # I nomi non finiscono in .npz e .pt: sono zip dentro, e Kaggle potrebbe aprirli come lo zip del pacchetto.
+    return trader.tutto(dati, qui / "casi.dati", qui / "occhi.pesi", uscita, minuti, minuti_senza_occhi,
                         scrivi=lambda t: print(t, flush=True))

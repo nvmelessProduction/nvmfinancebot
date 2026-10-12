@@ -1,0 +1,6 @@
+import glob, os, shutil, sys
+z = glob.glob('/kaggle/input/**/nvm-passo2*.zip', recursive=True)
+if z: shutil.unpack_archive(z[0], '/tmp/codice')
+sys.path[:0] = ['/tmp/codice'] + [os.path.dirname(os.path.dirname(p)) for p in glob.glob('/kaggle/input/**/kaggle_rete/trader.py', recursive=True)]
+from kaggle_rete.avvia import passo2
+passo2()
