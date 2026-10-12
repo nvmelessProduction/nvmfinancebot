@@ -472,7 +472,11 @@ class Squadra:
                 idee = sum(self.memoria.pesi_idee.get(k, 0.0) for k in self.memoria.idee if _idea_vera(k, visti))
                 stima = p * float(m.fatti.get("rr", 1.0)) - (1 - p) + idee
                 evita = False
-                capo_entra = m.a_piu and stop_ok and punti >= SOGLIA_PUNTI and not veto
+                # Con tutte le regole del metodo si entra: la squadra da' il suo parere ma non blocca piu' (il
+                # proprietario, 12/10/2026, dopo un AUDUSD perfetto lasciato per un voto contro: *"tu devi seguire
+                # quello che c'è scritto nelle foto e tutte le varie cose che io ti ho detto"*). Restano i no
+                # delle regole (`veto`: mai contro la previsione) e il Rischio decide quanto.
+                capo_entra = m.a_piu and stop_ok and not veto
                 parte, z = self._rischio(p, esposizione, stesso)
             else:
                 p = self._capo(giudizi)
@@ -570,6 +574,9 @@ class Squadra:
                    f"{_erre(SOGLIA_PUNTI)}): stimo che vada bene il {_p(p)} delle volte.")
         if entra:
             fine = (f" {'Compriamo' if compra else 'Vendiamo'} {m.fatti.get('strumento')}: decido io e la responsabilità è mia.")
+            if punti < SOGLIA_PUNTI:
+                fine = (" Le regole del metodo ci sono tutte, quindi si entra: la squadra dà il suo parere, ma non "
+                        f"blocca. {'Compriamo' if compra else 'Vendiamo'} {m.fatti.get('strumento')}.")
             if contro:
                 fine += f" Se va male, chi era contro peserà di più."
             return "Ho sentito tutti. " + sentiti + fine

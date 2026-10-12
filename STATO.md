@@ -5,6 +5,20 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (pomeriggio): le regole decidono, la squadra da' solo il parere; target almeno all'altro lato
+
+Un AUDUSD da manuale (presi WH e DH, poi CRT H1 alle 04:00 italiane, stop sul massimo della candela 2, TP1 al
+completamento del CRT con BE e 25%, target finale almeno il DL) il bot l'aveva trovato "con tutte le regole del
+metodo", ma il Capo l'ha lasciato perche' la squadra non arrivava a +3 (Grilletto -1). Il proprietario: *"tu devi
+seguire quello che c'è scritto nelle foto e tutte le varie cose che io ti ho detto"*, *"fai direttamente"*.
+
+- Con tutte le regole del metodo (CRT, key level, direzione) e almeno 1:1,5 si entra: i punti della squadra sono un
+  parere e si dicono in equipe, ma non bloccano (`squadra.riunione`). Restano i no delle regole (mai contro la
+  previsione), il massimo di 3 per giro, uno per strumento, e il Rischio che decide quanto.
+- Il target finale non sta mai prima dell'altro lato del key level piu' piccolo preso (`foto.target_minimo`: preso
+  il DH, almeno il DL). Stamattina il bot aveva preso come target un gap piu' vicino del DL. Tutti gli esempi delle
+  foto hanno gia' il target li' o oltre: i loro test passano uguali.
+
 ## 12/10/2026: mai sotto 1 a 1,5
 
 Tre trade del demo su H6 (AUDUSD, GBPUSD, US30, tutti short) avevano rendimento al target finale di 0,9, 0,7 e

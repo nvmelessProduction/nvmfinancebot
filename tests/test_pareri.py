@@ -107,7 +107,9 @@ def test_il_capo_pesa_tutti_e_decide_lui(tmp_path):
     assert "Contro: Livelli (-1)" in capo and "la responsabilità è mia" in capo
     poco = _pareri(Cacciatore=2, Bias=-2, Orario=-1)
     v2 = sq.riunione("no", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=poco)
-    assert v2.a_piu and not v2.entra and v2.punti < SOGLIA_PUNTI and "non è convinta" in v2.voci[-1][1]
+    # Dal 12/10/2026 (il proprietario: *"tu devi seguire quello che c'è scritto nelle foto"*) con tutte le regole si
+    # entra anche se la squadra non e' convinta: il suo e' un parere, e lo dice.
+    assert v2.a_piu and v2.entra and v2.punti < SOGLIA_PUNTI and "non blocca" in v2.voci[-2][1]
 
 
 def test_il_capo_impara_di_chi_fidarsi(tmp_path):

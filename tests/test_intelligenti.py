@@ -232,8 +232,10 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
         assert m.obbligatorie[0].si
         assert set(m.numeri) == set(AGENTI)
         v = verdetti[d.chiave]
-        # Entra solo con tutte le regole del metodo, abbastanza punti dalla squadra e se il Capo la sceglie nel giro.
-        assert v.entra == (m.a_piu and v.puntata > 0 and v.punti >= SOGLIA_PUNTI and not v.lasciata)
+        # Entra con tutte le regole del metodo, senza un no delle regole, se il Capo la sceglie nel giro: dal
+        # 12/10/2026 i punti della squadra sono un parere, non bloccano.
+        veto = v.pareri.get("Capo", {}).get("veto", "")
+        assert v.entra == (m.a_piu and v.puntata > 0 and not veto and not v.lasciata)
         assert [x.agente for x in v.pareri_squadra] == list(VOTANO)
     assert any(verdetti[d.chiave].entra for d in decisioni) and not all(verdetti[d.chiave].entra for d in decisioni)
     al_lavoro.valuta_piani(sq, {"EURUSD": base}, {}, max(d.scadenza for d in decisioni) + 1)
