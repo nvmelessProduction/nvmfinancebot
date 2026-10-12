@@ -5,6 +5,25 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (notte): l'analisi su TradingView, con i pulsanti Apri / Lascia
+
+Il proprietario: *"io voglio che la rete neurale analizzi il mercato su TradingView, sui pair che dico io, dei broker
+che dico io, e operi su MetaTrader 5"*. Le condizioni di TradingView (sezione 3) vietano il trading automatico sui loro
+dati senza un permesso scritto: il proprietario manda la richiesta a TradingView; intanto *"iniziamo facendo apri e
+lascia"*. Fatto (`nvm/vivo/tradingview.py`, VPS.md punto 6):
+- con `TRADINGVIEW_SIMBOLI` nel `.env` le candele (ore, quarti d'ora, giornaliere, DXY) arrivano da TradingView col
+  server MCP ufficiale (`get_ohlcv`, 5.000 candele al massimo: circa 10 mesi di ore, il resto dalle giornaliere);
+  login una volta con `tradingview_accesso.bat`, rinnovo da solo, chiavi in `dati/vivo/tradingview.json`;
+- quando la squadra entra, invece dell'ordine arriva la proposta coi pulsanti; con Apri si entra su MT5 a mercato con
+  stop e target di TradingView (controlli: scadenza 30 minuti, oltre stop/TP1, RR almeno 1,5, una per strumento);
+  ogni scelta va nel registro ("scelta del proprietario");
+- senza la riga nel `.env` il bot lavora come prima, su MT5. Se TradingView non risponde: allarme, niente analisi,
+  mai i prezzi di MT5 di nascosto.
+
+Da fare: il login sulla VPS e la riga nel `.env` (li fa il proprietario); la mail a TradingView per il permesso. Il
+formato preciso della risposta di `get_ohlcv` non e' documentato: il bot cerca la lista di candele `t, o, h, l, c`
+dentro la risposta, e `tradingview_accesso.bat` lo verifica sulla VPS.
+
 ## 12/10/2026 (sera): lo stop troppo vicino si allarga, non si scarta
 
 Il proprietario: *"se vede che c'ha uno stop troppo piccolo, aumenta di poco lo stop ... da un minimo di 5 o 10

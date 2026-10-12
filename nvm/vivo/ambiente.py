@@ -23,6 +23,12 @@ class Impostazioni:
     # Un bot Telegram per agente, se l'utente li ha creati: nome dell'agente -> token.
     # Nel .env: TELEGRAM_TOKEN_GRILLETTO=..., TELEGRAM_TOKEN_KEY_LEVEL=... Mai stampati.
     voci: dict = field(default_factory=dict, repr=False)
+    # I grafici di TradingView su cui il bot analizza (`nvm/vivo/tradingview.py`): (simbolo, strumento del bot).
+    # Nel .env: TRADINGVIEW_SIMBOLI=OANDA:EURUSD, OANDA:GBPUSD, OANDA:US30USD=US30. Vuota: si analizza su MT5.
+    tradingview: tuple[tuple[str, str], ...] = field(default=(), repr=False)
+    tradingview_sbagliati: tuple[str, ...] = field(default=(), repr=False)
+    # Il grafico del dollaro su TradingView (TRADINGVIEW_DXY=TVC:DXY).
+    tradingview_dxy: str = field(default="", repr=False)
 
     @property
     def telegram(self) -> bool:
@@ -52,8 +58,13 @@ def _chat(testo: str) -> tuple[str, ...]:
 
 def impostazioni(radice: Path, ambiente: Mapping[str, str] = os.environ) -> Impostazioni:
     """Dal `.env` di `radice`; le variabili d'ambiente, se ci sono, vincono."""
-    v = {**leggi_env(radice / ".env"), **{k: x for k, x in ambiente.items() if k.startswith(("TELEGRAM_", "MT5_"))}}
+    v = {**leggi_env(radice / ".env"),
+         **{k: x for k, x in ambiente.items() if k.startswith(("TELEGRAM_", "MT5_", "TRADINGVIEW_"))}}
+    from nvm.vivo.tradingview import leggi_simboli
+    tv, sbagliati = leggi_simboli(v.get("TRADINGVIEW_SIMBOLI", ""))
     return Impostazioni(
+        tradingview=tuple(tv), tradingview_sbagliati=tuple(sbagliati),
+        tradingview_dxy=v.get("TRADINGVIEW_DXY", "").strip().upper(),
         token=v.get("TELEGRAM_TOKEN", ""),
         chat_operativo=_chat(v.get("TELEGRAM_CHAT_ID", "")),
         chat_equipe=_chat(v.get("TELEGRAM_CHAT_EQUIPE", "")),

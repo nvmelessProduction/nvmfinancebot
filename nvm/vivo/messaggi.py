@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from nvm.agenti.cacciatore import Verso
 from nvm.agenti.conferme import Bias, Contesto
@@ -24,6 +25,7 @@ MESI = ("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", 
         "settembre", "ottobre", "novembre", "dicembre")
 # Sotto questa spinta (in R di guadagno atteso) un agente conta "quasi niente".
 POCO = 0.015
+ROMA = ZoneInfo("Europe/Rome")
 
 
 # --- numeri e parole -----------------------------------------------------------
@@ -236,6 +238,40 @@ def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: st
         return f"➖ {k} chiusa in pari: {euro(netto, valuta)}\n{_cap(come)}."
     segno, esito = ("✅", "in guadagno") if netto > 0 else ("❌", "in perdita")
     return f"{segno} {k} chiusa {esito}: {euro(netto, valuta)}\n{_cap(come)}."
+
+
+def ora_italiana(t: int) -> str:
+    return datetime.fromtimestamp(int(t), tz=timezone.utc).astimezone(ROMA).strftime("%H:%M")
+
+
+def proposta(d: Decisione, scade: int, grafico: str) -> str:
+    """Il canale operativo quando si analizza su TradingView: il setup coi prezzi del grafico, e la scelta a voi
+    (pulsanti Apri / Lascia sotto il messaggio)."""
+    k, op, r = d.r.strumento, d.op, d.r
+    rischio = abs(op.ingresso - op.stop) or 1e-12
+    f = getattr(d, "foto", None) or {}
+    ob = f.get("obiettivo")
+    righe = [f"📺 SETUP SU TRADINGVIEW · {grafico}",
+             f"{'🔴 VENDITA' if r.verso is Verso.SHORT else '🟢 ACQUISTO'} {k} · {coppia(d)}"]
+    allineati = [NOMI_TF.get(x, getattr(x, "value", str(x))) for x in f.get("allineati", [])]
+    if allineati:
+        righe.append(f"Stesso setup anche su: {', '.join(allineati)}")
+    righe += [f"Entrata: {prezzo(k, op.ingresso)} (apertura della candela 3)",
+              f"🛑 Stop: {prezzo(k, op.stop)}",
+              f"🎯 TP1: {prezzo(k, op.tp1)} (RR 1:{_it(abs(op.tp1 - op.ingresso) / rischio, 1)})",
+              f"🎯 Target finale{f' ({ob.nome})' if ob is not None else ''}: {prezzo(k, op.tp2)} "
+              f"(RR 1:{_it(abs(op.tp2 - op.ingresso) / rischio, 1)})",
+              f"Vale fino alle {ora_italiana(scade)} (ora italiana). Con «Apri» entro su MT5 a mercato, con stop e "
+              "target di TradingView. Senza il vostro «Apri» non apro niente."]
+    return "\n".join(righe)
+
+
+def tradingview_acceso(grafici: list[str], dxy: str) -> str:
+    righe = ["📺 Da adesso analizzo su TradingView, non più sui prezzi di MT5.",
+             f"Grafici: {', '.join(grafici)}" + (f"; dollaro: {dxy}" if dxy else ""),
+             "Quando trovo un setup ve lo propongo qui con i pulsanti «Apri» e «Lascia». Senza il vostro «Apri» "
+             "non apro niente: MT5 serve solo per gli ordini."]
+    return "\n".join(righe)
 
 
 def saltata(d: Decisione, motivo: str) -> str:

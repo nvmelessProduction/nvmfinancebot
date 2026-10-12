@@ -18,6 +18,8 @@ from nvm.vivo.ambiente import Impostazioni
 URL = "https://api.telegram.org/bot{token}/sendMessage"
 FOTO = "https://api.telegram.org/bot{token}/sendPhoto"
 AGGIORNAMENTI = "https://api.telegram.org/bot{token}/getUpdates"
+RISPOSTA_TASTO = "https://api.telegram.org/bot{token}/answerCallbackQuery"
+CAMBIA_TESTO = "https://api.telegram.org/bot{token}/editMessageText"
 
 
 def contesto() -> ssl.SSLContext:
@@ -67,6 +69,13 @@ class Ricevuto:
     chat: str
     testo: str
     quando: int      # UTC
+    # Un pulsante premuto sotto un messaggio del bot (Apri / Lascia): cosa dice il pulsante, il numero da dare a
+    # Telegram per rispondere, il messaggio e il suo testo, e chi l'ha premuto.
+    tasto: str = ""
+    id_tasto: str = ""
+    messaggio: int = 0
+    originale: str = ""
+    chi: str = ""
 
 
 class TroppiMessaggi(RuntimeError):
@@ -94,12 +103,15 @@ class Telegram:
         intervallo: float = INTERVALLO, in_coda: Optional[bool] = None,
         invia_come: Optional[Callable[[str, str, str], None]] = None,
         invia_foto: Optional[Callable[[str, bytes, str], None]] = None,
+        posta: Optional[Callable[[str, dict], None]] = None,
     ):
         self._imp = imp
         self._invia = invia or self._http
         # Per le voci degli agenti col loro bot: (token, chat, testo).
         self._invia_come = invia_come or self._http_come
         self._invia_foto = invia_foto or self._http_foto
+        # Le chiamate a Telegram che non sono messaggi (pulsanti, testi cambiati): (indirizzo, dati).
+        self._posta = posta or self._http_posta
         self._prendi = prendi or self._aggiornamenti
         self._stampa = stampa
         self._tentativi = tentativi
@@ -122,6 +134,17 @@ class Telegram:
         arrivati, prossimo = [], dal
         for u in self._prendi(dal):
             prossimo = max(prossimo, int(u["update_id"]) + 1)
+            q = u.get("callback_query")
+            if q:
+                m = q.get("message") or {}
+                chat = str(m.get("chat", {}).get("id", ""))
+                if chat in miei and q.get("data"):
+                    chi = q.get("from", {})
+                    arrivati.append(Ricevuto(int(u["update_id"]), chat, "", int(m.get("date", 0)), tasto=q["data"],
+                                             id_tasto=str(q.get("id", "")), messaggio=int(m.get("message_id", 0)),
+                                             originale=m.get("text", ""),
+                                             chi=chi.get("first_name") or chi.get("username") or ""))
+                continue
             m = u.get("message") or u.get("channel_post") or {}
             chat, testo = str(m.get("chat", {}).get("id", "")), m.get("text", "")
             if chat in miei and testo:
@@ -142,6 +165,38 @@ class Telegram:
 
     def operativo(self, testo: str) -> None:
         self._manda("operativo", self._imp.chat_operativo, testo)
+
+    def proposta(self, testo: str, tasti: list[tuple[str, str]]) -> None:
+        """Un messaggio sul canale operativo con dei pulsanti sotto (testo del pulsante, cosa manda al bot)."""
+        self._stampa(f"[operativo] {testo}  " + "  ".join(f"[{t}]" for t, _ in tasti))
+        if not self._imp.token:
+            return
+        pezzo = {"testo": testo[:LUNGHEZZA], "tasti": [[{"text": t, "callback_data": d} for t, d in tasti]]}
+        for c in self._imp.chat_operativo:
+            if self._in_coda:
+                self._coda.put(("operativo", c, pezzo, None))
+            else:
+                self._spedisci("operativo", c, pezzo, None)
+
+    def rispondi_tasto(self, id_tasto: str, testo: str = "") -> None:
+        """La risposta a un pulsante premuto (la scritta che compare un attimo sul telefono). Subito, senza coda."""
+        if not self._imp.token or not id_tasto:
+            return
+        try:
+            self._posta(RISPOSTA_TASTO, {"callback_query_id": id_tasto, "text": testo[:190]})
+        except Exception:
+            pass
+
+    def chiudi_tasti(self, chat: str, messaggio: int, testo: str) -> None:
+        """Toglie i pulsanti da un messaggio gia' mandato e ne cambia il testo (com'e' finita). Subito, senza coda."""
+        self._stampa(f"[operativo] (messaggio {messaggio}) {testo}")
+        if not self._imp.token or not messaggio:
+            return
+        try:
+            self._posta(CAMBIA_TESTO, {"chat_id": chat, "message_id": messaggio, "text": testo[:LUNGHEZZA],
+                                       "disable_web_page_preview": True})
+        except Exception:
+            pass
 
     def equipe(self, testo: str) -> None:
         self._manda("equipe", self._imp.chat_equipe, testo)
@@ -184,6 +239,9 @@ class Telegram:
             try:
                 if isinstance(pezzo, tuple):
                     self._invia_foto(chat, *pezzo)
+                elif isinstance(pezzo, dict):
+                    self._posta(URL, {"chat_id": chat, "text": pezzo["testo"], "disable_web_page_preview": True,
+                                      "reply_markup": {"inline_keyboard": pezzo["tasti"]}})
                 elif token:
                     self._invia_come(token, chat, pezzo)
                 else:
@@ -219,7 +277,8 @@ class Telegram:
         return not self._coda.unfinished_tasks
 
     def _aggiornamenti(self, dal: int) -> list[dict]:
-        dati = json.dumps({"offset": dal, "timeout": 0, "allowed_updates": ["message", "channel_post"]}).encode()
+        dati = json.dumps({"offset": dal, "timeout": 0,
+                           "allowed_updates": ["message", "channel_post", "callback_query"]}).encode()
         richiesta = urllib.request.Request(
             AGGIORNAMENTI.format(token=self._imp.token), data=dati, headers={"Content-Type": "application/json"},
         )
@@ -254,6 +313,20 @@ class Telegram:
 
     def _http(self, chat: str, testo: str) -> None:
         self._http_come(self._imp.token, chat, testo)
+
+    def _http_posta(self, indirizzo: str, dati: dict) -> None:
+        richiesta = urllib.request.Request(indirizzo.format(token=self._imp.token), data=json.dumps(dati).encode(),
+                                           headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(richiesta, timeout=20, context=contesto()) as r:
+                r.read()
+        except urllib.error.HTTPError as errore:
+            if errore.code == 429:
+                raise TroppiMessaggi(30.0) from None
+            # Il messaggio d'errore di urllib contiene l'indirizzo, e l'indirizzo il token.
+            raise RuntimeError(f"Telegram ha risposto {errore.code}") from None
+        except urllib.error.URLError as errore:
+            raise RuntimeError(f"Telegram non raggiungibile: {errore.reason}") from None
 
     def _http_come(self, token: str, chat: str, testo: str) -> None:
         dati = json.dumps({"chat_id": chat, "text": testo, "disable_web_page_preview": True}).encode()

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import subprocess
 import sys
 import threading
@@ -31,6 +32,7 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti import foto, livelli, manopole
+from nvm.agenti.cacciatore import Verso
 from nvm.agenti.grilletto import MODELLI_ROMEO, apertura_romeo, kod_superato
 from nvm.agenti.capo import Capo
 from nvm.agenti.rischio import USCITE
@@ -59,6 +61,7 @@ from nvm.prova.allenamento import leggi_memoria
 from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
 from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
+from nvm.vivo.tradingview import Accesso, ErroreTradingView, Fonte, TradingView
 
 RADICE = Path(__file__).resolve().parent
 # Gli strumenti su cui il bot opera dal vivo, sul conto demo: tutti quelli che conosce
@@ -81,6 +84,10 @@ CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una ver
 RITARDO_MASSIMO = 600     # metodo delle foto: oltre 10 minuti dall'apertura della candela 3 non si entra piu'
 # Telegram accetta didascalie fino a 1024 caratteri: il messaggio d'apertura ci sta, se no parte subito dopo la foto.
 DIDASCALIA = 1000
+# Analisi su TradingView: per quanto vale una proposta (Apri / Lascia) dall'apertura della candela 3, e il grafico del
+# dollaro se nel .env non c'e' TRADINGVIEW_DXY.
+VALIDITA_PROPOSTA = 1800
+DXY_TRADINGVIEW = "TVC:DXY"
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
@@ -228,6 +235,39 @@ class Bot:
         self._foto: list[dict] = []
         # Le foto delle operazioni appena aperte: si disegnano a fine giro, dopo tutti gli ordini.
         self._foto_da_fare: list = []
+        # Le candele da TradingView (`nvm/vivo/tradingview.py`), se nel .env ci sono i grafici: senza, da MT5.
+        self.fonte: Optional[Fonte] = None
+        # Le proposte mandate con i pulsanti Apri / Lascia e non ancora decise: numero -> decisione.
+        self.proposte: dict[str, dict] = {}
+
+    @property
+    def _fonte(self):
+        """Da dove arrivano le candele: TradingView se e' acceso, se no MT5 (gli ordini vanno sempre su MT5)."""
+        return getattr(self, "fonte", None) or self.terminale
+
+    @property
+    def _su_tradingview(self) -> bool:
+        return getattr(self, "fonte", None) is not None
+
+    def _accendi_tradingview(self) -> None:
+        """Con i grafici di TradingView nel .env (TRADINGVIEW_SIMBOLI) il bot analizza li'. Le condizioni di
+        TradingView vietano il trading automatico sui loro dati senza un permesso scritto: il bot propone, e apre
+        solo col vostro «Apri»."""
+        self.fonte = None
+        if self.imp.tradingview_sbagliati:
+            self.allarme("TradingView: questi grafici non li capisco: " + ", ".join(self.imp.tradingview_sbagliati) +
+                         ". Nel .env scrivili come OANDA:EURUSD, o col nome del bot dopo l'uguale: OANDA:US30USD=US30.")
+        if not self.imp.tradingview:
+            return
+        accesso = Accesso(CARTELLA)
+        dxy = self.imp.tradingview_dxy or DXY_TRADINGVIEW
+        self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy)
+        if not (CARTELLA / "riavvio").exists():
+            # Dopo un aggiornamento non si ripete: lo si dice all'avvio a mano.
+            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy))
+        if not accesso.pronto:
+            self.allarme("TradingView: manca l'accesso. Sulla VPS fai doppio clic su tradingview_accesso.bat ed entra "
+                         "col vostro account. Finché manca non analizzo niente; le operazioni aperte le seguo lo stesso.")
 
     def allarme(self, testo: str) -> None:
         """Un allarme sul canale operativo, al massimo una volta l'ora per lo stesso testo."""
@@ -258,19 +298,26 @@ class Bot:
             time.sleep(60)
         self.stato.scarto = self.terminale.scarto
         di(f"Ora del server: UTC{self.terminale.scarto:+d}.")
+        self._accendi_tradingview()
+        # Su TradingView si guardano i grafici scelti nel .env; se no tutti quelli che il bot conosce.
+        da_guardare = [n for _, n in self.imp.tradingview] if self._su_tradingview else list(STRUMENTI_VIVO)
         # Il broker puo' non avere tutti gli strumenti: quelli che mancano si saltano, e si dice quali.
         self.strumenti, mancanti = [], []
-        for i, strumento in enumerate(STRUMENTI_VIVO, 1):
-            di(f"Scarico le candele: {i}/{len(STRUMENTI_VIVO)} {strumento}")
+        for i, strumento in enumerate(da_guardare, 1):
+            di(f"Scarico le candele: {i}/{len(da_guardare)} {strumento}")
             if not self.terminale.esiste(strumento):
                 mancanti.append(strumento)
                 continue
             try:
-                self.basi[strumento] = self.terminale.orarie(strumento, ORARIE)
-                self.fini[strumento] = self.terminale.barre(strumento, QUARTI, 900)
+                self.basi[strumento] = self._fonte.orarie(strumento, ORARIE)
+                self.fini[strumento] = self._fonte.barre(strumento, QUARTI, 900)
                 self.strumenti.append(strumento)
             except ErroreMT5:
                 mancanti.append(strumento)
+            except ErroreTradingView as errore:
+                # Si riprova a ogni giro: lo strumento resta fra quelli guardati.
+                self.strumenti.append(strumento)
+                self.allarme(f"TradingView: {errore}")
         # Le operazioni ancora aperte su strumenti tolti dalla lista: il bot le segue lo stesso fino alla fine.
         for v in self.stato.vive:
             if v.strumento not in self.strumenti:
@@ -283,7 +330,7 @@ class Bot:
         di("Cerco il grafico del dollaro (USDX)...")
         self.aggiorna_dxy()
         if self.dxy is not None:
-            di(f"Dollaro: leggo il grafico {self.terminale.simbolo('DXY')}.")
+            di(f"Dollaro: leggo il grafico {self._fonte.simbolo('DXY')}.")
         di("Scarico le giornaliere di tanti anni (3, 6 e 12 mesi)...")
         self.aggiorna_lunghe(time.time())
         adesso = time.time()
@@ -339,7 +386,7 @@ class Bot:
         self._lunghe_del = giorno
         for s in self.strumenti + (["DXY"] if getattr(self, "dxy", None) is not None else []):
             try:
-                self.lunghe[s] = self.terminale.giornaliere(s, LUNGHE)
+                self.lunghe[s] = self._fonte.giornaliere(s, LUNGHE)
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
 
@@ -349,13 +396,16 @@ class Bot:
         self.dxy = getattr(self, "dxy", None)
         try:
             if self.dxy is None:
-                if self.terminale.esiste("DXY"):
-                    self.dxy = self.terminale.orarie("DXY", ORARIE)
+                if self._fonte.esiste("DXY"):
+                    self.dxy = self._fonte.orarie("DXY", ORARIE)
             else:
-                self.dxy = _unisci(self.dxy, self.terminale.orarie("DXY", 50), ORARIE)
+                self.dxy = _unisci(self.dxy, self._fonte.orarie("DXY", 50), ORARIE)
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        if self.dxy is None:
+        if self.dxy is None and self._su_tradingview:
+            self.allarme(f"TradingView: il grafico del dollaro ({self._fonte.simbolo('DXY')}) non arriva: l'agente DXY "
+                         "resta neutro finché non c'è.")
+        elif self.dxy is None:
             self.allarme("Sul conto non trovo il grafico del dollaro (USDX): l'agente DXY resta neutro finché non c'è.")
 
     def gemelli(self) -> dict[str, Minuti]:
@@ -647,6 +697,7 @@ class Bot:
 
     def minuto(self) -> None:
         self.ascolta()
+        self._scadute()
         if self._foto:
             self.consegna_foto()
         try:
@@ -705,6 +756,13 @@ class Bot:
             self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
             return
         for m in arrivati:
+            if getattr(m, "tasto", ""):
+                try:
+                    self._tasto(m)
+                except Exception:
+                    registra(CARTELLA, "errore", testo=traceback.format_exc())
+                    self.tg.rispondi_tasto(m.id_tasto, "Qualcosa non è andato: riprova fra un minuto")
+                continue
             if m.testo.lower().split("@")[0].startswith("/strumenti"):
                 try:
                     self.manda_simboli("operativo" if m.chat in self.imp.chat_operativo else "equipe")
@@ -733,6 +791,118 @@ class Bot:
             self.stato.romeo.append(e)
             self.tg.equipe(messaggi.romeo_ricevuta(e, s))
             registra(CARTELLA, "romeo dal vivo", **asdict(e))
+
+    # --- le proposte con i pulsanti (analisi su TradingView) ---
+
+    def _proponi(self, d, v) -> None:
+        """Il setup sul canale operativo, con i pulsanti «Apri» e «Lascia»: si apre solo se lo premete."""
+        ident = secrets.token_hex(4)
+        while ident in self.proposte:
+            ident = secrets.token_hex(4)
+        scade = int(d.r.quando) + VALIDITA_PROPOSTA
+        self.proposte[ident] = {"d": d, "v": v, "scade": scade}
+        grafico = self.fonte.simbolo(d.r.strumento) if self._su_tradingview else d.r.strumento
+        self.tg.proposta(messaggi.proposta(d, scade, grafico), [("✅ Apri", f"apri:{ident}"), ("❌ Lascia", f"lascia:{ident}")])
+        registra(CARTELLA, "proposta", chiave=d.chiave, grafico=grafico, ingresso=d.op.ingresso, stop=d.op.stop,
+                 tp1=d.op.tp1, tp2=d.op.tp2, scade=scade)
+
+    def _non_presa(self, p: dict) -> None:
+        """Una proposta non aperta: per la squadra conta come non presa."""
+        if p.get("v") is not None and self.squadra is not None:
+            self.squadra.annulla(p["d"].chiave)
+
+    def _scadute(self) -> None:
+        for ident, p in list(getattr(self, "proposte", {}).items()):
+            if time.time() > p["scade"]:
+                del self.proposte[ident]
+                self._non_presa(p)
+                registra(CARTELLA, "proposta scaduta", chiave=p["d"].chiave)
+
+    def _non_si_apre(self, p: dict) -> str:
+        """Perche' una proposta non si puo' piu' aprire ('' se si puo'). Oltre lo stop o il TP1 lo controlla
+        l'esecutore, come sempre."""
+        d = p["d"]
+        k = d.r.strumento
+        if time.time() > p["scade"]:
+            return f"è scaduta alle {messaggi.ora_italiana(p['scade'])}"
+        if any(x.strumento == k for x in self.stato.vive):
+            return f"su {k} c'è già un'operazione aperta"
+        bid, ask = self.terminale.prezzo(k)
+        prezzo = bid if d.r.verso is Verso.SHORT else ask
+        segno = -1 if d.r.verso is Verso.SHORT else 1
+        rischio = segno * (prezzo - d.op.stop)
+        resa = segno * (d.op.tp2 - prezzo)
+        if rischio > 0 and 0 < resa < foto.RR_MINIMO * rischio - 1e-12:
+            return (f"su MT5 il prezzo ({messaggi.prezzo(k, prezzo)}) si è mosso: il target finale renderebbe meno di "
+                    f"{foto.RR_MINIMO:g} volte il rischio")
+        return ""
+
+    def _tasto(self, m) -> None:
+        """Un pulsante premuto sotto una proposta. Chi ha scelto cosa va nel registro: sono le lezioni per la rete."""
+        azione, _, ident = m.tasto.partition(":")
+        if azione not in ("apri", "lascia"):
+            self.tg.rispondi_tasto(m.id_tasto)
+            return
+        chi = m.chi or "voi"
+
+        def fine(esito: str, breve: str) -> None:
+            self.tg.rispondi_tasto(m.id_tasto, breve)
+            self.tg.chiudi_tasti(m.chat, m.messaggio, (m.originale + "\n\n" if m.originale else "") + esito)
+
+        p = self.proposte.get(ident)
+        if p is None:
+            fine("⌛ Questa proposta non vale più (scaduta, già decisa, o il bot è ripartito).", "Non vale più")
+            return
+        d, v = p["d"], p["v"]
+        if azione == "lascia":
+            del self.proposte[ident]
+            self._non_presa(p)
+            registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="lascia", chi=chi)
+            fine(f"❌ Lasciata da {chi}.", "Lasciata")
+            return
+        motivo = self._non_si_apre(p)
+        if motivo:
+            del self.proposte[ident]
+            self._non_presa(p)
+            registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="apri", chi=chi, aperta=False,
+                     motivo=motivo)
+            fine(f"⚠️ Non aperta: {motivo}.", "Non aperta")
+            return
+        conto = self.terminale.conto()
+        if v is not None:
+            # Quanto puntare l'ha deciso il Rischio della squadra quando ha proposto.
+            viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata, parte=1.0,
+                                              fiducia_minima=0.0, riduci=False)
+        else:
+            viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
+        del self.proposte[ident]
+        registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="apri", chi=chi, aperta=viva is not None)
+        if viva is None:
+            self._non_presa(p)
+            fine("⚠️ Non aperta: " + fatto.testo, "Non aperta")
+            return
+        self.stato.vive.append(viva)
+        for s in self.stato.seguite:
+            if s.chiave == d.chiave:
+                s.entrata = True
+        self.stato.salva(CARTELLA)
+        fine(f"✅ Aperta da {chi}: {viva.volume:g} lotti a {messaggi.prezzo(viva.strumento, viva.ingresso)} su MT5.",
+             "Aperta")
+        con_foto = bool(getattr(d, "foto", None)) and foto_grafico.pronto()
+        self._disegna(d, viva, int(time.time()), fatto.testo if con_foto else None)
+        if not con_foto:
+            self.tg.operativo(fatto.testo)
+        self.manda_foto_operazioni()
+        conto = self.terminale.conto()
+        self._nel_libro("apertura", strumento=viva.strumento, verso=viva.verso, tickets=viva.tickets,
+                        volume=viva.volume, ingresso=viva.ingresso, stop=viva.stop, tp1=viva.tp1, tp2=viva.tp2,
+                        rischio=viva.rischio, valuta=viva.valuta, chiave=viva.chiave,
+                        chi_decide=f"{chi} con «Apri» (analisi su TradingView)")
+        if v is not None and self.squadra is not None:
+            saldo = conto.saldo
+            aperte_ora, quota_totale = self._esposizione(saldo)
+            self.tg.voci(al_lavoro.voci(v, viva.rischio, viva.valuta, viva.rischio / saldo if saldo else None,
+                                        aperte_ora, quota_totale), tema=self._tema(d))
 
     def _piano(self, m) -> None:
         """«/piano STRUMENTO TP1 TPFINALE»: cambia il piano dell'operazione aperta su quello strumento (il proprietario,
@@ -802,7 +972,12 @@ class Bot:
         coppie, la prima non aspetta che il bot abbia guardato tutte le altre."""
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
         for s in self.strumenti:
-            self.fini[s] = _unisci(self.fini[s], self.terminale.barre(s, 20, 900), QUARTI)
+            try:
+                self.fini[s] = (_unisci(self.fini[s], self._fonte.barre(s, 20, 900), QUARTI) if s in self.fini
+                                else self._fonte.barre(s, QUARTI, 900))
+            except ErroreTradingView as errore:
+                self.allarme(f"TradingView: {errore}")
+                continue
             if il_metodo() == "foto":
                 # Col metodo delle foto si entra all'apertura delle candele, che cadono tutte allo scoccare
                 # dell'ora: decide il giro orario.
@@ -828,10 +1003,15 @@ class Bot:
         tutte: dict[str, list] = {}
         for s in self.strumenti:
             try:
-                self.basi[s] = _unisci(self.basi[s], self.terminale.orarie(s, 50), ORARIE)
+                self._ore_nuove(s)
                 tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.gemelli(),
                                        lunghe=self.lunghe)
                 andati += 1
+            except ErroreTradingView as errore:
+                # Lo stesso allarme per tutti gli strumenti: arriva una volta sola, non uno per grafico.
+                ultimo_errore = errore
+                registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
+                self.allarme(f"TradingView: {errore}")
             except Exception as errore:
                 ultimo_errore = errore
                 registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
@@ -870,6 +1050,13 @@ class Bot:
                 passo()
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _ore_nuove(self, s: str) -> None:
+        """Le ore nuove dello strumento; se non ci sono ancora (all'avvio TradingView non rispondeva), tutte."""
+        if s in self.basi:
+            self.basi[s] = _unisci(self.basi[s], self._fonte.orarie(s, 50), ORARIE)
+        else:
+            self.basi[s] = self._fonte.orarie(s, ORARIE)
 
     def _previsioni_del_giorno(self, adesso: int) -> None:
         """Le previsioni del Bias su tutti gli strumenti, all'apertura del giorno (le tiene fino a sera)."""
@@ -1134,6 +1321,9 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
+            elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._su_tradingview:
+                # Sui grafici di TradingView il bot propone e decidete voi (pulsanti Apri / Lascia).
+                self._proponi(d, v)
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.

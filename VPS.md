@@ -95,6 +95,35 @@ fanno dal **computer di casa**.
    e premi **Commit changes**. Poi dillo a Claude. (In alternativa, se puoi copiarli sulla
    VPS: nella cartella del bot o sul Desktop, e doppio clic su `consegna.bat`.)
 
+## 6. Analizzare su TradingView (pulsanti Apri / Lascia)
+
+Il bot puo' analizzare sui grafici di TradingView che scegliete voi; gli ordini restano su MT5. Le condizioni di
+TradingView vietano il trading automatico sui loro dati senza un permesso scritto: finche' non arriva, il bot vi
+manda ogni setup sul canale operativo con due pulsanti, **Apri** e **Lascia**, e apre solo se premete Apri.
+
+1. **Il login, una volta sola.** Sulla VPS fai doppio clic su `tradingview_accesso.bat`. Si apre il browser: entra
+   col vostro account TradingView (serve il piano Essential o superiore) e premi **Allow**. La finestra poi prova a
+   leggere i grafici e scrive `OK` o `NO` per ognuno. Le chiavi restano sulla VPS in `dati\vivo\tradingview.json`:
+   non mandarle a nessuno.
+2. **I grafici.** Nel file `.env` aggiungi la riga coi grafici, scritti come su TradingView:
+   `TRADINGVIEW_SIMBOLI=OANDA:EURUSD, OANDA:GBPUSD, OANDA:XAUUSD`. Se il nome dopo i due punti e' diverso da
+   quello del bot, aggiungi il nome del bot dopo l'uguale: `OANDA:US30USD=US30`. Per il dollaro:
+   `TRADINGVIEW_DXY=TVC:DXY` (se manca, si usa quello).
+3. **Riavvia il bot** (chiudi la finestra di `avvia.bat` e rifai doppio clic). Sul canale operativo arriva
+   "📺 Da adesso analizzo su TradingView".
+
+Come funziona:
+- Quando c'e' un setup arriva il messaggio con entrata, stop, TP1 e target **ai prezzi di TradingView**, e fino a
+  che ora vale (30 minuti dall'apertura della candela 3).
+- **Apri**: il bot entra subito su MT5 a mercato, con stop e target di TradingView. Non entra se su MT5 il prezzo e'
+  gia' oltre lo stop o il TP1, se il target finale renderebbe meno di 1,5 volte il rischio, o se sullo strumento c'e'
+  gia' un'operazione. Il bot legge i pulsanti una volta al minuto: la risposta arriva entro un minuto.
+- **Lascia**: non si apre niente. Ogni scelta (chi, cosa, quando) va nel registro: sono le lezioni per la rete.
+- Se il bot si riavvia (anche per un aggiornamento), le proposte ancora aperte non valgono piu'.
+- Se TradingView non risponde o l'accesso scade, arriva un allarme e il bot non analizza: non torna mai di nascosto
+  ai prezzi di MT5. Le operazioni aperte le segue lo stesso. Per l'accesso scaduto: rifai il punto 1.
+- Per tornare ai prezzi di MT5: togli la riga `TRADINGVIEW_SIMBOLI` dal `.env` e riavvia.
+
 ## Se qualcosa va storto
 
 | Cosa vedi | Cosa vuol dire |
