@@ -1,4 +1,4 @@
-"""La scuola dei cervelli e il loro esame (`spec/cervello.md`).
+"""La scuola dei cervelli e il loro esame (`documenti/spec/cervello.md`).
 
 Ogni settimana, in palestra, la squadra dei cervelli torna a scuola sui vent'anni e fa
 l'esame contro il Capo di oggi: stesse occasioni, stesso Rischio, conto intero, ogni anno

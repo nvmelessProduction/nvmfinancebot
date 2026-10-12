@@ -1,7 +1,7 @@
 """La base (Fase D): prendere tutti i CRT col manuale, e vedere quanto rendono.
 
 Cacciatore -> Grilletto -> Livelli -> campo di prova, per ogni CRT. Il
-numero che esce e' quello da battere (`PIANO.md` §3).
+numero che esce e' quello da battere (`documenti/PIANO.md` §3).
 
 L'intervallo di confidenza si calcola **a blocchi di una settimana**: due
 operazioni della stessa settimana, anche su strumenti diversi, spesso sono
@@ -54,7 +54,7 @@ class Risultato:
 
 
 # Quante volte il Grilletto puo' sparare sullo stesso CRT: dopo la prima,
-# solo dopo uno stop e con un turtle soup nuovo (`spec/grilletto.md`). La
+# solo dopo uno stop e con un turtle soup nuovo (`documenti/spec/grilletto.md`). La
 # candela che prende lo stop puo' essere lei stessa il turtle soup nuovo: e'
 # la spinta che spazza e poi crolla ("one last turtle soup", il KOD).
 COLPI_PER_CRT = 3
@@ -100,7 +100,7 @@ def opera_candela_3(
     alte: Candele, basse: Candele, dal: int, al: int, trovati: Optional[list] = None,
     orarie: Optional[Candele] = None,
 ) -> list[Risultato]:
-    """Le operazioni del metodo dei video (`spec/metodo_romeo.md`): solo la candela 3, le tre entrate di
+    """Le operazioni del metodo dei video (`documenti/spec/metodo_romeo.md`): solo la candela 3, le tre entrate di
     Romeo (Model#1, vera rottura, kiss of death), al massimo una per entrata e per CRT (dopo uno stop non
     si rientra per vendetta). `trovati` sono i CRT della variante `CHIUSURA_DENTRO`, se chi chiama li ha
     gia' cercati; `orarie` le ore, per l'apertura di Romeo a mezzanotte di New York."""

@@ -1,6 +1,6 @@
-"""Il metodo delle foto del proprietario (06/10/2026): `spec/metodo_foto.md`.
+"""Il metodo delle foto del proprietario (06/10/2026): `documenti/spec/metodo_foto.md`.
 
-Il proprietario ha mandato 23 esempi (`casi/ESEMPI-PROPRIETARIO.md`) e alle domande ha risposto *"come
+Il proprietario ha mandato 23 esempi (`documenti/casi/ESEMPI-PROPRIETARIO.md`) e alle domande ha risposto *"come
 nelle foto"*. Qui le regole, una funzione per ognuna, tutte sulle sole candele gia' chiuse:
 
 - **il CRT** (`trova`): la candela 2 prende la liquidita' di un lato del range e chiude dentro; il range e'

@@ -1,6 +1,6 @@
 """Il Cacciatore, sugli schemi di Romeo e senza sbirciare il futuro.
 
-Gli schemi sono in `spec/FONTI-ROMEO.md`: la candela 1 fa il range, la 2 esce
+Gli schemi sono in `documenti/spec/FONTI-ROMEO.md`: la candela 1 fa il range, la 2 esce
 da un lato e rientra, la 3 va verso l'altro lato.
 """
 

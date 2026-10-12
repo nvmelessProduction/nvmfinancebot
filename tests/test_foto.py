@@ -1,4 +1,4 @@
-"""Il metodo delle foto del proprietario (`spec/metodo_foto.md`, `casi/ESEMPI-PROPRIETARIO.md`).
+"""Il metodo delle foto del proprietario (`documenti/spec/metodo_foto.md`, `documenti/casi/ESEMPI-PROPRIETARIO.md`).
 
 Le prove con i dati scritti a mano rifanno la struttura delle foto; quelle in fondo rifanno gli esempi veri
 sui dati di Dukascopy, se ci sono (stanno in `dati/`, che non va nel repository)."""
@@ -334,7 +334,7 @@ ESEMPI = [
     ("CASO-009", "XAUUSD", TF.H4, "2022-11-08 12:00", "L", 1683.7),
 ]
 # Con le regole del 07/10/2026 ("valgono per tutto") questi esempi non si prendono piu' o cambiano target. Il
-# proprietario lo sa (`registro/tentativi.md`, 07/10/2026): se una regola va ristretta lo dice lui.
+# proprietario lo sa (`documenti/registro/tentativi.md`, 07/10/2026): se una regola va ristretta lo dice lui.
 # id -> (timeframe che blocca, o None; target nuovo, o None se resta quello della foto)
 CAMBIATI = {
     "2/1": (TF.MN, None),          # il mensile di gennaio 2026 ha accettato al rialzo e non ha preso il suo massimo

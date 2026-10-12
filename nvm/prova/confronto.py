@@ -4,7 +4,7 @@ Si divide la base in due, si' e no, e si guarda la differenza fra le due
 medie. L'intervallo si calcola a blocchi di una settimana, come per la base
 (`nvm.prova.base`): si ripescano settimane intere, con dentro sia i si'
 sia i no. Poi si conta in quanti anni la differenza ha il segno di quella
-totale: il cancello chiede almeno l'80% (`PIANO.md` §2).
+totale: il cancello chiede almeno l'80% (`documenti/PIANO.md` §2).
 
 Qui si misura e basta. Se tenere la conferma, e quanto pesarla, lo decide
 il Capo nella Fase F, anno per anno, senza guardare avanti.

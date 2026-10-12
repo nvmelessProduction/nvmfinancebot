@@ -1,1 +1,1 @@
-"""Gli agenti dell'equipe. Ognuno risponde a una domanda sola (`PIANO.md` §1)."""
+"""Gli agenti dell'equipe. Ognuno risponde a una domanda sola (`documenti/PIANO.md` §1)."""

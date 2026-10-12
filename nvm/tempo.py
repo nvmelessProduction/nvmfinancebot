@@ -3,7 +3,7 @@
 Il proprietario, 08/10/2026, su un CRT a 4 ore di SPX500 entrato un'ora dopo la chiusura della candela che
 vedeva su MT5: *"mi adatti immediatamente l'orario, per favore, perché se no così sta cosa non si risolverà mai"*.
 Dal 06/10 al 08/10/2026 le candele aprivano alle 18:00 come sui future (*"devono partire come sul futures"*, per
-tre esempi sull'oro a 4 ore, `casi/ESEMPI-PROPRIETARIO.md`); prima e di nuovo ora alle 17:00, come il server di
+tre esempi sull'oro a 4 ore, `documenti/casi/ESEMPI-PROPRIETARIO.md`); prima e di nuovo ora alle 17:00, come il server di
 MT5 (la mezzanotte del broker), cioe' le 23 italiane. Ogni candela sopra il minuto si costruisce da qui:
 
     giornaliero   apre alle 17:00 di New York del giorno prima

@@ -1,5 +1,5 @@
 @echo off
-rem I video di Romeo per i cervelli: fotogrammi e parole (video.py). Doppio clic e basta.
+rem I video di Romeo per i cervelli: fotogrammi e parole (strumenti/video.py). Doppio clic e basta.
 rem Va sulla VPS o, meglio, sul computer di casa: da casa YouTube non blocca.
 rem Si puo' chiudere e riprendere quando vuoi: i video gia' fatti si saltano.
 cd /d "%~dp0"
@@ -24,6 +24,6 @@ if exist requirements.txt ".venv\Scripts\python.exe" -m pip install -q -r requir
 :pronto
 echo Preparo gli strumenti per i video...
 ".venv\Scripts\python.exe" -m pip install -q -U "yt-dlp[default,curl-cffi]" yt-dlp-getpot-wpc deno imageio-ffmpeg
-".venv\Scripts\python.exe" video.py
+".venv\Scripts\python.exe" -m strumenti.video
 echo.
 pause

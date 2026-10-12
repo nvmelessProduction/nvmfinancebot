@@ -203,7 +203,7 @@ def operazione(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> lis
 
 
 def operazione_foto(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -> list[Segno]:
-    """I disegni di un'operazione del metodo delle foto (`spec/metodo_foto.md`): il range (la candela 1 o la
+    """I disegni di un'operazione del metodo delle foto (`documenti/spec/metodo_foto.md`): il range (la candela 1 o la
     madre), la finta della candela 2, il key level preso, l'entrata all'apertura della candela 3, lo stop oltre la
     candela 2, il TP1 all'altro lato del range e il target finale (il gap o il key level)."""
     info = d.foto

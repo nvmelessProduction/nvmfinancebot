@@ -1,4 +1,4 @@
-"""Il metodo di Romeo dai 17 video: le domande prima di ogni operazione (`spec/metodo_romeo.md`).
+"""Il metodo di Romeo dai 17 video: le domande prima di ogni operazione (`documenti/spec/metodo_romeo.md`).
 
 Ogni domanda dice di chi e' il mestiere, da quale video e minuto viene, la risposta (si' o no) e il
 perche' in parole semplici (sono le frasi che arrivano su Telegram).
@@ -468,7 +468,7 @@ def _key_level(alte: Candele, crt, estremo: float, short: bool, amp: float) -> t
     return list(dict.fromkeys(tipi)), finto, prezzi
 
 
-# --- Il metodo delle foto del proprietario (06/10/2026, `spec/metodo_foto.md`) --------------------------
+# --- Il metodo delle foto del proprietario (06/10/2026, `documenti/spec/metodo_foto.md`) --------------------------
 
 FOTO = "le foto del proprietario"
 NOMI_TF_FOTO = {TF.H1: "a 1 ora", TF.H4: "a 4 ore", TF.H6: "a 6 ore", TF.H12: "a 12 ore", TF.D1: "giornaliero",

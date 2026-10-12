@@ -1938,12 +1938,12 @@ class Bot:
         self.consegna()
 
     def consegna(self) -> None:
-        """Le settimane dal vivo vanno alla palestra (`consegna.py`), se nel .env c'e' il GITHUB_TOKEN.
+        """Le settimane dal vivo vanno alla palestra (`strumenti/consegna.py`), se nel .env c'e' il GITHUB_TOKEN.
         In un processo a parte: il bot non aspetta GitHub."""
         if not leggi_env(RADICE / ".env").get("GITHUB_TOKEN"):
             return
         try:
-            subprocess.Popen([sys.executable, str(RADICE / "consegna.py"), "--solo-vivo"], cwd=RADICE,
+            subprocess.Popen([sys.executable, "-m", "strumenti.consegna", "--solo-vivo"], cwd=RADICE,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as errore:
             registra(CARTELLA, "errore", testo=f"consegna non partita: {errore!r}")

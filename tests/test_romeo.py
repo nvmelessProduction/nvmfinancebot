@@ -25,7 +25,7 @@ def test_il_server_di_romeo_e_new_york_piu_sette():
 
 
 def test_il_catalogo_si_legge_tutto():
-    tutte = leggi(RADICE / "casi" / "entrate-romeo.csv")
+    tutte = leggi(RADICE / "documenti" / "casi" / "entrate-romeo.csv")
     assert len(tutte) >= 100
     assert {e.periodo for e in tutte} == {"studio", "sigillato"}
     assert all(e.dal < e.al for e in tutte)
@@ -175,7 +175,7 @@ def test_la_fiducia_in_romeo_si_impara_dai_risultati():
 
 
 def test_l_auc_del_banco_di_prova_conta_i_pari_merito_a_meta():
-    from banco import auc
+    from strumenti.banco import auc
     y = np.array([True, False, True, False])
     assert auc(np.array([0.9, 0.1, 0.8, 0.2]), y) == 1.0
     assert auc(np.array([0.1, 0.9, 0.2, 0.8]), y) == 0.0

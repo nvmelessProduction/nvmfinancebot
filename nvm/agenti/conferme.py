@@ -1,6 +1,6 @@
 """Le prime Conferme: key level, orario e bias.
 
-Regole in `spec/conferme.md`. Ogni conferma risponde a una domanda sola, su
+Regole in `documenti/spec/conferme.md`. Ogni conferma risponde a una domanda sola, su
 uno scatto del Grilletto, e non decide niente: il Capo impara quanto
 fidarsi. `None` vuol dire "non so" (non ci sono abbastanza candele).
 
@@ -40,7 +40,7 @@ SCONTO = 0.5
 
 # La Golden candle time di Romeo: 9:00-13:00 di New York (msg 6110).
 GCT = (9, 13)
-# Le ore in cui entra Romeo, di New York (`spec/conferme.md`, le risposte alla Romeo).
+# Le ore in cui entra Romeo, di New York (`documenti/spec/conferme.md`, le risposte alla Romeo).
 LONDRA = (1, 5)
 NEW_YORK = (8, 11)
 # Quale range e' piu' grande: una coppia sta dentro l'altra se il suo range e' piu' piccolo.
@@ -188,7 +188,7 @@ def contesto(s: Scatto, alte: Candele, sopra: Candele) -> Optional[Contesto]:
 
 @dataclass(frozen=True)
 class AllaRomeo:
-    """Le quattro domande di `spec/conferme.md`, "le risposte alla Romeo"."""
+    """Le quattro domande di `documenti/spec/conferme.md`, "le risposte alla Romeo"."""
 
     londra: bool
     new_york: bool
@@ -267,7 +267,7 @@ def alla_romeo(s: Scatto, basse: Candele, settimane: Candele, grandi: Grandi) ->
 class Liquidita:
     """La terza gamba del manuale di Romeo: *"Mark a pre-manipulation swing
     high/low"* (msg 6718), *"pre-manipulation liquidity pool"* (msg 3860).
-    La risposta del Grilletto, che guarda il timeframe basso (`spec/conferme.md`)."""
+    La risposta del Grilletto, che guarda il timeframe basso (`documenti/spec/conferme.md`)."""
 
     # La manipolazione supera un massimo di swing del timeframe basso, nato
     # dopo l'inizio del range e non ancora preso prima del turtle soup.

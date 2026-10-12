@@ -1,0 +1,73 @@
+python -m strumenti.romeo --configurazioni 1-8 --righe   (24/09/2026, catalogo casi/entrate-romeo.csv, dati orari Dukascopy)
+
+112 entrate nel catalogo; 15 su strumenti non ancora nei dati (NAS100, SPX500).
+
+Periodo di studio (2023), strumenti nostri: 53 entrate, 41 con l'ingresso letto, 25 anche con lo stop.
+Letture che non reggono (il prezzo non e' mai passato dall'ingresso): 0 su 82
+Esiti misurati sulle ore (studio): {'senza prezzi': 20, 'target': 8, 'stop': 5, 'aperta': 1, 'incerto': 7}; rispetto a quello che dice Romeo: {'uguale': 9, 'diverso': 2}
+CRT armato nello stesso verso durante la finestra di Romeo (coppie del manuale): MN-D1 26, W1-H4 37, D1-H1 42, almeno una 49 (su 53); nel verso opposto, almeno una: 45
+
+Il cancello: ritrovate entro meta' del rischio su 25 con lo stop letto (ne servono 7 su 10), e operazioni del bot per ognuna di Romeo nelle stesse settimane (al massimo 3; Romeo 53). Delle 25, 11 sono sul timeframe alto (stop di 15 pip o piu') e 14 sul basso.
+conf  variante         stop     coppie        vicine ritrovate di cui alto col Capo per Romeo col Capo
+   1  manuale          estremo  manuale           32         6           6        3      25.8      7.2
+   2  manuale          stretto  manuale           34         6           6        2      30.8      4.1
+   3  chiusura dentro  estremo  manuale           20         4           4        1       5.4      1.3
+   4  chiusura dentro  stretto  manuale           20         4           4        1       6.7      0.7
+   5  manuale          estremo  gradino sotto     21         4           4        2       9.4      2.5
+   6  manuale          stretto  gradino sotto     20         4           4        1      10.8      2.2
+   7  chiusura dentro  estremo  gradino sotto      3         0           0        0       1.3      0.5
+   8  chiusura dentro  stretto  gradino sotto      4         0           0        0       1.5      0.3
+
+R034 AUDUSD short idea       2023-05-09 17:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: MN-D1 a 0.67003, distanza ? rischi
+R002 EURUSD long  idea       2023-02-12 17:00 NY  esito target  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.067, distanza 0.1 rischi
+R003 EURUSD long  esecuzione 2023-02-14 17:00 NY  esito target  CRT armati: D1-H1  bot 1: D1-H1 a 1.069, distanza 9.1 rischi
+R007 EURUSD short idea       2023-02-27 17:00 NY  esito stop  CRT armati: MN-D1, D1-H1  bot 1: D1-H1 a 1.0666, distanza 1.2 rischi
+R012 EURUSD short esecuzione 2023-03-12 17:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: D1-H1 a 1.0707, distanza ? rischi
+R013 EURUSD short idea       2023-03-12 17:00 NY  esito stop  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: D1-H1 a 1.0732, distanza 0.1 rischi
+R016 EURUSD short esecuzione 2023-03-14 05:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.0731, distanza ? rischi
+R017 EURUSD long  esecuzione 2023-03-24 03:00 NY  CRT armati: MN-D1, D1-H1  bot 1: niente
+R025 EURUSD long  idea       2023-04-09 17:00 NY  esito senza prezzi  CRT armati: MN-D1, D1-H1  bot 1: D1-H1 a 1.0856, distanza ? rischi
+R026 EURUSD short esecuzione 2023-04-10 02:00 NY  esito target  CRT armati: MN-D1, W1-H4  bot 1: niente
+R029 EURUSD short esecuzione 2023-04-23 17:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.104, distanza ? rischi
+R030 EURUSD short esecuzione 2023-04-25 17:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4  bot 1: niente
+R031 EURUSD short idea       2023-04-25 17:00 NY  esito aperta  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: D1-H1 a 1.1043, distanza 0.3 rischi
+R032 EURUSD short esecuzione 2023-04-25 17:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.1013, distanza ? rischi
+R037 EURUSD long  esecuzione 2023-05-18 07:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: niente
+R039 EURUSD long  idea       2023-05-23 17:00 NY  esito target  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.0726, distanza 2.3 rischi
+R040 EURUSD long  esecuzione 2023-06-12 17:00 NY  esito target  CRT armati: nessuno  bot 1: niente
+R041 EURUSD short esecuzione 2023-06-19 01:00 NY  esito incerto  CRT armati: D1-H1  bot 1: niente
+R042 EURUSD short esecuzione 2023-07-13 17:00 NY  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: MN-D1 a 1.1228, distanza ? rischi
+R044 EURUSD long  esecuzione 2023-08-03 17:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: niente
+R045 EURUSD long  esecuzione 2023-08-07 17:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.0946, distanza ? rischi
+R046 EURUSD short idea       2023-08-10 17:00 NY  esito stop  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: niente
+R047 EURUSD short esecuzione 2023-09-19 07:00 NY  CRT armati: D1-H1  bot 1: D1-H1 a 1.07, distanza ? rischi
+R048 EURUSD short esecuzione 2023-09-20 14:00 NY  esito incerto  CRT armati: D1-H1  bot 1: niente
+R050 EURUSD long  idea       2023-10-03 17:00 NY  esito incerto  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.0472, distanza 0.3 rischi
+R051 EURUSD long  idea       2023-10-08 17:00 NY  esito target  CRT armati: MN-D1, W1-H4  bot 1: niente
+R052 EURUSD short esecuzione 2023-10-11 17:00 NY  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.062, distanza ? rischi
+R053 EURUSD long  esecuzione 2023-10-17 04:00 NY  esito senza prezzi  CRT armati: MN-D1  bot 1: niente
+R054 EURUSD short idea       2023-10-18 17:00 NY  esito incerto  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.0581, distanza 2.1 rischi
+R057 EURUSD long  esecuzione 2023-12-06 08:50 NY  esito incerto  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.0798, distanza 4.5 rischi
+R058 EURUSD long  esecuzione 2023-12-11 10:42 NY  esito senza prezzi  CRT armati: D1-H1  bot 1: niente
+R059 EURUSD long  esecuzione 2023-12-12 09:36 NY  esito incerto  CRT armati: nessuno  bot 1: niente
+R060 EURUSD short esecuzione 2023-12-14 01:40 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: niente
+R061 EURUSD short esecuzione 2023-12-28 02:00 NY  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.1073, distanza ? rischi
+R004 GBPUSD short idea       2023-02-14 17:00 NY  esito senza prezzi  CRT armati: W1-H4  bot 1: niente
+R005 GBPUSD long  idea       2023-02-19 16:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: niente
+R006 GBPUSD short esecuzione 2023-02-22 17:00 NY  CRT armati: nessuno  bot 1: niente
+R008 GBPUSD long  esecuzione 2023-03-02 17:00 NY  CRT armati: W1-H4  bot 1: W1-H4 a 1.1986, distanza ? rischi
+R009 GBPUSD short esecuzione 2023-03-02 17:00 NY  CRT armati: D1-H1  bot 1: niente
+R010 GBPUSD short idea       2023-03-02 17:00 NY  esito target  CRT armati: D1-H1  bot 1: D1-H1 a 1.2028, distanza 0.4 rischi
+R018 GBPUSD short esecuzione 2023-03-27 17:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.2309, distanza ? rischi
+R019 GBPUSD short esecuzione 2023-03-28 17:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: W1-H4 a 1.2308, distanza ? rischi
+R020 GBPUSD long  esecuzione 2023-03-30 17:00 NY  esito target  CRT armati: MN-D1, D1-H1  bot 1: D1-H1 a 1.2297, distanza 0.1 rischi
+R021 GBPUSD short esecuzione 2023-04-02 17:00 NY  esito stop  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: niente
+R023 GBPUSD short esecuzione 2023-04-04 01:00 NY  esito incerto  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: D1-H1 a 1.2471, distanza 17.9 rischi
+R028 GBPUSD short esecuzione 2023-04-18 09:00 NY  esito senza prezzi  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: D1-H1 a 1.2429, distanza ? rischi
+R036 GBPUSD long  esecuzione 2023-05-17 07:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1.2461, distanza 10.9 rischi
+R049 GBPUSD short esecuzione 2023-09-25 17:00 NY  esito stop  CRT armati: nessuno  bot 1: niente
+R055 GBPUSD short esecuzione 2023-11-05 17:00 NY  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: W1-H4 a 1.2371, distanza ? rischi
+R011 USDJPY short esecuzione 2023-03-10 05:00 NY  CRT armati: MN-D1, W1-H4  bot 1: niente
+R015 USDJPY long  esecuzione 2023-03-12 17:00 NY  esito senza prezzi  CRT armati: W1-H4, D1-H1  bot 1: W1-H4 a 133.86, distanza ? rischi
+R033 XAUUSD short bias       2023-05-02 17:00 NY  CRT armati: MN-D1, W1-H4, D1-H1  bot 1: MN-D1 a 2016.3, distanza ? rischi
+R056 XAUUSD long  esecuzione 2023-11-13 05:00 NY  CRT armati: W1-H4, D1-H1  bot 1: D1-H1 a 1938.6, distanza ? rischi

@@ -1,10 +1,10 @@
-"""La consegna dei dati dalla VPS alla palestra (`consegna.py`)."""
+"""La consegna dei dati dalla VPS alla palestra (`strumenti/consegna.py`)."""
 
 import subprocess
 
 import numpy as np
 
-import consegna
+from strumenti import consegna
 from nvm.dati.candele import costruisci
 from nvm.dati.minuti import Minuti, file_del_mese
 from nvm.tempo import TF, utc
@@ -110,7 +110,7 @@ def test_il_bot_spedisce_le_settimane_solo_se_c_e_il_token(tmp_path, monkeypatch
 
 
 def test_le_ore_delle_coppie_nuove_vanno_e_tornano_un_mese_per_file(tmp_path):
-    from importa_vps import salva_mesi_nuovi
+    from strumenti.importa_vps import salva_mesi_nuovi
     grezzi = tmp_path / "grezzi"
     for mese in (1, 2):
         ore = consegna.a_quarti(passeggiata("EURGBP", utc(2020, mese, 1), utc(2020, mese, 3), seme=mese), 3600)

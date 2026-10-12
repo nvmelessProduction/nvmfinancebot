@@ -8,7 +8,7 @@ stretto a Londra) e con gli anni (1,2 pip nel 2006, 0,3 oggi): una media
 unica lo falserebbe.
 
 E' comunque un'approssimazione, e si dichiara: dove c'e' l'ask vero si usa
-quello, e la prova con lo spread x 1,5 (`PIANO.md` §3, Fase F) resta
+quello, e la prova con lo spread x 1,5 (`documenti/PIANO.md` §3, Fase F) resta
 obbligatoria.
 """
 
@@ -71,7 +71,7 @@ class ModelloSpread:
 def allarga(candele: Candele, fattore: float) -> Candele:
     """Le stesse candele con lo spread moltiplicato: l'ask si allontana dal bid.
 
-    Serve alla prova di robustezza della Fase F (`PIANO.md` §3): una
+    Serve alla prova di robustezza della Fase F (`documenti/PIANO.md` §3): una
     strategia che vive solo di spread stretto non regge dal vivo.
     """
     ask = candele.bid + fattore * (candele.ask - candele.bid)

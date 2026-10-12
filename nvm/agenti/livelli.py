@@ -1,19 +1,19 @@
 """Livelli: dove vanno stop, primo target e target finale.
 
-Il manuale (`spec/grilletto.md`, "Da passare agli altri agenti"):
+Il manuale (`documenti/spec/grilletto.md`, "Da passare agli altri agenti"):
 
 - **stop** appena oltre l'estremo del turtle soup: "turtle soup high has to
   be the ceiling" (Romeo, msg 163); ma mai piu' vicino all'ingresso di un
   quarto del range: "Your stoploss is 25% of the range, if it hits it you're
   wrong" (04/02/2023). Gli stop piu' stretti li mangiano il rumore e i costi
-  (`STOP_MINIMO`, `registro/tentativi.md`, 25/09/2026);
+  (`STOP_MINIMO`, `documenti/registro/tentativi.md`, 25/09/2026);
 - **primo target** al 50% del range: "the 50% is almost always guaranteed"
   (msg 6561);
 - **target finale** oltre il lato opposto del range, di meta' dell'ampiezza
   del CRT (`OLTRE`). Il manuale dice "take profit at 50% and then CRTH/L";
   ma dove si leggono i suoi target del 2023 stanno oltre il lato, fra 1,2 e
   1,8 volte il range, e sui vent'anni il target oltre il lato rende di piu'
-  (`registro/tentativi.md`, 25/09/2026);
+  (`documenti/registro/tentativi.md`, 25/09/2026);
 - **niente operazione** se l'ingresso e' gia' oltre il 50%: il primo target
   starebbe alle spalle.
 
@@ -45,7 +45,7 @@ from nvm.tempo import TF
 OLTRE = 0.5
 # Lo stop va a pareggio arrivati a questa frazione del cammino fra ingresso e
 # primo target: 1 = al primo target, come fino al 25/09/2026. La manopola la
-# gira l'allenamento (`spec/allenamento.md`).
+# gira l'allenamento (`documenti/spec/allenamento.md`).
 PAREGGIO = 1.0
 # Le uscite prima dello stop (spente all'inizio, le accende l'allenamento se
 # migliorano le prestazioni): dopo tante candele basse di fila chiuse oltre il
@@ -72,7 +72,7 @@ def piano(
     del Model#1 (l'apertura della candela del turtle soup) invece che oltre
     l'estremo. E' quello che Romeo fa nelle operazioni che ha pubblicato:
     stop di 1-5 pip su EURUSD e GBPUSD, e sull'oro il 17/07/2024 stop a 2474
-    con il livello a 2473,26 (`casi/CASO-004.md`).
+    con il livello a 2473,26 (`documenti/casi/CASO-004.md`).
     """
     crt = s.crt
     short = crt.verso is Verso.SHORT

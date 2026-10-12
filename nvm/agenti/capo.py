@@ -1,6 +1,6 @@
 """Il Capo: tutto considerato, conviene entrare?
 
-Regole in `spec/capo.md`. Due regressioni logistiche: `p1`, la probabilita'
+Regole in `documenti/spec/capo.md`. Due regressioni logistiche: `p1`, la probabilita'
 di arrivare al primo target prima dello stop, e `q`, quella di arrivare al
 secondo dopo il primo. Si entra solo se il guadagno atteso
 
@@ -34,7 +34,7 @@ COLONNE_BASE = (
     # Aggiunta il 24/09/2026 per il bot dal vivo: nello storico non ci sono i
     # 15 minuti di vent'anni, quindi il Capo su questa coppia impara dal vivo.
     "coppia H4-M15",
-    # Le risposte alla Romeo (`spec/conferme.md`), aggiunte il 24/09/2026.
+    # Le risposte alla Romeo (`documenti/spec/conferme.md`), aggiunte il 24/09/2026.
     "ora di Romeo: Londra", "ora di Romeo: New York", "dentro un CRT più grande", "a sconto sulla settimana",
     # La liquidita' presa dalla manipolazione (la terza gamba di Romeo), aggiunta il 25/09/2026.
     "liquidità presa prima", "liquidità presa sopra il CRT",
@@ -50,7 +50,7 @@ PENALITA = 1.0
 # anno (registro/tentativi.md, 24/09/2026): 1 anno ha fatto meglio di 2, 4, 8
 # e di nessun peso.
 EMIVITA_ANNI = 1.0
-# La somiglianza a Romeo (`spec/capo.md`): la penalita' della sua regressione.
+# La somiglianza a Romeo (`documenti/spec/capo.md`): la penalita' della sua regressione.
 PENALITA_ROMEO = 10.0
 # Le colonne che guarda la somiglianza a Romeo: solo le risposte alla Romeo e
 # la liquidita' presa. Con tutte le colonne, fuori campione, riconosceva le sue
@@ -157,7 +157,7 @@ class Capo:
     # Le combinazioni di due colonne che il Capo prova, nate dai consigli fra
     # agenti nella riunione: il prodotto delle due colonne diventa una colonna in piu'.
     interazioni: tuple[tuple[int, int], ...] = ()
-    # La somiglianza a Romeo (`spec/capo.md`, "Il Capo impara Romeo"): una
+    # La somiglianza a Romeo (`documenti/spec/capo.md`, "Il Capo impara Romeo"): una
     # regressione imparata dalle sue entrate. E' un parere che l'equipe sente,
     # non un obbligo: il Capo decide col guadagno atteso.
     romeo: Optional[Logistica] = None

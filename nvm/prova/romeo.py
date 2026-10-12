@@ -1,7 +1,7 @@
 """Le entrate di Romeo contro i prezzi veri e contro il bot.
 
-Il metro del `PIANO.md` (il cambio del 24/09/2026): il bot deve fare le
-entrate che farebbe Romeo. Il catalogo e' `casi/entrate-romeo.csv`, letto
+Il metro del `documenti/PIANO.md` (il cambio del 24/09/2026): il bot deve fare le
+entrate che farebbe Romeo. Il catalogo e' `documenti/casi/entrate-romeo.csv`, letto
 dalle foto del suo canale: ogni riga dice lo strumento, il verso, la finestra
 in cui Romeo e' entrato e i prezzi che si leggono (ingresso, stop, target),
 quando si leggono. Gli orari sono quelli del suo server MT5, che segna New
@@ -18,7 +18,7 @@ Qui si fanno quattro cose:
    Romeo entrava?
 4. `ritrovata`: il bot ha fatto la stessa entrata? Stesso strumento, stesso
    verso, ingresso nella finestra di Romeo, e prezzo entro meta' del suo
-   rischio (la soglia del `PIANO.md`).
+   rischio (la soglia del `documenti/PIANO.md`).
 """
 
 from __future__ import annotations

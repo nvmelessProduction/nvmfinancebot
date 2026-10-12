@@ -1,9 +1,9 @@
-"""Domande provate per gli agenti, per il banco di prova (`banco.py`).
+"""Domande provate per gli agenti, per il banco di prova (`strumenti/banco.py`).
 
 Ogni gruppo e' una lista di nomi e una funzione che, per un'operazione, le
 sue candele basse e le candele del contesto, risponde con un numero per nome
 (0 = no). Qui restano anche quelle che non hanno aiutato: il registro
-(`registro/tentativi.md`, 25/09/2026) le cita, e cosi' si possono rifare.
+(`documenti/registro/tentativi.md`, 25/09/2026) le cita, e cosi' si possono rifare.
 Quelle entrate nel bot vivono negli agenti (`nvm/agenti/conferme.py`).
 """
 

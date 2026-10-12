@@ -178,7 +178,7 @@ def test_il_giro_decide_come_lo_storico():
     attese = set()
     for alto, basso in COPPIE:
         alte, basse = costruisci(base, alto).chiuse_entro(fine + ORA), costruisci(base, basso).chiuse_entro(fine + ORA)
-        # Il metodo dei video: solo la candela 3 (`spec/metodo_romeo.md`).
+        # Il metodo dei video: solo la candela 3 (`documenti/spec/metodo_romeo.md`).
         attese |= {(r.alto_tf, r.verso, r.quando, r.colpo) for r in opera_candela_3(alte, basse, inizio + 1, fine + 1)}
     viste, dal = set(), inizio + 1
     for adesso in range(inizio + 12 * ORA, fine + 1, 12 * ORA):

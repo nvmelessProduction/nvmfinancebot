@@ -1,4 +1,4 @@
-"""L'allenamento degli agenti (`spec/allenamento.md`): ognuno impara dai suoi errori.
+"""L'allenamento degli agenti (`documenti/spec/allenamento.md`): ognuno impara dai suoi errori.
 
 Ogni settimana, per ogni specialista:
 
@@ -579,7 +579,7 @@ def breve(etichetta: str, ritocchi: int, nuove: int, tenute: list, idee_tenute: 
 
 def ritrovate_da_romeo(t: Tabella, radice: Path, catalogo: Path) -> int:
     """Quante entrate di Romeo del 2023 il Capo ritrova (entro meta' del suo rischio), allenato
-    fino al 2022 su questa tabella: lo stesso conto di `romeo.py` ("il Capo senza la voce di Romeo")."""
+    fino al 2022 su questa tabella: lo stesso conto di `strumenti/romeo.py` ("il Capo senza la voce di Romeo")."""
     from nvm.dati.minuti import carica_periodo
     from nvm.prova.romeo import candidati, confronta, leggi
 

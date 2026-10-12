@@ -1,4 +1,4 @@
-"""La rete neurale che impara a leggere i grafici come il proprietario (`spec/rete.md`).
+"""La rete neurale che impara a leggere i grafici come il proprietario (`documenti/spec/rete.md`).
 
 Il proprietario, 11/10/2026: *"iniziamo creando la rete neurale"*. Il piano (08/10/2026): prima la rete impara a
 leggere i grafici sui vent'anni di Dukascopy (scuola 1), poi il metodo delle foto dalle regole degli agenti (scuola

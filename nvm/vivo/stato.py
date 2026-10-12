@@ -51,7 +51,7 @@ class Seguita:
     spinte: dict = field(default_factory=dict)
     # Come la si chiama nei messaggi: "EURUSD SHORT, giornaliero → 1 ora, 09/09 03:00 NY".
     leggibile: str = ""
-    # Quanto somigliava a un'entrata di Romeo, per il Capo (`spec/capo.md`).
+    # Quanto somigliava a un'entrata di Romeo, per il Capo (`documenti/spec/capo.md`).
     romeo: float = 1.0
     # Le uscite con cui e' stata decisa (le manopole dei Livelli e del Grilletto in quel momento).
     pareggio_a: float = 1.0

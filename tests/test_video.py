@@ -2,8 +2,8 @@
 
 import json
 
-import consegna
-import video
+from strumenti import consegna
+from strumenti import video
 
 
 def test_il_pacco_di_casa_si_apre_sulla_vps(tmp_path):
@@ -29,7 +29,7 @@ def test_il_pacco_di_casa_si_apre_sulla_vps(tmp_path):
 
 
 def test_i_pacchi_caricati_su_github_si_aprono_in_palestra(tmp_path):
-    import importa_vps
+    from strumenti import importa_vps
     casa = tmp_path / "casa" / "video"
     (casa / "abc").mkdir(parents=True)
     (casa / "abc" / "s00015.jpg").write_bytes(b"foto")

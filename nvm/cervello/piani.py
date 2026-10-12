@@ -53,7 +53,7 @@ def operazione(s: Scatto, basse: Candele, stop: str, uscita: str) -> Optional[Op
     all_estremo = (max(estremo, ingresso + livelli.STOP_MINIMO * ampiezza) if short
                    else min(estremo, ingresso - livelli.STOP_MINIMO * ampiezza))
     if s.punta is not None:
-        # L'entrata della candela 3 (`spec/metodo_romeo.md`): all'estremo vuol dire alla punta della
+        # L'entrata della candela 3 (`documenti/spec/metodo_romeo.md`): all'estremo vuol dire alla punta della
         # candela del turtle soup (lo stop di Romeo); largo, oltre la manipolazione della candela 2.
         alla_punta = s.punta + margine if short else s.punta - margine
         piu_lontano = max(estremo, alla_punta) if short else min(estremo, alla_punta)

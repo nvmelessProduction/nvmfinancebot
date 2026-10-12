@@ -1,4 +1,4 @@
-"""Le domande che gli agenti inventano da soli (`spec/allenamento.md`, "Le invenzioni").
+"""Le domande che gli agenti inventano da soli (`documenti/spec/allenamento.md`, "Le invenzioni").
 
 Ogni specialista ha dei mattoni del suo mestiere: il Key level i massimi e i
 minimi di qualunque candela o sessione, il Bias la posizione e la direzione

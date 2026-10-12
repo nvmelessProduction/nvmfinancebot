@@ -2,7 +2,7 @@
 
 Per ogni anno Y il Capo si allena sulle operazioni **chiuse** prima del 1°
 gennaio di Y, e sceglie fra quelle di Y. Poi il cancello della Fase F
-(`spec/capo.md`): le scelte contro tutta la base negli stessi anni.
+(`documenti/spec/capo.md`): le scelte contro tutta la base negli stessi anni.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ class Tabella:
     rr2: np.ndarray
     costi: np.ndarray
     # Le operazioni chiuse dal tetto di sicurezza invece che da stop o target:
-    # l'allenamento degli agenti le tiene d'occhio (`spec/allenamento.md`).
+    # l'allenamento degli agenti le tiene d'occhio (`documenti/spec/allenamento.md`).
     scaduta: Optional[np.ndarray] = None
     # Lo strumento e il verso (+1 acquisto, -1 vendita) di ogni operazione: servono al Rischio
     # per il conto intero, con le operazioni aperte insieme (`nvm/agenti/portafoglio.py`).
@@ -112,8 +112,8 @@ def costruisci_tabella(
 ) -> Tabella:
     """Tutte le operazioni delle coppie con ingresso in [dal, al), con le risposte degli agenti.
 
-    `basi` sono le ore di ogni strumento, `quarti` i quarti d'ora (dalla VPS, `consegna.py`)
-    per la coppia 4 ore -> 15 minuti. E' la tabella su cui il Capo si allena (`capo.py`) e su
+    `basi` sono le ore di ogni strumento, `quarti` i quarti d'ora (dalla VPS, `strumenti/consegna.py`)
+    per la coppia 4 ore -> 15 minuti. E' la tabella su cui il Capo si allena (`strumenti/capo.py`) e su
     cui gli agenti provano le loro manopole (`nvm/prova/allenamento.py`).
     """
     from nvm.agenti import capo as il_capo, inventate

@@ -1,10 +1,10 @@
 """Le orarie del vecchio archivio: il BID di Dukascopy dal 2006, senza ask.
 
-Verificate il 24/09/2026 (`registro/verifica-dati-vecchi.md`): su gennaio-
+Verificate il 24/09/2026 (`documenti/registro/verifica-dati-vecchi.md`): su gennaio-
 luglio 2006 di EURUSD, 3.627 ore su 3.627 sono identiche al BID scaricato
 da Dukascopy. Si prendono solo le righe con origine "dukascopy": nello
 stesso archivio ci sono anche candele di MT5 e di Yahoo, che sono un'altra
-fonte e non si mescolano (`spec/dati.md`).
+fonte e non si mescolano (`documenti/spec/dati.md`).
 
 L'ask qui non c'e': si mette uguale al bid, e chi carica questi mesi deve
 sostituirlo con quello vero (`nvm.dati.ask`) o con lo spread misurato

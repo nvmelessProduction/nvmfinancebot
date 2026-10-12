@@ -34,9 +34,9 @@ from nvm.tempo import NEW_YORK, ORDINE, TF
 COPPIE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
 # La quarta coppia di Romeo si guarda con i quarti d'ora di MT5, ogni quarto d'ora.
 COPPIA_VELOCE = (TF.H4, TF.M15)
-# Come nascono le occasioni: "foto" e' il metodo delle foto del proprietario (`spec/metodo_foto.md`, dal
+# Come nascono le occasioni: "foto" e' il metodo delle foto del proprietario (`documenti/spec/metodo_foto.md`, dal
 # 06/10/2026: entrata all'apertura della candela 3, stop oltre la 2, TP1 l'altro lato del range, target finale
-# il gap o il key level); "candela 3" il metodo dei video (`spec/metodo_romeo.md`); "model1" quello di prima.
+# il gap o il key level); "candela 3" il metodo dei video (`documenti/spec/metodo_romeo.md`); "model1" quello di prima.
 METODO = "foto"
 # Fino a quando si segue un'occasione del metodo delle foto sulla carta, per timeframe del CRT: i target finali
 # sono gap e key level dei timeframe grandi, possono servire mesi.

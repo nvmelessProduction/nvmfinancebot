@@ -1,4 +1,4 @@
-"""Il sabato e la domenica di Romeo (CRTology episode 1, V14; `spec/metodo_romeo.md` 10).
+"""Il sabato e la domenica di Romeo (CRTology episode 1, V14; `documenti/spec/metodo_romeo.md` 10).
 
 - **Sabato**, sugli strumenti che abbiamo operato: il giorno e l'ora esatta del massimo e del minimo
   della settimana, la forma della candela settimanale, il key level che l'ha fatta girare, gli errori di

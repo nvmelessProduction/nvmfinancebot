@@ -1,6 +1,6 @@
 """La squadra: i nostri agenti, col metodo delle foto del proprietario, che imparano dal vivo.
 
-Il proprietario: *"come nelle foto"* (06/10/2026, `spec/metodo_foto.md`), *"bot intelligente e strategia di
+Il proprietario: *"come nelle foto"* (06/10/2026, `documenti/spec/metodo_foto.md`), *"bot intelligente e strategia di
 Romeo"*, *"non voglio essere preso in giro"*. Nessuna AI esterna. Qui c'e' scritto esattamente cosa fa ogni
 agente, e i messaggi su Telegram dicono solo questo.
 

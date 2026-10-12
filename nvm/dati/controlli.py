@@ -1,6 +1,6 @@
 """I controlli sui dati: niente si corregge in silenzio.
 
-Ogni anomalia finisce nel rapporto con data e numero (`spec/dati.md`).
+Ogni anomalia finisce nel rapporto con data e numero (`documenti/spec/dati.md`).
 """
 
 from __future__ import annotations

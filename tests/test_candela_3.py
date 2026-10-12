@@ -1,4 +1,4 @@
-"""L'entrata dei video nella candela 3 (`spec/metodo_romeo.md`), i disegni e il fine settimana."""
+"""L'entrata dei video nella candela 3 (`documenti/spec/metodo_romeo.md`), i disegni e il fine settimana."""
 
 import numpy as np
 import pytest

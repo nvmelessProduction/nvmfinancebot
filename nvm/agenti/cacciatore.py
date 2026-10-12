@@ -1,6 +1,6 @@
 """Il Cacciatore: su questa coppia di timeframe c'e' un CRT armato?
 
-Regole in `spec/cacciatore.md`, dove ogni punto dice da quale fonte viene.
+Regole in `documenti/spec/cacciatore.md`, dove ogni punto dice da quale fonte viene.
 In breve:
 
 - ogni candela chiusa del timeframe alto e' un range (`CRT high`, `CRT low`);

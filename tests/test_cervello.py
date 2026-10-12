@@ -256,7 +256,7 @@ def test_una_sfidante_migliore_prende_il_posto_dal_vivo(tmp_path):
 
 def test_la_palestra_tiene_i_cambi_fatti_dal_vivo(tmp_path):
     import json
-    from capo import cambi_dal_vivo
+    from strumenti.capo import cambi_dal_vivo
     registro = tmp_path / "registro.jsonl"
     nuovo = {"neuroni": 24, "freno": 0.001, "spenti": []}
     registro.write_text(json.dumps({"evento": "lezione", "prima": 0.5}) + "\n" +

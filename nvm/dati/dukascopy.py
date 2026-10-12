@@ -8,7 +8,7 @@ un record da 24 byte:
     volume                           float32
 
 Dukascopy riempie anche i minuti senza scambi, ripetendo l'ultimo prezzo con
-volume zero: quei minuti si scartano (`spec/dati.md`).
+volume zero: quei minuti si scartano (`documenti/spec/dati.md`).
 
 Il ritmo e' gentile: una richiesta alla volta, una pausa fra una e l'altra, e
 se Dukascopy risponde "troppe richieste" si aspetta sempre di piu'. Lo
@@ -292,4 +292,4 @@ def scarica(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    sys.exit("usa: python scarica.py")
+    sys.exit("usa: python -m strumenti.scarica")

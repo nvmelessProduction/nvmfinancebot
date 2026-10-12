@@ -1,6 +1,6 @@
 """Il Rischio: quanto mettere su questa operazione.
 
-Regole in `spec/rischio.md`. Decide il bot, con le sue stime: dal Capo
+Regole in `documenti/spec/rischio.md`. Decide il bot, con le sue stime: dal Capo
 arrivano la probabilita' del primo target (`p1`) e del secondo dopo il primo
 (`q`); da Livelli le distanze dei target in R. Con quelle il Rischio sceglie
 la frazione del conto che fa crescere di piu' il conto nel tempo (il

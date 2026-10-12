@@ -110,7 +110,7 @@ def viste(r, alte: Candele, basse: Candele, sopra: Candele, settimane: Candele, 
     (`conferme.Grandi`); `compagno`: (le ore dello strumento gemello, +1 se si muove insieme,
     -1 se al contrario), per l'SMT; `quadro`: le candele grandi dello strumento
     (`panorama.Contesto`), per Allineamento e Gap. In fondo a ogni vista, le cose insegnate da
-    Romeo nei suoi video (`spec/FONTI-ROMEO.md`, "Dai video")."""
+    Romeo nei suoi video (`documenti/spec/FONTI-ROMEO.md`, "Dai video")."""
     quando = r.quando
     alte, basse = alte.chiuse_entro(quando), basse.chiuse_entro(quando)
     sopra, settimane = sopra.chiuse_entro(quando), settimane.chiuse_entro(quando)

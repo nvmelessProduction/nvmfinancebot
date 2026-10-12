@@ -1,4 +1,4 @@
-"""Le entrate di Romeo dal vivo (`spec/romeo-dal-vivo.md`).
+"""Le entrate di Romeo dal vivo (`documenti/spec/romeo-dal-vivo.md`).
 
 L'utente le manda al bot quando le vede sul canale di Romeo:
 

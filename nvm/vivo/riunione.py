@@ -39,7 +39,7 @@ class Storico:
     kelly_f: Optional[np.ndarray] = None
     kelly_r: Optional[np.ndarray] = None
     # I candidati del 2023 e le scelte di Romeo fra loro: il Capo impara da qui
-    # quanto un'operazione somiglia a Romeo (`spec/capo.md`).
+    # quanto un'operazione somiglia a Romeo (`documenti/spec/capo.md`).
     romeo_x: Optional[np.ndarray] = None
     romeo_y: Optional[np.ndarray] = None
     romeo_tp1: Optional[np.ndarray] = None

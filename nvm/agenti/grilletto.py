@@ -1,6 +1,6 @@
 """Il Grilletto: sul CRT armato, e' scattato il Model#1?
 
-Regole in `spec/grilletto.md`. Il Model#1 come lo disegna Romeo (msg 4836):
+Regole in `documenti/spec/grilletto.md`. Il Model#1 come lo disegna Romeo (msg 4836):
 una candela bassa rialzista che spazza il `CRT high` e' il turtle soup, la
 sua apertura e' il livello, e lo scatto e' la prima chiusura sotto il
 livello. Per il long e' lo specchio.
@@ -119,7 +119,7 @@ def _spesso_che_prende(basse: Candele, n: int, short: bool, apertura: float, da:
 
 def scatto_candela_3(crt: CRT, basse: Candele, spessore: Optional[float] = None,
                      orarie: Optional[Candele] = None) -> Optional[Scatto]:
-    """Il Model#1 nella candela 3, come nei video (`spec/metodo_romeo.md`, 2 e 6).
+    """Il Model#1 nella candela 3, come nei video (`documenti/spec/metodo_romeo.md`, 2 e 6).
 
     Il CRT dev'essere della variante `CHIUSURA_DENTRO`: la candela 2 ha spazzato un lato e ha chiuso
     dentro (V9 06:02). Nella candela 3, per vendere: dopo l'apertura di Romeo (`apertura_romeo`), una
