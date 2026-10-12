@@ -361,6 +361,7 @@ class Setup:
     presi: list = field(default_factory=list)   # i key level presi dalla candela 2
     h4_preso: Optional[float] = None            # per il CRT a 1 ora: il massimo (minimo) a 4 ore preso
     dal_dxy: bool = False                       # nato da un setup del DXY
+    dal_totale: bool = False                    # nato da un setup della TOTAL (le crypto)
     prima_inizio: int = 0                       # l'inizio della candela prima del range
 
     @property
@@ -895,10 +896,11 @@ def verso_dal_dxy(strumento: str, verso_dxy: Verso) -> Optional[Verso]:
     return None
 
 
-def dal_dxy(q: Quadro, s_dxy: Setup) -> Optional[Setup]:
+def dal_dxy(q: Quadro, s_dxy: Setup, verso: Optional[Verso] = None) -> Optional[Setup]:
     """Il setup del DXY portato su una coppia col dollaro: le stesse candele, i prezzi della coppia.
-    Stop oltre l'estremo della candela 2 della coppia, primo target l'altro lato del suo range."""
-    verso = verso_dal_dxy(q.strumento, s_dxy.verso)
+    Stop oltre l'estremo della candela 2 della coppia, primo target l'altro lato del suo range. `verso`: quello sullo
+    strumento, se non e' quello che viene dal dollaro (la TOTAL, `dal_totale`)."""
+    verso = verso or verso_dal_dxy(q.strumento, s_dxy.verso)
     if verso is None:
         return None
     c = q.candele.get(s_dxy.tf)
@@ -923,6 +925,30 @@ def dal_dxy(q: Quadro, s_dxy: Setup) -> Optional[Setup]:
               s_dxy.n3_inizio, s_dxy.n3_fine, h2, l2, c2, entrata, spread, stop, tp1, dal_dxy=True,
               prima_inizio=int(c.inizio[max(m - 1, 0)]))
     s.presi = key_level_presi(q, s)
+    return s
+
+
+# --- la TOTAL per le crypto ---------------------------------------------------------------------------
+
+# Le crypto seguono la TOTAL di TradingView (la capitalizzazione di tutte le crypto) nello stesso verso. Il
+# proprietario, 12/10/2026, alla domanda su come la usa: *"B, esatto"*, cioe' come il DXY: un setup CRT sulla TOTAL fa
+# entrare su BTC ed ETH dalla stessa parte.
+CRYPTO_TOTALE = ("BTCUSD", "ETHUSD")
+PUNTO.setdefault("TOTAL", 1e6)
+
+
+def verso_dal_totale(strumento: str, verso_totale: Verso) -> Optional[Verso]:
+    return verso_totale if strumento in CRYPTO_TOTALE else None
+
+
+def dal_totale(q: Quadro, s_totale: Setup) -> Optional[Setup]:
+    """Il setup della TOTAL portato su BTC o ETH, nello stesso verso: le stesse candele, i prezzi della crypto."""
+    verso = verso_dal_totale(q.strumento, s_totale.verso)
+    if verso is None:
+        return None
+    s = dal_dxy(q, s_totale, verso)
+    if s is not None:
+        s.dal_dxy, s.dal_totale = False, True
     return s
 
 

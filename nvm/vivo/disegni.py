@@ -222,7 +222,8 @@ def operazione_foto(d, op, scarto_ore: int, key_level: Optional[tuple] = None) -
         Segno("verticale", inizio_2 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 2"),
         Segno("verticale", inizio_3 + sv, 0.0, 0, 0.0, GRIGIO, 2, 1, "Candela 3: entrata all'apertura"),
         Segno("testo", inizio_2 + sv, float(st.n2_alto if short else st.n2_basso), 0, 0.0, ROSSO,
-              testo="Finta della candela 2" + (" (dal DXY)" if st.dal_dxy else "")),
+              testo="Finta della candela 2" + (" (dal DXY)" if st.dal_dxy else
+                                               " (dalla TOTAL)" if getattr(st, "dal_totale", False) else "")),
     ]
     if key_level is not None:
         nome, prezzo = key_level

@@ -18,7 +18,8 @@ from nvm.tempo import PASSO, TF, fine_candela, inizio_candela
 def weekend(strumento: str) -> bool:
     """Lo strumento scambia anche sabato e domenica (le crypto): i suoi giorni non si spostano al lunedi'."""
     s = STRUMENTI.get(strumento)
-    return s is not None and s.famiglia == "crypto"
+    # La TOTAL di TradingView (la capitalizzazione di tutte le crypto) ha gli orari delle crypto.
+    return strumento == "TOTAL" or (s is not None and s.famiglia == "crypto")
 
 
 @dataclass

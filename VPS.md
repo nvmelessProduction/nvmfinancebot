@@ -108,7 +108,9 @@ manda ogni setup sul canale operativo con due pulsanti, **Apri** e **Lascia**, e
 2. **I grafici.** Nel file `.env` aggiungi la riga coi grafici, scritti come su TradingView:
    `TRADINGVIEW_SIMBOLI=OANDA:EURUSD, OANDA:GBPUSD, OANDA:XAUUSD`. Se il nome dopo i due punti e' diverso da
    quello del bot, aggiungi il nome del bot dopo l'uguale: `OANDA:US30USD=US30`. Per il dollaro:
-   `TRADINGVIEW_DXY=TVC:DXY` (se manca, si usa quello).
+   `TRADINGVIEW_DXY=TVC:DXY` (se manca, si usa quello). Per le crypto: `TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL` (un
+   setup CRT sulla TOTAL fa entrare su BTC ed ETH dalla stessa parte; BTC ed ETH vanno messi nella riga dei
+   grafici, per esempio `BINANCE:BTCUSDT=BTCUSD, BINANCE:ETHUSDT=ETHUSD`).
 3. **Riavvia il bot** (chiudi la finestra di `avvia.bat` e rifai doppio clic). Sul canale operativo arriva
    "📺 Da adesso analizzo su TradingView".
 

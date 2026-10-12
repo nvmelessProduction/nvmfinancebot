@@ -336,3 +336,29 @@ def test_le_ore_mancanti_all_avvio_si_prendono_tutte_al_giro_dopo():
     bot.basi = {}
     bot._ore_nuove("EURUSD")
     assert chieste == [vivo.ORARIE] and "EURUSD" in bot.basi
+
+
+def test_la_total_si_legge_da_tradingview_e_va_fra_i_grafici_di_confronto(tmp_path):
+    import vivo
+    (tmp_path / ".env").write_text("TRADINGVIEW_SIMBOLI=BINANCE:BTCUSDT=BTCUSD\nTRADINGVIEW_TOTAL=cryptocap:total\n",
+                                   encoding="utf-8")
+    imp = impostazioni(tmp_path, {})
+    assert imp.tradingview == (("BINANCE:BTCUSDT", "BTCUSD"),) and imp.tradingview_totale == "CRYPTOCAP:TOTAL"
+    chieste = []
+    t0 = utc(2026, 10, 12)
+    barre = [{"t": t0 + i * 3600, "o": 3.0e12, "h": 3.1e12, "l": 2.9e12, "c": 3.05e12} for i in range(3)]
+    tv = NS(candele=lambda simbolo, passo, quante: chieste.append(simbolo) or barre)
+    bot = object.__new__(vivo.Bot)
+    bot._allarmi = {}
+    bot.allarme = lambda testo: None
+    bot.fonte = Fonte(tv, list(imp.tradingview), "TVC:DXY", imp.tradingview_totale, orologio=lambda: t0 + 4 * 3600)
+    bot.basi, bot.dxy = {}, None
+    bot.aggiorna_totale()
+    assert chieste == ["CRYPTOCAP:TOTAL"] and bot.totale.strumento == "TOTAL" and len(bot.totale) == 3
+    assert bot.totale.bid[0, 3] * bot.totale.punto == pytest.approx(3.05e12)
+    assert "TOTAL" in bot.gemelli()
+    # Senza TradingView (o senza la riga) la TOTAL non c'e'.
+    bot.fonte = None
+    bot.terminale = NS()
+    bot.aggiorna_totale()
+    assert bot.totale is None and "TOTAL" not in bot.gemelli()

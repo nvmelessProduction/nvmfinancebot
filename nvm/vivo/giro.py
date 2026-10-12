@@ -200,7 +200,8 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
             if ore.passo > 3600:
                 continue
             decisioni += occasioni_foto(strumento, ore, dal, adesso, capo, gemelli or orarie,
-                                        (lunghe or {}).get(strumento), (lunghe or {}).get("DXY"))
+                                        (lunghe or {}).get(strumento), (lunghe or {}).get("DXY"),
+                                        (lunghe or {}).get("TOTAL"))
         decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
         return decisioni
     decisioni = []
@@ -265,10 +266,11 @@ def _quadro(ore: Minuti, adesso: int, lunghe: Optional[Minuti] = None):
                            lambda: foto.Quadro.da(ore, adesso, lunghe))
 
 
-def _dxy(gemelli: Optional[dict], adesso: int, lunghe: Optional[Minuti] = None):
+def _dxy(gemelli: Optional[dict], adesso: int, lunghe: Optional[Minuti] = None, nome: str = "DXY"):
     """Il quadro del DXY: il grafico del broker (su FP Markets USDX), sotto la chiave "DXY" di `gemelli`. Non si
-    calcola piu' dalle coppie (il proprietario, 08/10/2026): se il grafico non c'e', il DXY non c'e'."""
-    m = (gemelli or {}).get("DXY")
+    calcola piu' dalle coppie (il proprietario, 08/10/2026): se il grafico non c'e', il DXY non c'e'. Con `nome`
+    "TOTAL", la TOTAL di TradingView per le crypto."""
+    m = (gemelli or {}).get(nome)
     if m is None or len(m) < 200:
         return None
     return _quadro(m, adesso, lunghe)
@@ -301,7 +303,8 @@ def piani_foto(s, ob, altro, quando: int) -> list:
     return fuori
 
 
-def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None) -> Optional[Decisione]:
+def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, totale=None,
+                    quadro_totale=None) -> Optional[Decisione]:
     """Il setup delle foto come `Decisione`, con gli stessi oggetti che il resto del bot usa gia'."""
     ob = foto.obiettivo_finale(q, s)
     altro = foto.target_dopo(q, s, ob)
@@ -313,7 +316,8 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None) -
     ore = q.ore
     indice = min(int(np.searchsorted(ore.inizio, s.n3_inizio)), max(len(ore) - 1, 0))
     scatto = Scatto(crt, s.n3_inizio, indice, s.tp1, s.n2_inizio, s.n2_alto, s.n2_basso,
-                    modello="dal DXY" if s.dal_dxy else "apertura N3", punta=s.n2_alto if s.short else s.n2_basso,
+                    modello="dal DXY" if s.dal_dxy else "dalla TOTAL" if s.dal_totale else "apertura N3",
+                    punta=s.n2_alto if s.short else s.n2_basso,
                     apertura_3=s.entrata)
     rischio = op.rischio
     costo = COMMISSIONE.get(s.strumento, 0.0) / rischio if rischio > 0 else 0.0
@@ -327,12 +331,13 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None) -
     return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
                      piani_romeo=piani,
                      foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy, "quadro_dxy": quadro_dxy,
+                           "totale": totale, "quadro_totale": quadro_totale,
                            "allineati": list(allineati)})
 
 
 def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Capo,
                    gemelli: Optional[dict] = None, lunghe: Optional[Minuti] = None,
-                   lunghe_dxy: Optional[Minuti] = None) -> list[Decisione]:
+                   lunghe_dxy: Optional[Minuti] = None, lunghe_totale: Optional[Minuti] = None) -> list[Decisione]:
     """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso], su uno strumento.
 
     Se piu' timeframe danno lo stesso verso alla stessa apertura, l'occasione e' una (quella del timeframe
@@ -356,6 +361,17 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
                 x = foto.dal_dxy(q, sd)
                 if x is not None:
                     trovati.append(x)
+    # Le crypto con la TOTAL (il proprietario, 12/10/2026): un suo setup fa entrare su BTC ed ETH dalla stessa parte.
+    qt = _dxy(gemelli, adesso, lunghe_totale, "TOTAL") if strumento in foto.CRYPTO_TOTALE else None
+    tot_setup = []
+    if qt is not None:
+        tot_setup = [s for tf in foto.TF_CRT for s in foto.trova(qt, tf, dal, adesso) if setup_buono(s)]
+        for st in tot_setup:
+            if not st.presi or any(s.tf is st.tf and s.n3_inizio == st.n3_inizio for s in trovati):
+                continue
+            x = foto.dal_totale(q, st)
+            if x is not None:
+                trovati.append(x)
     # Una sola occasione per apertura e verso: quella del timeframe piu' grande.
     gruppi: dict = {}
     for s in trovati:
@@ -367,8 +383,9 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
         qq = q.taglia(s.n3_inizio) if s.n3_inizio < adesso else q
         stessi = [x.tf for x in gruppo[1:]]
         dxy = next((sd for sd in dxy_setup if sd.tf is s.tf and sd.n3_inizio == s.n3_inizio), None)
+        totale = next((st for st in tot_setup if st.tf is s.tf and st.n3_inizio == s.n3_inizio), None)
         try:
-            d = _decisione_foto(s, qq, capo, dxy, stessi, qd)
+            d = _decisione_foto(s, qq, capo, dxy, stessi, qd, totale, qt)
         except Exception:
             d = None
         if d is not None:

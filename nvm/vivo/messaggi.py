@@ -266,9 +266,10 @@ def proposta(d: Decisione, scade: int, grafico: str) -> str:
     return "\n".join(righe)
 
 
-def tradingview_acceso(grafici: list[str], dxy: str) -> str:
+def tradingview_acceso(grafici: list[str], dxy: str, totale: str = "") -> str:
     righe = ["📺 Da adesso analizzo su TradingView, non più sui prezzi di MT5.",
-             f"Grafici: {', '.join(grafici)}" + (f"; dollaro: {dxy}" if dxy else ""),
+             f"Grafici: {', '.join(grafici)}" + (f"; dollaro: {dxy}" if dxy else "") +
+             (f"; crypto: {totale} (guida BTC ed ETH)" if totale else ""),
              "Quando trovo un setup ve lo propongo qui con i pulsanti «Apri» e «Lascia». Senza il vostro «Apri» "
              "non apro niente: MT5 serve solo per gli ordini."]
     return "\n".join(righe)

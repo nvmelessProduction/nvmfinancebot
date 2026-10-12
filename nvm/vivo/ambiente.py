@@ -29,6 +29,8 @@ class Impostazioni:
     tradingview_sbagliati: tuple[str, ...] = field(default=(), repr=False)
     # Il grafico del dollaro su TradingView (TRADINGVIEW_DXY=TVC:DXY).
     tradingview_dxy: str = field(default="", repr=False)
+    # La capitalizzazione di tutte le crypto (TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL): guida BTC ed ETH come il DXY le coppie.
+    tradingview_totale: str = field(default="", repr=False)
 
     @property
     def telegram(self) -> bool:
@@ -65,6 +67,7 @@ def impostazioni(radice: Path, ambiente: Mapping[str, str] = os.environ) -> Impo
     return Impostazioni(
         tradingview=tuple(tv), tradingview_sbagliati=tuple(sbagliati),
         tradingview_dxy=v.get("TRADINGVIEW_DXY", "").strip().upper(),
+        tradingview_totale=v.get("TRADINGVIEW_TOTAL", "").strip().upper(),
         token=v.get("TELEGRAM_TOKEN", ""),
         chat_operativo=_chat(v.get("TELEGRAM_CHAT_ID", "")),
         chat_equipe=_chat(v.get("TELEGRAM_CHAT_EQUIPE", "")),

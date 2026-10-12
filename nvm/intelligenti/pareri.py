@@ -376,6 +376,9 @@ def dxy(s, sd) -> Parere:
     2; su oro, argento, S&P 500, Dow e Nasdaq e' circa l'85% (*"a volte può capitare che il DXY va long e anche gold
     esempio va long"*) e pesa 1 (la foto delle correlazioni del proprietario, 08/10/2026)."""
     from nvm.agenti import foto
+    if getattr(s, "dal_totale", False):
+        return Parere("DXY", 2, ["il setup l'ha fatto la TOTAL: quando si muove tutto il mercato crypto, BTC ed ETH "
+                                 "lo seguono"])
     if s.strumento not in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA:
         return Parere("DXY", 0, [f"{s.strumento} non è legato al dollaro"])
     forex = s.strumento in foto.FOREX_DOLLARO

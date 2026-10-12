@@ -54,6 +54,7 @@ MARGINE = 120
 INTERVALLO = 0.7
 # Il grafico del dollaro, in punti come quello del bot (`nvm/agenti/foto.py`).
 PUNTO.setdefault("DXY", 1e-3)
+PUNTO.setdefault("TOTAL", 1e6)
 
 
 class ErroreTradingView(RuntimeError):
@@ -421,12 +422,14 @@ class Fonte:
     """Le candele per il bot da TradingView, con gli stessi nomi del terminale MT5 (`orarie`, `barre`,
     `giornaliere`, `esiste`): il bot le chiede a lei invece che a MT5."""
 
-    def __init__(self, tv: TradingView, simboli: list[tuple[str, str]], dxy: str = "",
+    def __init__(self, tv: TradingView, simboli: list[tuple[str, str]], dxy: str = "", totale: str = "",
                  orologio: Callable[[], float] = time.time):
         self.tv = tv
         self.simboli = {nome: simbolo for simbolo, nome in simboli}
         if dxy:
             self.simboli["DXY"] = dxy.upper()
+        if totale:
+            self.simboli["TOTAL"] = totale.upper()
         self._orologio = orologio
 
     def simbolo(self, strumento: str) -> str:

@@ -5,6 +5,14 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (notte, dopo): la TOTAL guida BTC ed ETH
+
+Il proprietario vuole le crypto con la TOTAL di TradingView; alla domanda su come la usa: *"B, esatto"*, cioe' come
+il DXY ma nello stesso verso: un setup CRT sulla TOTAL fa entrare su BTC ed ETH dalla stessa parte (`foto.dal_totale`,
+`foto.CRYPTO_TOTALE`). Si accende con `TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL` nel `.env` (solo con l'analisi su
+TradingView); la TOTAL ha gli orari delle crypto (giorni da mezzanotte UTC). In squadra parla l'agente DXY ("il
+setup l'ha fatto la TOTAL"), il key level e' quello preso dalla TOTAL, come per i setup del DXY.
+
 ## 12/10/2026 (notte): l'analisi su TradingView, con i pulsanti Apri / Lascia
 
 Il proprietario: *"io voglio che la rete neurale analizzi il mercato su TradingView, sui pair che dico io, dei broker

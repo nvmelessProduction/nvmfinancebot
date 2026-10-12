@@ -504,13 +504,15 @@ def valuta_foto(d) -> Metodo:
     info = d.foto
     s, q, ob = info["setup"], info["quadro"], info["obiettivo"]
     sd = info.get("dxy")
+    st = info.get("totale")
+    dal_totale = getattr(s, "dal_totale", False)
     short = s.short
     segno = -1 if short else 1
     amp = s.range_alto - s.range_basso
     ny = _ny(s.n3_inizio)
     m = Metodo(fatti={"strumento": s.strumento, "coppia": s.tf.value, "verso": "vendita" if short else "acquisto",
                       "giorno": GIORNI[ny.weekday()], "ora": f"{ny.hour:02d}",
-                      "modello": "dal DXY" if s.dal_dxy else "apertura N3"})
+                      "modello": "dal DXY" if s.dal_dxy else "dalla TOTAL" if dal_totale else "apertura N3"})
     ob_ = m.obbligatorie
     co = m.confluenze
     candela = CANDELA_FOTO.get(s.tf, "la candela")
@@ -525,13 +527,19 @@ def valuta_foto(d) -> Metodo:
                  f"{_v(x.short, 'il minimo', 'il massimo') if x is not None else 'un lato'} del range ed è rientrata. "
                  f"Il dollaro {'sale' if x is not None and not x.short else 'scende'}: su {s.strumento} "
                  f"{'vendiamo' if short else 'compriamo'} all'apertura della candela 3")
+    elif dal_totale:
+        testo = (f"la TOTAL (tutte le crypto insieme) ha fatto il CRT {NOMI_TF_FOTO.get(s.tf, '')}: la candela 2 ha "
+                 f"preso {_v(short, 'il minimo', 'il massimo')} del range ed è rientrata. Il mercato crypto "
+                 f"{'scende' if short else 'sale'}: su {s.strumento} {'vendiamo' if short else 'compriamo'} "
+                 "all'apertura della candela 3")
     else:
         testo = (f"{candela} di prima ha preso {lato} del range ({numero(s.range_alto if short else s.range_basso)})"
                  f"{madre} ed è rientrata: entriamo all'apertura della candela 3, come nelle foto")
     ob_.append(Domanda("CRT", "Cacciatore", FOTO, True, testo))
 
     # 2. Il key level (Key level): il massimo o minimo del periodo prima preso dal CRT.
-    presi = sd.presi if (s.dal_dxy and sd is not None) else s.presi
+    presi = (sd.presi if (s.dal_dxy and sd is not None) else st.presi if (dal_totale and st is not None)
+             else s.presi)
     if s.tf is TF.H1:
         kl_ok = bool(s.h4_preso is not None and any(l.tf is TF.D1 and not l.oggi for l in presi))
         perche = (f"il CRT a 1 ora ha preso il {', il '.join(l.nome for l in presi if l.tf is TF.D1)} e il "

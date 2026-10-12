@@ -24,7 +24,8 @@ CARTELLA = RADICE / "dati" / "vivo"
 
 def prova(accesso: Accesso) -> bool:
     imp = impostazioni(RADICE)
-    simboli = list(imp.tradingview) + ([(imp.tradingview_dxy, "DXY")] if imp.tradingview_dxy else [])
+    simboli = list(imp.tradingview) + ([(imp.tradingview_dxy, "DXY")] if imp.tradingview_dxy else []) + \
+        ([(imp.tradingview_totale, "TOTAL")] if imp.tradingview_totale else [])
     if not simboli:
         print("Nel .env non c'e' ancora la riga TRADINGVIEW_SIMBOLI: provo solo con OANDA:EURUSD.")
         simboli = [("OANDA:EURUSD", "EURUSD")]

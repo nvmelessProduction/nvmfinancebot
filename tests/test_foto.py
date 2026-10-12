@@ -457,3 +457,55 @@ def test_lo_stop_troppo_vicino_si_allarga_non_si_scarta():
         righe = [(t0 + k * ORA, 1.1000, 1.1000 + meta, 1.1000 - meta, 1.1000) for k in range(24 * 20)]
         q = F.Quadro.da(_ore(righe), t0 + 24 * 20 * ORA)
         assert F.stop_minimo(q, t0 + 24 * 20 * ORA) == pytest.approx(atteso)
+
+
+# --- La TOTAL per le crypto ------------------------------------------------------------------------------
+
+def _crypto(minimo_2, alto_1=1.1020, scala=1.0):
+    """Un CRT a 4 ore con gli orari crypto (candele dalla mezzanotte UTC): ieri DL 1.0990; la candela 1 (4-8 UTC)
+    fa 1.0995-`alto_1`, la candela 2 (8-12) scende a `minimo_2` e chiude 1.1005; la candela 3 apre alle 12 UTC."""
+    giorno = utc(2026, 9, 7)
+    righe = [(giorno - 24 * ORA - k * ORA, 1.1000, 1.1003, 1.0997, 1.1000) for k in range(240, 0, -1)]
+    righe += _candela_in_ore(giorno - 24 * ORA, 24, 1.1000, 1.1060, 1.0990, 1.1002)
+    righe += _candela_in_ore(giorno, 4, 1.1002, 1.1006, 1.0998, 1.1003)
+    righe += _candela_in_ore(giorno + 4 * ORA, 4, 1.1003, alto_1, 1.0995, 1.1010)
+    righe += _candela_in_ore(giorno + 8 * ORA, 4, 1.1010, 1.1015, minimo_2, 1.1005)
+    righe += _candela_in_ore(giorno + 12 * ORA, 4, 1.1005, 1.1040, 1.1001, 1.1030)
+    return [(t, scala * o, scala * h, scala * l, scala * c) for t, o, h, l, c in righe], giorno + 12 * ORA
+
+
+def test_un_setup_della_total_fa_entrare_le_crypto_dalla_stessa_parte():
+    """Il proprietario, 12/10/2026: la TOTAL guida BTC ed ETH come il DXY le coppie, ma nello stesso verso (*"B,
+    esatto"*). Qui la TOTAL prende il DL e rientra (CRT rialzista); BTC da solo non fa il CRT, ma si compra lo stesso."""
+    from nvm.dati.candele import weekend
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    assert weekend("TOTAL")                        # gli orari delle crypto
+    assert F.verso_dal_totale("BTCUSD", Verso.LONG) is Verso.LONG and F.verso_dal_totale("EURUSD", Verso.LONG) is None
+    righe_t, n3 = _crypto(1.0980, scala=3e12)
+    righe_b, _ = _crypto(1.0996, alto_1=1.1030, scala=6e4)
+    totale = _ore(righe_t, "TOTAL", spread=0.0)
+    btc = _ore(righe_b, "BTCUSD", spread=5.0)
+    (st,) = F.trova(F.Quadro.da(totale, n3), TF.H4, n3, n3)
+    assert st.verso is Verso.LONG and st.presi
+    assert not F.trova(F.Quadro.da(btc, n3), TF.H4, n3, n3)
+    con = G.occasioni_foto("BTCUSD", btc, n3, n3, CapoFinto(), {"TOTAL": totale})
+    assert len(con) == 1 and con[0].r.verso is Verso.LONG and con[0].foto["setup"].dal_totale
+    # La TOTAL fa il CRT anche a 6 ore: l'occasione e' quella del timeframe piu' grande, col suo setup della TOTAL.
+    d = con[0]
+    assert d.r.scatto.modello == "dalla TOTAL" and d.foto["totale"].tf is d.r.alto_tf
+    assert d.foto["totale"].verso is Verso.LONG and d.foto["totale"].strumento == "TOTAL"
+    # I prezzi sono quelli di BTC: stop sul minimo della sua candela 2 a 6 ore (6-12 UTC).
+    assert d.op.stop == pytest.approx(1.0995 * 6e4) and d.op.stop < d.op.ingresso < d.op.tp1
+    # La squadra lo racconta come un setup della TOTAL, e il key level e' quello preso dalla TOTAL.
+    from nvm.intelligenti import metodo, pareri
+    m = metodo.valuta_foto(d)
+    assert m.fatti["modello"] == "dalla TOTAL" and "la TOTAL" in m.obbligatorie[0].perche
+    assert "il minimo" in m.obbligatorie[0].perche and m.obbligatorie[1].si
+    voto = next(x for x in pareri.tutti(d, pareri.Contesto(), None) if x.agente == "DXY")
+    assert voto.voto > 0 and "TOTAL" in voto.ragioni[0]
+    # Senza la TOTAL niente; e sull'oro la TOTAL non conta.
+    assert not G.occasioni_foto("BTCUSD", btc, n3, n3, CapoFinto(), {})
+    oro = _ore(righe_b, "XAUUSD", spread=0.3)
+    assert not [d for d in G.occasioni_foto("XAUUSD", oro, n3, n3, CapoFinto(), {"TOTAL": totale})
+                if d.foto["setup"].dal_totale]

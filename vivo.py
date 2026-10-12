@@ -261,10 +261,11 @@ class Bot:
             return
         accesso = Accesso(CARTELLA)
         dxy = self.imp.tradingview_dxy or DXY_TRADINGVIEW
-        self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy)
+        self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy, self.imp.tradingview_totale)
         if not (CARTELLA / "riavvio").exists():
             # Dopo un aggiornamento non si ripete: lo si dice all'avvio a mano.
-            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy))
+            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy,
+                                                          self.imp.tradingview_totale))
         if not accesso.pronto:
             self.allarme("TradingView: manca l'accesso. Sulla VPS fai doppio clic su tradingview_accesso.bat ed entra "
                          "col vostro account. Finché manca non analizzo niente; le operazioni aperte le seguo lo stesso.")
@@ -331,6 +332,7 @@ class Bot:
         self.aggiorna_dxy()
         if self.dxy is not None:
             di(f"Dollaro: leggo il grafico {self._fonte.simbolo('DXY')}.")
+        self.aggiorna_totale()
         di("Scarico le giornaliere di tanti anni (3, 6 e 12 mesi)...")
         self.aggiorna_lunghe(time.time())
         adesso = time.time()
@@ -384,7 +386,8 @@ class Bot:
         if giorno == self._lunghe_del:
             return
         self._lunghe_del = giorno
-        for s in self.strumenti + (["DXY"] if getattr(self, "dxy", None) is not None else []):
+        for s in self.strumenti + (["DXY"] if getattr(self, "dxy", None) is not None else []) + \
+                (["TOTAL"] if getattr(self, "totale", None) is not None else []):
             try:
                 self.lunghe[s] = self._fonte.giornaliere(s, LUNGHE)
             except Exception:
@@ -408,10 +411,26 @@ class Bot:
         elif self.dxy is None:
             self.allarme("Sul conto non trovo il grafico del dollaro (USDX): l'agente DXY resta neutro finché non c'è.")
 
+    def aggiorna_totale(self) -> None:
+        """La TOTAL di TradingView (TRADINGVIEW_TOTAL), che guida BTC ed ETH: come il grafico del dollaro."""
+        self.totale = getattr(self, "totale", None)
+        if not self._su_tradingview or not self._fonte.esiste("TOTAL"):
+            self.totale = None
+            return
+        try:
+            self.totale = (self._fonte.orarie("TOTAL", ORARIE) if self.totale is None
+                           else _unisci(self.totale, self._fonte.orarie("TOTAL", 50), ORARIE))
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        if self.totale is None:
+            self.allarme(f"TradingView: il grafico della TOTAL ({self._fonte.simbolo('TOTAL')}) non arriva: BTC ed ETH "
+                         "si guardano da soli finché non c'è.")
+
     def gemelli(self) -> dict[str, Minuti]:
-        """Le ore di tutti gli strumenti e, se c'e', del grafico del dollaro (chiave "DXY")."""
-        dxy = getattr(self, "dxy", None)
-        return self.basi if dxy is None else {**self.basi, "DXY": dxy}
+        """Le ore di tutti gli strumenti e, se ci sono, del grafico del dollaro (chiave "DXY") e della TOTAL."""
+        dxy, totale = getattr(self, "dxy", None), getattr(self, "totale", None)
+        fuori = self.basi if dxy is None else {**self.basi, "DXY": dxy}
+        return fuori if totale is None else {**fuori, "TOTAL": totale}
 
     def manda_simboli(self, canale: str = "operativo") -> None:
         """Tutti gli strumenti del broker, su Telegram (comando /strumenti), e nel registro (arriva a Claude con
@@ -995,6 +1014,7 @@ class Bot:
         # strumento non ferma gli altri e non fa ripartire il giro (prima rifaceva da capo anche gli strumenti
         # gia' guardati); se non va nessuno (MT5 staccato) si riprova al minuto dopo.
         self.aggiorna_dxy()
+        self.aggiorna_totale()
         self.aggiorna_lunghe(time.time())
         andati, ultimo_errore = 0, None
         foto_metodo = il_metodo() == "foto"
