@@ -31,7 +31,11 @@ def test_i_grafici_si_scrivono_come_su_tradingview(tmp_path):
     simboli, sbagliati = leggi_simboli("OANDA:EURUSD, oanda:gbpusd;OANDA:US30USD=US30  FX:BOH, EURUSD")
     assert simboli == [("OANDA:EURUSD", "EURUSD"), ("OANDA:GBPUSD", "GBPUSD"), ("OANDA:US30USD", "US30")]
     assert sbagliati == ["FX:BOH", "EURUSD"]
-    (tmp_path / ".env").write_text("TRADINGVIEW_SIMBOLI=OANDA:EURUSD\nTRADINGVIEW_DXY=tvc:dxy\n", encoding="utf-8")
+    # Lo stesso strumento due volte vale una; nomi che il bot non conosce (US500 invece di SPX500) si segnalano.
+    assert leggi_simboli("ICE:GBPNZD, ICE:GBPNZD, FXCM:SPX500=US500, FXCM:SPX500,")[0] == \
+        [("ICE:GBPNZD", "GBPNZD"), ("FXCM:SPX500", "SPX500")]
+    assert leggi_simboli("FXCM:SPX500=US500")[1] == ["FXCM:SPX500=US500"]
+    (tmp_path / ".env").write_text("TRADINGVIEW_SIMBOLI=OANDA:EURUSD\nTRADINGVIEW_DXY=tvc:dxy,\n", encoding="utf-8")
     imp = impostazioni(tmp_path, {})
     assert imp.tradingview == (("OANDA:EURUSD", "EURUSD"),) and imp.tradingview_dxy == "TVC:DXY"
     # Senza la riga, il bot resta su MT5.

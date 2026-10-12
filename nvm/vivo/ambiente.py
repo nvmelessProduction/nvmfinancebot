@@ -66,8 +66,8 @@ def impostazioni(radice: Path, ambiente: Mapping[str, str] = os.environ) -> Impo
     tv, sbagliati = leggi_simboli(v.get("TRADINGVIEW_SIMBOLI", ""))
     return Impostazioni(
         tradingview=tuple(tv), tradingview_sbagliati=tuple(sbagliati),
-        tradingview_dxy=v.get("TRADINGVIEW_DXY", "").strip().upper(),
-        tradingview_totale=v.get("TRADINGVIEW_TOTAL", "").strip().upper(),
+        tradingview_dxy=v.get("TRADINGVIEW_DXY", "").strip().strip(",;").strip().upper(),
+        tradingview_totale=v.get("TRADINGVIEW_TOTAL", "").strip().strip(",;").strip().upper(),
         token=v.get("TELEGRAM_TOKEN", ""),
         chat_operativo=_chat(v.get("TELEGRAM_CHAT_ID", "")),
         chat_equipe=_chat(v.get("TELEGRAM_CHAT_EQUIPE", "")),

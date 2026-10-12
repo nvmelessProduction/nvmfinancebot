@@ -414,6 +414,9 @@ def leggi_simboli(testo: str) -> tuple[list[tuple[str, str]], list[str]]:
         if ":" not in simbolo or nome not in STRUMENTI:
             sbagliati.append(pezzo)
             continue
+        if any(n == nome for _, n in fuori):
+            # Lo stesso strumento due volte farebbe due proposte per lo stesso setup: vale il primo.
+            continue
         fuori.append((simbolo, nome))
     return fuori, sbagliati
 
