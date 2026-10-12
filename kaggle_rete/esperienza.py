@@ -67,6 +67,7 @@ class Casi:
     scheda: np.ndarray     # [N, len(SCHEDA)] float32
     erre: np.ndarray       # il risultato in R, costi tolti
     uscita: np.ndarray     # come e' finita (stop, target, pareggio, scaduta)
+    fine: np.ndarray | None = None  # quando e' finita (serve per tenere una posizione per strumento)
 
     def __len__(self) -> int:
         return len(self.t)
@@ -98,7 +99,7 @@ def casi(m: Minuti, dal: int, al: int, scrivi=print) -> Casi:
     gruppi: dict = {}
     for s in trovati:
         gruppi.setdefault((s.n3_inizio, s.verso), []).append(s)
-    t, schede, erre, uscite = [], [], [], []
+    t, schede, erre, uscite, fini = [], [], [], [], []
     for (n3, _), gruppo in sorted(gruppi.items(), key=lambda g: g[0][0]):
         s = max(gruppo, key=lambda x: ORDINE.index(x.tf))
         try:
@@ -124,7 +125,8 @@ def casi(m: Minuti, dal: int, al: int, scrivi=print) -> Casi:
         schede.append(riga)
         erre.append(e.erre)
         uscite.append(e.uscita.value)
+        fini.append(e.quando)
     fuori = Casi(m.strumento, np.array(t, np.int64), np.array(schede, np.float32).reshape(-1, len(SCHEDA)),
-                 np.array(erre, np.float32), np.array(uscite))
+                 np.array(erre, np.float32), np.array(uscite), np.array(fini, np.int64))
     scrivi(f"{m.strumento}: {len(fuori)} casi ({time.time() - inizio:.0f} s)")
     return fuori

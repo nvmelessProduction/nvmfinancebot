@@ -49,7 +49,8 @@ def prepara(radice: Path, uscita: Path, strumenti=None, processi: int = 4) -> No
         t=np.concatenate([c.t for _, _, c in tutti]),
         scheda=np.concatenate([c.scheda for _, _, c in tutti]),
         erre=np.concatenate([c.erre for _, _, c in tutti]),
-        uscita=np.concatenate([c.uscita for _, _, c in tutti]))
+        uscita=np.concatenate([c.uscita for _, _, c in tutti]),
+        fine=np.concatenate([c.fine for _, _, c in tutti]))
     print(f"{sum(len(c) for _, _, c in tutti)} casi in {uscita}", flush=True)
 
 
