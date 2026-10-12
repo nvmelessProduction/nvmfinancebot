@@ -284,10 +284,13 @@ def setup_buono(s) -> bool:
 
 def piani_foto(s, ob, altro, quando: int) -> list:
     """I piani di Livelli, nell'ordine di `foto.PIANI`: tutto al TP1; il 25% al TP1 e il resto al target finale
-    (quello delle foto, di partenza); il 25% al TP1 e il resto al target dopo. None se non si puo' fare."""
+    (quello delle foto, di partenza); il 25% al TP1 e il resto al target dopo. None se non si puo' fare, o se al suo
+    ultimo target non rende almeno `foto.RR_MINIMO` volte il rischio."""
     fuori = []
+    rischio = abs(s.ingresso - s.stop)
     for parziale, tp2 in ((1.0, s.tp1), (foto.PARZIALE, ob.prezzo), (foto.PARZIALE, None if altro is None else altro.prezzo)):
-        if tp2 is None or (parziale < 1.0 and tp2 == s.tp1):
+        if tp2 is None or (parziale < 1.0 and tp2 == s.tp1) or not rischio or \
+                abs(tp2 - s.ingresso) < foto.RR_MINIMO * rischio - 1e-12:
             fuori.append(None)
             continue
         try:

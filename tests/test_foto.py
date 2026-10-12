@@ -251,7 +251,26 @@ def test_al_tp1_si_chiude_il_25_per_cento():
     s = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.1020, 1.0995, 0, 0, 10, 20, 1.1015, 1.0980, 1.1005, 1.1005, 0.0001,
                 1.0980, 1.1020)
     piani = piani_foto(s, F.Obiettivo(1.1060, "key level", "DH"), None, 10)
-    assert piani[0].parziale == 1.0 and piani[1].parziale == 0.25 and piani[1].pareggio and piani[1].tp2 == 1.1060
+    assert piani[1].parziale == 0.25 and piani[1].pareggio and piani[1].tp2 == 1.1060
+    # Tutto al TP1 renderebbe 0,54 R: sotto l'1,5 del proprietario non si usa.
+    assert piani[0] is None
+
+
+def test_sotto_1_a_1_e_mezzo_non_si_entra():
+    # Il proprietario, 12/10/2026, su un US30 col target quasi raggiunto dalla candela 2: *"1/1,5"*.
+    from nvm.vivo.giro import piani_foto
+    s = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.1020, 1.0995, 0, 0, 10, 20, 1.1015, 1.0980, 1.1005, 1.1005, 0.0001,
+                1.0980, 1.1020)
+    rischio = s.ingresso - s.stop
+    sotto = F.Obiettivo(s.ingresso + 1.4 * rischio, "key level", "DH")
+    assert piani_foto(s, sotto, None, 10) == [None, None, None]
+    giusto = F.Obiettivo(s.ingresso + 1.5 * rischio, "key level", "DH")
+    piani = piani_foto(s, sotto, giusto, 10)
+    assert piani[0] is None and piani[1] is None and piani[2].tp2 == giusto.prezzo
+    tutto_al_tp1 = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.1060, 1.0995, 0, 0, 10, 20, 1.1015, 1.0980, 1.1005, 1.1005,
+                           0.0001, 1.0980, 1.1060)
+    piani = piani_foto(tutto_al_tp1, F.Obiettivo(tutto_al_tp1.tp1, "range", "l'altro lato del range"), None, 10)
+    assert piani[0].tp2 == tutto_al_tp1.tp1 and piani[1] is None
 
 
 # --- La direzione di una candela -------------------------------------------------------------------

@@ -5,6 +5,14 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026: mai sotto 1 a 1,5
+
+Tre trade del demo su H6 (AUDUSD, GBPUSD, US30, tutti short) avevano rendimento al target finale di 0,9, 0,7 e
+0,1 volte il rischio: su US30 la candela 2 aveva chiuso quasi sul target. Il proprietario: *"1/1,5"*. Adesso un piano
+(`giro.piani_foto`) che al suo ultimo target non rende almeno `foto.RR_MINIMO` = 1,5 R non si usa, e se nessun piano
+ci arriva il setup non si prende. Degli esempi delle foto del proprietario uno solo resta sotto: il 3/1 (EURUSD
+mensile long di dicembre 2025, 1,37 R al suo target).
+
 ## 12/10/2026: la rete allenata su Kaggle con la scheda grafica
 
 Il proprietario: *"sì posso anche allenare su kaggle ma non ho i dati"*. Dati gratis da HistData (`kaggle_rete/`,

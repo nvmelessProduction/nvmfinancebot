@@ -614,6 +614,10 @@ PIANI = (
 PIANO_FOTO = 1
 # Quanto si chiude al TP1: il proprietario, 07/10/2026: *"deve prendere il 25% dell'operazione al posto del 50%"*.
 PARZIALE = 0.25
+# Il rendimento minimo al target finale, in R (il proprietario, 12/10/2026, sui trade del demo con il target quasi
+# raggiunto dalla candela 2: *"1/1,5"*). Un piano che al suo ultimo target non arriva a 1,5 volte il rischio non si
+# usa; se nessun piano ci arriva, il setup non si prende.
+RR_MINIMO = 1.5
 
 
 # --- la direzione: il timeframe di comando -----------------------------------------------------------
