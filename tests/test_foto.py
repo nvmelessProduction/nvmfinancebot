@@ -448,3 +448,12 @@ def test_lo_stoppino_del_rollover_non_e_una_presa():
     q = F.Quadro.da(_ore(righe), t0 + 6 * ORA)
     assert F._senza_rollover(q, t0, t0 + 6 * ORA) == pytest.approx((1.1010, 1.0990))
     assert F._senza_rollover(q, t0, t0 + ORA) is None
+
+
+def test_lo_stop_troppo_vicino_si_allarga_non_si_scarta():
+    # Il proprietario, 12/10/2026: *"aumenta di poco lo stop ... da un minimo di 5 o 10 pips ... non lo levare"*.
+    for meta, atteso in ((0.0050, 0.07 * 0.0100), (0.0010, 5 * 0.0001)):
+        t0 = ny(2026, 9, 1, 17)
+        righe = [(t0 + k * ORA, 1.1000, 1.1000 + meta, 1.1000 - meta, 1.1000) for k in range(24 * 20)]
+        q = F.Quadro.da(_ore(righe), t0 + 24 * 20 * ORA)
+        assert F.stop_minimo(q, t0 + 24 * 20 * ORA) == pytest.approx(atteso)

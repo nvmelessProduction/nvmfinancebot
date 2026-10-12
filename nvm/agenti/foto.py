@@ -30,6 +30,7 @@ import numpy as np
 from nvm.agenti.cacciatore import CRT, Motivo, Verso
 from nvm.dati.candele import Candele, costruisci, weekend
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, PUNTO, Minuti
+from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import ORDINE, TF, fine_candela, inizio_candela, scarti_ny
 
 # I timeframe su cui il proprietario opera il CRT (foto: 1 ora, 4 ore, 6 ore, giorno, settimana, mese).
@@ -427,14 +428,15 @@ def trova(q: Quadro, tf: TF, dal: int, al: int) -> list[Setup]:
         n3_fine = fine_candela(n3, tf, we)
         spread = max(float(c.ask[k2, CHIUSURA] - c.bid[k2, CHIUSURA]), 0.0)
         entrata = _apertura(q, n3, c2)
+        minimo = stop_minimo(q, n3)
         for verso in (Verso.SHORT, Verso.LONG):
             if verso is Verso.SHORT:
                 valido = h2p > alto and basso < c2 <= alto + tolleranza and l2 > basso
-                stop, tp1 = float(c.ask[k2, MASSIMO]), basso
+                stop, tp1 = max(float(c.ask[k2, MASSIMO]), entrata + minimo), basso
                 giusto = stop > entrata > tp1
             else:
                 valido = l2p < basso and basso - tolleranza <= c2 < alto and h2 < alto
-                stop, tp1 = l2, alto
+                stop, tp1 = min(l2, entrata + spread - minimo), alto
                 giusto = stop < entrata + spread < tp1
             if not (valido and giusto):
                 continue
@@ -445,6 +447,29 @@ def trova(q: Quadro, tf: TF, dal: int, al: int) -> list[Setup]:
                 s.h4_preso = _h4_preso(q, s)
             fuori.append(s)
     return fuori
+
+
+# Lo stop piu' vicino all'ingresso che si accetta: almeno STOP_PIP pip e almeno STOP_RANGE volte il range giornaliero
+# medio delle ultime GIORNI_RANGE giornate. Il proprietario, 12/10/2026: *"se vede che c'ha uno stop troppo piccolo,
+# aumenta di poco lo stop ... da un minimo di 5 o 10 pips ... non lo levare, perché esistono dei setup dove ci sta uno
+# stop minuscolo e partono"*.
+STOP_PIP = 5
+STOP_RANGE = 0.07
+GIORNI_RANGE = 14
+
+
+def stop_minimo(q: Quadro, t: int) -> float:
+    """La distanza minima fra ingresso e stop a `t`, in prezzo: lo stop resta sull'estremo della candela 2, ma se e'
+    piu' vicino di cosi' si allarga fin qui (su EURUSD circa 5 pip, su GBPJPY circa 10, sull'oro circa 5 dollari)."""
+    s = STRUMENTI.get(q.strumento)
+    pip = s.pip if s is not None else 10 * PUNTO.get(q.strumento, 0.0)
+    giorni = q.candele.get(TF.D1)
+    medio = 0.0
+    if giorni is not None and len(giorni):
+        k = int(np.searchsorted(giorni.fine, t, side="right"))
+        r = giorni.bid[max(0, k - GIORNI_RANGE):k, MASSIMO] - giorni.bid[max(0, k - GIORNI_RANGE):k, MINIMO]
+        medio = float(np.mean(r)) if len(r) else 0.0
+    return max(STOP_PIP * pip, STOP_RANGE * medio)
 
 
 def _senza_rollover(q: Quadro, dal: int, al: int) -> Optional[tuple[float, float]]:

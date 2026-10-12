@@ -49,9 +49,6 @@ SCHEDA = ([f"tf {tf.value}" for tf in foto.TF_CRT] +
           ["vendita", "stop", "tp1", "target", "rr tp1", "rr target", "key level", "direzione", "A+",
            "target gap", "target key level", "inside bar"])
 GIORNI_SCALA = 14
-# Lo stop piu' piccolo che si studia, in range giornalieri medi: sotto (il 3,6% dei casi, su EURUSD meno di 3-4 pip)
-# spread e commissioni si mangiano quasi tutto e un salto d'apertura fa perdere decine di volte il rischio.
-STOP_MINIMO = 0.05
 
 
 def con_spread(m: Minuti, spread: float | None = None) -> Minuti:

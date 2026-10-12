@@ -5,6 +5,15 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (sera): lo stop troppo vicino si allarga, non si scarta
+
+Il proprietario: *"se vede che c'ha uno stop troppo piccolo, aumenta di poco lo stop ... da un minimo di 5 o 10
+pips ... non lo levare, perché esistono dei setup dove ci sta uno stop minuscolo e partono"*. Lo stop resta
+sull'estremo della candela 2; se e' piu' vicino all'ingresso di `foto.stop_minimo` (il piu' grande fra 5 pip e il 7%
+del range giornaliero medio di 14 giorni: EURUSD circa 5 pip, GBPJPY circa 10, oro circa 5 dollari) si allarga fin
+li'. Vale dal vivo e nello studio della rete (prima nello studio quei setup, il 3,6%, erano stati tolti: con lo stop
+quasi sull'ingresso il risultato in R esplodeva).
+
 ## 12/10/2026 (pomeriggio, dopo): lo stoppino del rollover non e' una presa
 
 GBPCAD del 9/10, CRT H6 long: per il bot la candela 2 aveva preso il DL (1.88009) con un minimo a 1.87890. Il

@@ -21,7 +21,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from kaggle_rete.esperienza import SCHEDA, STOP_MINIMO
+from kaggle_rete.esperienza import SCHEDA
 from kaggle_rete.histdata import pezzi_buoni
 from nvm.agenti.foto import RR_MINIMO, TF_CRT
 from nvm.dati.ore import carica
@@ -72,17 +72,15 @@ class Casi:
 
     def __init__(self, radice: Path, file_casi: Path, scrivi=print):
         f = np.load(file_casi)
-        studio = f["scheda"][:, SCHEDA.index("stop")] > STOP_MINIMO
         strumenti, t_tutti = f["strumento"], f["t"]
         tenere = np.zeros(len(t_tutti), bool)
-        scrivi(f"casi preparati {len(t_tutti)}, con lo stop troppo piccolo (tolti) {int((~studio).sum())}")
         xs = np.zeros((len(t_tutti), len(TF_RETE), 40, 7), np.float16)
         vs = np.ones((len(t_tutti), len(TF_RETE), 40), bool)
         for s in np.unique(strumenti):
             inizio = time.time()
             m, _ = carica(radice, str(s), utc(1999, 1, 1), utc(2100, 1, 1), solo_bid=True)
             pezzi, _ = pezzi_buoni(m)
-            dove = np.flatnonzero((strumenti == s) & studio)
+            dove = np.flatnonzero(strumenti == s)
             for p in pezzi:
                 dentro = dove[(t_tutti[dove] >= p.t[0]) & (t_tutti[dove] <= p.t[-1])]
                 if not len(dentro):
