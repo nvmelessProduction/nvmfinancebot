@@ -1,81 +1,88 @@
 <title>Lavagna NVM</title>
 <style>
-/* Layout: come una postazione di TradingView. Barra in alto, strumenti a sinistra, grafico al centro, pannello della lezione a destra (sotto il grafico sul telefono). */
+/* Layout: una postazione di TradingView. Barra in alto (simbolo, timeframe, lezione), strumenti di disegno a sinistra,
+   grafico al centro con la barra dell'oggetto selezionato, pannello a destra (oggetti, decisione, percorso). */
 :root {
   --bg: #ffffff; --pannello: #f8f9fd; --bordo: #e0e3eb; --testo: #131722; --tenue: #6a6d78;
-  --griglia: #f0f3fa; --accento: #2962ff; --su: #089981; --giu: #f23645; --attivo: #e3effd;
-  --zona-su: rgba(8, 153, 129, 0.16); --zona-giu: rgba(242, 54, 69, 0.16); --riga: #2962ff; --tp1: #ff9800;
+  --griglia: #f0f3fa; --accento: #2962ff; --su: #089981; --giu: #f23645; --attivo: #e3effd; --ombra: rgba(0,0,0,.12);
+  --zona-su: rgba(8, 153, 129, 0.16); --zona-giu: rgba(242, 54, 69, 0.16); --tp1: #ff9800;
   --font: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif;
   --dati: "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #131722; --pannello: #1e222d; --bordo: #2a2e39; --testo: #d1d4dc; --tenue: #868993;
-  --griglia: #1e222d; --accento: #2962ff; --su: #26a69a; --giu: #ef5350; --attivo: #2a2e39;
-  --zona-su: rgba(38, 166, 154, 0.2); --zona-giu: rgba(239, 83, 80, 0.2); --riga: #5b8cff; --tp1: #ffb74d; color-scheme: dark } }
+  --griglia: #1e222d; --accento: #2962ff; --su: #26a69a; --giu: #ef5350; --attivo: #2a2e39; --ombra: rgba(0,0,0,.5);
+  --zona-su: rgba(38, 166, 154, 0.2); --zona-giu: rgba(239, 83, 80, 0.2); --tp1: #ffb74d; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #131722; --pannello: #1e222d; --bordo: #2a2e39; --testo: #d1d4dc; --tenue: #868993;
-  --griglia: #1e222d; --accento: #2962ff; --su: #26a69a; --giu: #ef5350; --attivo: #2a2e39;
-  --zona-su: rgba(38, 166, 154, 0.2); --zona-giu: rgba(239, 83, 80, 0.2); --riga: #5b8cff; --tp1: #ffb74d; color-scheme: dark }
+  --griglia: #1e222d; --accento: #2962ff; --su: #26a69a; --giu: #ef5350; --attivo: #2a2e39; --ombra: rgba(0,0,0,.5);
+  --zona-su: rgba(38, 166, 154, 0.2); --zona-giu: rgba(239, 83, 80, 0.2); --tp1: #ffb74d; color-scheme: dark }
 html, body { height: 100%; }
 [hidden] { display: none !important; }
-body { background: var(--bg); color: var(--testo); font-family: var(--font); font-size: 13px; padding-inline: 0; }
+body { background: var(--bg); color: var(--testo); font-family: var(--font); font-size: 13px; }
 * { box-sizing: border-box; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accento); outline-offset: 1px; }
 
-.app { display: grid; grid-template-columns: 46px minmax(0, 1fr) 300px; grid-template-rows: auto minmax(0, 1fr);
-  height: 100%; min-height: 560px; }
-.barra { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  padding: 6px 16px; border-bottom: 1px solid var(--bordo); background: var(--bg); }
-.simbolo { font-weight: 700; font-size: 15px; padding-inline: 4px 10px; border-right: 1px solid var(--bordo); }
-.tfs { display: flex; gap: 2px; flex-wrap: wrap; padding-inline: 6px; border-right: 1px solid var(--bordo); }
-.tf { border: 0; background: transparent; padding: 4px 6px; border-radius: 4px; color: var(--tenue); font-weight: 600; }
-.tf:hover { background: var(--attivo); color: var(--testo); }
-.tf[aria-pressed="true"] { color: var(--accento); background: var(--attivo); }
-.adesso { color: var(--tenue); padding-inline: 8px; font-variant-numeric: tabular-nums; }
+.app { display: grid; grid-template-columns: 46px minmax(0, 1fr) 310px; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 600px; }
+.barra { grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; flex-wrap: wrap; padding: 6px 16px;
+  border-bottom: 1px solid var(--bordo); background: var(--bg); }
+.gruppo { display: flex; gap: 2px; flex-wrap: wrap; padding-inline: 6px; border-right: 1px solid var(--bordo); }
+.gruppo:last-of-type { border-right: 0; }
+.chip { border: 0; background: transparent; padding: 4px 5px; border-radius: 4px; color: var(--tenue); font-weight: 600; font-size: 12px; }
+.chip:hover { background: var(--attivo); color: var(--testo); }
+.chip[aria-pressed="true"] { color: var(--accento); background: var(--attivo); }
+.chip.simb { color: var(--testo); font-weight: 700; }
+.chip.simb[aria-pressed="true"] { color: var(--accento); }
+.chip .ruolo { font-weight: 400; color: var(--tenue); font-size: 11px; margin-left: 4px; }
+.adesso { color: var(--tenue); padding-inline: 6px; font-variant-numeric: tabular-nums; }
 .adesso b { color: var(--testo); font-weight: 600; }
 .spazio { flex: 1; }
 .nav { display: flex; align-items: center; gap: 4px; }
-.nav select { background: var(--pannello); border: 1px solid var(--bordo); border-radius: 4px; padding: 4px 6px; }
-.btn-tondo { border: 1px solid var(--bordo); background: var(--pannello); border-radius: 4px; padding: 4px 9px; }
-.btn-tondo:hover { border-color: var(--tenue); }
+.nav select, .btn { background: var(--pannello); border: 1px solid var(--bordo); border-radius: 4px; padding: 4px 8px; }
+.btn:hover { border-color: var(--tenue); }
 
-.attrezzi { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-block: 8px;
-  border-right: 1px solid var(--bordo); background: var(--bg); }
-.attrezzo { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 4px;
-  background: transparent; color: var(--testo); }
+.attrezzi { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-block: 8px; border-right: 1px solid var(--bordo); overflow-y: auto; }
+.attrezzo { width: 36px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--testo); }
 .attrezzo:hover { background: var(--attivo); }
 .attrezzo[aria-pressed="true"] { color: var(--accento); background: var(--attivo); }
 .attrezzo svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.sep { width: 26px; height: 1px; background: var(--bordo); margin-block: 6px; }
+.sep { width: 26px; height: 1px; background: var(--bordo); margin-block: 5px; }
 
 .grafico { position: relative; min-width: 0; min-height: 0; }
-#chart { position: absolute; inset: 0; }
-.legenda { position: absolute; top: 8px; left: 12px; z-index: 3; pointer-events: none; display: flex; gap: 10px;
-  flex-wrap: wrap; font-family: var(--dati); font-size: 12px; font-variant-numeric: tabular-nums; }
+#chart { position: absolute; inset: 0; touch-action: none; }
+.legenda { position: absolute; top: 8px; left: 12px; z-index: 3; pointer-events: none; display: flex; gap: 10px; flex-wrap: wrap;
+  font-family: var(--dati); font-size: 12px; font-variant-numeric: tabular-nums; }
 .legenda .nome { font-family: var(--font); font-weight: 600; }
 .legenda .su { color: var(--su); } .legenda .giu { color: var(--giu); }
-.guida { position: absolute; top: 34px; left: 12px; z-index: 3; background: var(--accento); color: #fff;
-  border-radius: 4px; padding: 5px 10px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
-.carico { position: absolute; inset: 0; display: grid; place-items: center; z-index: 4; background: var(--bg); color: var(--tenue); }
+.guida { position: absolute; top: 34px; left: 12px; z-index: 4; background: var(--accento); color: #fff; border-radius: 4px;
+  padding: 5px 10px; font-weight: 600; box-shadow: 0 2px 8px var(--ombra); pointer-events: none; }
+.selezione { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 6px;
+  background: var(--pannello); border: 1px solid var(--bordo); border-radius: 6px; padding: 4px 6px; box-shadow: 0 2px 10px var(--ombra); }
+.colore { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
+.colore[aria-pressed="true"] { border-color: var(--testo); }
+.selezione select { background: var(--bg); border: 1px solid var(--bordo); border-radius: 4px; padding: 2px 4px; }
+.carico { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; background: var(--bg); color: var(--tenue); }
 
-.pannello { border-left: 1px solid var(--bordo); background: var(--pannello); overflow-y: auto;
-  display: flex; flex-direction: column; gap: 14px; padding: 16px; min-width: 0; }
+.pannello { border-left: 1px solid var(--bordo); background: var(--pannello); overflow-y: auto; display: flex; flex-direction: column;
+  gap: 16px; padding: 16px; min-width: 0; }
 .pannello h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--tenue); margin: 0 0 6px; font-weight: 600; }
-.riga-dato { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding-block: 3px; }
-.riga-dato label { color: var(--tenue); }
-.riga-dato input { width: 100%; min-width: 0; background: var(--bg); border: 1px solid var(--bordo); border-radius: 4px;
-  padding: 4px 6px; font-family: var(--dati); font-variant-numeric: tabular-nums; }
+.oggetti { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
+.oggetto { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.oggetto:hover { background: var(--attivo); }
+.oggetto[aria-selected="true"] { background: var(--attivo); outline: 1px solid var(--accento); }
+.oggetto .pallino { width: 10px; height: 10px; border-radius: 50%; }
+.oggetto .cosa { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oggetto .cosa small { color: var(--tenue); font-family: var(--dati); }
 .x { border: 0; background: transparent; color: var(--tenue); padding: 2px 6px; border-radius: 4px; }
-.x:hover { color: var(--giu); background: var(--attivo); }
+.x:hover { color: var(--giu); }
 .vuoto { color: var(--tenue); }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 12px; }
 .pill.long { background: var(--zona-su); color: var(--su); } .pill.short { background: var(--zona-giu); color: var(--giu); }
 .pill.niente { background: var(--attivo); color: var(--tenue); }
-.rr { font-family: var(--dati); color: var(--tenue); margin-top: 6px; font-variant-numeric: tabular-nums; }
-textarea { width: 100%; min-height: 64px; resize: vertical; background: var(--bg); border: 1px solid var(--bordo);
-  border-radius: 4px; padding: 6px; }
+.dato { font-family: var(--dati); color: var(--tenue); font-variant-numeric: tabular-nums; line-height: 1.6; }
+textarea { width: 100%; min-height: 60px; resize: vertical; background: var(--bg); border: 1px solid var(--bordo); border-radius: 4px; padding: 6px; }
 .azioni { display: flex; flex-direction: column; gap: 6px; }
 .salva { border: 0; border-radius: 4px; padding: 9px 12px; background: var(--accento); color: #fff; font-weight: 700; }
 .salva:disabled { opacity: .5; cursor: default; }
@@ -84,77 +91,72 @@ textarea { width: 100%; min-height: 64px; resize: vertical; background: var(--bg
 .aiuto { color: var(--tenue); line-height: 1.5; }
 .aiuto kbd { font-family: var(--dati); border: 1px solid var(--bordo); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; }
 
-@media (max-width: 820px) {
+@media (max-width: 860px) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 62vh auto; height: auto; }
-  .attrezzi { flex-direction: row; justify-content: center; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--bordo); padding: 4px; }
+  .attrezzi { flex-direction: row; justify-content: center; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--bordo); padding: 4px 16px; }
   .sep { width: 1px; height: 26px; margin: 0 4px; }
   .grafico { height: 62vh; }
   .pannello { border-left: 0; border-top: 1px solid var(--bordo); }
-  .barra { padding-inline: 16px; }
 }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
 <div class="app">
   <header class="barra">
-    <span class="simbolo" id="simbolo">EURUSD</span>
-    <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
-    <span class="adesso" title="Il grafico si ferma a questo istante: quello che viene dopo non si vede">Adesso: <b id="adesso">…</b></span>
+    <div class="gruppo" id="simboli" role="group" aria-label="Simbolo"></div>
+    <div class="gruppo" id="tfs" role="group" aria-label="Timeframe"></div>
+    <span class="adesso" title="Il grafico si ferma qui: quello che viene dopo non si vede">Adesso: <b id="adesso">…</b></span>
     <span class="spazio"></span>
     <div class="nav">
-      <button class="btn-tondo" id="prima" aria-label="Lezione prima">‹</button>
+      <button class="btn" id="annulla" title="Annulla (Ctrl+Z)">↶</button>
+      <button class="btn" id="ripeti" title="Ripeti (Ctrl+Y)">↷</button>
+      <button class="btn" id="prima" aria-label="Lezione prima">‹</button>
       <select id="scelta" aria-label="Lezione"></select>
-      <button class="btn-tondo" id="dopo" aria-label="Lezione dopo">›</button>
+      <button class="btn" id="dopo" aria-label="Lezione dopo">›</button>
     </div>
   </header>
 
-  <nav class="attrezzi" aria-label="Strumenti di disegno">
-    <button class="attrezzo" data-attrezzo="cursore" aria-pressed="true" title="Mirino (Esc)">
-      <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg></button>
-    <button class="attrezzo" data-attrezzo="riga" aria-pressed="false" title="Riga orizzontale: un key level (Alt+H)">
-      <svg viewBox="0 0 24 24"><path d="M3 12h18"/><circle cx="12" cy="12" r="2"/></svg></button>
-    <button class="attrezzo" data-attrezzo="long" aria-pressed="false" title="Posizione long: ingresso, stop, TP1, target">
-      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="8" fill="currentColor" fill-opacity=".18"/><rect x="4" y="12" width="16" height="7"/><path d="M4 12h16"/></svg></button>
-    <button class="attrezzo" data-attrezzo="short" aria-pressed="false" title="Posizione short: ingresso, stop, TP1, target">
-      <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="7"/><rect x="4" y="12" width="16" height="8" fill="currentColor" fill-opacity=".18"/><path d="M4 12h16"/></svg></button>
-    <span class="sep" aria-hidden="true"></span>
-    <button class="attrezzo" id="calamita" aria-pressed="true" title="Calamita: aggancia apertura, massimo, minimo o chiusura della candela">
-      <svg viewBox="0 0 24 24"><path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/><path d="M6 8h4M14 8h4"/></svg></button>
-    <button class="attrezzo" id="cancella" title="Cancella tutti i disegni di questa lezione">
-      <svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>
-  </nav>
+  <nav class="attrezzi" aria-label="Strumenti di disegno" id="attrezzi"></nav>
 
   <main class="grafico">
     <div id="chart"></div>
     <div class="legenda" id="legenda"></div>
     <div class="guida" id="guida" hidden></div>
+    <div class="selezione" id="selezione" hidden>
+      <span id="sel-colori" style="display:flex;gap:4px"></span>
+      <select id="sel-tag" aria-label="Cos'è"></select>
+      <button class="btn" id="sel-trade" hidden>È il trade</button>
+      <button class="x" id="sel-togli" title="Cancella (Canc)">✕</button>
+    </div>
     <div class="carico" id="carico">Carico il grafico…</div>
   </main>
 
-  <aside class="pannello" aria-label="La tua lezione">
+  <aside class="pannello" aria-label="La tua analisi">
     <section>
-      <h2>Key level</h2>
-      <div id="righe"></div>
+      <h2>Oggetti sul grafico</h2>
+      <div class="oggetti" id="oggetti"></div>
     </section>
     <section>
-      <h2>Setup</h2>
-      <div id="setup"></div>
+      <h2>Decisione</h2>
+      <div id="decisione"></div>
     </section>
     <section>
       <h2>Nota</h2>
-      <textarea id="nota" placeholder="Perché: per esempio presi WH e DH, poi CRT H1"></textarea>
+      <textarea id="nota" placeholder="Perché: per esempio presi WH e DH, SMT col DXY, poi CRT H1"></textarea>
     </section>
     <div class="azioni">
       <button class="salva" id="salva">Salva e vai alla prossima</button>
-      <button class="btn-tondo" id="niente">Nessun setup qui</button>
+      <button class="btn" id="niente">Nessun setup qui</button>
       <div class="messaggio" id="messaggio" role="status"></div>
+      <div class="dato" id="percorso"></div>
     </div>
     <section class="aiuto">
       <h2>Come si usa</h2>
-      Il grafico si ferma all'istante scritto in alto: decidete come fareste dal vivo. Le righe sono i key level che
-      guardate. Il setup si segna con lo strumento long o short: quattro clic, ingresso, stop, TP1 e target. Tutto si
-      trascina col mouse, e i prezzi si possono scrivere a destra. Se non entrereste, premete <b>Nessun setup qui</b>.
-      Tasti: <kbd>Alt</kbd>+<kbd>H</kbd> riga, <kbd>Esc</kbd> annulla, rotella zoom, trascinare per scorrere.
+      Il grafico si ferma all'istante in alto. Fate l'analisi come sempre: cambiate timeframe, guardate DXY e GBPUSD,
+      disegnate. Ogni passaggio viene registrato, nell'ordine. Gli oggetti si selezionano con un clic, si trascinano e si
+      cancellano con <kbd>Canc</kbd>; dalla barra in alto scegliete il colore e cos'è (key level, gap, range CRT, SMT…).
+      La posizione long o short si mette con un clic e poi si trascinano stop, TP1 e target.
+      <br>Tasti: <kbd>Alt</kbd>+<kbd>H</kbd> riga, <kbd>Alt</kbd>+<kbd>J</kbd> raggio, <kbd>Alt</kbd>+<kbd>V</kbd> verticale,
+      <kbd>Alt</kbd>+<kbd>T</kbd> tendenza, <kbd>Alt</kbd>+<kbd>F</kbd> Fibonacci, <kbd>Esc</kbd>, <kbd>Ctrl</kbd>+<kbd>Z</kbd>.
     </section>
   </aside>
 </div>
@@ -162,403 +164,630 @@ textarea { width: 100%; min-height: 64px; resize: vertical; background: var(--bg
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 (() => {
+  "use strict";
+  const N_LEZIONI = 24;
   const TFS = ["1m", "3m", "5m", "15m", "30m", "45m", "1h", "2h", "3h", "4h", "6h", "12h", "1D", "1W", "1M", "3M", "6M", "12M"];
-  const PASSI = ["ingresso", "stop", "tp1", "target"];
-  const NOMI_PASSI = { ingresso: "Ingresso", stop: "Stop", tp1: "TP1 (BE + 25%)", target: "Target finale" };
+  const SEC = { "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "45m": 2700, "1h": 3600, "2h": 7200, "3h": 10800,
+                "4h": 14400, "6h": 21600, "12h": 43200, "1D": 86400, "1W": 604800, "1M": 2629800, "3M": 7889400, "6M": 15778800, "12M": 31557600 };
+  const LUNGHI = new Set(["1D", "1W", "1M", "3M", "6M", "12M"]);
+  const RUOLI = { DXY: "confronto", GBPUSD: "confronto" };
+  const ETICHETTE = ["", "Key level", "Gap / FVG", "Range CRT", "Liquidità", "SMT", "Bias", "Sessione", "Altro"];
+  const COLORI = ["#2962ff", "#f23645", "#089981", "#ff9800", "#9c27b0", "#787b86"];
+  const ATTREZZI = [
+    { id: "cursore", nome: "Mirino", tasto: "Esc", svg: '<path d="M12 3v18M3 12h18"/>' },
+    { id: "hline", nome: "Riga orizzontale", tasto: "Alt+H", svg: '<path d="M3 12h18"/><circle cx="12" cy="12" r="2"/>' },
+    { id: "hray", nome: "Raggio orizzontale", tasto: "Alt+J", svg: '<circle cx="6" cy="12" r="2"/><path d="M8 12h13"/>' },
+    { id: "vline", nome: "Riga verticale", tasto: "Alt+V", svg: '<path d="M12 3v18"/><circle cx="12" cy="12" r="2"/>' },
+    { id: "trend", nome: "Linea di tendenza", tasto: "Alt+T", svg: '<path d="M5 19L19 5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/>' },
+    { id: "rett", nome: "Rettangolo (gap, zone)", tasto: "", svg: '<rect x="4" y="6" width="16" height="12" fill="currentColor" fill-opacity=".15"/>' },
+    { id: "fib", nome: "Ritracciamento di Fibonacci", tasto: "Alt+F", svg: '<path d="M3 5h18M3 10h18M3 14h18M3 19h18"/>' },
+    { sep: true },
+    { id: "long", nome: "Posizione long", tasto: "", svg: '<rect x="4" y="4" width="16" height="8" fill="currentColor" fill-opacity=".18"/><rect x="4" y="12" width="16" height="7"/>' },
+    { id: "short", nome: "Posizione short", tasto: "", svg: '<rect x="4" y="5" width="16" height="7"/><rect x="4" y="12" width="16" height="8" fill="currentColor" fill-opacity=".18"/>' },
+    { id: "testo", nome: "Testo", tasto: "", svg: '<path d="M6 6h12M12 6v13"/>' },
+    { sep: true },
+    { id: "calamita", nome: "Calamita: aggancia apertura, massimo, minimo, chiusura", tasto: "", svg: '<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/>', interruttore: true },
+    { id: "cancella", nome: "Cancella tutti i disegni di questo simbolo", tasto: "", svg: '<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>', azione: true },
+  ];
+  const DUE_CLIC = new Set(["trend", "rett", "fib"]);
   const $ = (id) => document.getElementById(id);
-  const S = { indice: [], n: 1, lez: null, tf: "4h", candele: [], attrezzo: "cursore", calamita: true,
-              righe: [], pos: null, niente: false, nota: "", trascino: null, fatte: {}, db: null, uid: null };
-  let cifre = 5, punto = 1e-5, pip = 1e-4;
 
-  // --- Colori dal tema ----------------------------------------------------------------------------
-  const tok = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  function colori() {
-    return { bg: tok("--bg"), testo: tok("--testo"), griglia: tok("--griglia"), bordo: tok("--bordo"),
-             su: tok("--su"), giu: tok("--giu"), riga: tok("--riga"), tp1: tok("--tp1"),
-             zonaSu: tok("--zona-su"), zonaGiu: tok("--zona-giu"), tenue: tok("--tenue") };
+  const S = { lez: null, n: 1, simbolo: "EURUSD", tf: "4h", dati: null, attrezzo: "cursore", calamita: true,
+              disegni: [], sel: null, prova: null, trascino: null, niente: false, trade: null, nota: "",
+              storia: [], futuro: [], percorso: [], inizio: 0, fatte: {}, db: null, uid: null, cache: {} };
+  let cifre = 5, punto = 1e-5;
+
+  // --- Registro dei passaggi ------------------------------------------------------------------------
+  function passo(k, x) {
+    S.percorso.push(Object.assign({ k, ms: Date.now() - S.inizio }, x || {}));
+    $("percorso").textContent = `Passaggi registrati in questa lezione: ${S.percorso.length}`;
   }
 
-  // --- Grafico --------------------------------------------------------------------------------------
+  // --- Colori dal tema ----------------------------------------------------------------------------------
+  const tok = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const C = {};
+  function leggiColori() { for (const k of ["bg", "testo", "griglia", "bordo", "su", "giu", "tp1", "zona-su", "zona-giu", "tenue", "accento"]) C[k] = tok(`--${k}`); }
+
+  // --- Grafico ------------------------------------------------------------------------------------------
   const LC = window.LightweightCharts;
   const chart = LC.createChart($("chart"), {
-    autoSize: true,
-    crosshair: { mode: LC.CrosshairMode.Normal },
-    timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 15, barSpacing: 7 },
-    rightPriceScale: { scaleMargins: { top: 0.08, bottom: 0.08 } },
-    localization: { locale: "it-IT" },
+    autoSize: true, crosshair: { mode: LC.CrosshairMode.Normal },
+    timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 20, barSpacing: 7 },
+    rightPriceScale: { scaleMargins: { top: 0.08, bottom: 0.08 } }, localization: { locale: "it-IT" },
   });
   const serie = chart.addCandlestickSeries({ priceFormat: { type: "price", precision: 5, minMove: 0.00001 } });
-
   function applicaTema() {
-    const c = colori();
+    leggiColori();
     chart.applyOptions({
-      layout: { background: { type: "solid", color: c.bg }, textColor: c.testo, fontFamily: tok("--font") },
-      grid: { vertLines: { color: c.griglia }, horzLines: { color: c.griglia } },
-      rightPriceScale: { borderColor: c.bordo }, timeScale: { borderColor: c.bordo },
-      crosshair: { vertLine: { color: c.tenue, labelBackgroundColor: c.tenue }, horzLine: { color: c.tenue, labelBackgroundColor: c.tenue } },
+      layout: { background: { type: "solid", color: C.bg }, textColor: C.testo, fontFamily: tok("--font") },
+      grid: { vertLines: { color: C.griglia }, horzLines: { color: C.griglia } },
+      rightPriceScale: { borderColor: C.bordo }, timeScale: { borderColor: C.bordo },
+      crosshair: { vertLine: { color: C.tenue, labelBackgroundColor: C.tenue }, horzLine: { color: C.tenue, labelBackgroundColor: C.tenue } },
     });
-    serie.applyOptions({ upColor: c.su, downColor: c.giu, borderUpColor: c.su, borderDownColor: c.giu, wickUpColor: c.su, wickDownColor: c.giu });
-    ridisegna();
+    serie.applyOptions({ upColor: C.su, downColor: C.giu, borderUpColor: C.su, borderDownColor: C.giu, wickUpColor: C.su, wickDownColor: C.giu });
+    aggiorna();
   }
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applicaTema);
   new MutationObserver(applicaTema).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
-  // Il box della posizione, come lo strumento posizione di TradingView: verde verso il target, rosso verso lo stop.
-  const scatola = {
-    _ch: null, _se: null, _ag: null,
-    attached({ chart, series, requestUpdate }) { this._ch = chart; this._se = series; this._ag = requestUpdate; },
-    detached() {},
-    updateAllViews() {},
-    paneViews() {
-      const io = this;
-      return [{ zOrder: () => "bottom", renderer: () => ({ draw: (target) => io.disegna(target) }) }];
-    },
-    disegna(target) {
-      const p = S.pos;
-      if (!p || p.ingresso == null || !S.candele.length) return;
-      const c = colori();
-      target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio: hr, verticalPixelRatio: vr, bitmapSize }) => {
-        const larg = bitmapSize.width / hr;
-        let x0 = this._ch.timeScale().timeToCoordinate(S.candele[S.candele.length - 1].time);
-        if (x0 == null) x0 = larg - 220;
-        const x1 = Math.min(x0 + 220, larg - 4);
-        const y = (pr) => (pr == null ? null : this._se.priceToCoordinate(pr));
-        const yE = y(p.ingresso), yS = y(p.stop), yT = y(p.target ?? p.tp1);
-        const zona = (ya, yb, colore) => {
-          if (ya == null || yb == null) return;
-          ctx.fillStyle = colore;
-          ctx.fillRect(Math.round(x0 * hr), Math.round(Math.min(ya, yb) * vr), Math.round((x1 - x0) * hr), Math.round(Math.abs(yb - ya) * vr));
-        };
-        zona(yE, yS, c.zonaGiu);
-        zona(yE, yT, c.zonaSu);
-      });
+  // --- Tempo <-> posizione: i disegni stanno sul tempo vero, cosi' restano al loro posto cambiando timeframe ----------
+  function uALogico(u) {
+    const U = S.dati && S.dati.u;
+    if (!U || !U.length) return null;
+    const n = U.length, passoTf = SEC[S.tf];
+    if (u <= U[0]) return (u - U[0]) / passoTf;
+    if (u >= U[n - 1]) return n - 1 + (u - U[n - 1]) / passoTf;
+    let a = 0, b = n - 1;
+    while (b - a > 1) { const m = (a + b) >> 1; if (U[m] <= u) a = m; else b = m; }
+    return a + (u - U[a]) / Math.max(U[b] - U[a], 1);
+  }
+  function logicoAU(l) {
+    const U = S.dati.u, n = U.length, passoTf = SEC[S.tf];
+    if (l <= 0) return U[0] + l * passoTf;
+    if (l >= n - 1) return U[n - 1] + (l - (n - 1)) * passoTf;
+    const a = Math.floor(l);
+    return U[a] + (l - a) * (U[a + 1] - U[a]);
+  }
+  const xDi = (u) => { const l = uALogico(u); return l == null ? null : chart.timeScale().logicalToCoordinate(l); };
+  const yDi = (p) => serie.priceToCoordinate(p);
+  const tondo = (x) => Number((Math.round(x / punto) * punto).toFixed(cifre));
+  const fmtP = (x) => (x == null ? "" : Number(x).toFixed(cifre));
+
+  function puntoDa(x, y, calamita) {
+    const l = chart.timeScale().coordinateToLogical(x);
+    let p = serie.coordinateToPrice(y);
+    if (l == null || p == null) return null;
+    let u = logicoAU(l);
+    if (calamita && S.calamita) {
+      const i = Math.round(l);
+      const d = S.dati.candele[i];
+      if (d) {
+        const m = [d.open, d.high, d.low, d.close].reduce((a, b) => (Math.abs(b - p) < Math.abs(a - p) ? b : a));
+        const py = yDi(m);
+        if (py != null && Math.abs(py - y) < 14) { p = m; u = S.dati.u[i]; }
+      }
+    }
+    return { u: Math.round(u), p: tondo(p) };
+  }
+
+  // --- Il disegno di tutti gli oggetti (una "primitiva" sola, sopra le candele) ------------------------------------
+  const vista = {
+    _ag: null,
+    attached({ requestUpdate }) { this._ag = requestUpdate; },
+    detached() {}, updateAllViews() {},
+    paneViews() { return [{ zOrder: () => "top", renderer: () => ({ draw: (t) => t.useMediaCoordinateSpace((sc) => disegnaTutto(sc.context, sc.mediaSize)) }) }]; },
+    priceAxisViews() {
+      const v = [];
+      for (const d of disegniQui()) {
+        for (const [p, col, testo] of etichetteAsse(d)) {
+          const y = yDi(p);
+          if (y == null) continue;
+          v.push({ coordinate: () => y, text: () => testo, textColor: () => "#ffffff", backColor: () => col, visible: () => true, tickVisible: () => true });
+        }
+      }
+      return v;
     },
   };
-  serie.attachPrimitive(scatola);
-  const ridisegna = () => scatola._ag && scatola._ag();
+  serie.attachPrimitive(vista);
+  const aggiorna = () => { vista._ag && vista._ag(); };
+  const disegniQui = () => S.disegni.filter((d) => d.s === S.simbolo).concat(S.prova && S.prova.s === S.simbolo ? [S.prova] : []);
 
-  // --- Righe di prezzo --------------------------------------------------------------------------------
-  const tondo = (x) => Number((Math.round(x / punto) * punto).toFixed(cifre));
-  const scrivi = (x) => (x == null ? "" : x.toFixed(cifre));
-  const lineeSerie = new Map();      // chiave -> price line
-  function linea(chiave, prezzo, colore, titolo, tratteggio) {
-    const v = lineeSerie.get(chiave);
-    const opz = { price: prezzo, color: colore, lineWidth: 1, lineStyle: tratteggio ? LC.LineStyle.Dashed : LC.LineStyle.Solid,
-                  axisLabelVisible: true, title: titolo };
-    if (v) v.applyOptions(opz); else lineeSerie.set(chiave, serie.createPriceLine(opz));
+  function etichetteAsse(d) {
+    if (d.tipo === "hline" || d.tipo === "hray") return [[d.punti[0].p, d.colore, fmtP(d.punti[0].p)]];
+    if (d.tipo === "long" || d.tipo === "short") {
+      const q = d.livelli;
+      return [[q.ingresso, C.tenue, fmtP(q.ingresso)], [q.stop, C.giu, fmtP(q.stop)], [q.tp1, C.tp1, fmtP(q.tp1)], [q.target, C.su, fmtP(q.target)]];
+    }
+    return S.sel === d.id ? d.punti.map((x) => [x.p, d.colore, fmtP(x.p)]) : [];
   }
-  function togliLinea(chiave) {
-    const v = lineeSerie.get(chiave);
-    if (v) { serie.removePriceLine(v); lineeSerie.delete(chiave); }
+
+  function trasparente(col, a) {
+    if (col.startsWith("#") && col.length === 7) {
+      const r = parseInt(col.slice(1, 3), 16), g = parseInt(col.slice(3, 5), 16), b = parseInt(col.slice(5, 7), 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    return col;
   }
-  function disegnaTutto() {
-    const c = colori();
-    for (const k of [...lineeSerie.keys()]) togliLinea(k);
-    S.righe.forEach((r, i) => linea(`r${i}`, r, c.riga, "KL", false));
-    if (S.pos) {
-      for (const k of PASSI) if (S.pos[k] != null) {
-        const col = k === "stop" ? c.giu : k === "ingresso" ? c.testo : k === "tp1" ? c.tp1 : c.su;
-        linea(`p_${k}`, S.pos[k], col, NOMI_PASSI[k].split(" ")[0], k === "tp1");
+  const LIV_FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+
+  function forma(d) {
+    // I punti a schermo di un oggetto e le sue maniglie (per selezionare e trascinare).
+    const P = d.punti.map((x) => ({ x: xDi(x.u), y: yDi(x.p) }));
+    return P;
+  }
+
+  function disegnaTutto(ctx, dim) {
+    const W = dim.width, H = dim.height;
+    ctx.save();
+    ctx.font = `11px ${tok("--font") || "sans-serif"}`;
+    for (const d of disegniQui()) {
+      const sel = S.sel === d.id;
+      const P = forma(d);
+      ctx.strokeStyle = d.colore; ctx.fillStyle = d.colore; ctx.lineWidth = sel ? 2 : 1.25; ctx.setLineDash([]);
+      const linea = (x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+      if (d.tipo === "hline" && P[0].y != null) linea(0, P[0].y, W, P[0].y);
+      else if (d.tipo === "hray" && P[0].y != null) linea(P[0].x ?? 0, P[0].y, W, P[0].y);
+      else if (d.tipo === "vline" && P[0].x != null) linea(P[0].x, 0, P[0].x, H);
+      else if (d.tipo === "trend" && P.length === 2 && P.every((p) => p.x != null && p.y != null)) linea(P[0].x, P[0].y, P[1].x, P[1].y);
+      else if (d.tipo === "rett" && P.length === 2 && P.every((p) => p.x != null && p.y != null)) {
+        const x = Math.min(P[0].x, P[1].x), y = Math.min(P[0].y, P[1].y), w = Math.abs(P[1].x - P[0].x), h = Math.abs(P[1].y - P[0].y);
+        ctx.fillStyle = trasparente(d.colore, 0.16); ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+      } else if (d.tipo === "fib" && P.length === 2 && P.every((p) => p.x != null && p.y != null)) {
+        const x1 = Math.min(P[0].x, P[1].x), x2 = Math.max(P[0].x, P[1].x);
+        const p0 = d.punti[0].p, p1 = d.punti[1].p;
+        for (const k of LIV_FIB) {
+          const pr = p1 + (p0 - p1) * k, y = yDi(pr);
+          if (y == null) continue;
+          ctx.globalAlpha = k === 0 || k === 1 ? 1 : 0.75; linea(x1, y, x2, y);
+          ctx.globalAlpha = 1; ctx.fillStyle = d.colore; ctx.fillText(`${k} (${fmtP(pr)})`, x1 + 4, y - 3);
+        }
+        ctx.setLineDash([4, 4]); ctx.globalAlpha = 0.6; linea(P[0].x, P[0].y, P[1].x, P[1].y); ctx.globalAlpha = 1; ctx.setLineDash([]);
+      } else if (d.tipo === "testo" && P[0].x != null && P[0].y != null) {
+        ctx.font = `13px ${tok("--font") || "sans-serif"}`; ctx.fillText(d.testo || "Testo", P[0].x, P[0].y);
+        ctx.font = `11px ${tok("--font") || "sans-serif"}`;
+      } else if (d.tipo === "long" || d.tipo === "short") {
+        const q = d.livelli, x1 = xDi(d.punti[0].u), x2 = xDi(d.fine);
+        const yE = yDi(q.ingresso), yS = yDi(q.stop), yT = yDi(q.target), y1 = yDi(q.tp1);
+        if ([x1, x2, yE, yS, yT, y1].some((v) => v == null)) continue;
+        const xa = Math.min(x1, x2), w = Math.max(Math.abs(x2 - x1), 4);
+        ctx.fillStyle = C["zona-su"]; ctx.fillRect(xa, Math.min(yE, yT), w, Math.abs(yT - yE));
+        ctx.fillStyle = C["zona-giu"]; ctx.fillRect(xa, Math.min(yE, yS), w, Math.abs(yS - yE));
+        ctx.strokeStyle = C.tenue; linea(xa, yE, xa + w, yE);
+        ctx.strokeStyle = C.tp1; ctx.setLineDash([5, 4]); linea(xa, y1, xa + w, y1); ctx.setLineDash([]);
+        const r = Math.abs(q.ingresso - q.stop) || 1;
+        ctx.fillStyle = C.testo;
+        ctx.fillText(`Target ${fmtP(q.target)} · ${(Math.abs(q.target - q.ingresso) / r).toFixed(2)} R`, xa + 4, (d.tipo === "long" ? Math.min(yT, yE) : Math.max(yT, yE)) + (d.tipo === "long" ? 13 : -4));
+        ctx.fillText(`TP1 ${(Math.abs(q.tp1 - q.ingresso) / r).toFixed(2)} R`, xa + 4, y1 - 3);
+        ctx.fillText(`Stop ${fmtP(q.stop)}`, xa + 4, (d.tipo === "long" ? Math.max(yS, yE) : Math.min(yS, yE)) + (d.tipo === "long" ? -4 : 13));
+        if (S.trade === d.id) { ctx.fillStyle = C.accento; ctx.fillText("IL TRADE", xa + w - 54, yE - 4); }
+      }
+      if (sel) for (const h of maniglie(d)) {
+        if (h.x == null || h.y == null) continue;
+        ctx.fillStyle = C.bg; ctx.strokeStyle = C.accento; ctx.lineWidth = 1.5;
+        ctx.fillRect(h.x - 4, h.y - 4, 8, 8); ctx.strokeRect(h.x - 4, h.y - 4, 8, 8);
       }
     }
+    ctx.restore();
+  }
+
+  function maniglie(d) {
+    if (d.tipo === "long" || d.tipo === "short") {
+      const x1 = xDi(d.punti[0].u), x2 = xDi(d.fine), q = d.livelli;
+      return [{ k: "ingresso", x: x1, y: yDi(q.ingresso) }, { k: "stop", x: x1, y: yDi(q.stop) }, { k: "tp1", x: x1, y: yDi(q.tp1) },
+              { k: "target", x: x1, y: yDi(q.target) }, { k: "fine", x: x2, y: yDi(q.ingresso) }];
+    }
+    if (d.tipo === "hline") { const y = yDi(d.punti[0].p); return [{ k: 0, x: 60, y }]; }
+    return forma(d).map((p, i) => ({ k: i, x: p.x, y: p.y }));
+  }
+
+  // --- Colpire un oggetto col mouse ------------------------------------------------------------------------------
+  function distSegmento(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1, l = dx * dx + dy * dy;
+    let t = l ? ((px - x1) * dx + (py - y1) * dy) / l : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+  function colpito(x, y) {
+    let meglio = null;
+    const prova = (d, dist, maniglia) => { if (dist <= 7 && (!meglio || dist < meglio.dist || (maniglia != null && meglio.maniglia == null))) meglio = { id: d.id, dist, maniglia }; };
+    for (const d of disegniQui()) {
+      if (d === S.prova) continue;
+      if (S.sel === d.id) for (const h of maniglie(d)) if (h.x != null && h.y != null) prova(d, Math.hypot(h.x - x, h.y - y) - 2, h.k);
+      const P = forma(d);
+      if (d.tipo === "hline" && P[0].y != null) prova(d, Math.abs(P[0].y - y));
+      else if (d.tipo === "hray" && P[0].y != null) prova(d, x >= (P[0].x ?? 0) - 4 ? Math.abs(P[0].y - y) : 99);
+      else if (d.tipo === "vline" && P[0].x != null) prova(d, Math.abs(P[0].x - x));
+      else if (d.tipo === "trend" && P.every((p) => p.x != null && p.y != null)) prova(d, distSegmento(x, y, P[0].x, P[0].y, P[1].x, P[1].y));
+      else if ((d.tipo === "rett") && P.every((p) => p.x != null && p.y != null)) {
+        const xa = Math.min(P[0].x, P[1].x), xb = Math.max(P[0].x, P[1].x), ya = Math.min(P[0].y, P[1].y), yb = Math.max(P[0].y, P[1].y);
+        prova(d, x >= xa - 4 && x <= xb + 4 && y >= ya - 4 && y <= yb + 4 ? 3 : 99);
+      } else if (d.tipo === "fib" && P.every((p) => p.x != null && p.y != null)) {
+        const xa = Math.min(P[0].x, P[1].x), xb = Math.max(P[0].x, P[1].x);
+        if (x >= xa - 4 && x <= xb + 4) for (const k of LIV_FIB) { const yy = yDi(d.punti[1].p + (d.punti[0].p - d.punti[1].p) * k); if (yy != null) prova(d, Math.abs(yy - y)); }
+      } else if (d.tipo === "testo" && P[0].x != null) prova(d, x >= P[0].x - 4 && x <= P[0].x + 9 * (d.testo || "Testo").length && y <= P[0].y + 4 && y >= P[0].y - 16 ? 3 : 99);
+      else if (d.tipo === "long" || d.tipo === "short") {
+        const x1 = xDi(d.punti[0].u), x2 = xDi(d.fine), q = d.livelli;
+        const ys = [q.stop, q.target].map(yDi);
+        if (x1 != null && x2 != null && ys.every((v) => v != null)) prova(d, x >= Math.min(x1, x2) && x <= Math.max(x1, x2) && y >= Math.min(...ys) && y <= Math.max(...ys) ? 3 : 99);
+      }
+    }
+    return meglio;
+  }
+
+  // --- Storia (annulla/ripeti) -------------------------------------------------------------------------------
+  const fotografia = () => JSON.stringify({ disegni: S.disegni, trade: S.trade, niente: S.niente });
+  function ricorda() { S.storia.push(fotografia()); if (S.storia.length > 200) S.storia.shift(); S.futuro = []; }
+  function ripristina(f) { const x = JSON.parse(f); S.disegni = x.disegni; S.trade = x.trade; S.niente = x.niente; S.sel = null; ridisegna(); }
+  $("annulla").addEventListener("click", annulla);
+  $("ripeti").addEventListener("click", ripeti);
+  function annulla() { if (!S.storia.length) return; S.futuro.push(fotografia()); ripristina(S.storia.pop()); passo("annulla"); }
+  function ripeti() { if (!S.futuro.length) return; S.storia.push(fotografia()); ripristina(S.futuro.pop()); passo("ripeti"); }
+
+  // --- Creare e modificare -------------------------------------------------------------------------------------
+  let contatore = 0;
+  const nuovoId = () => `d${Date.now().toString(36)}${(contatore++).toString(36)}`;
+  const istantanea = (d) => JSON.parse(JSON.stringify(d));
+  const coloreBase = (tipo) => (tipo === "rett" ? "#ff9800" : tipo === "fib" ? "#787b86" : "#2962ff");
+
+  function crea(tipo, punti, extra) {
+    ricorda();
+    const d = Object.assign({ id: nuovoId(), tipo, s: S.simbolo, tf: S.tf, punti, colore: coloreBase(tipo), tag: tipo === "hline" || tipo === "hray" ? "Key level" : "" }, extra || {});
+    S.disegni.push(d);
+    S.sel = d.id; S.niente = false;
+    if ((tipo === "long" || tipo === "short") && S.simbolo === S.lez.principale) S.trade = d.id;
+    passo("+", { d: istantanea(d), tf: S.tf, s: S.simbolo });
+    return d;
+  }
+  function togli(id) {
+    const d = S.disegni.find((x) => x.id === id);
+    if (!d) return;
+    ricorda();
+    S.disegni = S.disegni.filter((x) => x.id !== id);
+    if (S.trade === id) S.trade = null;
+    if (S.sel === id) S.sel = null;
+    passo("-", { id, tipo: d.tipo, s: d.s, tf: S.tf });
     ridisegna();
-    pannello();
+  }
+  function posizioneBase(tipo, pt) {
+    const cs = S.dati.candele, n = cs.length;
+    let media = 0, k = 0;
+    for (let i = Math.max(0, n - 20); i < n; i++) { media += cs[i].high - cs[i].low; k++; }
+    const r = tondo(Math.max((media / Math.max(k, 1)) * 1.5, punto * 50));
+    const s = tipo === "long" ? 1 : -1;
+    return { livelli: { ingresso: pt.p, stop: tondo(pt.p - s * r), tp1: tondo(pt.p + s * r), target: tondo(pt.p + 2 * s * r) },
+             fine: pt.u + 25 * SEC[S.tf] };
   }
 
-  // --- Clic sul grafico: righe e posizione --------------------------------------------------------------
-  function prezzoDa(param) {
-    let pr = serie.coordinateToPrice(param.point.y);
-    if (pr == null) return null;
-    if (S.calamita) {
-      const d = param.seriesData && param.seriesData.get(serie);
-      if (d) {
-        const vicini = [d.open, d.high, d.low, d.close];
-        const migliore = vicini.reduce((a, b) => (Math.abs(b - pr) < Math.abs(a - pr) ? b : a));
-        const py = serie.priceToCoordinate(migliore);
-        if (py != null && Math.abs(py - param.point.y) < 14) pr = migliore;
-      }
+  const zona = $("chart");
+  const xy = (e) => { const r = zona.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  function bloccaGrafico(b) { chart.applyOptions({ handleScroll: !b, handleScale: !b }); }
+
+  zona.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const { x, y } = xy(e);
+    if (S.attrezzo === "cursore") {
+      const c = colpito(x, y);
+      if (!c) { if (S.sel) { S.sel = null; ridisegna(); } return; }
+      S.sel = c.id;
+      const d = S.disegni.find((v) => v.id === c.id);
+      const p0 = puntoDa(x, y, false);
+      S.trascino = { id: c.id, maniglia: c.maniglia, da: p0, origine: istantanea(d), mosso: false };
+      bloccaGrafico(true);
+      zona.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+      ridisegna();
+      return;
     }
-    return tondo(pr);
-  }
-  chart.subscribeClick((param) => {
-    if (!param.point || S.trascino) return;
-    const pr = prezzoDa(param);
-    if (pr == null) return;
-    if (S.attrezzo === "riga") {
-      S.righe.push(pr); S.niente = false; scegliAttrezzo("cursore"); disegnaTutto();
+    e.stopPropagation();
+    const calamita = S.attrezzo !== "testo";
+    const pt = puntoDa(x, y, calamita);
+    if (!pt) return;
+    if (DUE_CLIC.has(S.attrezzo)) {
+      if (!S.prova) { S.prova = { id: "prova", tipo: S.attrezzo, s: S.simbolo, punti: [pt, { ...pt }], colore: coloreBase(S.attrezzo) }; guida(); aggiorna(); return; }
+      const punti = [S.prova.punti[0], pt];
+      S.prova = null;
+      crea(S.attrezzo, punti);
+      scegli("cursore");
     } else if (S.attrezzo === "long" || S.attrezzo === "short") {
-      if (!S.pos || S.pos.completa) S.pos = { verso: S.attrezzo, ingresso: null, stop: null, tp1: null, target: null };
-      const quale = PASSI.find((k) => S.pos[k] == null);
-      const su = S.pos.verso === "long" ? 1 : -1;
-      const sbagliato = quale === "stop" ? su * (S.pos.ingresso - pr) <= 0
-        : quale === "tp1" ? su * (pr - S.pos.ingresso) <= 0
-        : quale === "target" ? su * (pr - S.pos.tp1) < 0 : false;
-      if (sbagliato) {
-        const dove = { stop: su > 0 ? "sotto l'ingresso" : "sopra l'ingresso", tp1: su > 0 ? "sopra l'ingresso" : "sotto l'ingresso",
-                       target: su > 0 ? "sopra il TP1" : "sotto il TP1" }[quale];
-        $("guida").textContent = `${NOMI_PASSI[quale]} di un ${S.pos.verso} va ${dove}: clicca di nuovo`;
-        return;
+      crea(S.attrezzo, [pt], posizioneBase(S.attrezzo, pt));
+      scegli("cursore");
+    } else if (S.attrezzo === "testo") {
+      apriTesto(pt);
+    } else if (S.attrezzo === "vline") {
+      crea("vline", [{ u: pt.u, p: pt.p }]); scegli("cursore");
+    } else {
+      crea(S.attrezzo, [pt]); scegli("cursore");
+    }
+  }, true);
+
+  zona.addEventListener("pointermove", (e) => {
+    const { x, y } = xy(e);
+    if (S.prova) {
+      const pt = puntoDa(x, y, true);
+      if (pt) { S.prova.punti[1] = pt; aggiorna(); }
+      return;
+    }
+    if (!S.trascino) {
+      zona.style.cursor = S.attrezzo !== "cursore" ? "crosshair" : colpito(x, y) ? "pointer" : "";
+      return;
+    }
+    const t = S.trascino, d = S.disegni.find((v) => v.id === t.id);
+    if (!d) return;
+    const pt = puntoDa(x, y, t.maniglia != null);
+    if (!pt || !t.da) return;
+    if (!t.mosso) { ricorda(); t.mosso = true; }
+    const o = t.origine, du = pt.u - t.da.u, dp = pt.p - t.da.p;
+    if (d.tipo === "long" || d.tipo === "short") {
+      const s = d.tipo === "long" ? 1 : -1;
+      if (t.maniglia === "fine") d.fine = Math.max(o.punti[0].u + SEC[S.tf], o.fine + du);
+      else if (t.maniglia === "stop") d.livelli.stop = s * (pt.p - d.livelli.ingresso) < 0 ? pt.p : d.livelli.stop;
+      else if (t.maniglia === "tp1") d.livelli.tp1 = s * (pt.p - d.livelli.ingresso) > 0 ? pt.p : d.livelli.tp1;
+      else if (t.maniglia === "target") d.livelli.target = s * (pt.p - d.livelli.tp1) >= 0 ? pt.p : d.livelli.target;
+      else if (t.maniglia === "ingresso") {
+        // Come su TradingView: l'ingresso si sposta da solo, fra lo stop e il TP1.
+        if (s * (pt.p - d.livelli.stop) > 0 && s * (d.livelli.tp1 - pt.p) > 0) { d.livelli.ingresso = pt.p; d.punti[0].p = pt.p; }
+      } else {
+        d.punti[0] = { u: o.punti[0].u + du, p: o.punti[0].p };
+        d.fine = o.fine + du;
+        for (const k of ["ingresso", "stop", "tp1", "target"]) d.livelli[k] = tondo(o.livelli[k] + dp);
+        d.punti[0].p = d.livelli.ingresso;
       }
-      S.pos[quale] = pr;
-      S.niente = false;
-      const prossimo = PASSI.find((k) => S.pos[k] == null);
-      if (!prossimo) { S.pos.completa = true; scegliAttrezzo("cursore"); }
-      guida();
-      disegnaTutto();
+    } else if (t.maniglia != null && t.maniglia !== undefined && d.tipo !== "hline") {
+      d.punti[t.maniglia] = { u: pt.u, p: pt.p };
+    } else {
+      d.punti = o.punti.map((q) => ({ u: q.u + du, p: tondo(q.p + dp) }));
+    }
+    aggiorna(); pannello();
+  }, true);
+
+  const fine = () => {
+    const t = S.trascino;
+    if (!t) return;
+    S.trascino = null; bloccaGrafico(S.attrezzo !== "cursore");
+    const d = S.disegni.find((v) => v.id === t.id);
+    if (t.mosso && d) passo("~", { d: istantanea(d), tf: S.tf, s: S.simbolo });
+    ridisegna();
+  };
+  zona.addEventListener("pointerup", fine, true);
+  zona.addEventListener("pointercancel", fine, true);
+
+  // Il testo si scrive in un campo sul grafico (niente finestre del browser).
+  function apriTesto(pt) {
+    const r = zona.getBoundingClientRect();
+    const i = document.createElement("input");
+    i.type = "text"; i.placeholder = "Scrivi e premi Invio"; i.id = "testo-nuovo";
+    Object.assign(i.style, { position: "absolute", zIndex: 7, left: `${Math.max(0, xDi(pt.u) ?? 20)}px`, top: `${Math.max(0, (yDi(pt.p) ?? 40) - 14)}px`,
+      background: C.bg, border: `1px solid ${C.accento}`, borderRadius: "4px", padding: "3px 6px", width: "200px" });
+    $("chart").parentElement.append(i);
+    i.focus();
+    const chiudi = (salva) => { const v = i.value.trim(); i.remove(); if (salva && v) crea("testo", [pt], { testo: v, colore: C.testo || "#d1d4dc" }); scegli("cursore"); };
+    i.addEventListener("keydown", (e) => { if (e.key === "Enter") chiudi(true); if (e.key === "Escape") chiudi(false); e.stopPropagation(); });
+    i.addEventListener("blur", () => chiudi(true));
+  }
+
+  // --- Barra dell'oggetto selezionato ---------------------------------------------------------------------------------
+  COLORI.forEach((c) => {
+    const b = document.createElement("button"); b.className = "colore"; b.style.background = c; b.title = "Colore"; b.dataset.c = c;
+    b.addEventListener("click", () => { const d = selezionato(); if (!d) return; ricorda(); d.colore = c; passo("~", { d: istantanea(d), tf: S.tf, s: S.simbolo }); ridisegna(); });
+    $("sel-colori").append(b);
+  });
+  ETICHETTE.forEach((t) => { const o = document.createElement("option"); o.value = t; o.textContent = t || "Cos'è…"; $("sel-tag").append(o); });
+  $("sel-tag").addEventListener("change", (e) => { const d = selezionato(); if (!d) return; ricorda(); d.tag = e.target.value; passo("~", { d: istantanea(d), tf: S.tf, s: S.simbolo }); ridisegna(); });
+  $("sel-togli").addEventListener("click", () => S.sel && togli(S.sel));
+  $("sel-trade").addEventListener("click", () => { const d = selezionato(); if (!d) return; ricorda(); S.trade = d.id; S.niente = false; passo("trade", { id: d.id }); ridisegna(); });
+  const selezionato = () => S.disegni.find((d) => d.id === S.sel);
+  function barraSelezione() {
+    const d = selezionato();
+    $("selezione").hidden = !d;
+    if (!d) return;
+    document.querySelectorAll(".colore").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.c === d.colore)));
+    $("sel-tag").value = d.tag || "";
+    $("sel-trade").hidden = !((d.tipo === "long" || d.tipo === "short") && S.trade !== d.id);
+  }
+
+  // --- Pannello ---------------------------------------------------------------------------------------------------
+  const NOMI = { hline: "Riga", hray: "Raggio", vline: "Verticale", trend: "Tendenza", rett: "Rettangolo", fib: "Fibonacci", long: "Long", short: "Short", testo: "Testo" };
+  function pannello() {
+    const box = $("oggetti");
+    box.textContent = "";
+    if (!S.disegni.length) { const p = document.createElement("div"); p.className = "vuoto"; p.textContent = "Ancora niente. Gli strumenti sono a sinistra."; box.append(p); }
+    for (const d of S.disegni) {
+      const r = document.createElement("div"); r.className = "oggetto"; r.setAttribute("aria-selected", String(S.sel === d.id)); r.tabIndex = 0;
+      const pal = document.createElement("span"); pal.className = "pallino"; pal.style.background = d.colore;
+      const cosa = document.createElement("span"); cosa.className = "cosa";
+      const prezzo = d.tipo === "long" || d.tipo === "short" ? d.livelli.ingresso : d.punti[0].p;
+      cosa.textContent = `${NOMI[d.tipo]}${d.tag ? " · " + d.tag : ""} · ${d.s} `;
+      const sm = document.createElement("small"); sm.textContent = d.tipo === "vline" ? "" : fmtP(prezzo); cosa.append(sm);
+      const x = document.createElement("button"); x.className = "x"; x.textContent = "✕"; x.title = "Cancella";
+      x.addEventListener("click", (e) => { e.stopPropagation(); togli(d.id); });
+      r.addEventListener("click", () => { if (d.s !== S.simbolo) mostraSimbolo(d.s); S.sel = d.id; ridisegna(); });
+      r.append(pal, cosa, x); box.append(r);
+    }
+    const dec = $("decisione");
+    dec.textContent = "";
+    const t = S.disegni.find((d) => d.id === S.trade);
+    if (S.niente) { const p = document.createElement("span"); p.className = "pill niente"; p.textContent = "Nessun setup qui"; dec.append(p); }
+    else if (!t) { const p = document.createElement("div"); p.className = "vuoto"; p.textContent = `Nessun trade. Mettete una posizione long o short su ${S.lez ? S.lez.principale : "EURUSD"}, oppure premete Nessun setup qui.`; dec.append(p); }
+    else {
+      const q = t.livelli, r = Math.abs(q.ingresso - q.stop);
+      const p = document.createElement("span"); p.className = `pill ${t.tipo}`; p.textContent = `${t.tipo.toUpperCase()} ${t.s}`; dec.append(p);
+      const v = document.createElement("div"); v.className = "dato";
+      v.textContent = `Ingresso ${fmtP(q.ingresso)} · Stop ${fmtP(q.stop)} · TP1 ${fmtP(q.tp1)} (${(Math.abs(q.tp1 - q.ingresso) / r).toFixed(2)} R) · Target ${fmtP(q.target)} (${(Math.abs(q.target - q.ingresso) / r).toFixed(2)} R)`;
+      dec.append(v);
+    }
+  }
+  function ridisegna() { aggiorna(); pannello(); barraSelezione(); }
+
+  // --- Strumenti ------------------------------------------------------------------------------------------------
+  for (const a of ATTREZZI) {
+    if (a.sep) { const s = document.createElement("span"); s.className = "sep"; s.setAttribute("aria-hidden", "true"); $("attrezzi").append(s); continue; }
+    const b = document.createElement("button");
+    b.className = "attrezzo"; b.title = a.nome + (a.tasto ? ` (${a.tasto})` : ""); b.setAttribute("aria-label", a.nome);
+    b.innerHTML = `<svg viewBox="0 0 24 24">${a.svg}</svg>`;
+    if (a.interruttore) { b.setAttribute("aria-pressed", "true"); b.addEventListener("click", () => { S.calamita = !S.calamita; b.setAttribute("aria-pressed", String(S.calamita)); }); }
+    else if (a.azione) b.addEventListener("click", () => { const qui = S.disegni.filter((d) => d.s === S.simbolo); if (!qui.length) return; ricorda(); S.disegni = S.disegni.filter((d) => d.s !== S.simbolo); if (qui.some((d) => d.id === S.trade)) S.trade = null; S.sel = null; passo("cancella tutto", { s: S.simbolo }); ridisegna(); });
+    else { b.dataset.attrezzo = a.id; b.setAttribute("aria-pressed", String(a.id === "cursore")); b.addEventListener("click", () => scegli(a.id)); }
+    $("attrezzi").append(b);
+  }
+  const NOMI_ATTREZZI = Object.fromEntries(ATTREZZI.filter((a) => a.id).map((a) => [a.id, a.nome]));
+  function guida() {
+    const g = $("guida");
+    if (S.attrezzo === "cursore") { g.hidden = true; return; }
+    g.hidden = false;
+    g.textContent = DUE_CLIC.has(S.attrezzo) ? `${NOMI_ATTREZZI[S.attrezzo]}: ${S.prova ? "clicca il secondo punto" : "clicca il primo punto"}`
+      : S.attrezzo === "long" || S.attrezzo === "short" ? `${NOMI_ATTREZZI[S.attrezzo]}: clicca l'ingresso, poi trascina stop, TP1 e target`
+      : `${NOMI_ATTREZZI[S.attrezzo]}: clicca sul grafico`;
+  }
+  function scegli(a) {
+    if (a !== S.attrezzo) S.prova = null;
+    S.attrezzo = a;
+    document.querySelectorAll("[data-attrezzo]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.attrezzo === a)));
+    bloccaGrafico(a !== "cursore");
+    guida(); aggiorna();
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, select")) return;
+    const k = e.key.toLowerCase();
+    if (e.key === "Escape") { S.prova = null; scegli("cursore"); if (S.sel) { S.sel = null; ridisegna(); } }
+    else if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); togli(S.sel); }
+    else if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? ripeti() : annulla(); }
+    else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); ripeti(); }
+    else if (e.altKey) {
+      const m = { h: "hline", j: "hray", v: "vline", t: "trend", f: "fib" }[k];
+      if (m) { e.preventDefault(); scegli(m); }
     }
   });
 
-  // Trascinare righe e livelli della posizione, come su TradingView.
-  const zona = $("chart");
-  function vicino(y) {
-    let migliore = null;
-    const prova = (prezzo, cosa) => {
-      if (prezzo == null) return;
-      const py = serie.priceToCoordinate(prezzo);
-      if (py != null && Math.abs(py - y) <= 6 && (!migliore || Math.abs(py - y) < migliore.d)) migliore = { d: Math.abs(py - y), cosa };
-    };
-    S.righe.forEach((r, i) => prova(r, { tipo: "riga", i }));
-    if (S.pos) PASSI.forEach((k) => prova(S.pos[k], { tipo: "pos", k }));
-    return migliore && migliore.cosa;
-  }
-  const yDi = (e) => e.clientY - zona.getBoundingClientRect().top;
-  zona.addEventListener("pointerdown", (e) => {
-    if (S.attrezzo !== "cursore") return;
-    const v = vicino(yDi(e));
-    if (!v) return;
-    S.trascino = v;
-    chart.applyOptions({ handleScroll: false, handleScale: false });
-    zona.setPointerCapture(e.pointerId);
-    e.stopPropagation();
-  }, true);
-  zona.addEventListener("pointermove", (e) => {
-    const y = yDi(e);
-    if (!S.trascino) { zona.style.cursor = S.attrezzo === "cursore" && vicino(y) ? "ns-resize" : ""; return; }
-    const pr = serie.coordinateToPrice(y);
-    if (pr == null) return;
-    const v = tondo(pr);
-    if (S.trascino.tipo === "riga") S.righe[S.trascino.i] = v; else S.pos[S.trascino.k] = v;
-    disegnaTutto();
-  }, true);
-  const fineTrascino = () => {
-    if (!S.trascino) return;
-    S.trascino = null;
-    chart.applyOptions({ handleScroll: true, handleScale: true });
-  };
-  zona.addEventListener("pointerup", fineTrascino, true);
-  zona.addEventListener("pointercancel", fineTrascino, true);
-
-  // --- Legenda OHLC ----------------------------------------------------------------------------------
+  // --- Legenda ----------------------------------------------------------------------------------------------------
   function legenda(d) {
-    const el = $("legenda");
-    el.textContent = "";
-    const nome = document.createElement("span");
-    nome.className = "nome"; nome.textContent = `EURUSD · ${S.tf}`;
-    el.append(nome);
+    const el = $("legenda"); el.textContent = "";
+    const nome = document.createElement("span"); nome.className = "nome"; nome.textContent = `${S.simbolo} · ${S.tf}`; el.append(nome);
     if (!d) return;
     const cl = d.close >= d.open ? "su" : "giu";
     for (const [k, v] of [["A", d.open], ["M", d.high], ["m", d.low], ["C", d.close]]) {
-      const s = document.createElement("span");
-      s.innerHTML = `${k} <span class="${cl}"></span>`;
-      s.lastChild.textContent = v.toFixed(cifre);
-      el.append(s);
+      const s = document.createElement("span"); s.append(`${k} `);
+      const n = document.createElement("span"); n.className = cl; n.textContent = v.toFixed(cifre); s.append(n); el.append(s);
     }
   }
-  chart.subscribeCrosshairMove((param) => {
-    const d = param.seriesData && param.seriesData.get(serie);
-    legenda(d || S.candele[S.candele.length - 1]);
-  });
+  chart.subscribeCrosshairMove((p) => { const d = p.seriesData && p.seriesData.get(serie); legenda(d || (S.dati && S.dati.candele[S.dati.candele.length - 1])); });
 
-  // --- Pannello ------------------------------------------------------------------------------------
-  function campo(etichetta, valore, alCambio, alTogli) {
-    const r = document.createElement("div");
-    r.className = "riga-dato";
-    const id = `campo-${etichetta.replace(/\W/g, "")}-${Math.random().toString(36).slice(2, 7)}`;
-    const l = document.createElement("label"); l.textContent = etichetta; l.htmlFor = id;
-    const i = document.createElement("input"); i.type = "number"; i.step = punto; i.id = id; i.value = scrivi(valore);
-    i.addEventListener("change", () => { const v = parseFloat(i.value); if (isFinite(v)) alCambio(tondo(v)); });
-    r.append(l, i);
-    if (alTogli) {
-      const x = document.createElement("button"); x.className = "x"; x.textContent = "✕"; x.title = "Togli"; x.ariaLabel = `Togli ${etichetta}`;
-      x.addEventListener("click", alTogli); r.append(x);
-    } else r.append(document.createElement("span"));
-    return r;
-  }
-  function pannello() {
-    const righe = $("righe");
-    righe.textContent = "";
-    if (!S.righe.length) { const p = document.createElement("div"); p.className = "vuoto"; p.textContent = "Nessuna riga. Strumento riga (Alt+H), poi un clic sul livello."; righe.append(p); }
-    S.righe.forEach((r, i) => righe.append(campo(`KL ${i + 1}`, r, (v) => { S.righe[i] = v; disegnaTutto(); },
-                                                     () => { S.righe.splice(i, 1); disegnaTutto(); })));
-    const su = $("setup");
-    su.textContent = "";
-    if (S.niente) {
-      const p = document.createElement("span"); p.className = "pill niente"; p.textContent = "Nessun setup qui"; su.append(p);
-    } else if (!S.pos) {
-      const p = document.createElement("div"); p.className = "vuoto"; p.textContent = "Nessun setup. Strumento long o short, poi quattro clic."; su.append(p);
-    } else {
-      const testa = document.createElement("div");
-      testa.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:4px";
-      const p = document.createElement("span"); p.className = `pill ${S.pos.verso}`; p.textContent = S.pos.verso === "long" ? "LONG" : "SHORT";
-      const x = document.createElement("button"); x.className = "x"; x.textContent = "Togli"; x.addEventListener("click", () => { S.pos = null; guida(); disegnaTutto(); });
-      testa.append(p, x); su.append(testa);
-      for (const k of PASSI) su.append(campo(NOMI_PASSI[k].split(" ")[0], S.pos[k], (v) => { S.pos[k] = v; disegnaTutto(); }));
-      const r = document.createElement("div"); r.className = "rr";
-      const { ingresso: e, stop: s, tp1: t1, target: tg } = S.pos;
-      if (e != null && s != null) {
-        const rischio = Math.abs(e - s);
-        const parti = [`Stop ${(rischio / pip).toFixed(1)} pip`];
-        if (t1 != null) parti.push(`TP1 ${(Math.abs(t1 - e) / rischio).toFixed(2)} R`);
-        if (tg != null) parti.push(`Target ${(Math.abs(tg - e) / rischio).toFixed(2)} R`);
-        r.textContent = parti.join(" · ");
-      }
-      su.append(r);
-    }
-  }
-  $("nota").addEventListener("input", (e) => { S.nota = e.target.value; });
-
-  // --- Strumenti --------------------------------------------------------------------------------------
-  function guida() {
-    const g = $("guida");
-    if ((S.attrezzo === "long" || S.attrezzo === "short")) {
-      const k = S.pos && !S.pos.completa ? PASSI.find((x) => S.pos[x] == null) : "ingresso";
-      g.textContent = `${S.attrezzo === "long" ? "Long" : "Short"}: clicca ${NOMI_PASSI[k]}`;
-      g.hidden = false;
-    } else if (S.attrezzo === "riga") { g.textContent = "Clicca il livello della riga"; g.hidden = false; }
-    else g.hidden = true;
-  }
-  function scegliAttrezzo(a) {
-    if ((a === "long" || a === "short") && S.pos && S.pos.verso !== a) S.pos = null;
-    if ((a === "long" || a === "short") && S.pos && S.pos.completa) S.pos = null;
-    S.attrezzo = a;
-    document.querySelectorAll("[data-attrezzo]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.attrezzo === a)));
-    guida();
-    disegnaTutto();
-  }
-  document.querySelectorAll("[data-attrezzo]").forEach((b) => b.addEventListener("click", () => scegliAttrezzo(b.dataset.attrezzo)));
-  $("calamita").addEventListener("click", (e) => { S.calamita = !S.calamita; e.currentTarget.setAttribute("aria-pressed", String(S.calamita)); });
-  $("cancella").addEventListener("click", () => { S.righe = []; S.pos = null; S.niente = false; scegliAttrezzo("cursore"); });
-  $("niente").addEventListener("click", () => { S.niente = true; S.pos = null; scegliAttrezzo("cursore"); });
-  document.addEventListener("keydown", (e) => {
-    if (e.target.closest("input, textarea, select")) return;
-    if (e.key === "Escape") { if (S.pos && !S.pos.completa) S.pos = null; scegliAttrezzo("cursore"); }
-    if (e.altKey && (e.key === "h" || e.key === "H")) { e.preventDefault(); scegliAttrezzo("riga"); }
-  });
-
-  // --- Timeframe ------------------------------------------------------------------------------------
+  // --- Simboli e timeframe ----------------------------------------------------------------------------------------
   TFS.forEach((t) => {
-    const b = document.createElement("button");
-    b.className = "tf"; b.textContent = t.replace("1D", "D").replace("1W", "W").replace(/^1M$/, "M"); b.dataset.tf = t;
-    b.setAttribute("aria-pressed", String(t === S.tf));
-    b.addEventListener("click", () => mostraTf(t));
-    $("tfs").append(b);
+    const b = document.createElement("button"); b.className = "chip"; b.dataset.tf = t;
+    b.textContent = t.replace("1D", "D").replace("1W", "W").replace(/^1M$/, "M"); b.setAttribute("aria-pressed", String(t === S.tf));
+    b.addEventListener("click", () => mostraTf(t)); $("tfs").append(b);
   });
-  function mostraTf(t) {
-    S.tf = t;
-    document.querySelectorAll(".tf").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === t)));
-    const d = S.lez.tf[t];
-    const p = d.p;
-    S.candele = d.t.map((x, i) => ({ time: x, open: p[4 * i] * punto, high: p[4 * i + 1] * punto, low: p[4 * i + 2] * punto, close: p[4 * i + 3] * punto }));
-    chart.applyOptions({ timeScale: { timeVisible: !["1D", "1W", "1M", "3M", "6M", "12M"].includes(t) } });
-    serie.setData(S.candele);
-    const n = S.candele.length;
-    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 140), to: n + 15 });
-    legenda(S.candele[n - 1]);
-    ridisegna();
+  function datiDi(s, tf) {
+    const k = `${s}|${tf}`;
+    if (S.cache[k]) return S.cache[k];
+    const sim = S.lez.simboli[s], d = sim && sim.tf[tf];
+    if (!d) return null;
+    const pt = Math.pow(10, -sim.cifre), p = d.p;
+    const candele = d.t.map((x, i) => ({ time: x, open: p[4 * i] * pt, high: p[4 * i + 1] * pt, low: p[4 * i + 2] * pt, close: p[4 * i + 3] * pt }));
+    return (S.cache[k] = { candele, u: d.u, cifre: sim.cifre });
   }
+  function mostra(cambio) {
+    const d = datiDi(S.simbolo, S.tf);
+    document.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === S.tf)));
+    document.querySelectorAll("[data-simbolo]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.simbolo === S.simbolo)));
+    if (!d) { S.dati = { candele: [], u: [] }; serie.setData([]); legenda(null); return; }
+    S.dati = d; cifre = d.cifre; punto = Math.pow(10, -cifre);
+    serie.applyOptions({ priceFormat: { type: "price", precision: cifre, minMove: punto } });
+    chart.applyOptions({ timeScale: { timeVisible: !LUNGHI.has(S.tf) } });
+    serie.setData(d.candele);
+    const n = d.candele.length;
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 150), to: n + 20 });
+    legenda(d.candele[n - 1]);
+    ridisegna();
+    if (cambio) passo(cambio, { s: S.simbolo, tf: S.tf });
+  }
+  function mostraTf(t) { if (t === S.tf) return; S.tf = t; S.prova = null; mostra("tf"); }
+  function mostraSimbolo(s) { if (s === S.simbolo) return; S.simbolo = s; S.prova = null; S.sel = null; mostra("simbolo"); }
+  // Cosa si guarda: la parte di grafico visibile, registrata quando ci si ferma.
+  let vistaTimer = null;
+  chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+    aggiorna();
+    clearTimeout(vistaTimer);
+    if (!r || !S.dati || !S.dati.u.length) return;
+    vistaTimer = setTimeout(() => passo("vista", { s: S.simbolo, tf: S.tf, da: Math.round(logicoAU(Math.max(r.from, 0))), a: Math.round(logicoAU(Math.min(r.to, S.dati.u.length - 1))) }), 800);
+  });
 
-  // --- Lezioni ---------------------------------------------------------------------------------------
+  // --- Lezioni ------------------------------------------------------------------------------------------------
   const fmt = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   async function apri(n) {
-    S.n = n;
-    $("scelta").value = String(n);
-    $("carico").hidden = false;
-    $("messaggio").textContent = "";
-    try {
-      const r = await fetch(`lezioni/${String(n).padStart(2, "0")}.json`);
-      S.lez = await r.json();
-    } catch (e) {
-      $("carico").textContent = "Non riesco a caricare questa lezione. Ricarica la pagina.";
-      return;
+    S.n = n; $("scelta").value = String(n); $("carico").hidden = false; $("carico").textContent = "Carico il grafico…"; messaggio("");
+    try { const r = await fetch(`lezioni/${String(n).padStart(2, "0")}.json`); if (!r.ok) throw new Error(r.status); S.lez = await r.json(); }
+    catch (e) { $("carico").textContent = "Non riesco a caricare questa lezione. Ricarica la pagina."; return; }
+    S.cache = {};
+    const simboli = $("simboli"); simboli.textContent = "";
+    for (const s of Object.keys(S.lez.simboli)) {
+      const b = document.createElement("button"); b.className = "chip simb"; b.dataset.simbolo = s; b.textContent = s;
+      if (s !== S.lez.principale) { const r = document.createElement("span"); r.className = "ruolo"; r.textContent = RUOLI[s] || "confronto"; b.append(r); }
+      b.addEventListener("click", () => mostraSimbolo(s)); simboli.append(b);
     }
-    cifre = S.lez.cifre; punto = Math.pow(10, -cifre); pip = punto * 10;
-    $("simbolo").textContent = S.lez.strumento;
     $("adesso").textContent = fmt.format(new Date(S.lez.T * 1000));
     const salvata = S.fatte[n];
-    S.righe = salvata ? [...(salvata.righe || [])] : [];
-    S.pos = salvata && salvata.posizione ? { ...salvata.posizione, completa: true } : null;
-    S.niente = salvata ? !!salvata.niente : false;
-    S.nota = salvata ? salvata.nota || "" : "";
-    $("nota").value = S.nota;
-    mostraTf(S.tf);
-    scegliAttrezzo("cursore");
+    S.disegni = salvata ? JSON.parse(JSON.stringify(salvata.disegni || [])) : [];
+    S.trade = salvata ? salvata.trade || null : null; S.niente = salvata ? !!salvata.niente : false; S.nota = salvata ? salvata.nota || "" : "";
+    $("nota").value = S.nota; S.storia = []; S.futuro = []; S.sel = null; S.prova = null;
+    S.percorso = []; S.inizio = Date.now();
+    S.simbolo = S.lez.principale;
+    passo("apri", { lezione: n, riaperta: !!salvata });
+    mostra(null);
+    scegli("cursore");
     $("carico").hidden = true;
   }
   function elenco() {
-    const sel = $("scelta");
-    const attuale = sel.value;
-    sel.textContent = "";
-    for (const x of S.indice) {
-      const o = document.createElement("option");
-      o.value = String(x); o.textContent = `Lezione ${x} di ${S.indice.length}${S.fatte[x] ? " ✓" : ""}`;
-      sel.append(o);
-    }
-    sel.value = attuale || String(S.n);
+    const sel = $("scelta"), v = sel.value; sel.textContent = "";
+    for (let x = 1; x <= N_LEZIONI; x++) { const o = document.createElement("option"); o.value = String(x); o.textContent = `Lezione ${x} di ${N_LEZIONI}${S.fatte[x] ? " ✓" : ""}`; sel.append(o); }
+    sel.value = v || String(S.n);
   }
   $("scelta").addEventListener("change", (e) => apri(parseInt(e.target.value, 10)));
   $("prima").addEventListener("click", () => S.n > 1 && apri(S.n - 1));
-  $("dopo").addEventListener("click", () => S.n < S.indice.length && apri(S.n + 1));
+  $("dopo").addEventListener("click", () => S.n < N_LEZIONI && apri(S.n + 1));
+  $("nota").addEventListener("change", (e) => { S.nota = e.target.value; passo("nota", { testo: S.nota }); });
+  $("niente").addEventListener("click", () => { ricorda(); S.niente = true; S.trade = null; passo("nessun setup"); ridisegna(); });
 
-  // --- Salvare -------------------------------------------------------------------------------------------
-  function messaggio(testo, tipo) { const m = $("messaggio"); m.textContent = testo; m.className = `messaggio ${tipo || ""}`; }
-  function controlla() {
-    if (S.niente) return null;
-    const p = S.pos;
-    if (!p) return "Segna un setup oppure premi Nessun setup qui.";
-    if (PASSI.some((k) => p[k] == null)) return "Mancano dei livelli del setup: ingresso, stop, TP1 e target.";
-    const su = p.verso === "long" ? 1 : -1;
-    if (su * (p.ingresso - p.stop) <= 0) return `Lo stop di un ${p.verso} va ${su > 0 ? "sotto" : "sopra"} l'ingresso.`;
-    if (su * (p.tp1 - p.ingresso) <= 0) return `Il TP1 di un ${p.verso} va ${su > 0 ? "sopra" : "sotto"} l'ingresso.`;
-    if (su * (p.target - p.tp1) < 0) return "Il target finale va oltre il TP1 (o uguale).";
-    return null;
-  }
+  // --- Salvare: i disegni, la decisione e tutto il percorso -------------------------------------------------------
+  function messaggio(t, tipo) { const m = $("messaggio"); m.textContent = t; m.className = `messaggio ${tipo || ""}`; }
   $("salva").addEventListener("click", async () => {
-    const errore = controlla();
-    if (errore) { messaggio(errore, "errore"); return; }
-    if (!S.db || !S.uid) { messaggio("Non posso salvare: apri la pagina da claude.ai con il tuo account.", "errore"); return; }
-    const pos = S.niente ? null : { verso: S.pos.verso, ingresso: S.pos.ingresso, stop: S.pos.stop, tp1: S.pos.tp1, target: S.pos.target };
-    const doc = { lezione: S.n, strumento: S.lez.strumento, T: S.lez.T, chi: S.uid, quando: Date.now(), tf: S.tf,
-                  righe: [...S.righe], posizione: pos, niente: S.niente, nota: S.nota.trim() };
+    S.nota = $("nota").value;
+    const t = S.disegni.find((d) => d.id === S.trade);
+    if (!S.niente && !t) { messaggio(`Mettete una posizione su ${S.lez.principale} (o scegliete quale è il trade), oppure premete Nessun setup qui.`, "errore"); return; }
+    if (!S.db || !S.uid) { messaggio("Non posso salvare: aprite la pagina da claude.ai con il vostro account.", "errore"); return; }
+    passo("salva", { trade: t ? istantanea(t) : null, niente: S.niente });
+    const quando = Date.now();
+    const percorso = JSON.stringify(S.percorso), PEZZO = 150000, pezzi = Math.max(1, Math.ceil(percorso.length / PEZZO));
     $("salva").disabled = true;
     try {
+      for (let k = 0; k < pezzi; k++) {
+        await S.db.collection("percorsi").doc(`${S.n}-${S.uid}-${quando}-${k}`).set({ lezione: S.n, chi: S.uid, quando, pezzo: k, pezzi, eventi: percorso.slice(k * PEZZO, (k + 1) * PEZZO) });
+      }
+      const doc = { versione: 2, lezione: S.n, principale: S.lez.principale, T: S.lez.T, chi: S.uid, quando, disegni: S.disegni, trade: S.trade,
+                    niente: S.niente, nota: S.nota.trim(), percorso: { quando, pezzi, eventi: S.percorso.length } };
       await S.db.collection("disegni").doc(`${S.n}-${S.uid}`).set(doc);
-      S.fatte[S.n] = doc;
-      elenco();
+      S.fatte[S.n] = doc; elenco();
       messaggio("Salvato.", "ok");
-      if (S.n < S.indice.length) setTimeout(() => apri(S.n + 1), 500);
+      if (S.n < N_LEZIONI) setTimeout(() => apri(S.n + 1), 600);
     } catch (e) {
-      messaggio(`Non salvato: ${e && e.message ? e.message : "errore del salvataggio"}. Riprova.`, "errore");
+      messaggio(`Non salvato: ${e && e.message ? e.message : "errore del salvataggio"}. Riprovate.`, "errore");
     } finally { $("salva").disabled = false; }
   });
 
-  // --- Avvio ------------------------------------------------------------------------------------------
-  applicaTema();
-  S.indice = Array.from({ length: 24 }, (_, i) => i + 1);
-  elenco();
-  apri(1);
+  // --- Avvio --------------------------------------------------------------------------------------------------------
+  applicaTema(); elenco(); apri(1);
   (async () => {
     if (!window.claude || !window.claude.use) { messaggio("Fuori da claude.ai i disegni non si salvano.", "errore"); return; }
     const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
-    if (!db || !user) { messaggio("Per salvare serve essere entrati su claude.ai.", "errore"); return; }
-    S.db = db;
-    S.uid = await user.id();
-    if (!S.uid) { messaggio("Per salvare serve essere entrati su claude.ai.", "errore"); return; }
+    if (!db || !user) { messaggio("Per salvare bisogna essere entrati su claude.ai.", "errore"); return; }
+    S.db = db; S.uid = await user.id();
+    if (!S.uid) { messaggio("Per salvare bisogna essere entrati su claude.ai.", "errore"); return; }
     db.collection("disegni").where("chi", "==", S.uid).onSnapshot((snap) => {
       const prima = !!S.fatte[S.n];
       S.fatte = {};
-      snap.docs.forEach((d) => { const x = d.data(); if (x) S.fatte[x.lezione] = x; });
+      snap.docs.forEach((d) => { const x = d.data(); if (x && x.versione === 2) S.fatte[x.lezione] = x; });
       elenco();
-      if (!prima && S.fatte[S.n] && !S.righe.length && !S.pos && !S.niente) apri(S.n);
+      if (!prima && S.fatte[S.n] && !S.disegni.length && !S.niente) apri(S.n);
     }, () => messaggio("Non riesco a leggere le lezioni già fatte.", "errore"));
   })();
 })();
