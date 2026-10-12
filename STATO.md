@@ -1,9 +1,22 @@
 # Dove siamo
 
-_Aggiornato l'08/10/2026._
+_Aggiornato il 12/10/2026._
 
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
+
+## 12/10/2026: la rete allenata su Kaggle con la scheda grafica
+
+Il proprietario: *"sì posso anche allenare su kaggle ma non ho i dati"*. Dati gratis da HistData (`kaggle_rete/`,
+`spec/rete.md`): 38 strumenti, forex dal 2002, il resto dal 2009-2010, con la pulizia dei pezzi sbagliati (il loro
+orario segue l'ora legale europea; il loro DXY prima del 2018 e' il Dow Jones). Una notte su una Tesla T4: rete da
+826 mila pesi, 577 mila esempi per imparare, 6 ore (bastavano 2: il controllo si ferma a 0.945 al minuto 121).
+
+All'esame dal 2023 (212 mila casi, `registro/misure/2026-10-12-rete-kaggle.txt`): direzione di giorno e settimana
+giusta 94%, mese 90%; CRT a 4 ore e del giorno trovati 93-99%, e quando la rete dice "c'e'" ha ragione 74-81% delle
+volte (ieri 37-39%); setup trovati 94-98%, ma quando dice "setup" ha ragione solo 42-45% (ieri 12-21%). Controllo ed
+esame quasi uguali: non ha imparato a memoria. Gli occhi sono la base per il passo 2 (la scuola dei risultati).
+Pesi (`occhi.pt`) nell'output di Kaggle e nello zip del proprietario, non nel repository.
 
 ## 11/10/2026: la rete neurale, prima parte (scuole 1 e 2)
 

@@ -1,0 +1,68 @@
+Rete neurale, allenamento su Kaggle (notte 11-12/10/2026): scheda grafica Tesla T4, storico HistData di 38
+strumenti (40 serie dopo la pulizia), rete da 826 mila pesi (d 128, 4 strati, 8 teste), 6 ore, lotti da 512.
+Impara fino al 2019, controllo 2020-2022, esame dal 2023 (mai visto mentre impara).
+Comando: la cella di kaggle_rete/cella_kaggle.txt (tutto(ore=6)).
+
+passi 81421; controllo nel tempo (minuti: media dei richiami):
+  1: 0.424, 11: 0.753, 21: 0.899, 31: 0.922, 41: 0.929, 51: 0.932, 61: 0.940, 71: 0.940, 81: 0.939, 91: 0.942, 101: 0.938, 111: 0.937, 121: 0.945, 131: 0.941, 141: 0.941, 151: 0.939, 161: 0.941, 171: 0.939, 181: 0.941, 191: 0.939, 201: 0.941, 211: 0.938, 221: 0.932, 231: 0.938, 241: 0.942, 251: 0.939, 261: 0.938, 271: 0.937, 281: 0.941, 291: 0.940, 301: 0.939, 311: 0.939, 321: 0.938, 331: 0.940, 341: 0.939, 351: 0.939
+  migliore al minuto 121 (passo 27321): 0.945; dopo non sale piu' (bastano 2-3 ore)
+
+CONTROLLO 2020-2022
+  direzione D1   giuste 94.6% (sempre la piu' comune 48.7%), media richiami 95.7%, richiamo 0/1/2 94%/98%/95%, precisione 0/1/2 97%/67%/97%, casi 169653
+  direzione W1   giuste 93.6% (sempre la piu' comune 49.5%), media richiami 93.5%, richiamo 0/1/2 94%/93%/93%, precisione 0/1/2 96%/64%/97%, casi 169653
+  direzione MN   giuste 90.6% (sempre la piu' comune 48.9%), media richiami 85.2%, richiamo 0/1/2 92%/72%/91%, precisione 0/1/2 90%/70%/94%, casi 169653
+  crt H4         giuste 91.9% (sempre la piu' comune 70.0%), media richiami 94.9%, richiamo 0/1/2 90%/98%/97%, precisione 0/1/2 99%/76%/84%, casi 169653
+  crt D1         giuste 98.5% (sempre la piu' comune 94.4%), media richiami 99.0%, richiamo 0/1/2 98%/99%/99%, precisione 0/1/2 100%/79%/80%, casi 169653
+  setup H4       giuste 91.0% (sempre la piu' comune 91.7%), media richiami 94.9%, richiamo 0/1/2 90%/96%/98%, precisione 0/1/2 100%/46%/50%, casi 169653
+  setup D1       giuste 96.5% (sempre la piu' comune 96.9%), media richiami 98.2%, richiamo 0/1/2 96%/99%/99%, precisione 0/1/2 100%/45%/49%, casi 169653
+
+ESAME dal 2023
+  direzione D1   giuste 94.1% (sempre la piu' comune 47.6%), media richiami 95.3%, richiamo 0/1/2 94%/98%/94%, precisione 0/1/2 97%/69%/97%, casi 212334
+  direzione W1   giuste 93.9% (sempre la piu' comune 48.5%), media richiami 94.1%, richiamo 0/1/2 94%/95%/94%, precisione 0/1/2 95%/70%/97%, casi 212334
+  direzione MN   giuste 89.7% (sempre la piu' comune 51.9%), media richiami 82.9%, richiamo 0/1/2 93%/66%/90%, precisione 0/1/2 89%/64%/93%, casi 212334
+  crt H4         giuste 90.6% (sempre la piu' comune 70.7%), media richiami 93.5%, richiamo 0/1/2 88%/97%/95%, precisione 0/1/2 98%/74%/81%, casi 212334
+  crt D1         giuste 98.2% (sempre la piu' comune 94.6%), media richiami 98.7%, richiamo 0/1/2 98%/99%/99%, precisione 0/1/2 100%/75%/76%, casi 212334
+  setup H4       giuste 90.4% (sempre la piu' comune 92.4%), media richiami 94.5%, richiamo 0/1/2 90%/97%/97%, precisione 0/1/2 100%/45%/43%, casi 212334
+  setup D1       giuste 96.2% (sempre la piu' comune 97.1%), media richiami 98.1%, richiamo 0/1/2 96%/99%/99%, precisione 0/1/2 100%/45%/42%, casi 212334
+
+Serie usate (istanti, dal, al):
+  EURUSD                  33075  2005-07-03 -> 2026-10-09
+  GBPUSD                  33075  2005-07-03 -> 2026-10-09
+  AUDUSD                  33073  2005-07-03 -> 2026-10-09
+  NZDUSD                  27650  2009-01-01 -> 2026-10-09
+  USDCAD                  33072  2005-07-03 -> 2026-10-09
+  USDCHF                  29853  2007-08-01 -> 2026-10-09
+  USDJPY                  33075  2005-07-03 -> 2026-10-09
+  EURGBP                  32954  2005-08-01 -> 2026-10-09
+  EURAUD                  32267  2006-01-02 -> 2026-10-09
+  EURNZD                  23630  2011-08-01 -> 2026-10-09
+  EURCAD                  25194  2010-08-01 -> 2026-10-09
+  EURCHF                  29853  2007-08-01 -> 2026-10-09
+  EURJPY                  32950  2005-08-01 -> 2026-10-09
+  GBPAUD                  24401  2011-02-01 -> 2026-10-09
+  GBPNZD                  23623  2011-08-01 -> 2026-10-09
+  GBPCAD                  24393  2011-02-01 -> 2026-10-09
+  GBPCHF                  32271  2006-01-02 -> 2026-10-09
+  GBPJPY                  32670  2005-10-02 -> 2026-10-09
+  AUDNZD                  24410  2011-02-01 -> 2026-10-09
+  AUDCAD                  24408  2011-02-01 -> 2026-10-09
+  AUDCHF                  23635  2011-08-01 -> 2026-10-09
+  AUDJPY dal 2005-05-15    5047  2008-10-01 -> 2011-12-30
+  AUDJPY dal 2013-01-01   16127  2016-06-01 -> 2026-10-09
+  NZDCAD                  23636  2011-08-01 -> 2026-10-09
+  NZDCHF                  23636  2011-08-01 -> 2026-10-09
+  NZDJPY                  25974  2010-02-01 -> 2026-10-09
+  CADCHF                  23635  2011-08-01 -> 2026-10-09
+  CADJPY                  25195  2010-08-01 -> 2026-10-09
+  CHFJPY                  32304  2006-01-02 -> 2026-10-09
+  XAUUSD                  21918  2012-08-01 -> 2026-10-09
+  XAGUSD                  21654  2012-10-01 -> 2026-10-09
+  USOIL                   14906  2014-04-01 -> 2023-12-01
+  UKOIL                   19372  2014-04-01 -> 2026-10-09
+  SPX500                  19282  2014-04-01 -> 2026-10-09
+  NAS100                  19285  2014-04-01 -> 2026-10-09
+  GER40                    7101  2014-04-01 -> 2020-06-12
+  UK100                   16796  2014-04-01 -> 2026-10-09
+  JPN225                  19277  2014-04-01 -> 2026-10-09
+  DXY dal 2010-11-14       7253  2014-04-01 -> 2018-12-14
+  DXY dal 2018-12-17       6871  2022-05-01 -> 2026-10-09

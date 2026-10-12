@@ -35,3 +35,22 @@ Impara fino al 2019, si controlla sul 2020-2022, esame dal 2023. Dati: le ore di
     python -m nvm.rete.scuola --minuti 45
 
 Pesi e resoconto in `dati/rete/` (non va nel repository).
+
+## Su Kaggle, con la scheda grafica (`kaggle_rete/`)
+
+Lo storico lungo viene da **HistData.com** (gratis, un file zip per anno: nessun limite stretto come Dukascopy).
+Due cose scoperte e verificate contro Dukascopy (EURUSD 2006, 2007, 2013, 2019, 2024, GBPUSD 2008, USDJPY 2010,
+XAUUSD 2015):
+
+- l'ora di HistData **non** e' New York fisso come dichiarano: segue l'ora legale europea. UTC = ora HistData + 5
+  d'inverno, + 4 dall'ultima domenica di marzo all'ultima di ottobre. Dal 2024 i prezzi sono identici a Dukascopy;
+  prima vengono da un'altra fonte (stessi orari, qualche pip di differenza);
+- alcune serie cambiano natura: il "DXY" prima di dicembre 2018 ha i valori del Dow Jones, il "DAX" 2020-2023
+  quelli dell'Euro Stoxx; il WTI manca dal 2024 a maggio 2026; gli anni 2000-2001 hanno prezzi sbagliati.
+  `histdata.pezzi_buoni` taglia a ogni salto impossibile (oltre il 40% fra due chiusure orarie) e a ogni buco di
+  oltre 10 giorni e tiene ogni pezzo continuo di almeno 4 anni come serie a se'.
+
+Come si lancia: dataset privato su Kaggle con lo zip di `nvm/` e `kaggle_rete/`, notebook con GPU e Internet, e la
+cella di `kaggle_rete/cella_kaggle.txt`. Scarica (circa 45 minuti), prepara le finestre una volta sola, allena e
+fa l'esame; nella scheda Output restano `occhi.pt` e `resoconto.json`. Risultati della prima notte in
+`registro/misure/2026-10-12-rete-kaggle.txt`.
