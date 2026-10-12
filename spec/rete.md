@@ -54,3 +54,16 @@ Come si lancia: dataset privato su Kaggle con lo zip di `nvm/` e `kaggle_rete/`,
 cella di `kaggle_rete/cella_kaggle.txt`. Scarica (circa 45 minuti), prepara le finestre una volta sola, allena e
 fa l'esame; nella scheda Output restano `occhi.pt` e `resoconto.json`. Risultati della prima notte in
 `registro/misure/2026-10-12-rete-kaggle.txt`.
+
+## Passo 2: la scuola dell'esperienza (`kaggle_rete/esperienza.py`, `trader.py`)
+
+Ogni setup che il bot avrebbe visto negli anni, come lo vede dal vivo (`giro.occasioni_foto`: un'occasione per
+apertura e verso, il timeframe piu' grande; quadro tagliato all'apertura della candela 3), col trade del bot simulato
+ora per ora (`campo.simula`: 25% al TP1 col pareggio, il resto al target finale delle foto, o tutto al TP1; lo stop
+vince se una candela tocca tutti e due; commissioni tolte; scadenza `giro.TETTO_FOTO`). HistData ha solo il bid:
+l'ask e' bid + uno spread fisso prudente per strumento (`esperienza.SPREAD`). Mancano i setup presi dal DXY.
+
+`python -m kaggle_rete.prepara_casi CARTELLA_DATI casi.npz` prepara i casi (qui, su 4 processori); su Kaggle il
+cervello (occhi della prima notte + la "scheda" del setup) impara a stimare l'R di ogni caso. Per confronto lo stesso
+cervello senza occhi. Soglie scelte sul 2020-2022, esame dal 2023 contro il bot (A+) e il bot di adesso (A+ e
+1:1,5).
