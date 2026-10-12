@@ -228,6 +228,8 @@ def _bot(tmp_path, monkeypatch, d, arrivi):
     bot = object.__new__(vivo.Bot)
     bot._allarmi, bot._verdetti, bot._foto_da_fare, bot._da_dire = {}, {}, [], []
     bot.proposte, bot.squadra, bot.disegni, bot.cervelli, bot.cervelli_info, bot.scelte = {}, None, None, None, {}, {}
+    import queue
+    bot._arrivi, bot._in_ascolto = queue.Queue(), False
     bot.fonte = NS(simbolo=lambda s: "OANDA:" + s)
     m = MT5Finto()
     m.tick[d.r.strumento] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
@@ -366,3 +368,35 @@ def test_la_total_si_legge_da_tradingview_e_va_fra_i_grafici_di_confronto(tmp_pa
     bot.terminale = NS()
     bot.aggiorna_totale()
     assert bot.totale is None and "TOTAL" not in bot.gemelli()
+
+
+def test_i_pulsanti_hanno_risposta_subito_e_si_eseguono_appena_il_bot_e_libero(tmp_path, monkeypatch):
+    """Il proprietario, 12/10/2026, su «Apri»: *"apre stra tardi"*. Il bot leggeva Telegram una volta al minuto e solo
+    a fine giro: adesso un filo legge sempre, risponde al pulsante subito, e il bot lo esegue appena puo'."""
+    import vivo
+    d = _una_decisione()
+    arrivi = []
+    bot = _bot(tmp_path, monkeypatch, d, arrivi)
+    bot.imp = Impostazioni(token="x", chat_operativo=("-1",), chat_equipe=("-2",))
+    monkeypatch.setattr(time, "time", lambda: d.r.quando + 60)
+    bot._proponi(d, None)
+    (ident,) = bot.proposte
+    arrivi.append(_premi(1, "apri", ident))
+    chiesti = []
+
+    def prendi(dal, attesa=0):
+        chiesti.append(attesa)
+        return [a for a in arrivi if a["update_id"] >= dal]
+    bot.tg._prendi = prendi
+    bot.stato.telegram_dal = 0
+    bot.avvia_ascolto()
+    fine = time.monotonic() + 5
+    while bot._arrivi.empty() and time.monotonic() < fine:
+        pass
+    assert chiesti and chiesti[0] == 25                       # la richiesta resta aperta: niente attese di un minuto
+    risposte = [x[1]["text"] for x in bot.mandati if x[0] == "answerCallbackQuery"]
+    assert risposte and risposte[0].startswith("⏳")          # la risposta al pulsante arriva subito
+    # Il bot e' in mezzo a un giro: fra uno strumento e l'altro esegue il pulsante.
+    bot._pulsanti_subito()
+    assert len(bot.mt5.posizioni) == 1 and not bot.proposte
+    bot._in_ascolto = False                                   # il filo si ferma

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import secrets
 import subprocess
 import sys
@@ -239,6 +240,75 @@ class Bot:
         self.fonte: Optional[Fonte] = None
         # Le proposte mandate con i pulsanti Apri / Lascia e non ancora decise: numero -> decisione.
         self.proposte: dict[str, dict] = {}
+        # I messaggi e i pulsanti arrivati da Telegram, letti in continuazione da un filo a parte (`avvia_ascolto`).
+        self._arrivi: queue.Queue = queue.Queue()
+        self._in_ascolto = False
+
+    def avvia_ascolto(self) -> None:
+        """Un filo che legge Telegram in continuazione (la richiesta resta aperta finche' arriva qualcosa): a un
+        pulsante premuto risponde subito, e il bot lo esegue appena e' libero (`aspetta`), non al minuto dopo.
+        Il proprietario, 12/10/2026, su «Apri»: *"apre stra tardi"*."""
+        if getattr(self, "_in_ascolto", False) or not self.imp.telegram:
+            return
+        if not hasattr(self, "_arrivi"):
+            self._arrivi = queue.Queue()
+
+        def ascolta_sempre():
+            while self._in_ascolto:
+                partito = time.monotonic()
+                try:
+                    arrivati, prossimo = self.tg.ricevi(self.stato.telegram_dal, attesa=25)
+                    for m in arrivati:
+                        if m.tasto:
+                            self.tg.rispondi_tasto(m.id_tasto, "⏳ Ricevuto: ci penso io")
+                        self._arrivi.put(m)
+                    self.stato.telegram_dal = prossimo
+                except Exception as errore:
+                    self._errore_ascolto = str(errore)
+                    time.sleep(5)
+                    continue
+                if not arrivati and time.monotonic() - partito < 1:
+                    # Telegram ha risposto subito senza niente: non si gira a vuoto.
+                    time.sleep(1)
+
+        self._in_ascolto = True
+        threading.Thread(target=ascolta_sempre, name="ascolto telegram", daemon=True).start()
+
+    def _pulsanti_subito(self) -> None:
+        """Durante i giri lunghi (35 grafici da TradingView): i pulsanti arrivati si eseguono fra uno strumento e
+        l'altro, senza aspettare la fine del giro. I messaggi scritti aspettano."""
+        if not getattr(self, "_in_ascolto", False):
+            return
+        altri = []
+        while True:
+            try:
+                m = self._arrivi.get_nowait()
+            except queue.Empty:
+                break
+            if not m.tasto:
+                altri.append(m)
+                continue
+            try:
+                self._tasto(m)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
+        for m in altri:
+            self._arrivi.put(m)
+
+    def aspetta(self, secondi: float) -> None:
+        """Fino al prossimo giro, ma se arriva un messaggio o un pulsante lo si esegue subito."""
+        fine = time.time() + secondi
+        while (resta := fine - time.time()) > 0:
+            try:
+                m = self._arrivi.get(timeout=resta)
+            except queue.Empty:
+                return
+            self.battito = time.time()
+            try:
+                self.ascolta(primo=m)
+                self.stato.salva(CARTELLA)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     @property
     def _fonte(self):
@@ -766,14 +836,27 @@ class Bot:
             self._ultimo_controllo = adesso
             self.aggiorna_se_serve()
 
-    def ascolta(self) -> None:
+    def ascolta(self, primo=None) -> None:
         """I comandi arrivati sui canali del bot: per ora solo /romeo, le entrate
         di Romeo che l'utente vede sul suo canale (`nvm/vivo/romeo_vivo.py`)."""
-        try:
-            arrivati, self.stato.telegram_dal = self.tg.ricevi(self.stato.telegram_dal)
-        except Exception as errore:
-            self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
-            return
+        if getattr(self, "_in_ascolto", False):
+            # Li legge il filo di `avvia_ascolto`: qui si eseguono quelli arrivati.
+            arrivati = [] if primo is None else [primo]
+            while True:
+                try:
+                    arrivati.append(self._arrivi.get_nowait())
+                except queue.Empty:
+                    break
+            errore = getattr(self, "_errore_ascolto", "")
+            if errore:
+                self._errore_ascolto = ""
+                self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
+        else:
+            try:
+                arrivati, self.stato.telegram_dal = self.tg.ricevi(self.stato.telegram_dal)
+            except Exception as errore:
+                self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
+                return
         for m in arrivati:
             if getattr(m, "tasto", ""):
                 try:
@@ -991,6 +1074,7 @@ class Bot:
         coppie, la prima non aspetta che il bot abbia guardato tutte le altre."""
         dal = max(self.stato.ultimo_quarto + 1, quarto - 86400)
         for s in self.strumenti:
+            self._pulsanti_subito()
             try:
                 self.fini[s] = (_unisci(self.fini[s], self._fonte.barre(s, 20, 900), QUARTI) if s in self.fini
                                 else self._fonte.barre(s, QUARTI, 900))
@@ -1022,6 +1106,7 @@ class Bot:
         # giro (il proprietario, 07/10/2026: *"il capo deve selezionare i crt"*).
         tutte: dict[str, list] = {}
         for s in self.strumenti:
+            self._pulsanti_subito()
             try:
                 self._ore_nuove(s)
                 tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.gemelli(),
@@ -1706,6 +1791,7 @@ def main() -> None:
        "(chiuderla ferma il bot).")
     bot.battito = time.time()
     cane_da_guardia(bot)
+    bot.avvia_ascolto()
     while True:
         bot.battito = time.time()
         try:
@@ -1727,7 +1813,7 @@ def main() -> None:
             raise
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        time.sleep(attesa(time.time()))
+        bot.aspetta(attesa(time.time()))
 
 
 def attesa(adesso: float) -> float:
