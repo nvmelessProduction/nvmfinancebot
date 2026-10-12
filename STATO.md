@@ -5,6 +5,22 @@ _Aggiornato il 12/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `PIANO.md`.
 
+## 12/10/2026 (notte, ultima): la rete neurale decide cosa proporre, spiega, e si corregge
+
+Il proprietario: *"voglio che sia la rete a decidere, così la addestriamo"*, con la spiegazione della sua analisi e una
+sezione *"correggi"*. Fatto (`nvm/vivo/rete_vivo.py`, pesi in `nvm/vivo/rete.pt`, VPS.md punto 7):
+- la rete del passo 2 (occhi + scheda, Kaggle) giudica ogni setup del metodo delle foto: stima in R, probabilita' di
+  chiudere in guadagno, entra se sopra la soglia scelta sul 2020-2022 (-0,127 R, il 5% migliore dei setup del bot);
+- spiegazione: le risposte degli occhi (direzione D/W/M, CRT 4 ore e del giorno, setup) e cosa la spinge/frena rispetto
+  a un setup tipico del bot (gradienti integrati dalla mediana dei setup A+ dello studio e da un grafico piatto);
+- con TradingView: quelli che prenderebbe sul canale operativo (Apri, Lascia, Correggi), quelli che lascia in équipe
+  (Apri lo stesso, Correggi); Correggi = pulsanti per il trade e per ogni risposta degli occhi + spiegazione scritta
+  in risposta; tutto in `dati/vivo/rete/` (correzioni.jsonl, analisi/*.npz con finestre e scheda del momento);
+- la sera la pagella (giuste, e i suoi trade in R); `Seguita.rete` tiene il parere;
+- i pulsanti: un filo legge Telegram sempre e risponde subito; il bot li esegue fra uno strumento e l'altro.
+
+Da fare: riallenare la rete con le correzioni (quando ce ne sono abbastanza: arrivano con la consegna dei dati).
+
 ## 12/10/2026 (notte, dopo): la TOTAL guida BTC ed ETH
 
 Il proprietario vuole le crypto con la TOTAL di TradingView; alla domanda su come la usa: *"B, esatto"*, cioe' come

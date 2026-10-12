@@ -126,6 +126,26 @@ Come funziona:
   ai prezzi di MT5. Le operazioni aperte le segue lo stesso. Per l'accesso scaduto: rifai il punto 1.
 - Per tornare ai prezzi di MT5: togli la riga `TRADINGVIEW_SIMBOLI` dal `.env` e riavvia.
 
+## 7. La rete neurale: decide cosa proporvi, e la correggete voi
+
+La rete allenata su Kaggle guarda ogni setup del bot e dice se entrerebbe, con la sua spiegazione: cosa vedono i suoi
+"occhi" (la direzione di giorno, settimana e mese; i CRT a 4 ore e del giorno) e cosa la spinge o la frena rispetto a
+un setup tipico del bot.
+
+1. **Una volta sola:** doppio clic su `rete_installa.bat` (scarica PyTorch, circa 200 MB, qualche minuto). Alla fine
+   scrive "Rete neurale pronta". Poi riavvia il bot: sul canale operativo arriva "🧠 La rete neurale è collegata".
+2. **Come lavora:** i setup che prenderebbe arrivano sul canale operativo con **Apri**, **Lascia** e **Correggi**;
+   quelli che lascia arrivano in équipe con **Apri lo stesso** e **Correggi**. Il dito su Apri lo mettete voi
+   (finché TradingView non dà il permesso per il trading automatico).
+3. **Correggi:** arriva un messaggio con una riga di pulsanti per ogni cosa che la rete ha detto (il trade, la
+   direzione di giorno, settimana e mese, i CRT): premete la risposta giusta (il punto • segna quella della rete).
+   Per spiegare il perché, rispondete a quel messaggio scrivendo. Tutto resta sulla VPS in `dati\vivo\rete\`, con
+   quello che la rete aveva visto: sono gli esempi per riallenarla.
+4. **La sera**, nel riepilogo in équipe, c'è la pagella della rete: quante volte ci ha preso e come sarebbe andata se
+   avesse deciso lei.
+
+Senza PyTorch il bot lavora come prima (decide la squadra) e lo dice con un allarme.
+
 ## Se qualcosa va storto
 
 | Cosa vedi | Cosa vuol dire |

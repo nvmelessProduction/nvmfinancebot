@@ -244,7 +244,7 @@ def ora_italiana(t: int) -> str:
     return datetime.fromtimestamp(int(t), tz=timezone.utc).astimezone(ROMA).strftime("%H:%M")
 
 
-def proposta(d: Decisione, scade: int, grafico: str) -> str:
+def proposta(d: Decisione, scade: int, grafico: str, rete: Optional[list] = None) -> str:
     """Il canale operativo quando si analizza su TradingView: il setup coi prezzi del grafico, e la scelta a voi
     (pulsanti Apri / Lascia sotto il messaggio)."""
     k, op, r = d.r.strumento, d.op, d.r
@@ -263,6 +263,8 @@ def proposta(d: Decisione, scade: int, grafico: str) -> str:
               f"(RR 1:{_it(abs(op.tp2 - op.ingresso) / rischio, 1)})",
               f"Vale fino alle {ora_italiana(scade)} (ora italiana). Con «Apri» entro su MT5 a mercato, con stop e "
               "target di TradingView. Senza il vostro «Apri» non apro niente."]
+    if rete:
+        righe = righe[:1] + [rete[0]] + righe[1:] + [""] + rete[1:]
     return "\n".join(righe)
 
 

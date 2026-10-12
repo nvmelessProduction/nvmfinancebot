@@ -242,7 +242,8 @@ def _bot(tmp_path, monkeypatch, d, arrivi):
     bot.tg = Telegram(Impostazioni(token="x", chat_operativo=("-1",), chat_equipe=("-2",)),
                       invia=lambda c, t: bot.mandati.append(("messaggio", c, t)), stampa=lambda _: None,
                       prendi=lambda dal: [a for a in arrivi if a["update_id"] >= dal],
-                      posta=lambda url, dati: bot.mandati.append((url.rsplit("/", 1)[-1], dati)))
+                      posta=lambda url, dati: bot.mandati.append((url.rsplit("/", 1)[-1], dati)) or
+                      {"message_id": 900 + len(bot.mandati)})
     return bot
 
 
@@ -400,3 +401,110 @@ def test_i_pulsanti_hanno_risposta_subito_e_si_eseguono_appena_il_bot_e_libero(t
     bot._pulsanti_subito()
     assert len(bot.mt5.posizioni) == 1 and not bot.proposte
     bot._in_ascolto = False                                   # il filo si ferma
+
+
+
+# --- la rete neurale: decide cosa proporre, spiega, e si corregge ---
+
+def _giudizio(entra=True):
+    from nvm.vivo.rete_vivo import Giudizio
+    return Giudizio(entra, -0.05 if entra else -0.4, 0.61, -0.127,
+                    {"direzione D1": ("su", 0.8), "direzione W1": ("giù", 0.6), "direzione MN": ("nessuna", 0.5),
+                     "crt H4": ("acquisto", 0.9), "crt D1": ("niente", 0.95)},
+                    [("RR al target finale", 0.12), ("il grafico giornaliero", -0.08)],
+                    ingressi=(np.zeros((1, 5, 40, 7), np.float32), np.ones((1, 5, 40), bool), np.zeros((1, 18), np.float32)))
+
+
+def test_la_rete_decide_cosa_proporre_e_spiega_perche(tmp_path, monkeypatch):
+    from tests.test_vivo import CapoFinto
+    d = _una_decisione()
+    d = __import__("dataclasses").replace(d, foto={"setup": None})      # una decisione del metodo delle foto
+    bot = _bot(tmp_path, monkeypatch, d, [])
+    bot.capo = CapoFinto()
+    bot.rete = NS(giudica=lambda x: _giudizio(entra=False))
+    monkeypatch.setattr("nvm.vivo.messaggi.proposta", lambda d, scade, grafico, rete=None: "SETUP\n" + "\n".join(rete or []))
+    bot._decidi([d], d.r.quando, 3600)
+    # La rete lo lascerebbe: niente sul canale operativo, in équipe con «Apri lo stesso» e «Correggi».
+    (proposta,) = [x[1] for x in bot.mandati if x[0] == "sendMessage"]
+    assert proposta["chat_id"] == "-2" and "LA RETE: LASCEREI" in proposta["text"] and "la frena" in proposta["text"]
+    assert [b["text"] for b in proposta["reply_markup"]["inline_keyboard"][0]] == ["✅ Apri lo stesso", "✏️ Correggi"]
+    assert bot.stato.seguite[0].rete["entra"] is False and bot.mt5.posizioni == {}
+    # Se la prenderebbe: sul canale operativo, con «Apri», «Lascia» e «Correggi».
+    bot.rete = NS(giudica=lambda x: _giudizio(entra=True))
+    bot.stato.seguite = []
+    bot._decidi([__import__("dataclasses").replace(d, r=__import__("dataclasses").replace(d.r, quando=d.r.quando + 7))],
+                d.r.quando + 7, 3600)
+    ultima = [x[1] for x in bot.mandati if x[0] == "sendMessage"][-1]
+    assert ultima["chat_id"] == "-1" and "ENTREREI" in ultima["text"]
+    assert [b["text"] for b in ultima["reply_markup"]["inline_keyboard"][0]] == ["✅ Apri", "❌ Lascia", "✏️ Correggi"]
+
+
+def test_con_correggi_si_dice_alla_rete_cosa_ha_visto_male_e_perche(tmp_path, monkeypatch):
+    d = _una_decisione()
+    arrivi = []
+    bot = _bot(tmp_path, monkeypatch, d, arrivi)
+    monkeypatch.setattr(time, "time", lambda: d.r.quando + 60)
+    bot._proponi(d, None, _giudizio(entra=True))
+    (ident,) = bot.proposte
+    assert (tmp_path / "rete" / "analisi" / f"{ident}.npz").exists()      # quello che ha visto, per riallenarla
+    arrivi.append(_premi(1, "correggi", ident))
+    bot.ascolta()
+    correggi = [x[1] for x in bot.mandati if x[0] == "sendMessage"][-1]
+    assert "CORREGGI LA RETE" in correggi["text"] and correggi["reply_to_message_id"] == 71
+    righe = correggi["reply_markup"]["inline_keyboard"]
+    assert [b["text"] for b in righe[0]] == ["Il trade: lasciare", "• Il trade: entrare"]
+    assert [b["text"] for b in righe[1]] == ["Giorno: giù", "Giorno: nessuna", "• Giorno: su"]
+    n_correggi = 900 + [i for i, x in enumerate(bot.mandati, 1) if x[0] == "sendMessage"][-1]
+    # Il giorno era ribassista: si preme «Giorno: giù».
+    arrivi.append({"update_id": 2, "callback_query": {"id": "q2", "data": righe[1][0]["callback_data"],
+                                                      "from": {"first_name": "Marco"},
+                                                      "message": {"message_id": n_correggi, "chat": {"id": -1},
+                                                                  "text": correggi["text"], "date": 0}}})
+    bot.ascolta()
+    cambiato = [x[1] for x in bot.mandati if x[0] == "editMessageText"][-1]
+    assert "✔ Giorno: giù (la rete diceva «su») — Marco" in cambiato["text"] and cambiato["reply_markup"]
+    # E il perché, scritto in risposta al messaggio di «Correggi».
+    arrivi.append({"update_id": 3, "message": {"chat": {"id": -1}, "text": "il giorno ha chiuso sotto il DL",
+                                               "date": 0, "from": {"first_name": "Marco"},
+                                               "reply_to_message": {"message_id": n_correggi}}})
+    bot.ascolta()
+    assert "Annotato" in [x[1] for x in bot.mandati if x[0] == "sendMessage"][-1]["text"]
+    righe_file = [json.loads(r) for r in (tmp_path / "rete" / "correzioni.jsonl").read_text().splitlines()]
+    assert righe_file[0]["domanda"] == "direzione D1" and righe_file[0]["giusta"] == "giù" and righe_file[0]["rete"] == "su"
+    assert righe_file[1]["spiegazione"] == "il giorno ha chiuso sotto il DL" and righe_file[1]["ident"] == ident
+
+
+def test_la_sera_si_vede_come_va_la_rete(tmp_path, monkeypatch):
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    bot = object.__new__(vivo.Bot)
+    bot.stato = Stato()
+    def seguita(erre, entra):
+        s = Seguita("k", "EURUSD", "D1", "H1", "long", 0, 1.0, 0.9, 1.1, 1.2, 0, False, [], 1, 2, 0, 0.5, 0.5, 0,
+                    rete={"entra": entra})
+        s.esito = {"erre": erre, "quando": 500}
+        return s
+    bot.stato.seguite = [seguita(1.5, True), seguita(-1.0, True), seguita(-1.0, False), seguita(2.0, False)]
+    testo = bot._pagella_rete(0, 1000)
+    assert "4 setup finiti, ci ha preso 2 volte" in testo and "2 trade, +0.50 R" in testo
+    assert bot._pagella_rete(1000, 2000) == ""
+
+
+def test_la_rete_vera_giudica_un_setup_e_spiega_cosa_vede():
+    pytest.importorskip("torch")
+    from nvm.vivo.rete_vivo import Rete
+    from nvm.vivo import giro as G
+    from tests.test_foto import ORA as ORA_F, _foto_base, _ore
+    from tests.test_vivo import CapoFinto
+    ore, n3 = _foto_base()
+    righe = [(int(t), *(float(x) * ore.punto for x in b)) for t, b in zip(ore.t, ore.bid)]
+    prima = [(int(ore.t[0]) - k * ORA_F, 1.1000, 1.1003, 1.0997, 1.1000) for k in range(240, 0, -1)]
+    (d,) = G.occasioni_foto("EURUSD", _ore(prima + righe, "EURUSD"), n3, n3, CapoFinto(), {})
+    rete, perche = Rete.carica()
+    assert rete is not None, perche
+    g = rete.giudica(d)
+    assert set(g.occhi) >= {"direzione D1", "crt H4"} and 0 <= g.vince <= 1 and g.entra == (g.erre >= g.soglia)
+    # Sul CRT a 4 ore della foto base gli occhi vedono il CRT d'acquisto.
+    assert g.occhi["crt H4"][0] == "acquisto"
+    testo = "\n".join(g.righe())
+    assert "LA RETE:" in testo and "Gli occhi vedono" in testo and g.ingressi[0].shape == (1, 5, 40, 7)

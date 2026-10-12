@@ -74,6 +74,8 @@ class Seguita:
     # Quanta parte al primo obiettivo (1 tutto, 0 niente: tutto al secondo) e se c'e' il pareggio.
     parziale: float = 0.5
     pareggio: bool = True
+    # Il parere della rete neurale (`nvm/vivo/rete_vivo.Giudizio.dati`): entra o no, la stima, cosa vedeva.
+    rete: Optional[dict] = None
 
     @property
     def presa_dal_capo(self) -> bool:

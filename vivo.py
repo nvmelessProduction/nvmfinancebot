@@ -63,6 +63,7 @@ from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
 from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
 from nvm.vivo.tradingview import Accesso, ErroreTradingView, Fonte, TradingView
+from nvm.vivo import rete_vivo
 
 RADICE = Path(__file__).resolve().parent
 # Gli strumenti su cui il bot opera dal vivo, sul conto demo: tutti quelli che conosce
@@ -243,6 +244,34 @@ class Bot:
         # I messaggi e i pulsanti arrivati da Telegram, letti in continuazione da un filo a parte (`avvia_ascolto`).
         self._arrivi: queue.Queue = queue.Queue()
         self._in_ascolto = False
+        # La rete neurale (`nvm/vivo/rete_vivo.py`): giudica ogni setup del bot e decide cosa proporvi.
+        self.rete: Optional[rete_vivo.Rete] = None
+        self._giudizi_rete: dict = {}
+
+    def _accendi_rete(self) -> None:
+        self.rete, perche = rete_vivo.Rete.carica()
+        if self.rete is None:
+            self.allarme(f"🧠 Rete neurale spenta: {perche}. Finché manca, decide la squadra come prima.")
+            return
+        di("Rete neurale pronta: giudica ogni setup del bot.")
+        if not (CARTELLA / "riavvio").exists():
+            e = self.rete.esame
+            self.tg.operativo(
+                "🧠 La rete neurale è collegata. Giudica ogni setup del bot e spiega cosa vede: quelli che prenderebbe "
+                "arrivano qui con «Apri», «Lascia» e «Correggi»; quelli che lascia vanno in équipe, con «Apri lo "
+                "stesso» e «Correggi». Con «Correggi» le dite cosa ha visto male: è così che la alleniamo.\n"
+                f"Onestamente: all'esame sugli anni 2023-2026 è arrivata a pareggio ({e.get('R medio', 0):+.3f} R a "
+                f"trade contro {e.get('bot R medio', 0):+.3f} del bot da solo). Sta imparando.")
+
+    def _giudica(self, d) -> Optional["rete_vivo.Giudizio"]:
+        """Il parere della rete su una decisione del metodo delle foto; None se non c'e' o qualcosa non va."""
+        if getattr(self, "rete", None) is None or not getattr(d, "foto", None):
+            return None
+        try:
+            return self.rete.giudica(d)
+        except Exception:
+            registra(CARTELLA, "errore", testo=f"rete neurale su {d.chiave}: {traceback.format_exc()}")
+            return None
 
     def avvia_ascolto(self) -> None:
         """Un filo che legge Telegram in continuazione (la richiesta resta aperta finche' arriva qualcosa): a un
@@ -370,6 +399,7 @@ class Bot:
         self.stato.scarto = self.terminale.scarto
         di(f"Ora del server: UTC{self.terminale.scarto:+d}.")
         self._accendi_tradingview()
+        self._accendi_rete()
         # Su TradingView si guardano i grafici scelti nel .env; se no tutti quelli che il bot conosce.
         da_guardare = [n for _, n in self.imp.tradingview] if self._su_tradingview else list(STRUMENTI_VIVO)
         # Il broker puo' non avere tutti gli strumenti: quelli che mancano si saltano, e si dice quali.
@@ -858,6 +888,12 @@ class Bot:
                 self.allarme(f"non riesco a leggere i messaggi di Telegram: {errore}")
                 return
         for m in arrivati:
+            if not getattr(m, "tasto", "") and getattr(m, "risposta_a", 0):
+                try:
+                    if self._spiegazione(m):
+                        continue
+                except Exception:
+                    registra(CARTELLA, "errore", testo=traceback.format_exc())
             if getattr(m, "tasto", ""):
                 try:
                     self._tasto(m)
@@ -896,17 +932,144 @@ class Bot:
 
     # --- le proposte con i pulsanti (analisi su TradingView) ---
 
-    def _proponi(self, d, v) -> None:
-        """Il setup sul canale operativo, con i pulsanti «Apri» e «Lascia»: si apre solo se lo premete."""
+    def _proponi(self, d, v, rete=None) -> None:
+        """Il setup con i pulsanti: si apre solo se premete «Apri». Con la rete neurale decide lei cosa proporre: quelli
+        che prenderebbe sul canale operativo, quelli che lascia in équipe; su tutti si puo' correggerla."""
         ident = secrets.token_hex(4)
         while ident in self.proposte:
             ident = secrets.token_hex(4)
         scade = int(d.r.quando) + VALIDITA_PROPOSTA
-        self.proposte[ident] = {"d": d, "v": v, "scade": scade}
+        self.proposte[ident] = {"d": d, "v": v, "scade": scade, "rete": None if rete is None else rete.dati()}
         grafico = self.fonte.simbolo(d.r.strumento) if self._su_tradingview else d.r.strumento
-        self.tg.proposta(messaggi.proposta(d, scade, grafico), [("✅ Apri", f"apri:{ident}"), ("❌ Lascia", f"lascia:{ident}")])
+        testo = messaggi.proposta(d, scade, grafico, None if rete is None else rete.righe())
+        if rete is None:
+            self.tg.proposta(testo, [("✅ Apri", f"apri:{ident}"), ("❌ Lascia", f"lascia:{ident}")])
+        else:
+            self._salva_analisi(ident, d, rete, grafico)
+            if rete.entra:
+                self.tg.proposta(testo, [("✅ Apri", f"apri:{ident}"), ("❌ Lascia", f"lascia:{ident}"),
+                                         ("✏️ Correggi", f"correggi:{ident}")])
+            else:
+                self.tg.proposta(testo, [("✅ Apri lo stesso", f"apri:{ident}"), ("✏️ Correggi", f"correggi:{ident}")],
+                                 canale="equipe")
         registra(CARTELLA, "proposta", chiave=d.chiave, grafico=grafico, ingresso=d.op.ingresso, stop=d.op.stop,
-                 tp1=d.op.tp1, tp2=d.op.tp2, scade=scade)
+                 tp1=d.op.tp1, tp2=d.op.tp2, scade=scade, rete=None if rete is None else rete.dati())
+
+    # --- «Correggi»: le correzioni alla rete neurale, per riallenarla ---
+
+    def _cartella_rete(self) -> Path:
+        c = CARTELLA / "rete"
+        (c / "analisi").mkdir(parents=True, exist_ok=True)
+        return c
+
+    def _salva_analisi(self, ident: str, d, rete, grafico: str) -> None:
+        """Quello che la rete ha visto e detto su una proposta: serve a «Correggi», anche dopo un riavvio, e a
+        riallenarla (le finestre e la scheda sono quelle vere del momento)."""
+        try:
+            c = self._cartella_rete() / "analisi"
+            if rete.ingressi is not None:
+                x, v, scheda = rete.ingressi
+                np.savez_compressed(c / f"{ident}.npz", x=x.astype(np.float16), v=v, scheda=scheda)
+            (c / f"{ident}.json").write_text(json.dumps({
+                "ident": ident, "chiave": d.chiave, "strumento": d.r.strumento, "grafico": grafico,
+                "verso": d.r.verso.value, "tf": d.r.alto_tf.value, "quando": int(d.r.quando),
+                "ingresso": d.op.ingresso, "stop": d.op.stop, "tp1": d.op.tp1, "tp2": d.op.tp2,
+                "rete": rete.dati(), "leggibile": messaggi.leggibile(d)}, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _analisi(self, ident: str) -> Optional[dict]:
+        p = CARTELLA / "rete" / "analisi" / f"{ident}.json"
+        try:
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+        except Exception:
+            return None
+
+    def _messaggi_correggi(self) -> dict:
+        p = CARTELLA / "rete" / "messaggi.json"
+        try:
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except Exception:
+            return {}
+
+    def _segna_messaggio(self, chat: str, messaggio: int, ident: str) -> None:
+        if not messaggio:
+            return
+        m = self._messaggi_correggi()
+        m[f"{chat}:{messaggio}"] = ident
+        if len(m) > 2000:
+            m = dict(list(m.items())[-2000:])
+        (self._cartella_rete() / "messaggi.json").write_text(json.dumps(m), encoding="utf-8")
+
+    def _correzione(self, **dati) -> None:
+        dati["quando"] = int(time.time())
+        with open(self._cartella_rete() / "correzioni.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(dati, ensure_ascii=False) + "\n")
+        registra(CARTELLA, "correzione alla rete", **dati)
+
+    def _correggi(self, m, ident: str) -> None:
+        """«Correggi»: un messaggio con una riga di pulsanti per ogni cosa che la rete ha detto."""
+        a = self._analisi(ident)
+        if a is None:
+            self.tg.rispondi_tasto(m.id_tasto, "Non trovo più l'analisi della rete")
+            return
+        self.tg.rispondi_tasto(m.id_tasto, "Ecco cosa puoi correggere")
+        testo = (f"✏️ CORREGGI LA RETE · {a['leggibile']}\n"
+                 "Per ogni riga premi la risposta giusta (• = quella della rete).\n"
+                 "Per spiegarle il perché, rispondi a QUESTO messaggio scrivendo: la spiegazione resta insieme alla "
+                 "correzione. La rete impara dai pulsanti; le spiegazioni le usiamo noi per allenarla meglio.")
+        n = self.tg.subito(m.chat, testo, rete_vivo.righe_correggi(ident, a["rete"]), risposta_a=m.messaggio)
+        self._segna_messaggio(m.chat, n, ident)
+        self._segna_messaggio(m.chat, m.messaggio, ident)
+
+    def _corretto(self, m, ident: str, k: int, j: int) -> None:
+        """Un pulsante di «Correggi»: la risposta giusta per una domanda."""
+        a = self._analisi(ident)
+        if a is None or not (0 <= k < len(rete_vivo.DA_CORREGGERE)):
+            self.tg.rispondi_tasto(m.id_tasto, "Non trovo più l'analisi della rete")
+            return
+        nome, risposte = rete_vivo.DA_CORREGGERE[k]
+        if not (0 <= j < len(risposte)):
+            return
+        giusta = risposte[j]
+        rete = a["rete"]
+        sua = ("entrare" if rete.get("entra") else "lasciare") if nome == "trade" else \
+            (rete.get("occhi", {}).get(nome) or [None])[0]
+        chi = m.chi or "voi"
+        self._correzione(ident=ident, chiave=a["chiave"], domanda=nome, giusta=giusta, rete=sua, chi=chi)
+        titolo = rete_vivo.NOMI_CORREZIONE.get(nome, nome)
+        esito = "la rete aveva ragione" if giusta == sua else f"la rete diceva «{sua}»"
+        self.tg.rispondi_tasto(m.id_tasto, f"Segnato: {titolo} = {giusta}")
+        self.tg.chiudi_tasti(m.chat, m.messaggio, f"{m.originale}\n✔ {titolo}: {giusta} ({esito}) — {chi}",
+                             rete_vivo.righe_correggi(ident, rete))
+
+    def _spiegazione(self, m) -> bool:
+        """Un messaggio scritto in risposta a «Correggi» (o alla proposta corretta): la spiegazione per la rete."""
+        if not getattr(m, "risposta_a", 0):
+            return False
+        ident = self._messaggi_correggi().get(f"{m.chat}:{m.risposta_a}")
+        if ident is None:
+            return False
+        a = self._analisi(ident) or {}
+        self._correzione(ident=ident, chiave=a.get("chiave", ""), spiegazione=m.testo, chi=m.chi or "voi")
+        self.tg.subito(m.chat, "📝 Annotato insieme alla correzione: lo useremo per allenare la rete.",
+                       risposta_a=m.risposta_a)
+        return True
+
+    def _pagella_rete(self, dal: int, al: int) -> str:
+        """Come va la rete sui setup finiti: quante volte ci ha preso, e come sarebbe andata se avesse deciso lei."""
+        finite = [s for s in self.stato.seguite if s.rete and s.esito is not None and dal <= s.esito["quando"] < al]
+        tutte = [s for s in self.stato.seguite if s.rete and s.esito is not None]
+        if not finite:
+            return ""
+        def riga(gruppo):
+            giuste = sum(1 for s in gruppo if bool(s.rete["entra"]) == (float(s.esito["erre"]) > 0))
+            sue = [float(s.esito["erre"]) for s in gruppo if s.rete["entra"]]
+            return giuste, len(gruppo), len(sue), sum(sue)
+        g, n, k, r = riga(finite)
+        G, N, K, R = riga(tutte)
+        return (f"🧠 La rete neurale oggi: {n} setup finiti, ci ha preso {g} volte. Se avesse deciso lei: {k} trade, "
+                f"{r:+.2f} R.\nDalle ultime due settimane: {G} giuste su {N}; i suoi {K} trade {R:+.2f} R.")
 
     def _non_presa(self, p: dict) -> None:
         """Una proposta non aperta: per la squadra conta come non presa."""
@@ -942,6 +1105,14 @@ class Bot:
     def _tasto(self, m) -> None:
         """Un pulsante premuto sotto una proposta. Chi ha scelto cosa va nel registro: sono le lezioni per la rete."""
         azione, _, ident = m.tasto.partition(":")
+        if azione == "correggi":
+            self._correggi(m, ident)
+            return
+        if azione == "cr":
+            parti = ident.split(":")
+            if len(parti) == 3 and parti[1].isdigit() and parti[2].isdigit():
+                self._corretto(m, parti[0], int(parti[1]), int(parti[2]))
+            return
         if azione not in ("apri", "lascia"):
             self.tg.rispondi_tasto(m.id_tasto)
             return
@@ -959,7 +1130,7 @@ class Bot:
         if azione == "lascia":
             del self.proposte[ident]
             self._non_presa(p)
-            registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="lascia", chi=chi)
+            registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="lascia", chi=chi, rete=p.get("rete"))
             fine(f"❌ Lasciata da {chi}.", "Lasciata")
             return
         motivo = self._non_si_apre(p)
@@ -978,7 +1149,8 @@ class Bot:
         else:
             viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
         del self.proposte[ident]
-        registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="apri", chi=chi, aperta=viva is not None)
+        registra(CARTELLA, "scelta del proprietario", chiave=d.chiave, scelta="apri", chi=chi, aperta=viva is not None,
+                 rete=p.get("rete"))
         if viva is None:
             self._non_presa(p)
             fine("⚠️ Non aperta: " + fatto.testo, "Non aperta")
@@ -1246,6 +1418,13 @@ class Bot:
                                         cervelli=self._decidono_i_cervelli and self.squadra is None,
                                         saldo=saldo or None, valuta=valuta, sempre=True,
                                         mancanze=self.stato.mancanze if self.squadra is not None else None)
+        try:
+            pagella = self._pagella_rete(fine - 86400, fine)
+        except Exception:
+            pagella = ""
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+        if pagella:
+            testo = f"{testo}\n\n{pagella}" if testo else pagella
         if testo:
             self.tg.equipe(testo)
         self.stato.lezioni = {}
@@ -1366,6 +1545,8 @@ class Bot:
         conto = self.terminale.conto() if decisioni else None
         # Se decide la squadra, i cervelli allenati sui vent'anni non giudicano piu'.
         giudizi = {d.chiave: (None if self.squadra is not None else self._giudizio(d)) for d in decisioni}
+        # La rete neurale guarda ogni setup: decide cosa proporre e la si controlla sul risultato.
+        self._giudizi_rete = {d.chiave: self._giudica(d) for d in decisioni}
         for d in decisioni:
             if giudizi[d.chiave] is not None:
                 # Cosa avrebbe fatto il Capo di prima: serve alla gara della sera.
@@ -1428,7 +1609,7 @@ class Bot:
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
             elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._su_tradingview:
                 # Sui grafici di TradingView il bot propone e decidete voi (pulsanti Apri / Lascia).
-                self._proponi(d, v)
+                self._proponi(d, v, self._giudizi_rete.get(d.chiave))
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
@@ -1524,7 +1705,8 @@ class Bot:
                         estremo=None if crt is None else crt.estremo_a(d.r.quando),
                         stop_minimo=livelli.STOP_MINIMO, oltre=livelli.OLTRE, qualita=d.qualita,
                         decisa=self._entra(d, giudizi[d.chiave]), cervelli=giudizi[d.chiave],
-                        parziale=op.parziale, pareggio=op.pareggio)
+                        parziale=op.parziale, pareggio=op.pareggio,
+                        rete=None if self._giudizi_rete.get(d.chiave) is None else self._giudizi_rete[d.chiave].dati())
             self.stato.seguite.append(s)
             registra(CARTELLA, "decisione", chiave=d.chiave, entra=d.entra, aperta=aperta, p1=d.p1, q=d.q,
                      atteso=d.atteso, qualita=d.qualita, romeo=d.romeo, x=s.x, spinte=per, ingresso=op.ingresso, stop=op.stop, tp1=op.tp1, tp2=op.tp2)
