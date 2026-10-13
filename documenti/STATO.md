@@ -9,8 +9,9 @@ file. Il piano completo è in `documenti/PIANO.md`.
 
 Mentre Kaggle scarica i dati, preparata la fase 1: la rete che legge i nove timeframe del proprietario tutti insieme, con
 gli orari di TradingView, e impara indovinando candele nascoste (a caso, o tutto quello dopo un taglio: il futuro).
-Esame dal 2023: meglio di chi copia l'ultima candela, su ogni timeframe. Si lancia con `kaggle_rete/cella_occhi.txt`
-appena c'e' il dataset della fase 0. Dettagli: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
+Esame dal 2023: meglio di chi copia l'ultima candela, su ogni timeframe. Provata qui su 5 mercati (48 minuti sul
+processore): passata. Sulla direzione nessun vantaggio, com'e' normale in questa fase. Si lancia con
+`kaggle_rete/cella_occhi.txt` appena c'e' il dataset della fase 0. Dettagli: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
 
 ## 13/10/2026 (notte): fase 0 di Nameless
 

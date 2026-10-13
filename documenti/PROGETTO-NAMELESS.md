@@ -99,3 +99,8 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     dice "il prezzo resta dov'e'". E' la direzione: non e' l'esame di questa fase, e se resta vicino al 100% e' normale.
   - **La cella** `kaggle_rete/cella_occhi.txt` (scheda grafica, 3 ore). Input: il codice (`nvm-codice`) e l'output del
     notebook dei dati. Nell'output: `occhi_nameless.pt` (la rete, da cui parte la fase 2) ed `esame_occhi.json`.
+  - **Prova qui, sul processore** (5 mercati: EURUSD, GBPUSD, XAUUSD, DXY, SPX500; rete piccola, 48 minuti, 2112
+    passi): esame passato. Candele nascoste a caso: la rete sbaglia il 20-32% di chi copia su ogni timeframe. Il futuro:
+    dal 93% (1h) al 14% (1w) di chi copia. Sulla direzione (la chiusura del futuro) il 103% di chi dice "resta dov'e'":
+    nessun vantaggio sulla direzione, come ci si aspetta da questa fase. Su Kaggle: tutti i mercati, rete piu' grande,
+    tanti piu' passi.
