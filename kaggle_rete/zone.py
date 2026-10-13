@@ -271,11 +271,12 @@ def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) 
     return fuori
 
 
-def voto(m: dict) -> float:
-    """La media dei richiami piu' bassa fra le materie con abbastanza casi: e' quella che decide l'esame."""
+def voti(m: dict) -> tuple[float, float]:
+    """(la media, la piu' bassa) delle medie dei richiami delle materie con abbastanza casi. Decide l'esame la piu'
+    bassa; la rete migliore durante la scuola si sceglie con la media, che si muove prima."""
     r = [x["media dei richiami"] for x in m.values() if x.get("media dei richiami") is not None and
          x["casi"] >= MINIMO_ESAME]
-    return float(min(r)) if r else 0.0
+    return (float(np.mean(r)), float(min(r))) if r else (0.0, 0.0)
 
 
 def foto_rete(rete: Zone, scuola: Scuola, materie: dict) -> list[dict]:
@@ -372,13 +373,14 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
         if time.time() - ultimo > 60 * ogni_minuti or time.time() >= fine:
             ultimo = time.time()
             c = misura(rete, sc, "controllo", 3000)
-            v = voto(c)
+            v, minimo = voti(c)
             peggiore = min((k for k, x in c.items() if x.get("media dei richiami") is not None and
                             x["casi"] >= MINIMO_ESAME), key=lambda k: c[k]["media dei richiami"], default="-")
             storia.append({"passo": passi, "minuti": round((time.time() - inizio) / 60),
-                           "errore": float(errore.detach()), "controllo": v, "peggiore": peggiore})
-            scrivi(f"passo {passi}: errore {float(errore.detach()):.3f}; al controllo la materia peggiore ({peggiore}) "
-                   f"e' al {v:.1%}")
+                           "errore": float(errore.detach()), "controllo": v, "peggiore": peggiore,
+                           "la peggiore": minimo})
+            scrivi(f"passo {passi}: errore {float(errore.detach()):.3f}; al controllo le materie in media al {v:.1%}, "
+                   f"la peggiore ({peggiore}) al {minimo:.1%}")
             if migliore is None or v > migliore[0]:
                 migliore = (v, {k: t.detach().clone() for k, t in rete.state_dict().items()})
                 torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passi},

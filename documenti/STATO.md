@@ -5,6 +5,13 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 14/10/2026 (notte): fase 2 di Nameless pronta, le zone
+
+Mentre su Kaggle gira la fase 1, preparata la fase 2: le risposte delle regole delle foto per ogni CRT e ogni candela
+(rifanno le 24 foto come il bot) e una testa per materia sopra gli occhi. Esame dal 2023: ogni materia al 98% e le 24
+foto. Si lancia dopo l'esame degli occhi con `kaggle_rete/cella_zone.txt` e il codice nuovo (`nvm-codice.zip` come
+nuova versione del dataset). Dettagli: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
+
 ## 13/10/2026 (notte, dopo): fase 1 di Nameless pronta, gli occhi
 
 Mentre Kaggle scarica i dati, preparata la fase 1: la rete che legge i nove timeframe del proprietario tutti insieme, con

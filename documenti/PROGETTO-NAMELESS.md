@@ -110,3 +110,20 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     dal 93% (1h) al 14% (1w) di chi copia. Sulla direzione (la chiusura del futuro) il 103% di chi dice "resta dov'e'":
     nessun vantaggio sulla direzione, come ci si aspetta da questa fase. Su Kaggle: tutti i mercati, rete piu' grande,
     tanti piu' passi.
+- Fase 2, pronta da lanciare dopo l'esame degli occhi:
+  - **Le materie** (`nvm/nameless/materie.py`): per ogni CRT di 1, 4, 6 ore, giorno, settimana e mese le risposte delle
+    regole delle foto (c'e' il CRT, ha preso un key level, la direzione e' dalla nostra parte, il target finale e quanti
+    R vale, si entra) e per ogni candela di giorno, settimana, 1, 3 e 12 mesi come ha chiuso rispetto a quella prima e
+    se ha accettato un lato non ancora preso. Rifanno le 24 foto come il bot (24 su 24); EURUSD, 24 anni, in 27
+    secondi. Ogni risposta sta all'ultima ora della candela 2 e vede solo il passato (le prove lo controllano col
+    quadro tagliato a quell'ora).
+  - **Le zone** (`nvm/nameless/zone.py`): una testa per materia sopra gli occhi della fase 1.
+  - **La scuola** (`kaggle_rete/zone.py`, cella `kaggle_rete/cella_zone.txt`): calcola le materie su tutti i mercati
+    (circa 10 minuti, col processore), allena 3 ore, esame dal 2023: ogni materia almeno il 98% di media dei richiami
+    (per ogni risposta delle regole, quante volte la rete dice la stessa: rispondere sempre "niente" non basta) e la
+    rete rifa' le 24 foto. Nell'output anche le materie (`materie/`), per il Capo della fase 3.
+  - **Prova qui sul processore** (3 mercati, rete piccola, 40 minuti, 1600 passi): la catena gira e la rete impara (il
+    CRT del giorno dal 54% al 79%, quello della settimana all'83%), ma e' lontana dal 98%: il target finale (43-47%) e
+    la direzione delle candele dei 3 e 12 mesi (pochi esempi diversi) sono le piu' difficili. Su Kaggle: tutti i
+    mercati e cento volte i passi; se non basta si dice dove manca e si allunga la scuola.
+
