@@ -83,8 +83,11 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
   - **Pulizia**: tolto il Nameless di prova (`kaggle_rete/nameless.py`, mai acceso). Il resto (cervelli di settembre, Capo
     di prima, metodo dei video, la rete che giudica dopo l'equipe) lo usa ancora il bot di oggi: si toglie nella fase 5,
     quando Nameless prende il comando, per non toccare il bot che lavora.
-- Da fare per chiudere la fase 0: il proprietario lancia la cella dei dati su Kaggle (circa 2 ore e mezza, basta il
-  processore) e salva la versione; poi si controlla `mercati.json`.
+- **Fase 0 chiusa** (13/10/2026): la cella dei dati ha girato su Kaggle in 235 minuti, 85 mercati pronti su 86 (notebook
+  `nvmeless/notebookcd42dcf8f1`), tutti con gli orari di TradingView (le 18 di New York; UTC le crypto). Il controllo di
+  qualita' (`mercati.json`) ha tolto UNI (la crypto: un'ora vera da +60% a febbraio 2024 e pezzi sotto i 4 anni), il DAX
+  dopo giugno 2020 (HistData ci mette altri valori), AUDJPY nel 2005 e nel 2012, DOGE prima del 29/01/2021. Finiscono
+  prima: oro in euro, sterline, franchi e dollari australiani e l'Euro Stoxx (2018-2019), il WTI (dicembre 2023).
 - Fase 1, pronta da lanciare appena c'e' il dataset della fase 0:
   - **I sensi** (`nvm/nameless/sensi.py`): le candele di tutti i mercati sui nove timeframe del proprietario (1h, 4h,
     6h, 12h, 1d, 1w, 1m, 3m, 12m) con gli orari di TradingView. Ogni ora vede solo candele gia' chiuse, e solo del
@@ -97,8 +100,11 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
   - **L'esame** (dal 2023): per ogni timeframe e nei due modi, errore piu' basso di chi copia l'ultima candela (dove
     ci sono almeno 200 candele da confrontare). In piu', solo da leggere: sulla chiusura del futuro, la rete contro chi
     dice "il prezzo resta dov'e'". E' la direzione: non e' l'esame di questa fase, e se resta vicino al 100% e' normale.
-  - **La cella** `kaggle_rete/cella_occhi.txt` (scheda grafica, 3 ore). Input: il codice (`nvm-codice`) e l'output del
-    notebook dei dati. Nell'output: `occhi_nameless.pt` (la rete, da cui parte la fase 2) ed `esame_occhi.json`.
+  - **La cella**: `python -m kaggle_rete.cella_unica occhi` (scheda grafica, 3 ore). Porta dentro di se' i file nuovi,
+    cosi' il proprietario non deve scaricare e ricaricare il codice (*"non riesco a scaricare lo zip, la connessione
+    muore"*); se e' copiata a meta' lo dice. Input: `nvm-codice` com'e' (quello della fase 0) e l'output del notebook
+    dei dati. Nell'output: `occhi_nameless.pt` (la rete, da cui parte la fase 2) ed `esame_occhi.json`. Con il codice
+    aggiornato su Kaggle basta `kaggle_rete/cella_occhi.txt`.
   - **Prova qui, sul processore** (5 mercati: EURUSD, GBPUSD, XAUUSD, DXY, SPX500; rete piccola, 48 minuti, 2112
     passi): esame passato. Candele nascoste a caso: la rete sbaglia il 20-32% di chi copia su ogni timeframe. Il futuro:
     dal 93% (1h) al 14% (1w) di chi copia. Sulla direzione (la chiusura del futuro) il 103% di chi dice "resta dov'e'":

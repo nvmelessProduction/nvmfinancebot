@@ -11,7 +11,8 @@ Mentre Kaggle scarica i dati, preparata la fase 1: la rete che legge i nove time
 gli orari di TradingView, e impara indovinando candele nascoste (a caso, o tutto quello dopo un taglio: il futuro).
 Esame dal 2023: meglio di chi copia l'ultima candela, su ogni timeframe. Provata qui su 5 mercati (48 minuti sul
 processore): passata. Sulla direzione nessun vantaggio, com'e' normale in questa fase. Si lancia con
-`kaggle_rete/cella_occhi.txt` appena c'e' il dataset della fase 0. Dettagli: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
+la cella unica (`python -m kaggle_rete.cella_unica occhi`, niente da scaricare). La fase 0 e' chiusa: 85 mercati su 86
+pronti su Kaggle. Dettagli: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
 
 ## 13/10/2026 (notte): fase 0 di Nameless
 
