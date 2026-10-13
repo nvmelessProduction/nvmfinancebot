@@ -13,9 +13,9 @@ Il progetto è ripartito da zero il 24/09/2026. Il lavoro precedente è archivia
 |---|---|
 | `vivo.py` | il bot dal vivo (lo lancia `avvia.bat`) |
 | `*.bat` | i doppi clic sulla VPS: `avvia`, `avvio_automatico`, `tradingview_accesso`, `rete_installa`, `scarica`, `scarica_nuovi`, `scarica_video`, `consegna` |
-| `nvm/` | tutto il codice: `vivo/` il bot dal vivo, `agenti/` le regole del metodo, `intelligenti/` la squadra, `rete/` e `cervello/` le reti neurali, `dati/` candele e scaricamento, `prova/` le misure sullo storico |
+| `nvm/` | tutto il codice: `vivo/` il bot dal vivo, `agenti/` le regole del metodo, `intelligenti/` la squadra, `rete/` e `cervello/` le reti neurali, `nameless/` il cervello unico (`documenti/PROGETTO-NAMELESS.md`), `dati/` candele e scaricamento, `prova/` le misure sullo storico |
 | `strumenti/` | gli script da lanciare a mano (misure, allenamento, scaricamento, consegna dei dati, accesso a TradingView), come moduli: `python -m strumenti.misura`; `strumenti/lavagna/` la pagina per segnare i setup |
-| `kaggle_rete/` | l'allenamento della rete neurale su Kaggle |
+| `kaggle_rete/` | l'allenamento delle reti neurali su Kaggle (le celle da incollare: `cella_*.txt`) |
 | `mt5/` | gli indicatori che il bot installa su MT5 per disegnare sul grafico |
 | `tests/` | le prove (`python -m pytest`) |
 | `documenti/` | tutto quello che si legge: vedi sotto |

@@ -85,3 +85,17 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     quando Nameless prende il comando, per non toccare il bot che lavora.
 - Da fare per chiudere la fase 0: il proprietario lancia la cella dei dati su Kaggle (circa 2 ore e mezza, basta il
   processore) e salva la versione; poi si controlla `mercati.json`.
+- Fase 1, pronta da lanciare appena c'e' il dataset della fase 0:
+  - **I sensi** (`nvm/nameless/sensi.py`): le candele di tutti i mercati sui nove timeframe del proprietario (1h, 4h,
+    6h, 12h, 1d, 1w, 1m, 3m, 12m) con gli orari di TradingView. Ogni ora vede solo candele gia' chiuse, e solo del
+    suo mercato.
+  - **Gli occhi** (`nvm/nameless/occhi.py`): un transformer che legge 40 candele per timeframe, tutte insieme. La scuola
+    nasconde candele a caso (leggere) o tutto quello che chiude dopo un taglio da 1 a 24 ore indietro (prevedere). La
+    rete parte da "copia l'ultima candela" e impara solo la correzione: quello che fa meglio, l'ha imparato. Accanto a
+    ogni candela vede la candela vista prima e quella vista dopo (il vicinato): nella prova qui, a parita' di passi,
+    impara molto piu' in fretta (al primo controllo sbaglia il 42% di chi copia invece del 98%).
+  - **L'esame** (dal 2023): per ogni timeframe e nei due modi, errore piu' basso di chi copia l'ultima candela (dove
+    ci sono almeno 200 candele da confrontare). In piu', solo da leggere: sulla chiusura del futuro, la rete contro chi
+    dice "il prezzo resta dov'e'". E' la direzione: non e' l'esame di questa fase, e se resta vicino al 100% e' normale.
+  - **La cella** `kaggle_rete/cella_occhi.txt` (scheda grafica, 3 ore). Input: il codice (`nvm-codice`) e l'output del
+    notebook dei dati. Nell'output: `occhi_nameless.pt` (la rete, da cui parte la fase 2) ed `esame_occhi.json`.

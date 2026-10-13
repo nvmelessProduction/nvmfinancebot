@@ -5,6 +5,13 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 13/10/2026 (notte, dopo): fase 1 di Nameless pronta, gli occhi
+
+Mentre Kaggle scarica i dati, preparata la fase 1: la rete che legge i nove timeframe del proprietario tutti insieme, con
+gli orari di TradingView, e impara indovinando candele nascoste (a caso, o tutto quello dopo un taglio: il futuro).
+Esame dal 2023: meglio di chi copia l'ultima candela, su ogni timeframe. Si lancia con `kaggle_rete/cella_occhi.txt`
+appena c'e' il dataset della fase 0. Dettagli: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
+
 ## 13/10/2026 (notte): fase 0 di Nameless
 
 Il proprietario ha dato il via; i dati li scarica Kaggle. Fatto: 24 foto su 24 anche con gli orari di TradingView;

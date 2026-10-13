@@ -1,0 +1,9 @@
+# Nameless, fase 1: gli occhi. Acceleratore: GPU (T4 o P100); Internet non serve.
+# Input del notebook: il dataset del codice (nvm-codice) e l'output del notebook dei dati (fase 0).
+# Alla fine: "Save Version". Nell'output restano occhi_nameless.pt (la rete) ed esame_occhi.json (l'esame).
+import glob, os, shutil, sys
+z = glob.glob('/kaggle/input/**/nvm-codice*.zip', recursive=True)
+if z: shutil.unpack_archive(z[0], '/tmp/codice')
+sys.path += ['/tmp/codice'] + [os.path.dirname(p) for p in glob.glob('/kaggle/input/**/kaggle_rete', recursive=True)]
+from kaggle_rete.occhi import scuola
+scuola(ore=3)
