@@ -7,9 +7,11 @@ crypto). Le candele sopra l'ora si fanno dalle ore con quel calendario (`candele
 
 Le candele di tutti i mercati stanno in fila in pochi array (`Sensi`), cosi' le finestre si fanno sulla scheda grafica
 al momento, senza prepararle prima (`nvm/nameless/occhi.py`). Per ogni ora `j` e ogni timeframe, `entro[k][j]` e'
-l'ultima candela di quel timeframe gia' chiusa quando chiude l'ora `j`: una candela che chiude dopo non entra mai
-nella finestra. Ogni mercato (o pezzo di mercato, se il controllo di qualita' l'ha tagliato) ha le sue candele:
-una finestra non passa mai da un mercato all'altro (`primo`).
+l'ultima candela di quel timeframe gia' chiusa quando arriva l'ora dopo (`prossimo[j]`): il venerdi' sera la candela 2
+di un CRT che apre la domenica e' gia' finita, anche se sulla carta chiude alla riapertura, perche' in mezzo non
+arriva nessun prezzo. Una candela che chiude dopo non entra mai nella finestra. Ogni mercato (o pezzo di mercato, se
+il controllo di qualita' l'ha tagliato) ha le sue candele: una finestra non passa mai da un mercato all'altro
+(`primo`).
 """
 
 from __future__ import annotations
@@ -51,8 +53,8 @@ class Sensi:
     """Le candele di tutti i pezzi di mercato, una fila per timeframe (l'ordine di `TF_NAMELESS`).
 
     - `prezzi[k]` [n, 4] apertura, massimo, minimo, chiusura; `tempo[k]` [n, 4] (`tempo_di`); `fine[k]` [n] UTC;
-    - `entro[k]` [ore]: per ogni ora, l'ultima candela del timeframe chiusa quando chiude quell'ora (`primo - 1` se
-      nessuna);
+    - `prossimo` [ore]: quando apre l'ora dopo (la fine dell'ora, se e' l'ultima del pezzo);
+    - `entro[k]` [ore]: per ogni ora, l'ultima candela del timeframe chiusa a `prossimo` (`primo - 1` se nessuna);
     - `primo` [pezzi, timeframe]: la prima candela di ogni pezzo; `chi` [ore]: il pezzo di ogni ora.
     """
 
@@ -63,31 +65,35 @@ class Sensi:
     entro: list
     primo: np.ndarray
     chi: np.ndarray
+    prossimo: np.ndarray
 
     @classmethod
     def da(cls, pezzi: list[tuple[str, Minuti]]) -> "Sensi":
         """`pezzi`: (nome, ore) per ogni pezzo di mercato. Gli orari (`candele.SESSIONI`) vanno messi prima."""
         n_tf = len(TF_NAMELESS)
         prezzi, tempo, fine, entro = ([[] for _ in range(n_tf)] for _ in range(4))
-        primo, chi, nomi, conti = [], [], [], [0] * n_tf
+        primo, chi, nomi, conti, prossimi = [], [], [], [0] * n_tf, []
         for p, (nome, ore) in enumerate(pezzi):
             c = candele_di(ore)
             fine_ore = c[TF.H1].fine
+            prossimo = np.maximum(np.r_[c[TF.H1].inizio[1:], fine_ore[-1:]], fine_ore)
             primo.append(list(conti))
             for k, tf in enumerate(TF_NAMELESS):
                 prezzi[k].append(c[tf].bid.astype(np.float32))
                 tempo[k].append(tempo_di(c[tf].inizio))
                 fine[k].append(c[tf].fine.astype(np.int64))
-                entro[k].append(np.searchsorted(c[tf].fine, fine_ore, side="right") - 1 + conti[k])
+                entro[k].append(np.searchsorted(c[tf].fine, prossimo, side="right") - 1 + conti[k])
                 conti[k] += len(c[tf])
             chi.append(np.full(len(fine_ore), p, np.int32))
+            prossimi.append(prossimo.astype(np.int64))
             nomi.append(nome)
         unisci = lambda xs, forma: np.concatenate(xs) if xs else np.zeros(forma)
         return cls(nomi, [unisci(x, (0, 4)).astype(np.float32) for x in prezzi],
                    [unisci(x, (0, 4)).astype(np.float32) for x in tempo],
                    [unisci(x, (0,)).astype(np.int64) for x in fine],
                    [unisci(x, (0,)).astype(np.int64) for x in entro],
-                   np.array(primo, np.int64).reshape(-1, n_tf), unisci(chi, (0,)).astype(np.int32))
+                   np.array(primo, np.int64).reshape(-1, n_tf), unisci(chi, (0,)).astype(np.int32),
+                   unisci(prossimi, (0,)).astype(np.int64))
 
     def ore(self) -> int:
         return len(self.chi)

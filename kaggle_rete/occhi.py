@@ -63,8 +63,9 @@ def famiglia(nome: str) -> str:
     return "forex" if len(base) == 6 and base.isalpha() and base not in ("AUS200", "UKOIL", "USOIL") else "indici"
 
 
-def carica_sensi(radice: Path, nomi: list[str], scrivi=print) -> tuple[Sensi, dict]:
-    """Tutti i mercati, un pezzo buono alla volta, con gli orari di TradingView."""
+def carica_sensi(radice: Path, nomi: list[str], scrivi=print) -> tuple[Sensi, dict, list]:
+    """Tutti i mercati, un pezzo buono alla volta, con gli orari di TradingView: (sensi, il resoconto per pezzo, i
+    pezzi come (nome, ore))."""
     imposta_orari(nomi)
     pezzi, conti = [], {}
     for n in nomi:
@@ -84,7 +85,7 @@ def carica_sensi(radice: Path, nomi: list[str], scrivi=print) -> tuple[Sensi, di
     inizio = time.time()
     sensi = Sensi.da(pezzi)
     scrivi(f"{len(pezzi)} pezzi di mercato, {sensi.ore()} ore, candele pronte in {time.time() - inizio:.0f} s")
-    return sensi, conti
+    return sensi, conti, pezzi
 
 
 def _esempi(j: np.ndarray, futuro: bool, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -157,7 +158,7 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
     dove = "cuda" if torch.cuda.is_available() else "cpu"
     radice = radice or trova_dati()
     nomi = [n for n in list(NOMI) + list(CRYPTO) if solo is None or n in solo]
-    sensi, conti = carica_sensi(radice, nomi, scrivi)
+    sensi, conti, _ = carica_sensi(radice, nomi, scrivi)
     lettore = Lettore(sensi, dove)
     impara = sensi.istanti(0, CONTROLLO)
     controlla = sensi.istanti(CONTROLLO, ESAME)

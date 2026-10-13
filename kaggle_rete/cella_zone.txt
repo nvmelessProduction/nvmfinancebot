@@ -1,0 +1,21 @@
+# NAMELESS FASE 2: LE ZONE. Serve la GPU e tre input: nvm-codice (la versione nuova), il notebook dei dati e il
+# notebook degli occhi (fase 1). Alla fine: zone_nameless.pt, esame_zone.json e materie/ nell'output.
+import glob, os, shutil, sys
+CODICE = '/tmp/codice'
+shutil.rmtree(CODICE, ignore_errors=True)
+z = [p for p in glob.glob('/kaggle/input/**/nvm-codice*.zip', recursive=True)]
+if z:
+    shutil.unpack_archive(z[0], CODICE)
+else:
+    d = [os.path.dirname(os.path.dirname(p)) for p in glob.glob('/kaggle/input/**/kaggle_rete/zone.py', recursive=True)]
+    assert d, "MANCA IL CODICE NUOVO: carica il nuovo nvm-codice.zip come nuova versione del dataset"
+    shutil.copytree(d[0], CODICE)
+sys.path.insert(0, CODICE)
+import torch
+assert torch.cuda.is_available(), "MANCA LA GPU: a destra Settings, Accelerator, GPU; poi rilancia"
+assert glob.glob('/kaggle/input/**/ore_bid', recursive=True), \
+    "MANCANO I DATI: a destra Add Input, aggiungi il notebook dei dati"
+if not glob.glob('/kaggle/input/**/occhi_nameless.pt', recursive=True):
+    print("ATTENZIONE: manca il notebook degli occhi (fase 1) fra gli input: la rete partira' da zero")
+from kaggle_rete.zone import scuola
+scuola(ore=3)

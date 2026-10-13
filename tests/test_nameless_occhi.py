@@ -45,15 +45,17 @@ def test_le_candele_con_gli_orari_di_tradingview():
 
 
 def test_ogni_ora_vede_solo_candele_gia_chiuse_del_suo_mercato():
+    """Chiuse prima che arrivi l'ora dopo: il venerdi' sera anche quelle che sulla carta chiudono alla riapertura."""
     s = _sensi()
     assert s.nomi == ["EURUSD", "GBPUSD"]
-    f_ore = s.fine[0]
+    f_ore = s.prossimo
+    assert (s.prossimo >= s.fine[0]).all()
     for k in range(len(TF_NAMELESS)):
         e = s.entro[k]
         p = s.chi
         dentro = e >= s.primo[p, k]
         assert (s.fine[k][e[dentro]] <= f_ore[dentro]).all()
-        # La candela dopo, se e' dello stesso pezzo, chiude dopo l'ora.
+        # La candela dopo, se e' dello stesso pezzo, chiude dopo l'ora dopo.
         dopo = e + 1
         fine_pezzo = np.r_[s.primo[1:, k], len(s.fine[k])][p]
         ok = dopo < fine_pezzo
@@ -79,7 +81,7 @@ def test_gli_occhi_non_vedono_niente_dopo_il_taglio():
     j = torch.as_tensor(s.istanti(utc(2019, 1, 1), utc(2019, 3, 1))[::97])
     taglio = j - torch.randint(1, 25, j.shape)
     contenuto, tempo, vuote, dopo = let.guarda(j, taglio)
-    fine_taglio = torch.as_tensor(s.fine[0])[taglio]
+    fine_taglio = torch.as_tensor(s.prossimo)[taglio]
     for k in range(len(TF_NAMELESS)):
         idx = torch.as_tensor(s.entro[k])[j][:, None] + let.passi
         fine = torch.as_tensor(s.fine[k])[idx.clamp(min=0)]
