@@ -41,10 +41,11 @@ from nvm.cervello import dal_vivo
 from nvm.intelligenti import al_lavoro, fine_settimana, pareri
 from nvm.intelligenti.squadra import MANCA_IN_PAROLE
 from nvm.vivo import libro
-from nvm.dati.candele import costruisci
+from nvm.dati import candele as _candele_mod
+from nvm.dati.candele import costruisci, unisci, weekend
 from nvm.dati.minuti import Minuti
 from nvm.dati.strumenti import STRUMENTI
-from nvm.tempo import NEW_YORK, TF
+from nvm.tempo import NEW_YORK, TF, fine_candela, inizio_candela
 from nvm.vivo import autoanalisi, conversazione, disegni, foto_grafico, messaggi
 from nvm.vivo.ambiente import impostazioni, leggi_env
 from nvm.vivo.carta import segui
@@ -62,7 +63,8 @@ from nvm.prova.allenamento import leggi_memoria
 from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
 from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
-from nvm.vivo.tradingview import Accesso, ErroreTradingView, Fonte, TradingView
+from nvm.vivo.tradingview import (INTERVALLI_TF, Accesso, ErroreTradingView, Fonte, RispostaRifiutata, TradingView,
+                                  candele_tv, ora_di_sessione)
 from nvm.vivo import rete_vivo
 
 RADICE = Path(__file__).resolve().parent
@@ -80,6 +82,17 @@ RAMO = "claude/zealous-albattani-394cd9"
 ORARIE = 13000          # circa due anni: servono al key level del mensile
 QUARTI = 4000           # circa sei settimane di quarti d'ora: il 4 ore e il giornaliero sopra
 LUNGHE = 7000           # circa 25 anni di giornaliere: i 3, 6 e 12 mesi del metodo delle foto
+# Sui grafici di TradingView ogni timeframe si prende da TradingView cosi' come e' (`_candele_tradingview`): quante
+# candele all'avvio, e quanto dura ognuna (per sapere quante ne mancano dopo una pausa).
+DIRETTE = {TF.H4: 3000, TF.H6: 2000, TF.H12: 1000, TF.D1: 5000, TF.W1: 1500, TF.MN: 400, TF.Q3: 150, TF.S6: 80,
+           TF.Y1: 40}
+DURATE = {TF.H4: 4 * 3600, TF.H6: 6 * 3600, TF.H12: 12 * 3600, TF.D1: 86400, TF.W1: 7 * 86400, TF.MN: 31 * 86400,
+          TF.Q3: 92 * 86400, TF.S6: 183 * 86400, TF.Y1: 366 * 86400}
+# Quelli che la documentazione di TradingView non elenca: se non li da', si mettono insieme le sue candele.
+NON_ELENCATI = (TF.H6, TF.H12, TF.Q3, TF.S6, TF.Y1)
+# Prima di leggerlo dalle sue candele a 4 ore, l'orario dei grafici collegati: le 18 di New York, la mezzanotte
+# italiana (il proprietario, 13/10/2026: *"i grafici che noi abbiamo collegato già vanno 0, 4, 8, 12, 16, 20"*).
+SESSIONE_TRADINGVIEW = "18"
 RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo di chiudere la barra
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
@@ -366,6 +379,12 @@ class Bot:
         accesso = Accesso(CARTELLA)
         dxy = self.imp.tradingview_dxy or DXY_TRADINGVIEW
         self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy, self.imp.tradingview_totale)
+        # Le candele si fanno con gli orari dei grafici di TradingView, non con quelli di MT5: prima di leggerli dalle
+        # sue candele a 4 ore (`_candele_tradingview`), quelli salvati l'ultima volta o la mezzanotte italiana.
+        self._leggi_candele_tradingview()
+        for nome in self.fonte.simboli:
+            if not weekend(nome):
+                _candele_mod.SESSIONI.setdefault(nome, SESSIONE_TRADINGVIEW)
         if not (CARTELLA / "riavvio").exists():
             # Dopo un aggiornamento non si ripete: lo si dice all'avvio a mano.
             self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy,
@@ -485,8 +504,106 @@ class Bot:
             self.racconta_allenamento()
             self.racconta_evoluzione()
 
+    # --- le candele di TradingView, cosi' come sono ---
+
+    def _file_candele_tradingview(self) -> Path:
+        return CARTELLA / "tradingview_candele.pkl"
+
+    def _leggi_candele_tradingview(self) -> None:
+        """Le candele di TradingView salvate l'ultima volta (dopo un aggiornamento il bot riparte senza riscaricarle
+        tutte): valgono se i grafici collegati sono gli stessi."""
+        import pickle
+        self._prossime_tv, self._tf_rifiutati = {}, set()
+        try:
+            with open(self._file_candele_tradingview(), "rb") as f:
+                salvate = pickle.load(f)
+            if salvate.get("simboli") != dict(self.fonte.simboli):
+                return
+            _candele_mod.SESSIONI.update(salvate["sessioni"])
+            self.lunghe.update(salvate["candele"])
+            self._prossime_tv = dict(salvate["prossime"])
+            self._tf_rifiutati = set(salvate["rifiutati"])
+        except FileNotFoundError:
+            return
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _salva_candele_tradingview(self) -> None:
+        import pickle
+        try:
+            dati = {"simboli": dict(self.fonte.simboli), "sessioni": dict(_candele_mod.SESSIONI),
+                    "candele": {s: d for s, d in self.lunghe.items() if isinstance(d, dict)},
+                    "prossime": dict(self._prossime_tv), "rifiutati": set(self._tf_rifiutati)}
+            nuovo = self._file_candele_tradingview().with_suffix(".nuovo")
+            with open(nuovo, "wb") as f:
+                pickle.dump(dati, f)
+            os.replace(nuovo, self._file_candele_tradingview())
+        except Exception:
+            registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _candele_tradingview(self, adesso: float) -> None:
+        """Sui grafici di TradingView le candele di ogni timeframe sono le sue, cosi' come sono, con i suoi orari (il
+        proprietario, 13/10/2026: *"non deve costruire niente ma utilizzare i dati con gli orari che gli vengono forniti
+        così come sono"*; *"1h 4h 6h 12h 1d 1w 1m 3m 12m"*). Le 1 ora sono le orarie (`_ore_nuove`); qui le altre. Dalle
+        candele a 4 ore si legge l'orario del grafico (`tradingview.ora_di_sessione`), che vale per tutti i calcoli del
+        bot e della rete. Un timeframe si riprende quando ne deve essere chiusa una candela nuova."""
+        if not hasattr(self, "_prossime_tv"):
+            self._prossime_tv, self._tf_rifiutati = {}, set()
+        nomi = list(self.strumenti) + [x for x in ("DXY", "TOTAL") if self.fonte.esiste(x)]
+        cambiato = False
+        for s in nomi:
+            d = self.lunghe.get(s)
+            d = dict(d) if isinstance(d, dict) else {}
+            for tf, quante in DIRETTE.items():
+                if tf in self._tf_rifiutati or (tf in d and adesso < self._prossime_tv.get((s, tf), 0)):
+                    continue
+                if tf in d and len(d[tf]):
+                    mancano = int((adesso - int(d[tf].fine[-1])) // DURATE[tf]) + 3
+                    quante = min(quante, max(5, mancano))
+                try:
+                    barre = self.fonte.grezze(s, tf, quante)
+                except RispostaRifiutata as errore:
+                    if tf in NON_ELENCATI:
+                        self._tf_rifiutati.add(tf)
+                        self.allarme(f"TradingView non dà le candele {INTERVALLI_TF[tf]} ({errore}): le metto insieme dalle sue "
+                                     f"candele {'mensili' if tf in (TF.Q3, TF.S6, TF.Y1) else 'a 1 ora'}, sui suoi orari.")
+                    else:
+                        registra(CARTELLA, "errore", testo=f"{s} {tf.value}: {errore}")
+                        self.allarme(f"TradingView: {errore}")
+                    continue
+                except ErroreTradingView as errore:
+                    registra(CARTELLA, "errore", testo=f"{s} {tf.value}: {errore}")
+                    self.allarme(f"TradingView: {errore}")
+                    continue
+                if tf is TF.H4 and not weekend(s) and quante == DIRETTE[tf]:
+                    # L'orario si legge quando arrivano tutte (le poche di un aggiornamento non bastano).
+                    ora = ora_di_sessione([int(b["t"]) // (1000 if int(b["t"]) > 10**11 else 1) for b in barre])
+                    if ora is None:
+                        self.allarme(f"TradingView: le candele a 4 ore di {s} non partono a orari fissi: uso "
+                                     f"{_candele_mod.SESSIONI.get(s, SESSIONE_TRADINGVIEW)} di New York.")
+                    elif _candele_mod.SESSIONI.get(s) != ora:
+                        # L'orario del grafico e' un altro: le candele gia' avute si riprendono tutte con quello.
+                        _candele_mod.SESSIONI[s] = ora
+                        d = {}
+                try:
+                    d[tf] = unisci(d.get(tf), candele_tv(s, tf, barre, adesso))
+                    cal = _candele_mod.calendario(s)
+                    aperta = int(inizio_candela(np.array([int(adesso)], np.int64), tf, cal)[0])
+                    self._prossime_tv[(s, tf)] = fine_candela(aperta, tf, cal)
+                    cambiato = True
+                except Exception:
+                    # Una risposta strana su un grafico non ferma gli altri: si riprova al giro dopo.
+                    registra(CARTELLA, "errore", testo=f"{s} {tf.value}: {traceback.format_exc()}")
+            self.lunghe[s] = d
+        if cambiato:
+            self._salva_candele_tradingview()
+
     def aggiorna_lunghe(self, adesso: float) -> None:
-        """Le giornaliere lunghe, una volta al giorno: senza, i 3, 6 e 12 mesi si fanno con le orarie (due anni)."""
+        """Le giornaliere lunghe, una volta al giorno: senza, i 3, 6 e 12 mesi si fanno con le orarie (due anni). Sui
+        grafici di TradingView, le sue candele di ogni timeframe (`_candele_tradingview`)."""
+        if self._su_tradingview:
+            self._candele_tradingview(adesso)
+            return
         giorno = int(adesso // 86400)
         if giorno == self._lunghe_del:
             return

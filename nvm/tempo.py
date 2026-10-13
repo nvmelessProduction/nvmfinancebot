@@ -1,5 +1,11 @@
 """I timeframe e i loro confini: le candele aprono come quelle di MT5, alle 17:00 di New York.
 
+Sui grafici di TradingView (dal 13/10/2026) le candele sono quelle di TradingView, cosi' come sono
+(`tradingview.candele_tv`, `vivo.Bot._candele_tradingview`), e i confini seguono l'orario del grafico collegato,
+letto dalle sue candele a 4 ore (`candele.SESSIONI`: per i grafici del proprietario le 18 di New York, cioe' 0, 4, 8,
+12, 16, 20 italiane). Il proprietario: *"non deve costruire niente ma utilizzare i dati con gli orari che gli vengono
+forniti così come sono"*.
+
 Il proprietario, 08/10/2026, su un CRT a 4 ore di SPX500 entrato un'ora dopo la chiusura della candela che
 vedeva su MT5: *"mi adatti immediatamente l'orario, per favore, perché se no così sta cosa non si risolverà mai"*.
 Dal 06/10 al 08/10/2026 le candele aprivano alle 18:00 come sui future (*"devono partire come sul futures"*, per
@@ -52,6 +58,8 @@ SPOSTAMENTO = 7 * 3600  # 17:00 di New York (la mezzanotte di MT5) -> mezzanotte
 # proprietario sull'oro sono cosi': con le candele dalle 17 le 4/5, 5/5, 5/7 e 5/8 non erano CRT (13/10/2026).
 SPOSTAMENTO_18 = 6 * 3600
 ORE_18 = "18"   # il valore del calendario (`candele.calendario`) per gli strumenti che aprono alle 18
+# Sui grafici di TradingView il calendario e' quello del grafico collegato (`candele.SESSIONI`): l'ora di New York
+# in cui apre la sessione ("17", "18", "19", "20"), letta dalle sue candele a 4 ore (`tradingview.ora_di_sessione`).
 # La giornata del forex, per i controlli sui dati (`nvm/dati/controlli.py`): chiude alle 17:00 di New York.
 SPOSTAMENTO_FOREX = 7 * 3600
 
@@ -114,11 +122,16 @@ def scarti_ny(t_utc: np.ndarray) -> np.ndarray:
 
 
 def _spostamento(calendario) -> int:
-    return SPOSTAMENTO_18 if calendario == ORE_18 else SPOSTAMENTO
+    """Di quanto si sposta l'ora di New York perche' l'apertura della sessione diventi mezzanotte: 7 ore per le 17
+    (MT5), 6 per le 18, e cosi' via per l'ora scritta nel calendario."""
+    if isinstance(calendario, str):
+        return (24 - int(calendario)) % 24 * 3600
+    return SPOSTAMENTO
 
 
 def _crypto(calendario) -> bool:
-    return bool(calendario) and calendario != ORE_18
+    """Il calendario UTC delle crypto (vero), non un'ora di sessione di New York (un testo come "18")."""
+    return not isinstance(calendario, str) and bool(calendario)
 
 
 def _utc_da_sessione(sessione: int, spostamento: int = SPOSTAMENTO) -> int:
@@ -157,8 +170,8 @@ def inizio_candela(t_utc: np.ndarray, tf: TF, weekend: bool = False) -> np.ndarr
     """L'istante UTC in cui apre la candela `tf` che contiene ogni istante.
 
     `weekend`: il calendario dello strumento (`candele.calendario`): vero per le crypto (scambiano anche sabato e
-    domenica, candele sul calendario UTC), `ORE_18` per i metalli (sessione dalle 18 di New York), falso per il resto
-    (dalle 17 di New York, come MT5)."""
+    domenica, candele sul calendario UTC), l'ora di apertura della sessione a New York come testo ("18" per i
+    metalli, o quella del grafico di TradingView collegato), falso per il resto (dalle 17 di New York, come MT5)."""
     t_utc = np.asarray(t_utc, dtype=np.int64)
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         # Gli scarti di New York sono ore intere: questi confini coincidono

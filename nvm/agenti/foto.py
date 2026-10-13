@@ -28,7 +28,7 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti.cacciatore import CRT, Motivo, Verso
-from nvm.dati.candele import Candele, costruisci, weekend, calendario
+from nvm.dati.candele import Candele, calendario, costruisci, raggruppa, weekend
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, PUNTO, Minuti
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import ORDINE, TF, fine_candela, inizio_candela, scarti_ny
@@ -105,8 +105,11 @@ class Quadro:
         return Quadro(self.strumento, int(t), c, r)
 
     @classmethod
-    def da(cls, ore: Minuti, adesso: int, lunghe: Optional[Minuti] = None) -> "Quadro":
-        """`ore`: le orarie; `lunghe`: candele giornaliere di tanti anni (dal vivo, per i 3, 6, 12 mesi)."""
+    def da(cls, ore: Minuti, adesso: int, lunghe=None) -> "Quadro":
+        """`ore`: le orarie; `lunghe`: candele giornaliere di tanti anni (dal vivo, per i 3, 6, 12 mesi), oppure le
+        candele di TradingView per timeframe ({TF: Candele}), che si usano cosi' come sono (`_da_tradingview`)."""
+        if isinstance(lunghe, dict):
+            return cls._da_tradingview(ore, adesso, lunghe)
         c = {}
         for tf in DALLE_ORE:
             c[tf] = costruisci(ore, tf).chiuse_entro(adesso)
@@ -121,6 +124,27 @@ class Quadro:
                 c[tf] = lunghe_tf if len(lunghe_tf) >= len(dalle_ore) else dalle_ore
             else:
                 c[tf] = dalle_ore
+        return cls(ore.strumento, int(adesso), c)
+
+    @classmethod
+    def _da_tradingview(cls, ore: Minuti, adesso: int, dirette: dict) -> "Quadro":
+        """Sui grafici di TradingView: le sue candele di ogni timeframe cosi' come sono, con i suoi orari (il
+        proprietario, 13/10/2026: *"non deve costruire niente ma utilizzare i dati con gli orari che gli vengono forniti
+        così come sono"*). Le 1 ora sono `ore`, le orarie di TradingView. Un timeframe che TradingView non da' si fa
+        mettendo insieme le sue candele sulla sua griglia: i 3, 6 e 12 mesi dai suoi mesi, il resto dalle sue ore."""
+        c = {}
+        for tf in DALLE_ORE + LUNGHI:
+            x = dirette.get(tf)
+            if tf is not TF.H1 and x is not None and len(x):
+                c[tf] = x.chiuse_entro(adesso)
+        mesi = c.get(TF.MN)
+        for tf in DALLE_ORE + LUNGHI:
+            if tf in c:
+                continue
+            if tf in (TF.Q3, TF.S6, TF.Y1) and mesi is not None and len(mesi):
+                c[tf] = raggruppa(mesi, tf).chiuse_entro(adesso)
+            else:
+                c[tf] = costruisci(ore, tf).chiuse_entro(adesso)
         return cls(ore.strumento, int(adesso), c)
 
 

@@ -31,10 +31,10 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from nvm.dati.candele import weekend, calendario
+from nvm.dati.candele import Candele, weekend, calendario
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.dati.strumenti import STRUMENTI
-from nvm.tempo import TF, inizio_candela
+from nvm.tempo import TF, fine_candela, inizio_candela, scarti_ny
 
 SERVER = "https://mcp.tradingview.com/mcp"
 EMITTENTE = "https://www.tradingview.com"
@@ -48,6 +48,15 @@ VERSIONE_MCP = "2025-06-18"
 # get_ohlcv da' al massimo 5.000 candele per richiesta.
 MASSIMO = 5000
 INTERVALLI = {900: "15m", 3600: "1h", 86400: "1D"}
+# I timeframe che il bot prende da TradingView cosi' come sono, col nome dell'intervallo (il proprietario, 13/10/2026:
+# *"non deve costruire niente ma utilizzare i dati con gli orari che gli vengono forniti così come sono"*; *"1h 4h 6h 12h
+# 1d 1w 1m 3m 12m"*). La documentazione di TradingView elenca 1h, 4h, 1D, 1W e M; gli altri si chiedono lo stesso, e se
+# TradingView non li da' (`RispostaRifiutata`) si mettono insieme le sue candele (le ore, i mesi) sulla sua stessa griglia
+# (`foto.Quadro.da`).
+INTERVALLI_TF = {TF.H1: "1h", TF.H4: "4h", TF.H6: "6h", TF.H12: "12h", TF.D1: "1D", TF.W1: "1W", TF.MN: "M",
+                 TF.Q3: "3M", TF.S6: "6M", TF.Y1: "12M"}
+# I timeframe con l'orario esatto della candela (gli altri si mettono all'apertura della loro sessione: `candele_tv`).
+INTRADAY = (TF.H1, TF.H4, TF.H6, TF.H12)
 # Quanto prima della scadenza si rinnova l'accesso.
 MARGINE = 120
 # Fra una richiesta e l'altra: TradingView ne dichiara circa 100 al minuto, ma con 35 grafici a 0,7 secondi ha
@@ -61,6 +70,10 @@ PUNTO.setdefault("TOTAL", 1e6)
 
 class ErroreTradingView(RuntimeError):
     pass
+
+
+class RispostaRifiutata(ErroreTradingView):
+    """TradingView ha risposto, ma senza candele (un intervallo o un grafico che non da'): non e' un errore di rete."""
 
 
 class AccessoScaduto(ErroreTradingView):
@@ -371,12 +384,19 @@ class TradingView:
                 continue
         return " ".join(testi)
 
-    def candele(self, simbolo: str, passo: int, quante: int) -> list[dict]:
-        r = self.chiama("get_ohlcv", {"symbol": simbolo, "interval": INTERVALLI[passo], "count": int(min(quante, MASSIMO))})
+    def candele(self, simbolo: str, passo, quante: int) -> list[dict]:
+        """Le candele di `simbolo`: `passo` in secondi (`INTERVALLI`) o il nome dell'intervallo ("4h", "1W", "M")."""
+        intervallo = passo if isinstance(passo, str) else INTERVALLI[passo]
+        try:
+            r = self.chiama("get_ohlcv", {"symbol": simbolo, "interval": intervallo, "count": int(min(quante, MASSIMO))})
+        except ErroreTradingView as errore:
+            if str(errore).startswith("get_ohlcv:"):
+                raise RispostaRifiutata(f"{simbolo} {intervallo}: {str(errore)[11:]}") from None
+            raise
         barre = _barre(r)
         if barre is None:
             testo = r if isinstance(r, str) else json.dumps(r)[:300]
-            raise ErroreTradingView(f"{simbolo}: risposta senza candele ({testo[:300]})")
+            raise RispostaRifiutata(f"{simbolo} {intervallo}: risposta senza candele ({testo[:300]})")
         return barre
 
 
@@ -405,6 +425,55 @@ def minuti(strumento: str, barre: list[dict], passo: int, adesso: float) -> Minu
     punti = np.rint(ohlc[chiuse] / PUNTO[strumento]).astype(np.int64)
     v = volume[chiuse].astype(np.float32)
     return Minuti(strumento, t[chiuse], punti, punti.copy(), v, v.copy(), passo=passo)
+
+
+def ora_di_sessione(inizi) -> object:
+    """Il calendario di un grafico di TradingView, dalle sue candele a 4 ore: partono dall'apertura della sessione ogni
+    4 ore, quindi l'ora di New York della partenza dice la sessione ("17" come MT5, "18" come i future, "19", "20").
+    True se seguono l'UTC (0, 4, 8... UTC tutto l'anno), None se non si capisce. Basta il 98% delle candele: un
+    giorno di festa con orari strani non cambia niente."""
+    t = np.asarray(inizi, np.int64)
+    if len(t) < 6 or np.mean(t % 3600 == 0) < 0.98:
+        return None
+    t = t[t % 3600 == 0]
+    resti_ny = (((t + scarti_ny(t)) // 3600) % 24) % 4
+    valori, quanti = np.unique(resti_ny, return_counts=True)
+    if quanti.max() >= 0.98 * len(t):
+        return {1: "17", 2: "18", 3: "19", 0: "20"}[int(valori[np.argmax(quanti)])]
+    if np.mean((t // 3600) % 4 == 0) >= 0.98:
+        return True
+    return None
+
+
+def candele_tv(strumento: str, tf: TF, barre: list[dict], adesso: float) -> Candele:
+    """Le candele di TradingView di un timeframe come `Candele` del bot, cosi' come sono: i prezzi e gli orari di
+    TradingView, solo quelle gia' chiuse. Per giorno, settimana e mese TradingView puo' segnare la candela con la data
+    (la mezzanotte UTC) invece che con l'apertura della sessione: si mette all'apertura della sua sessione, per sapere
+    di che giorno e'; i prezzi non si toccano. Se due candele cadono nella stessa (la domenica sera del giorno dopo),
+    diventano una."""
+    cal = calendario(strumento)
+    if not barre:
+        vuoto = np.empty(0, np.int64)
+        return Candele(strumento, tf, vuoto, vuoto, np.empty((0, 4)), np.empty((0, 4)), np.empty(0))
+    t = np.array([int(b["t"]) for b in barre], np.int64)
+    t = np.where(t > 10**11, t // 1000, t)            # millisecondi, se mai arrivassero cosi'
+    prezzi = np.array([[float(b["o"]), float(b["h"]), float(b["l"]), float(b["c"])] for b in barre])
+    volume = np.array([float(b.get("v") or 0.0) for b in barre])
+    if tf not in INTRADAY:
+        t = inizio_candela(t, tf, cal)
+    ordine = np.argsort(t, kind="stable")
+    t, prezzi, volume = t[ordine], prezzi[ordine], volume[ordine]
+    nuove = np.flatnonzero(np.r_[True, t[1:] != t[:-1]])
+    ultime = np.r_[nuove[1:] - 1, len(t) - 1]
+    ohlc = np.c_[prezzi[nuove, 0], np.maximum.reduceat(prezzi[:, 1], nuove), np.minimum.reduceat(prezzi[:, 2], nuove),
+                 prezzi[ultime, 3]]
+    t, volume = t[nuove], np.add.reduceat(volume, nuove)
+    if tf is TF.H1:
+        fine = t + 3600
+    else:
+        fine = np.fromiter((fine_candela(int(i), tf, cal) for i in t), np.int64, count=len(t))
+    chiuse = fine <= adesso
+    return Candele(strumento, tf, t[chiuse], fine[chiuse], ohlc[chiuse], ohlc[chiuse].copy(), volume[chiuse])
 
 
 # --- i grafici scelti dal proprietario ----------------------------------------------------------------------
@@ -462,3 +531,9 @@ class Fonte:
 
     def giornaliere(self, strumento: str, quante: int) -> Minuti:
         return self.barre(strumento, quante, 86400)
+
+    def grezze(self, strumento: str, tf: TF, quante: int) -> list[dict]:
+        """Le candele di `tf` cosi' come le da' TradingView (una in piu': l'ultima e' quella in formazione)."""
+        if strumento not in self.simboli:
+            raise ErroreTradingView(f"{strumento} non è fra i grafici scelti su TradingView")
+        return self.tv.candele(self.simboli[strumento], INTERVALLI_TF[tf], quante + 1)

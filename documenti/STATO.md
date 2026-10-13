@@ -5,6 +5,18 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 13/10/2026 (pomeriggio): le candele di TradingView così come sono
+
+Il proprietario ha visto un CRT a 4 ore di EURUSD aperto alle 15 italiane: era una candela di MT5 (23-3-7-11-15-19),
+mentre sul suo grafico di TradingView le 4 ore vanno 0-4-8-12-16-20 e quella candela non era ancora finita. Il bot
+scaricava da TradingView solo le ore e si costruiva il resto con gli orari di MT5. Il proprietario: *"non deve
+costruire niente ma utilizzare i dati con gli orari che gli vengono forniti così come sono"*, *"1h 4h 6h 12h 1d 1w 1m 3m
+12m"*. Adesso, sui grafici di TradingView, il bot prende da TradingView ogni timeframe così com'è (1 ora, 4 ore, giorno,
+settimana, mese; 6 e 12 ore e 3, 6, 12 mesi se TradingView li dà, se no li mette insieme dalle sue candele sulla sua
+griglia e lo dice una volta), legge l'orario di ogni grafico dalle sue candele a 4 ore, e bot e rete lavorano su quelle.
+La prima partenza scarica tutto (qualche minuto); poi le candele restano su disco (`dati/vivo/tradingview_candele.pkl`)
+e il bot riprende un timeframe solo quando ne chiude una candela.
+
 ## 13/10/2026: foto per foto, il bot e la rete fanno quello che c'è sulle foto
 
 Il proprietario: *"vedi una foto, vedi la rete neurale che fa, vedi un'altra foto ... fino a quando quello che sta

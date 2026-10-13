@@ -596,3 +596,106 @@ def test_su_tradingview_i_quarti_d_ora_si_chiedono_a_turno():
         setattr(bot, nome, lambda *a: None)
     bot.giro_veloce(900 * 5)                                 # turno 1: gli strumenti 1 e 5
     assert chieste == [("S1", 12), ("S5", 12)]
+
+
+# --- le candele di TradingView cosi' come sono (13/10/2026) ---
+
+def _ora_italiana(anno, mese, giorno, ora):
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    return int(dt.datetime(anno, mese, giorno, ora, tzinfo=ZoneInfo("Europe/Rome")).timestamp())
+
+
+def test_l_orario_del_grafico_si_legge_dalle_sue_candele_a_4_ore():
+    """Il proprietario, 13/10/2026: *"i grafici che noi abbiamo collegato già vanno 0, 4, 8, 12, 16, 20"*."""
+    from nvm.vivo.tradingview import ora_di_sessione
+    mezzanotte = _ora_italiana(2026, 10, 5, 0)
+    assert ora_di_sessione([mezzanotte + k * 4 * 3600 for k in range(60)]) == "18"       # 0-4-8 italiane
+    assert ora_di_sessione([mezzanotte - 3600 + k * 4 * 3600 for k in range(60)]) == "17"  # 23-3-7, come MT5
+    assert ora_di_sessione([utc(2026, 10, 20) + k * 4 * 3600 for k in range(80)]) is True  # UTC, anche col cambio d'ora
+    assert ora_di_sessione([mezzanotte + k * 4 * 3600 + 1800 for k in range(60)]) is None  # alle mezze: non si capisce
+
+
+def test_le_candele_di_tradingview_restano_come_sono():
+    from nvm.dati import candele as C
+    from nvm.tempo import TF
+    from nvm.vivo.tradingview import candele_tv
+    C.SESSIONI["EURUSD"] = "18"
+    t0 = _ora_italiana(2026, 10, 5, 0)
+    barre = [{"t": t0 + k * 4 * 3600, "o": 1.10 + k / 1000, "h": 1.12, "l": 1.09, "c": 1.11} for k in range(7)]
+    c = candele_tv("EURUSD", TF.H4, barre, t0 + 6 * 4 * 3600 + 60)
+    # Le 4 ore alle 0, 4, 8, 12, 16, 20 italiane, coi prezzi di TradingView; l'ultima (in formazione) no.
+    assert list(c.inizio) == [t0 + k * 4 * 3600 for k in range(6)] and list(c.fine) == [t0 + k * 4 * 3600 for k in range(1, 7)]
+    assert c.bid[3].tolist() == [1.103, 1.12, 1.09, 1.11]
+    # Le giornaliere segnate con la data (mezzanotte UTC) stanno nella loro giornata, che apre alle 0 italiane.
+    giorni = [{"t": utc(2026, 10, 5 + k), "o": 1, "h": 2, "l": 0.5, "c": 1.5} for k in range(3)]
+    g = candele_tv("EURUSD", TF.D1, giorni, utc(2026, 10, 9))
+    assert list(g.inizio) == [_ora_italiana(2026, 10, 5 + k, 0) for k in range(3)]
+
+
+def test_bot_e_rete_vedono_le_candele_di_tradingview_e_non_quelle_costruite():
+    """Il proprietario, 13/10/2026: un CRT a 4 ore di EURUSD aperto con gli orari di MT5, che su TradingView non era
+    ancora finito. Con le candele di TradingView il quadro (del bot e della rete) ha le sue, anche nei prezzi."""
+    from nvm.agenti import foto
+    from nvm.dati import candele as C
+    from nvm.tempo import TF
+    from nvm.vivo.tradingview import candele_tv
+    C.SESSIONI["EURUSD"] = "18"
+    t0 = _ora_italiana(2026, 10, 5, 0)
+    ore = minuti("EURUSD", [{"t": t0 + k * 3600, "o": 1.1, "h": 1.101, "l": 1.099, "c": 1.1} for k in range(48)], 3600,
+                 t0 + 48 * 3600)
+    quattro = candele_tv("EURUSD", TF.H4, [{"t": t0 + k * 4 * 3600, "o": 1.1, "h": 1.2, "l": 1.0, "c": 1.15}
+                                           for k in range(13)], t0 + 48 * 3600)
+    mesi = candele_tv("EURUSD", TF.MN, [{"t": utc(2026, m, 1), "o": 1.0 + m / 100, "h": 1.3, "l": 0.9, "c": 1.1}
+                                        for m in range(1, 10)], t0)
+    q = foto.Quadro.da(ore, t0 + 48 * 3600, {TF.H4: quattro, TF.MN: mesi})
+    assert list(q.candele[TF.H4].inizio) == list(quattro.inizio) and q.candele[TF.H4].bid[0, 1] == 1.2
+    assert q.candele[TF.H1].inizio[0] == t0
+    # I 3 mesi, che TradingView non da' sempre, sono i suoi mesi messi insieme: gennaio-marzo, aprile-giugno.
+    trimestri = q.candele[TF.Q3]
+    assert trimestri.bid[0].tolist() == [1.01, 1.3, 0.9, 1.1] and len(trimestri) == 3
+
+
+def test_il_bot_prende_ogni_timeframe_da_tradingview_e_lo_riprende_quando_chiude(tmp_path, monkeypatch):
+    import vivo
+    from nvm.dati import candele as C
+    from nvm.tempo import TF
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    t0 = _ora_italiana(2026, 10, 5, 0)
+    adesso = [t0 + 20 * 4 * 3600 + 60]       # giovedi alle 8 italiane
+    chieste = []
+
+    def grezze(s, tf, quante):
+        chieste.append((s, tf, quante))
+        if tf is TF.H6:
+            raise vivo.RispostaRifiutata("OANDA:EURUSD 6h: intervallo sconosciuto")
+        passo = vivo.DURATE[tf]
+        ultima = adesso[0] - adesso[0] % 3600
+        return [{"t": ultima - k * passo, "o": 1.1, "h": 1.2, "l": 1.0, "c": 1.15}
+                for k in range(min(quante, 40) - 1, -1, -1)] if tf is not TF.H4 else \
+            [{"t": t0 + k * 4 * 3600, "o": 1.1, "h": 1.2, "l": 1.0, "c": 1.15}
+             for k in range(int((adesso[0] - t0) // (4 * 3600)) + 1)]
+    allarmi = []
+    bot = object.__new__(vivo.Bot)
+    bot.fonte = NS(grezze=grezze, esiste=lambda s: False, simboli={"EURUSD": "OANDA:EURUSD"})
+    bot.strumenti, bot.lunghe = ["EURUSD"], {}
+    bot.allarme = allarmi.append
+    C.SESSIONI["EURUSD"] = "17"           # come MT5: le candele di TradingView dicono un'altra cosa
+    bot._candele_tradingview(adesso[0])
+    assert C.SESSIONI["EURUSD"] == "18"
+    d = bot.lunghe["EURUSD"]
+    assert set(d) == set(vivo.DIRETTE) - {TF.H6} and TF.H6 in bot._tf_rifiutati
+    assert any("non dà le candele 6h" in a for a in allarmi)
+    assert all(int(x) % (4 * 3600) == (t0 % (4 * 3600)) for x in d[TF.H4].inizio)
+    # Nella stessa candela non si richiede niente; chiusa la 4 ore, si riprendono solo le ultime.
+    chieste.clear()
+    bot._candele_tradingview(adesso[0] + 600)
+    assert chieste == []
+    bot._candele_tradingview(adesso[0] + 4 * 3600)          # alle 12 chiudono la 4 ore e la 12 ore
+    assert [(tf, q) for _, tf, q in chieste] == [(TF.H4, 5), (TF.H12, 5)]
+    # Dopo un riavvio le candele e gli orari si ritrovano su disco.
+    C.SESSIONI.clear()
+    bot2 = object.__new__(vivo.Bot)
+    bot2.fonte, bot2.lunghe = bot.fonte, {}
+    bot2._leggi_candele_tradingview()
+    assert C.SESSIONI["EURUSD"] == "18" and len(bot2.lunghe["EURUSD"][TF.H4]) == len(bot.lunghe["EURUSD"][TF.H4])

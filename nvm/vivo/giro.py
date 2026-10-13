@@ -260,9 +260,18 @@ def _ricorda_quadro(chiave, fai):
     return _QUADRI[chiave]
 
 
-def _quadro(ore: Minuti, adesso: int, lunghe: Optional[Minuti] = None):
-    return _ricorda_quadro(("quadro", _impronta(ore), adesso,
-                            None if lunghe is None or not len(lunghe) else _impronta(lunghe)),
+def _impronta_lunghe(lunghe) -> Optional[tuple]:
+    """L'impronta delle candele lunghe: le giornaliere (`Minuti`), o le candele di TradingView per timeframe."""
+    if lunghe is None or not len(lunghe):
+        return None
+    if isinstance(lunghe, dict):
+        return tuple(sorted((tf.value, len(c), int(c.inizio[-1]) if len(c) else 0, float(c.bid[-1, 3]) if len(c) else 0.0)
+                            for tf, c in lunghe.items()))
+    return _impronta(lunghe)
+
+
+def _quadro(ore: Minuti, adesso: int, lunghe=None):
+    return _ricorda_quadro(("quadro", _impronta(ore), adesso, _impronta_lunghe(lunghe)),
                            lambda: foto.Quadro.da(ore, adesso, lunghe))
 
 

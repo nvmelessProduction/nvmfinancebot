@@ -7,6 +7,7 @@ alle 17:00 di New York; quelle delle crypto sul calendario UTC. Qui si raggruppa
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -22,9 +23,19 @@ def weekend(strumento: str) -> bool:
     return strumento == "TOTAL" or (s is not None and s.famiglia == "crypto")
 
 
+# Sui grafici di TradingView: il calendario del grafico collegato, per strumento (l'ora di New York in cui apre la
+# sessione, o True se le sue candele seguono l'UTC). Lo scrive il bot all'avvio leggendo le candele a 4 ore di
+# TradingView (`vivo.Bot._candele_tradingview`): il proprietario, 13/10/2026, *"i grafici che noi abbiamo collegato
+# già vanno 0, 4, 8, 12, 16, 20. Deve essere uguale"*.
+SESSIONI: dict = {}
+
+
 def calendario(strumento: str):
-    """Il calendario delle candele dello strumento, per `tempo.inizio_candela`: vero per le crypto, `tempo.ORE_18`
-    per i metalli (le candele partono alle 18 di New York, come su TradingView), falso per il resto."""
+    """Il calendario delle candele dello strumento, per `tempo.inizio_candela`: quello del grafico di TradingView
+    collegato (`SESSIONI`), se c'e'; se no vero per le crypto, `tempo.ORE_18` per i metalli (le candele partono alle
+    18 di New York, come su TradingView), falso per il resto (dalle 17, come MT5)."""
+    if strumento in SESSIONI:
+        return SESSIONI[strumento]
     if weekend(strumento):
         return True
     s = STRUMENTI.get(strumento)
@@ -99,3 +110,33 @@ def costruisci(minuti: Minuti, tf: TF) -> Candele:
         fini = np.fromiter((fine_candela(int(i), tf, fine_sett) for i in inizi), dtype=np.int64, count=len(inizi))
     volume = np.add.reduceat(minuti.volume_bid.astype(np.float64), nuove)
     return Candele(minuti.strumento, tf, inizi, fini, raggruppa(minuti.bid), raggruppa(minuti.ask), volume)
+
+
+def raggruppa(c: Candele, tf: TF) -> Candele:
+    """Mette insieme candele gia' fatte (le ore o i mesi di TradingView) in quelle di `tf`, sulla griglia del
+    calendario dello strumento: per i timeframe che TradingView non da' (6 e 12 ore, 3, 6 e 12 mesi)."""
+    if not len(c):
+        return Candele(c.strumento, tf, c.inizio[:0], c.fine[:0], c.bid[:0], c.ask[:0], c.volume[:0])
+    cal = calendario(c.strumento)
+    chiavi = inizio_candela(c.inizio, tf, cal)
+    nuove = np.flatnonzero(np.r_[True, chiavi[1:] != chiavi[:-1]])
+    ultime = np.r_[nuove[1:] - 1, len(c) - 1]
+
+    def insieme(p: np.ndarray) -> np.ndarray:
+        return np.c_[p[nuove, APERTURA], np.maximum.reduceat(p[:, MASSIMO], nuove),
+                     np.minimum.reduceat(p[:, MINIMO], nuove), p[ultime, CHIUSURA]]
+    inizi = chiavi[nuove]
+    fini = np.fromiter((fine_candela(int(i), tf, cal) for i in inizi), dtype=np.int64, count=len(inizi))
+    return Candele(c.strumento, tf, inizi, fini, insieme(c.bid), insieme(c.ask), np.add.reduceat(c.volume, nuove))
+
+
+def unisci(vecchie: Optional[Candele], nuove: Candele) -> Candele:
+    """Le candele gia' avute piu' quelle appena arrivate: dove si sovrappongono valgono le nuove."""
+    if vecchie is None or not len(vecchie):
+        return nuove
+    if not len(nuove):
+        return vecchie
+    k = int(np.searchsorted(vecchie.inizio, nuove.inizio[0]))
+    return Candele(nuove.strumento, nuove.tf, np.r_[vecchie.inizio[:k], nuove.inizio], np.r_[vecchie.fine[:k], nuove.fine],
+                   np.r_[vecchie.bid[:k], nuove.bid], np.r_[vecchie.ask[:k], nuove.ask],
+                   np.r_[vecchie.volume[:k], nuove.volume])
