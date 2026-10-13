@@ -263,6 +263,8 @@ class Bot:
                 "🧠 La rete neurale è collegata e decide lei. Giudica ogni setup del bot: quelli che prenderebbe li "
                 "apro da solo e vi spiego perché, con «Correggi»; quelli che lascia vanno in équipe, con «Apri lo "
                 "stesso» e «Correggi». Con «Correggi» le dite cosa ha visto male: è così che la alleniamo.\n"
+                "I setup con tutte le regole delle foto (CRT, key level, direzione) li prende sempre, come nelle "
+                "foto del proprietario: la sua stima la scrive, ma lì non decide lei.\n"
                 f"Onestamente: all'esame sugli anni 2023-2026 è arrivata a pareggio ({e.get('R medio', 0):+.3f} R a "
                 f"trade contro {e.get('bot R medio', 0):+.3f} del bot da solo). Sta imparando.")
 
@@ -1633,7 +1635,8 @@ class Bot:
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
             elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._lascia_la_rete(d):
                 # In automatico decide la rete (il proprietario, 12/10/2026: *"voglio che sia la rete a decidere"*):
-                # questo lo lascia. In équipe, con «Apri lo stesso» e «Correggi».
+                # questo lo lascia. In équipe, con «Apri lo stesso» e «Correggi». Un setup con tutte le regole delle
+                # foto la rete non lo lascia mai (`rete_vivo.Giudizio.regole`).
                 self.stato.saltate["la rete neurale lo lascia"] = self.stato.saltate.get("la rete neurale lo lascia", 0) + 1
                 self._proponi(d, v, self._giudizi_rete.get(d.chiave))
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:

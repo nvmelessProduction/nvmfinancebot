@@ -35,7 +35,11 @@ le regole, impara dai risultati dal vivo e decide.
   chiude il **25%** e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande
   se c'è ed è valido, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la
   liquidità). Un gap non è un target se il prezzo ci è già entrato (è mitigato) o se la terza candela che lo
-  ha creato ha accettato la precedente.
+  ha creato ha accettato la precedente (chiusa oltre, con più corpo che ombra): allora non si punta nemmeno oltre.
+  Se un gap già toccato contro di noi è nella reazione automatica e l'estremo dell'aggressione è un key level, il
+  target è quel key level (la liquidazione). Al target finale almeno 1 volta il rischio.
+- **La rete neurale**: sui setup con tutte le regole delle foto entra sempre (la sua stima la scrive, ma lì non
+  decide lei). `python -m strumenti.foto --dati <cartella>` rifà le foto del proprietario una per una.
 - **Il gap** (agente *Gap*): le fasi aggressione, reazione automatica, liquidazione, continuazione; l'RSI
   serve solo lì, per la continuazione (minimi decrescenti sul grafico, crescenti sull'RSI).
 - **Il DXY** (agente *DXY*): l'indice del dollaro, calcolato dalle coppie; un suo setup rialzista vende le

@@ -28,7 +28,7 @@ from typing import Optional
 import numpy as np
 
 from nvm.agenti.cacciatore import CRT, Motivo, Verso
-from nvm.dati.candele import Candele, costruisci, weekend
+from nvm.dati.candele import Candele, costruisci, weekend, calendario
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, PUNTO, Minuti
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import ORDINE, TF, fine_candela, inizio_candela, scarti_ny
@@ -56,6 +56,10 @@ MADRE_MASSIMA = 12
 # sforare. potrebbe essere un errore mio, ho dato per scontato che non avesse accettato"* (la foto 6 della
 # cartella 5, oro del 1 maggio 2026, chiudeva 0,1 sopra il massimo della candela 1).
 TOLLERANZA_CHIUSURA = 0.0
+# La terza candela di un gap accetta solo se il corpo e' almeno questa parte della candela (piu' corpo che ombra).
+CORPO_ACCETTA = 0.5
+# Quanto vicino (in parti del rischio) l'estremo dell'aggressione di un gap deve stare a un key level per esserlo.
+TOLLERANZA_LIQUIDAZIONE = 0.05
 # Quante candele indietro si guardano i gap, per timeframe: un gap piu' vecchio non e' piu' "attivo" (nelle
 # foto i gap usati come target sono di 1-2 anni al massimo; il gap annuale della sterlina del 2017 o quello
 # dei 3 mesi dell'euro del 2022 il proprietario non li guarda).
@@ -218,9 +222,12 @@ class Gap:
     # Il primo istante in cui il prezzo ci entra, e quando lo attraversa tutto (None: non ancora).
     toccato: Optional[int] = None
     riempito: Optional[int] = None
-    # La terza candela che crea il gap ha chiuso oltre la candela prima (accetta): il gap non e' un target
-    # (il proprietario, 07/10/2026, euro-australiano: *"la terza candela accetta la precedente e quindi il target
-    # non è il gap bensì il kl"*; *"si vale per ogni gap"*).
+    # La terza candela che crea il gap accetta la precedente: il gap non e' un target (il proprietario, 07/10/2026,
+    # euro-australiano: *"la terza candela accetta la precedente e quindi il target non è il gap bensì il kl"*; *"si
+    # vale per ogni gap"*) e il prezzo non ci torna presto, quindi non ci passa oltre (`muro_accettato`). Accetta se
+    # chiude oltre la candela prima ed e' direzionale, piu' corpo che ombra (`CORPO_ACCETTA`; il libro del socio: *"se
+    # è direzionale, accetta la precedente e non ha spike contro"*); con piu' ombra che corpo e' un rifiuto e il gap
+    # resta un target (foto 2/6 e 2/7: la settimana e il trimestre chiudono appena oltre, con l'ombra lunga).
     terza_accetta: bool = False
 
     @property
@@ -247,11 +254,14 @@ def gap_di(q: Quadro, tf: TF, t: int) -> list[Gap]:
     o_ini, o_h, o_l = ore.inizio[:m], ore.bid[:m, MASSIMO], ore.bid[:m, MINIMO]
     fuori = []
     for i in range(a, n):
-        chiude = float(c.bid[i, CHIUSURA])
+        chiude, apre = float(c.bid[i, CHIUSURA]), float(c.bid[i, APERTURA])
+        diretta = abs(chiude - apre) >= CORPO_ACCETTA * (h[i] - l[i])
         if h[i - 2] < l[i]:
-            g = Gap(tf, True, float(h[i - 2]), float(l[i]), int(c.fine[i]), terza_accetta=chiude > h[i - 1])
+            g = Gap(tf, True, float(h[i - 2]), float(l[i]), int(c.fine[i]),
+                    terza_accetta=chiude > h[i - 1] and chiude > apre and diretta)
         elif l[i - 2] > h[i]:
-            g = Gap(tf, False, float(h[i]), float(l[i - 2]), int(c.fine[i]), terza_accetta=chiude < l[i - 1])
+            g = Gap(tf, False, float(h[i]), float(l[i - 2]), int(c.fine[i]),
+                    terza_accetta=chiude < l[i - 1] and chiude < apre and diretta)
         else:
             continue
         j = int(np.searchsorted(o_ini, g.nato))
@@ -408,8 +418,9 @@ def trova(q: Quadro, tf: TF, dal: int, al: int) -> list[Setup]:
         return []
     fuori = []
     we = weekend(q.strumento)
+    cal = calendario(q.strumento)
     # La candela 3 apre dove apre la candela dopo la 2 (dopo il fine settimana, la domenica sera).
-    aperture = inizio_candela(c.fine, tf, we)
+    aperture = inizio_candela(c.fine, tf, cal)
     a = int(np.searchsorted(aperture, dal, side="left"))
     b = int(np.searchsorted(aperture, al, side="right"))
     for k2 in range(max(a, 2), b):
@@ -426,7 +437,7 @@ def trova(q: Quadro, tf: TF, dal: int, al: int) -> list[Setup]:
         h2p, l2p = pulita
         tolleranza = TOLLERANZA_CHIUSURA * (alto - basso)
         n3 = int(aperture[k2])
-        n3_fine = fine_candela(n3, tf, we)
+        n3_fine = fine_candela(n3, tf, cal)
         spread = max(float(c.ask[k2, CHIUSURA] - c.bid[k2, CHIUSURA]), 0.0)
         entrata = _apertura(q, n3, c2)
         minimo = stop_minimo(q, n3)
@@ -504,7 +515,7 @@ def key_level_presi(q: Quadro, s: Setup) -> list[Livello]:
         # Per i CRT a 4, 6 e 12 ore conta anche il massimo (minimo) di oggi fatto prima del range: *"per
         # l'entry H4 come KL ho usato il DH"* (foto 4 della cartella 3). Per quello a 1 ora no: il proprietario
         # vuole il KL giornaliero e il massimo (minimo) a 4 ore (`_h4_preso`).
-        g = int(inizio_candela(np.array([s.n2_inizio]), TF.D1, weekend(q.strumento))[0])
+        g = int(inizio_candela(np.array([s.n2_inizio]), TF.D1, calendario(q.strumento))[0])
         a, b = np.searchsorted(ore.inizio, [g, s.prima_inizio])
         if b > a:
             p = float(ore.bid[a:b, MASSIMO].max() if s.short else ore.bid[a:b, MINIMO].min())
@@ -518,7 +529,7 @@ def key_level_presi(q: Quadro, s: Setup) -> list[Livello]:
             fuori.append(liv)
             continue
         # Fra la fine del suo periodo e la candela prima del range il prezzo non l'aveva gia' preso.
-        fine = fine_candela(liv.inizio, liv.tf, weekend(q.strumento))
+        fine = fine_candela(liv.inizio, liv.tf, calendario(q.strumento))
         a, b = np.searchsorted(ore.inizio, [fine, s.prima_inizio])
         prima = ore.bid[a:b, MASSIMO] if s.short else ore.bid[a:b, MINIMO]
         if len(prima) and ((prima.max() > liv.prezzo) if s.short else (prima.min() < liv.prezzo)):
@@ -568,28 +579,56 @@ def gap_contro(q: Quadro, s: Setup, t: Optional[int] = None) -> list[Gap]:
     return fuori
 
 
-def gap_target(q: Quadro, s: Setup, t: Optional[int] = None) -> list[Gap]:
-    """I gap ancora intatti nel verso dell'operazione, oltre il primo target, dei timeframe sopra il CRT
-    (almeno il giornaliero): per vendere i gap rialzisti sotto, per comprare quelli ribassisti sopra. Non contano:
-    i gap gia' toccati (mitigati: *"il gap è già stato mitigato quindi non può essere un target"*), quelli la cui
-    terza candela ha accettato la precedente, e quelli oltre un gap che fa pressione contro di noi
-    (`gap_contro`): prima c'e' quello."""
-    t = s.n3_inizio if t is None else t
-    muro = gap_contro(q, s, t)
+def _davanti(q: Quadro, s: Setup, t: int) -> list[Gap]:
+    """I gap ancora intatti nel verso dell'operazione, oltre il primo target, dei timeframe sopra il CRT (almeno il
+    giornaliero): per vendere i gap rialzisti sotto, per comprare quelli ribassisti sopra."""
     fuori = []
     for tf in TF_GAP:
         if not _sopra(tf, s.tf):
             continue
         for g in gap_di(q, tf, t):
-            if g.toccato is not None or g.terza_accetta:
+            if g.toccato is not None:
                 continue
             if s.short and g.rialzista and g.bordo < s.tp1:
                 fuori.append(g)
             elif not s.short and not g.rialzista and g.bordo > s.tp1:
                 fuori.append(g)
+    return fuori
+
+
+def muro_accettato(q: Quadro, s: Setup, t: Optional[int] = None) -> Optional[Gap]:
+    """Il gap intatto davanti a noi piu' vicino la cui terza candela ha accettato la precedente: il prezzo non ci
+    torna presto (il libro del socio: *"il gap non viene mitigato subito"*), quindi non ci passa oltre e il target
+    sta prima (il proprietario, 07/10/2026, euro-australiano: *"il target non è il gap bensì il kl quindi il dh"*,
+    non il massimo dei 3 mesi oltre il gap). None se non c'e'."""
+    t = s.n3_inizio if t is None else t
+    accettati = [g for g in _davanti(q, s, t) if g.terza_accetta]
+    return min(accettati, key=lambda g: abs(g.bordo - s.tp1)) if accettati else None
+
+
+def _prima_del_muro(s: Setup, muro: Optional[Gap], prezzo: float) -> bool:
+    return muro is None or ((prezzo >= muro.bordo) if s.short else (prezzo <= muro.bordo))
+
+
+def gap_target(q: Quadro, s: Setup, t: Optional[int] = None) -> list[Gap]:
+    """I gap ancora intatti nel verso dell'operazione, oltre il primo target, dei timeframe sopra il CRT
+    (almeno il giornaliero): per vendere i gap rialzisti sotto, per comprare quelli ribassisti sopra. Non contano:
+    i gap gia' toccati (mitigati: *"il gap è già stato mitigato quindi non può essere un target"*), quelli la cui
+    terza candela ha accettato la precedente e quelli oltre (`muro_accettato`), e quelli oltre un gap che fa
+    pressione contro di noi (`gap_contro`): prima c'e' quello."""
+    t = s.n3_inizio if t is None else t
+    muro = gap_contro(q, s, t)
+    accettato = muro_accettato(q, s, t)
+    fuori = [g for g in _davanti(q, s, t) if not g.terza_accetta and _prima_del_muro(s, accettato, g.bordo)]
     if muro:
-        bordo = muro[0].bordo
-        fuori = [g for g in fuori if ((g.bordo >= bordo) if s.short else (g.bordo <= bordo))]
+        # Oltre il muro no, ma un gap di timeframe uguale o piu' grande che sta dentro il muro si': per riempire il
+        # muro il prezzo ci passa (foto 5 della cartella 2, DXY: il gap annuale dentro il gap dei 6 mesi gia' toccato;
+        # foto 8, argento: il gap dei 3 mesi dentro quello mensile). Un gap piu' piccolo dentro il muro no (foto 4
+        # della cartella 3: *"il gap a ribasso ci serve solo a capire che ci potrebbe essere pressione long al suo
+        # interno"*, il target e' il key level, non il gap giornaliero dentro quello settimanale).
+        m = muro[0]
+        fuori = [g for g in fuori if ((g.bordo >= m.bordo) if s.short else (g.bordo <= m.bordo))
+                 or (m.basso <= g.bordo <= m.alto and ORDINE.index(g.tf) >= ORDINE.index(m.tf))]
     fuori.sort(key=lambda g: abs(g.bordo - s.tp1))
     return fuori
 
@@ -622,23 +661,42 @@ def liquidazione(q: Quadro, s: Setup) -> list[tuple[float, Gap]]:
     return fuori
 
 
+def kl_liquidazione(q: Quadro, s: Setup) -> Optional[Livello]:
+    """Il key level dove sta l'estremo dell'aggressione di un gap contro di noi nella reazione automatica: la fase
+    dopo e' la liquidazione e il prezzo lo va a prendere (foto 4 della cartella 3: *"il target è il WL cioè un KL, il
+    gap a ribasso ci serve solo a capire che ci potrebbe essere pressione long al suo interno"*; foto 6 della cartella
+    4: il WL, oltre il DL; foto 1 della cartella 4: *"target il minimo trimestrale ... mi aspettavo la liquidazione"*).
+    Solo se l'estremo e' un key level: un estremo qualunque in un gap gia' usato no (euro-yen, 07/10/2026: *"il gap è
+    già stato mitigato quindi non può essere un target"*, il target e' il DH). Se piu' key level coincidono, il piu'
+    grande."""
+    rischio = abs(s.ingresso - s.stop)
+    livelli = [l for l in livelli_prima(q, s.n3_inizio, TF_KL) if l.alto != s.short]
+    for estremo, _g in liquidazione(q, s):
+        uguali = [l for l in livelli if abs(l.prezzo - estremo) <= TOLLERANZA_LIQUIDAZIONE * rischio]
+        if uguali:
+            return max(uguali, key=lambda l: ORDINE.index(l.tf))
+    return None
+
+
 def obiettivo_finale(q: Quadro, s: Setup) -> Obiettivo:
     """Il proprietario: *"il gap il target finale, ovvio che se non c'è gap il target è il kl"*; e mai prima
     dell'altro lato del key level preso (`target_minimo`: preso il DH, almeno il DL).
 
-    Il gap valido piu' vicino oltre il primo target (`gap_target`: intatto, la sua terza candela non ha
-    accettato). Senza gap, il key level (`kl_target`). Senza neanche quello, tutto al primo target (foto 1 della
-    cartella 3). L'estremo dell'aggressione in un gap gia' toccato (la "liquidazione") non e' piu' un target:
-    il proprietario, 07/10/2026, euro-yen: *"il gap è già stato mitigato quindi non può essere un target"*."""
+    In ordine: il gap valido piu' vicino oltre il primo target (`gap_target`: intatto, la sua terza candela non ha
+    accettato); il key level dove un gap contro di noi va a liquidare l'aggressione (`kl_liquidazione`); il key level
+    dall'altra parte del periodo piu' grande preso (`kl_target`); l'altro lato del key level piu' piccolo preso; se
+    no tutto al primo target (foto 1 della cartella 3). Mai oltre un gap che ha accettato (`muro_accettato`). Le
+    foto e gli esempi dal vivo che lo decidono: `tests/test_foto.py`."""
     pavimento = target_minimo(q, s)
+    muro = muro_accettato(q, s)
     oltre = (lambda p: True) if pavimento is None else \
         (lambda p: p <= pavimento.prezzo + 1e-12) if s.short else (lambda p: p >= pavimento.prezzo - 1e-12)
     candidati = [(g.bordo, Obiettivo(g.bordo, "gap", g.nome, g.tf)) for g in gap_target(q, s) if oltre(g.bordo)]
     if candidati:
         return min(candidati, key=lambda c: abs(c[0] - s.tp1))[1]
-    k = kl_target(q, s)
-    if k is not None and oltre(k.prezzo):
-        return Obiettivo(k.prezzo, "key level", k.nome, k.tf)
+    for k in (kl_liquidazione(q, s), kl_target(q, s)):
+        if k is not None and oltre(k.prezzo) and _prima_del_muro(s, muro, k.prezzo):
+            return Obiettivo(k.prezzo, "key level", k.nome, k.tf)
     if pavimento is not None:
         return Obiettivo(pavimento.prezzo, "key level", pavimento.nome, pavimento.tf)
     return Obiettivo(s.tp1, "range", "l'altro lato del range", s.tf)
@@ -682,10 +740,12 @@ PIANI = (
 PIANO_FOTO = 1
 # Quanto si chiude al TP1: il proprietario, 07/10/2026: *"deve prendere il 25% dell'operazione al posto del 50%"*.
 PARZIALE = 0.25
-# Il rendimento minimo al target finale, in R (il proprietario, 12/10/2026, sui trade del demo con il target quasi
-# raggiunto dalla candela 2: *"1/1,5"*). Un piano che al suo ultimo target non arriva a 1,5 volte il rischio non si
-# usa; se nessun piano ci arriva, il setup non si prende.
-RR_MINIMO = 1.5
+# Il rendimento minimo al target finale, in R. Il proprietario, 12/10/2026, sui trade del demo a 0,9, 0,7 e 0,1 R
+# (target quasi raggiunto dalla candela 2): *"1/1,5"*. Ma il 13/10 sulle sue foto: *"quelli sono i trade che il bot e la
+# rete devono fare. Sono esattamente quelli"*, e due foto stanno sotto 1,5 (2/8 argento a 1,1 R, 3/1 euro a 1,4 R):
+# con 1 R si prendono tutte le foto e si lasciano ancora i tre trade del demo. Un piano che al suo ultimo target non
+# arriva a `RR_MINIMO` volte il rischio non si usa; se nessun piano ci arriva, il setup non si prende.
+RR_MINIMO = 1.0
 
 
 # --- la direzione: il timeframe di comando -----------------------------------------------------------
@@ -762,6 +822,19 @@ def accettazione(q: Quadro, tf: TF, t: int) -> Optional[Accettazione]:
     return Accettazione(tf, verso, livello, int(c.inizio[j]), preso, dentro)
 
 
+# I timeframe la cui candela che ha accettato contro blocca l'entrata (vedi `blocca`).
+TF_BLOCCA = (TF.Q3, TF.Y1)
+
+
+def blocca(a: "Accettazione", s: Setup) -> bool:
+    """Una candela che ha accettato contro di noi blocca solo se e' dei 3 o dei 12 mesi, il CRT e' a 1 ora e la
+    candela 2 ha preso soltanto livelli del giorno. Il franco-yen del 07/10 (CRT a 1 ora, solo il DL, contro il 3
+    mesi) non si prende; le foto a 4 ore contro il 3 mesi (5/5, 5/7, 5/8, CASO-009) si'."""
+    if a.tf not in TF_BLOCCA or s.tf is not TF.H1:
+        return False
+    return not any(l.tf in (TF.W1, TF.MN, TF.Q3, TF.S6, TF.Y1) for l in (s.presi or []))
+
+
 def direzione(q: Quadro, s: Setup) -> Direzione:
     """Il timeframe di comando deve essere dalla nostra parte. Nelle foto il comando cambia (settimana, mese,
     3, 6, 12 mesi; per il CRT del giorno, della settimana e del mese anche il suo timeframe) e i timeframe
@@ -791,15 +864,21 @@ def direzione(q: Quadro, s: Setup) -> Direzione:
         if a.dentro:
             come += f", poi {a.dentro} inside bar"
         return lato, come
-    contrarie = [a for a in attive if a.verso != segno]
+    # Quali bloccano (`blocca`): solo i 3 e i 12 mesi, sui CRT a 1 ora che hanno preso soltanto livelli del giorno.
+    # Cosi' si rispettano tutte le foto del proprietario (13/10/2026: *"tutto quello che sta scritto la' e' quello che deve
+    # fare"*): il franco-yen del 07/10 (CRT a 1 ora che prende solo il DL, contro il 3 mesi) non si prende; il
+    # CASO-009 (preso il minimo del 2021) e la 5/8 (preso il WL) si', anche contro il 3 mesi; 2/1, 3/4, 4/1 e 4/6
+    # si', anche contro il mensile.
+    contrarie = [a for a in attive if a.verso != segno and blocca(a, s)]
     if contrarie:
         a = contrarie[0]
         lato, come = racconto(a)
         return Direzione(False, a.tf, f"il {NOMI[a.tf]} {come}: prima si aspetta che il prezzo prenda il suo {lato} "
                                       f"({numero(a.livello)}), solo dopo ha senso "
                                       f"{'vendere' if s.short else 'comprare'}")
-    if attive:
-        a = attive[0]
+    favorevoli = [a for a in attive if a.verso == segno]
+    if favorevoli:
+        a = favorevoli[0]
         lato, come = racconto(a)
         return Direzione(True, a.tf, f"il {NOMI[a.tf]} {come}: il prezzo va a prendere il suo {lato} "
                                      f"({numero(a.livello)}), dalla nostra parte")
@@ -821,6 +900,14 @@ def direzione(q: Quadro, s: Setup) -> Direzione:
         g = gaps[0]
         return Direzione(True, g.tf, f"c'è un {g.nome} ancora da riempire: il prezzo ci deve andare "
                                      "(ritracciamento)", a_favore, contro)
+    # Un gap contro di noi gia' nella reazione automatica: la fase dopo e' la liquidazione, il prezzo va dalla nostra
+    # parte (foto 1 della cartella 4: *"stiamo andando per la fase di liquidazione (3)"*). Non e' un target (gap
+    # toccato, euro-yen del 07/10), ma la direzione la da'.
+    liq = liquidazione(q, s)
+    if liq:
+        estremo, g = liq[0]
+        return Direzione(True, g.tf, f"il {g.nome} è nella reazione automatica: la prossima fase è la liquidazione, "
+                                     f"il prezzo va a prendere {numero(estremo)}", a_favore, contro)
     if contro:
         tf, testo = contro[0]
         return Direzione(False, tf, f"il {NOMI[tf]} {testo}: tutti i timeframe sopra spingono dall'altra parte",

@@ -1,9 +1,41 @@
 # Dove siamo
 
-_Aggiornato il 12/10/2026._
+_Aggiornato il 13/10/2026._
 
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
+
+## 13/10/2026: foto per foto, il bot e la rete fanno quello che c'è sulle foto
+
+Il proprietario: *"vedi una foto, vedi la rete neurale che fa, vedi un'altra foto ... fino a quando quello che sta
+scritto su quelle foto non lo fa anche la rete neurale"*; *"quelli sono i trade che il bot e la rete neurale devono
+fare. Sono esattamente quelli. Su ogni pair"*. Il libro del socio è messo da parte (*"lasciamo perdere il libro"*).
+
+Rifatte le 24 foto (cartelle 2-5, CASO-009, e i tre trade aperti dal bot il 07/10 con le correzioni del proprietario
+sui suoi grafici) con tutta la catena del bot dal vivo: CRT, key level, direzione, target finale, piano, regole della
+squadra, rete. Prima il bot ne prendeva 16 su 23 e la rete da sola 3 su 22. Adesso **24 su 24**: le 22 da prendere
+col target della foto (entro la differenza fra future e spot), la 5/6 e il franco-yen lasciati. Il Bitcoin (2/4) non
+si può provare: mancano i dati. Le regole cambiate, ognuna con la foto che la decide, sono in
+`documenti/spec/metodo_foto.md` e nel registro; in breve:
+
+- i metalli con le candele del future, dalle 18 di New York (i CRT a 4 ore dell'oro delle foto);
+- la candela precedente dei 3 e 12 mesi che ha accettato contro blocca solo il CRT a 1 ora che ha preso soltanto
+  livelli del giorno (il franco-yen); un gap contro nella reazione automatica dà la direzione (la liquidazione);
+- la terza candela di un gap accetta solo se ha più corpo che ombra (dal libro del socio: *"se è direzionale"*), e
+  oltre un gap che ha accettato non si punta (euro-australiano: il DH);
+- la liquidazione è il target quando l'estremo dell'aggressione è un key level (3/4, 4/6: il WL; 4/1: il minimo dei 3
+  mesi), mai un estremo qualunque (euro-yen: il DH); dentro un gap già toccato vale solo un gap di timeframe uguale o
+  più grande (il gap annuale del DXY, il gap dei 3 mesi dell'argento);
+- rendimento minimo al target **1 R** invece di 1,5: la foto 2/8 sta a 1,1 R e la 3/1 a 1,4 R; i trade del demo a 0,9,
+  0,7 e 0,1 R restano fuori. **Se il proprietario rivuole 1,5, è `foto.RR_MINIMO`** (allora 2/8 e 3/1 non si prendono);
+- la rete neurale sui setup con tutte le regole entra sempre: la sua stima la scrive, ma lì non decide lei.
+
+Da sapere, onestamente: la stima della rete su queste foto è negativa (da −0,04 a −0,88 R a trade). Non è un errore di
+lettura: è la media che ha visto sui vent'anni per setup simili, e le misure del bot sui vent'anni sono negative. Le foto
+sono trade scelti che sono andati bene; il bot ora li prende tutti, e prende anche tutti quelli uguali che vanno male.
+Il risultato vero si vede sul demo.
+
+`python -m strumenti.foto --dati <cartella>` rifà la prova; una foto nuova del proprietario si aggiunge con una riga.
 
 ## 12/10/2026 (sera, dopo): il libro del socio e il PDF della mentorship di Romeo
 

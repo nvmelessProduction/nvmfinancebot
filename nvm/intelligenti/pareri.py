@@ -22,7 +22,7 @@ from typing import Optional
 
 import numpy as np
 
-from nvm.dati.candele import weekend
+from nvm.dati.candele import weekend, calendario
 from nvm.dati.minuti import CHIUSURA, MASSIMO, MINIMO
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import NEW_YORK, ORDINE, TF, inizio_candela
@@ -127,7 +127,7 @@ def _ny(t: int) -> datetime:
 
 def apertura_giorno(t: int, strumento: str = "") -> int:
     """L'apertura del giorno di sessione (le 17 di New York; per le crypto la mezzanotte UTC) che contiene `t`."""
-    return int(inizio_candela(np.array([int(t)], np.int64), TF.D1, weekend(strumento))[0])
+    return int(inizio_candela(np.array([int(t)], np.int64), TF.D1, calendario(strumento))[0])
 
 
 # --- il Bias: la previsione del giorno -------------------------------------------------------------------
@@ -211,7 +211,7 @@ def settimana(q, t: int) -> Optional[str]:
     c = q.candele.get(TF.W1)
     if c is None or len(c) < 2:
         return None
-    inizio = int(inizio_candela(np.array([int(t)], np.int64), TF.W1, weekend(q.strumento))[0])
+    inizio = int(inizio_candela(np.array([int(t)], np.int64), TF.W1, calendario(q.strumento))[0])
     k = int(np.searchsorted(c.fine, inizio, side="right")) - 1
     if k < 1:
         return None

@@ -106,8 +106,9 @@ def test_la_candela_2_non_deve_sforare():
 
 
 def test_il_range_e_la_candela_madre_se_ci_sono_inside_bar():
-    """Foto 7 della cartella 2: il TP1 e' il "range low H6", il minimo della candela madre."""
-    t0 = ny(2026, 5, 11, 11)
+    """Foto 7 della cartella 2: il TP1 e' il "range low H6", il minimo della candela madre. I metalli hanno le candele
+    del future, dalle 18 di New York: a 6 ore le 18, le 24, le 6 e le 12."""
+    t0 = ny(2026, 5, 11, 12)
     righe = []
     righe += _candela_in_ore(t0 - 6 * ORA, 6, 4700.0, 4705.0, 4695.0, 4700.0)
     righe += _candela_in_ore(t0, 6, 4700.0, 4758.0, 4664.0, 4740.0)            # la madre
@@ -179,25 +180,40 @@ def test_le_fasi_del_gap_aggressione_reazione_liquidazione_continuazione():
     assert f.numero == 4 and f.divergenza
 
 
-def test_un_gap_gia_toccato_non_e_un_target():
-    """Il proprietario, 07/10/2026 (euro-yen): *"il gap è già stato mitigato quindi non può essere un target"*. Prima
-    il target era l'estremo dell'aggressione nel gap toccato (la liquidazione): ora no, si va al key level."""
+def _obiettivo_con_gap_toccato(livelli):
+    """Un setup short sull'oro sopra un gap settimanale gia' toccato, nella reazione automatica (estremo
+    dell'aggressione 4282), col key level dall'altra parte del DH a 4341 e i key level `livelli`."""
     g = F.Gap(TF.W1, True, 4120.0, 4310.0, 0, toccato=1)
     s = F.Setup("XAUUSD", TF.H4, Verso.SHORT, 0, 4495.0, 4419.0, 0, 0, 10, 20, 4510.0, 4458.0, 4486.0, 4486.0, 0.3,
                 4511.0, 4419.0)
 
     class Q:
         pass
-    orig = F.gap_contro, F.fase, F.gap_di, F.kl_target
+    orig = F.gap_contro, F.fase, F.gap_di, F.kl_target, F.livelli_prima
     try:
         F.gap_contro = lambda q, s, t=None: [g]
         F.fase = lambda q, g, t: F.Fase(2, False, "reazione", 4282.0)
         F.gap_di = lambda q, tf, t: [g]
         F.kl_target = lambda q, s: F.Livello(TF.D1, False, 4341.0, 0)
-        ob = F.obiettivo_finale(Q(), s)
+        F.livelli_prima = lambda q, t, tfs=F.TF_KL: livelli
+        return F.obiettivo_finale(Q(), s)
     finally:
-        F.gap_contro, F.fase, F.gap_di, F.kl_target = orig
+        F.gap_contro, F.fase, F.gap_di, F.kl_target, F.livelli_prima = orig
+
+
+def test_un_gap_gia_toccato_non_e_un_target():
+    """Il proprietario, 07/10/2026 (euro-yen): *"il gap è già stato mitigato quindi non può essere un target"*: se
+    l'estremo dell'aggressione nel gap toccato non e' un key level, si va al key level (il DH dell'euro-yen)."""
+    ob = _obiettivo_con_gap_toccato([F.Livello(TF.D1, False, 4341.0, 0), F.Livello(TF.MN, False, 4018.0, 0)])
     assert ob.tipo == "key level" and ob.prezzo == 4341.0
+
+
+def test_la_liquidazione_su_un_key_level_e_il_target():
+    """Foto 4 della cartella 3 (*"il target è il WL cioè un KL, il gap a ribasso ci serve solo a capire che ci potrebbe
+    essere pressione long al suo interno"*), 6 della 4 (il WL, oltre il DL) e 1 della 4 (il minimo dei 3 mesi): se
+    l'estremo dell'aggressione e' un key level, la liquidazione lo va a prendere."""
+    ob = _obiettivo_con_gap_toccato([F.Livello(TF.D1, False, 4341.0, 0), F.Livello(TF.W1, False, 4282.0, 0)])
+    assert ob.tipo == "key level" and ob.prezzo == 4282.0 and ob.tf is TF.W1
 
 
 def test_un_gap_la_cui_terza_candela_accetta_non_e_un_target():
@@ -213,9 +229,52 @@ def test_un_gap_la_cui_terza_candela_accetta_non_e_un_target():
         ])
         q = F.Quadro("EURUSD", giorni[3], {TF.D1: c, TF.H1: candele("EURUSD", TF.H1, [(giorni[3], 1.0950, 1.0951, 1.0949, 1.0950)])})
         return F.gap_di(q, TF.D1, giorni[3])
-    (accetta,) = quadro(1.0950)          # chiude sotto il minimo della candela 2: accetta
+    (accetta,) = quadro(1.0950)          # chiude sotto il minimo della candela 2, piu' corpo che ombra: accetta
     (non_accetta,) = quadro(1.0985)      # chiude dentro la candela 2
     assert accetta.terza_accetta and not non_accetta.terza_accetta
+
+
+def test_la_terza_candela_con_piu_ombra_che_corpo_non_accetta():
+    """Il libro del socio: la terza candela accetta *"se è direzionale, accetta la precedente e non ha spike contro"*;
+    con piu' ombra che corpo e' un rifiuto e il prezzo torna nel gap. Foto 7 della cartella 2: il trimestre gennaio-
+    marzo 2026 dell'oro chiude appena sopra il massimo di prima dopo un'ombra enorme, e il gap dei 3 mesi resta il
+    target del proprietario. Euro-australiano: la giornata chiude sotto con un corpo grande e il gap non e' un target."""
+    giorni = [ny(2026, 9, 21 + k, 18) for k in range(4)]
+
+    def gap(terza):
+        c = candele("XAUUSD", TF.D1, [
+            (giorni[0], 3800.0, 3871.5, 3780.0, 3850.0),
+            (giorni[1], 3858.9, 4549.7, 3819.1, 4318.4),
+            (giorni[2], *terza),
+        ])
+        q = F.Quadro("XAUUSD", giorni[3], {TF.D1: c, TF.H1: candele("XAUUSD", TF.H1, [(giorni[3], 4600.0, 4601.0,
+                                                                                         4599.0, 4600.0)])})
+        (g,) = F.gap_di(q, TF.D1, giorni[3])
+        return g
+    assert not gap((4323.7, 5596.8, 4098.3, 4668.1)).terza_accetta     # l'ombra (929) e' piu' del corpo (344)
+    assert gap((4323.7, 4700.0, 4098.3, 4668.1)).terza_accetta          # lo stesso corpo con poca ombra: accetta
+
+
+def test_oltre_un_gap_che_ha_accettato_non_si_punta():
+    """Euro-australiano, 07/10/2026: il gap giornaliero sopra ha la terza candela che accetta, quindi il target e' il
+    DH prima del gap, non il massimo dei 3 mesi oltre."""
+    g = F.Gap(TF.D1, False, 1.61894, 1.62113, 0, terza_accetta=True)
+    s = F.Setup("EURAUD", TF.H1, Verso.LONG, 0, 1.6111, 1.6058, 0, 0, 10, 20, 1.6070, 1.6046, 1.6058, 1.6058, 0.0001,
+                1.6046, 1.6111)
+
+    class Q:
+        pass
+    orig = F.gap_contro, F.gap_di, F.kl_target, F.target_minimo, F.livelli_prima
+    try:
+        F.gap_contro = lambda q, s, t=None: []
+        F.gap_di = lambda q, tf, t: [g] if tf is TF.D1 else []
+        F.kl_target = lambda q, s: F.Livello(TF.Q3, True, 1.65674, 0)
+        F.target_minimo = lambda q, s: F.Livello(TF.D1, True, 1.61449, 0)
+        F.livelli_prima = lambda q, t, tfs=F.TF_KL: []
+        ob = F.obiettivo_finale(Q(), s)
+    finally:
+        F.gap_contro, F.gap_di, F.kl_target, F.target_minimo, F.livelli_prima = orig
+    assert ob.tipo == "key level" and ob.prezzo == 1.61449
 
 
 def test_la_candela_precedente_che_ha_accettato_contro_blocca_finche_non_prende_il_suo_livello():
@@ -234,15 +293,24 @@ def test_la_candela_precedente_che_ha_accettato_contro_blocca_finche_non_prende_
     a = F.accettazione(quadro(1.065), TF.Q3, trimestri[2] + 10 * ORA)
     assert a.verso == -1 and a.livello == 1.06 and not a.preso
     assert F.accettazione(quadro(1.0590), TF.Q3, trimestri[2] + 10 * ORA).preso
-    s = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.07, 1.064, 1.068,
-                1.068, 0.0001, 1.064, 1.075)
+    dl = [F.Livello(TF.D1, False, 1.0645, 0)]
+    s = F.Setup("EURUSD", TF.H1, Verso.LONG, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.07, 1.064, 1.068,
+                1.068, 0.0001, 1.064, 1.075, presi=dl)
     d = F.direzione(quadro(1.065), s)
     assert not d.ok and d.comando is TF.Q3 and "prima si aspetta" in d.testo
     # Preso il minimo, il trimestre non blocca piu'; e per vendere e' dalla nostra parte.
     assert F.direzione(quadro(1.0590), s).comando is not TF.Q3
-    s_short = F.Setup("EURUSD", TF.H4, Verso.SHORT, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.076, 1.066,
-                      1.07, 1.07, 0.0001, 1.0761, 1.065)
+    s_short = F.Setup("EURUSD", TF.H1, Verso.SHORT, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.076, 1.066,
+                      1.07, 1.07, 0.0001, 1.0761, 1.065, presi=[F.Livello(TF.D1, True, 1.0755, 0)])
     assert F.direzione(quadro(1.065), s_short).ok
+    # Blocca solo il CRT a 1 ora che ha preso soltanto livelli del giorno (il franco-yen): con un livello della
+    # settimana preso (CASO-009, foto 5/8) o su un timeframe piu' grande (foto 2/1, 3/4, 4/1, 4/6) si entra.
+    con_wl = F.Setup("EURUSD", TF.H1, Verso.LONG, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.07, 1.064,
+                     1.068, 1.068, 0.0001, 1.064, 1.075, presi=dl + [F.Livello(TF.W1, False, 1.0646, 0)])
+    assert "prima si aspetta" not in F.direzione(quadro(1.065), con_wl).testo
+    a_4_ore = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.075, 1.065, 0, 0, trimestri[2] + 10 * ORA, 0, 1.07, 1.064,
+                      1.068, 1.068, 0.0001, 1.064, 1.075, presi=dl)
+    assert "prima si aspetta" not in F.direzione(quadro(1.065), a_4_ore).testo
 
 
 def test_al_tp1_si_chiude_il_25_per_cento():
@@ -252,19 +320,21 @@ def test_al_tp1_si_chiude_il_25_per_cento():
                 1.0980, 1.1020)
     piani = piani_foto(s, F.Obiettivo(1.1060, "key level", "DH"), None, 10)
     assert piani[1].parziale == 0.25 and piani[1].pareggio and piani[1].tp2 == 1.1060
-    # Tutto al TP1 renderebbe 0,54 R: sotto l'1,5 del proprietario non si usa.
+    # Tutto al TP1 renderebbe 0,54 R: sotto il minimo non si usa.
     assert piani[0] is None
 
 
-def test_sotto_1_a_1_e_mezzo_non_si_entra():
-    # Il proprietario, 12/10/2026, su un US30 col target quasi raggiunto dalla candela 2: *"1/1,5"*.
+def test_sotto_1_a_1_non_si_entra():
+    # Il proprietario, 12/10/2026, sui trade del demo a 0,9, 0,7 e 0,1 R: *"1/1,5"*; il 13/10 le sue foto vanno prese
+    # tutte, e la 2/8 sta a 1,1 R: il minimo e' 1 R.
     from nvm.vivo.giro import piani_foto
+    assert F.RR_MINIMO == 1.0
     s = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.1020, 1.0995, 0, 0, 10, 20, 1.1015, 1.0980, 1.1005, 1.1005, 0.0001,
                 1.0980, 1.1020)
     rischio = s.ingresso - s.stop
-    sotto = F.Obiettivo(s.ingresso + 1.4 * rischio, "key level", "DH")
+    sotto = F.Obiettivo(s.ingresso + 0.9 * rischio, "key level", "DH")
     assert piani_foto(s, sotto, None, 10) == [None, None, None]
-    giusto = F.Obiettivo(s.ingresso + 1.5 * rischio, "key level", "DH")
+    giusto = F.Obiettivo(s.ingresso + 1.1 * rischio, "key level", "DH")
     piani = piani_foto(s, sotto, giusto, 10)
     assert piani[0] is None and piani[1] is None and piani[2].tp2 == giusto.prezzo
     tutto_al_tp1 = F.Setup("EURUSD", TF.H4, Verso.LONG, 0, 1.1060, 1.0995, 0, 0, 10, 20, 1.1015, 1.0980, 1.1005, 1.1005,
@@ -316,7 +386,10 @@ DATI = Path(__file__).resolve().parent.parent / "dati" / "grezzi"
 ROMA = ZoneInfo("Europe/Rome")
 # id, strumento, timeframe, apertura della candela 3 (ora italiana), verso, target finale sullo spot (il
 # target del proprietario sul future, meno la differenza fra future e spot sul TP1). Le quattro foto dell'oro
-# di aprile-giugno 2026 mancano: nei nostri dati non c'e' marzo 2026, e il gap dei 3 mesi esce sbagliato.
+# di aprile-giugno 2026 mancano: nei dati di Dukascopy non c'e' marzo 2026, e il gap dei 3 mesi esce sbagliato.
+# Il proprietario, 13/10/2026: *"quelli sono i trade che il bot e la rete neurale devono fare. Sono esattamente
+# quelli"*: si entra in tutti, col target della foto. Tutte le 24 foto, anche quelle che qui mancano (DXY, argento,
+# oro di primavera, euro-yen, euro-australiano, franco-yen), le prova `python -m strumenti.foto` sui dati di HistData.
 ESEMPI = [
     ("2/1", "EURUSD", TF.W1, "2026-02-16 00:00", "S", 1.1404),
     ("2/2", "EURUSD", TF.MN, "2026-05-01 00:00", "S", 1.1373),
@@ -333,55 +406,56 @@ ESEMPI = [
     ("5/8", "XAUUSD", TF.H4, "2026-09-02 08:00", "L", 4475.6),
     ("CASO-009", "XAUUSD", TF.H4, "2022-11-08 12:00", "L", 1683.7),
 ]
-# Con le regole del 07/10/2026 ("valgono per tutto") questi esempi non si prendono piu' o cambiano target. Il
-# proprietario lo sa (`documenti/registro/tentativi.md`, 07/10/2026): se una regola va ristretta lo dice lui.
-# id -> (timeframe che blocca, o None; target nuovo, o None se resta quello della foto)
-CAMBIATI = {
-    "2/1": (TF.MN, None),          # il mensile di gennaio 2026 ha accettato al rialzo e non ha preso il suo massimo
-    "3/4": (TF.MN, 4418.915),      # il mensile ha accettato al rialzo; il gap toccato non e' piu' un target
-    "4/1": (TF.MN, 1.15662),       # come 2/1 (agosto 2026); la liquidazione nel gap dei 3 mesi non e' piu' un target
-    "4/6": (TF.MN, 4340.965),      # il mensile; target il DL (il gap settimanale toccato non e' piu' un target)
-    "5/8": (TF.Q3, None),          # il 3 mesi (dati dell'oro di marzo 2026 mancanti: puo' essere un errore dei dati)
-    "CASO-009": (TF.Q3, None),     # il 3 mesi di luglio-settembre 2022 ha accettato al ribasso, minimo non preso
-}
 
 
-# Con le candele di MT5 (dalle 17 di New York, dall'08/10/2026) questo esempio non e' piu' un CRT: era uno dei tre
-# sull'oro a 4 ore che lo erano solo con le candele del future (e il 3 mesi lo bloccava comunque, sopra).
-NON_CRT_MT5 = {"5/8"}
+def _esempio(strumento, tf, quando, verso):
+    """Il setup della foto sui dati di Dukascopy, col suo quadro."""
+    from nvm.dati.ore import carica
+    U = dt.timezone.utc
+    n3 = int(dt.datetime.strptime(quando, "%Y-%m-%d %H:%M").replace(tzinfo=ROMA).timestamp())
+    # Le ore delle foto sono quelle delle candele dei future (mezzanotte italiana); le candele del forex sono quelle di
+    # MT5, che aprono un'ora prima (le 23 italiane). I metalli hanno le candele del future. Le orarie non cambiano.
+    if tf is not TF.H1 and strumento not in ("XAUUSD", "XAGUSD"):
+        n3 -= 3600
+    m, _ = carica(DATI, strumento, int(dt.datetime(2010, 1, 1, tzinfo=U).timestamp()), n3 + 1, solo_bid=True)
+    q = F.Quadro.da(m, n3)
+    trovati = [x for x in F.trova(q, tf, n3, n3) if x.verso is (Verso.SHORT if verso == "S" else Verso.LONG)]
+    assert trovati, "nessun CRT"
+    return trovati[0], q
 
 
 @pytest.mark.skipif(not (DATI / "ore" / "EURUSD").exists(), reason="servono i dati di Dukascopy in dati/grezzi")
 @pytest.mark.parametrize("nome,strumento,tf,quando,verso,finale", ESEMPI)
 def test_gli_esempi_del_proprietario(nome, strumento, tf, quando, verso, finale):
-    from nvm.dati.ore import carica
-    from nvm.vivo.giro import setup_buono
-    U = dt.timezone.utc
-    n3 = int(dt.datetime.strptime(quando, "%Y-%m-%d %H:%M").replace(tzinfo=ROMA).timestamp())
-    # Le ore delle foto sono quelle delle candele dei future (mezzanotte italiana); dall'08/10/2026 le candele sono
-    # quelle di MT5, che aprono un'ora prima (le 23 italiane). Le orarie non cambiano.
-    if tf is not TF.H1:
-        n3 -= 3600
-    m, _ = carica(DATI, strumento, int(dt.datetime(2010, 1, 1, tzinfo=U).timestamp()), n3 + 1, solo_bid=True)
-    q = F.Quadro.da(m, n3)
-    trovati = [x for x in F.trova(q, tf, n3, n3) if x.verso is (Verso.SHORT if verso == "S" else Verso.LONG)]
-    if nome in NON_CRT_MT5:
-        assert not trovati, nome
-        return
-    s = trovati[0]
-    assert s.presi and setup_buono(s), nome
-    blocca, nuovo = CAMBIATI.get(nome, (None, None))
+    from types import SimpleNamespace
+    from nvm.intelligenti import metodo
+    from nvm.vivo import giro
+    s, q = _esempio(strumento, tf, quando, verso)
+    assert s.presi and giro.setup_buono(s), nome
     d = F.direzione(q, s)
-    if blocca is None:
-        assert d.ok, nome
-    else:
-        assert not d.ok and d.comando is blocca, (nome, d.testo)
+    assert d.ok, (nome, d.testo)
     ob = F.obiettivo_finale(q, s)
-    if nuovo is not None:
-        assert ob.prezzo == pytest.approx(nuovo, rel=1e-6), (nome, ob)
-        return
     # Il target del proprietario sta sul future: si confronta entro mezzo range.
     assert abs(ob.prezzo - finale) <= 0.5 * (s.range_alto - s.range_basso) + 0.004 * finale, (nome, ob)
+    # Il bot dal vivo: c'e' un piano (almeno 1 R) e la squadra trova tutte le regole del metodo.
+    decisione = giro._decisione_foto(s, q, SimpleNamespace())
+    assert decisione is not None and metodo.valuta_foto(decisione).a_piu, nome
+
+
+@pytest.mark.skipif(not (DATI / "ore" / "EURUSD").exists(), reason="servono i dati di Dukascopy in dati/grezzi")
+@pytest.mark.parametrize("nome,strumento,tf,quando,verso,finale", ESEMPI)
+def test_la_rete_entra_negli_esempi_del_proprietario(nome, strumento, tf, quando, verso, finale):
+    """Provata foto per foto (13/10/2026), la rete da sola ne lasciava quasi tutti: sui setup con tutte le regole delle
+    foto ora entra sempre, e la sua stima resta scritta."""
+    pytest.importorskip("torch")
+    from types import SimpleNamespace
+    from nvm.vivo import giro
+    from nvm.vivo.rete_vivo import Rete
+    rete, perche = Rete.carica()
+    assert rete is not None, perche
+    s, q = _esempio(strumento, tf, quando, verso)
+    g = rete.giudica(giro._decisione_foto(s, q, SimpleNamespace()))
+    assert g.regole and g.entra, (nome, g.erre)
 
 
 # --- Le crypto con gli orari crypto: BTC la notte del 7-8 ottobre 2026 ------------------------------------

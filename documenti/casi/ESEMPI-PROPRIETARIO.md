@@ -161,3 +161,35 @@ all'apertura della candela 3 del timeframe del CRT, e il CRT a 1 ora anticipa qu
 07/10/2026: sulla foto 6 della cartella 5 il proprietario ha detto *"non deve sforare. potrebbe essere un errore
 mio, ho dato per scontato che non avesse accettato"*. La candela 2 chiude 0,1 sopra il massimo della candela 1:
 per il bot non è un CRT.
+
+## Foto per foto (13/10/2026)
+
+Il proprietario: *"quelli sono i trade che il bot e la rete neurale devono fare. Sono esattamente quelli"*. Le foto di
+MT5 e Telegram nelle cartelle `eurjpy`, `euraud`, `chfjpy` sono i trade aperti dal bot; i grafici di TradingView con le
+scritte sono le correzioni del proprietario, e sono quelle che contano. Con le regole del 13/10
+(`documenti/spec/metodo_foto.md`) e tutta la catena del bot dal vivo, sui dati di HistData (`python -m
+strumenti.foto`):
+
+| Foto | Si entra? | Target del bot (spot) | Della foto |
+|---|---|---|---|
+| 2/1, 2/2, 2/3 euro | ✅ | gap 3 mesi 1.1392 | gap 3 mesi (1.1404, 1.1373, 1.1412 sullo spot) |
+| 2/5 DXY MN | ✅ | gap annuale 99.201 | gap annuale 99.235 |
+| 2/6 oro D1 | ✅ | gap settimanale 4310.4 | gap weekly 4365.9 (future) |
+| 2/7 oro H6 | ✅ | gap 3 mesi 4098.3 | gap 3 mesi 4101 |
+| 2/8 argento W1 | ✅ (1,1 R) | gap 3 mesi 60.683 | gap 3 mesi 61.28 (future) |
+| 3/1 euro MN | ✅ (1,4 R) | massimo del CRT 1.1779 | CRT high 1.18295 (future) |
+| 3/2, 3/3 euro | ✅ | MH 1.1779 | MH 1.18295 (future) |
+| 3/4 oro H4 | ✅ | 4282 (il minimo dove il gap settimanale va a liquidare) | WL 4329.7 (future) |
+| 4/1 euro W1 | ✅ | minimo dei 3 mesi 1.1325 | minimo dei 3 mesi 1.1364 (future) |
+| 4/5 oro H4 | ✅ | DL 4257.1 | DL 4294.5 (future) |
+| 4/6 oro H1 | ✅ | WL 4282 | WL 4328.4 (future) |
+| 5/1, 5/2 sterlina | ✅ | massimo dei 3 mesi 1.3789 | 1.3796 |
+| 5/5, 5/7 oro H4 | ✅ | gap 3 mesi 4098.3 | gap 3 mesi 4100.5 |
+| 5/6 oro H4 | no: la candela 2 sfora | | *"non deve sforare"* |
+| 5/8 oro H4 | ✅ | gap giornaliero 4471.8 | gap daily 4521.8 (future) |
+| CASO-009 | ✅ | gap giornaliero 1683.8 | |
+| euro-yen H1 | ✅ | DH 178.34 | DH 178.336 |
+| euro-australiano H1 | ✅ | DH 1.6145 | DH 1.61450 |
+| franco-yen H1 | no: il 3 mesi ha accettato al ribasso | | *"la bias errata"* |
+
+Il Bitcoin (2/4) non si prova: non abbiamo i suoi dati.

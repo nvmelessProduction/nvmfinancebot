@@ -503,7 +503,8 @@ def test_la_rete_vera_giudica_un_setup_e_spiega_cosa_vede():
     rete, perche = Rete.carica()
     assert rete is not None, perche
     g = rete.giudica(d)
-    assert set(g.occhi) >= {"direzione D1", "crt H4"} and 0 <= g.vince <= 1 and g.entra == (g.erre >= g.soglia)
+    # Sui setup con tutte le regole delle foto entra sempre; sugli altri decide la sua stima.
+    assert set(g.occhi) >= {"direzione D1", "crt H4"} and 0 <= g.vince <= 1 and g.entra == (g.regole or g.erre >= g.soglia)
     # Sul CRT a 4 ore della foto base gli occhi vedono il CRT d'acquisto.
     assert g.occhi["crt H4"][0] == "acquisto"
     testo = "\n".join(g.righe())

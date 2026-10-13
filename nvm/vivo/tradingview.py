@@ -31,7 +31,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from nvm.dati.candele import weekend
+from nvm.dati.candele import weekend, calendario
 from nvm.dati.minuti import PUNTO, Minuti
 from nvm.dati.strumenti import STRUMENTI
 from nvm.tempo import TF, inizio_candela
@@ -391,7 +391,7 @@ def minuti(strumento: str, barre: list[dict], passo: int, adesso: float) -> Minu
     prezzi = np.array([[float(b["o"]), float(b["h"]), float(b["l"]), float(b["c"])] for b in barre])
     volume = np.array([float(b.get("v") or 0.0) for b in barre])
     if passo >= 86400:
-        t = inizio_candela(t, TF.D1, weekend(strumento))
+        t = inizio_candela(t, TF.D1, calendario(strumento))
     else:
         t = t - t % passo
     ordine = np.argsort(t, kind="stable")

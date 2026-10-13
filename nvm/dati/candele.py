@@ -12,7 +12,7 @@ import numpy as np
 
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO, Minuti
 from nvm.dati.strumenti import STRUMENTI
-from nvm.tempo import PASSO, TF, fine_candela, inizio_candela
+from nvm.tempo import ORE_18, PASSO, TF, fine_candela, inizio_candela
 
 
 def weekend(strumento: str) -> bool:
@@ -20,6 +20,15 @@ def weekend(strumento: str) -> bool:
     s = STRUMENTI.get(strumento)
     # La TOTAL di TradingView (la capitalizzazione di tutte le crypto) ha gli orari delle crypto.
     return strumento == "TOTAL" or (s is not None and s.famiglia == "crypto")
+
+
+def calendario(strumento: str):
+    """Il calendario delle candele dello strumento, per `tempo.inizio_candela`: vero per le crypto, `tempo.ORE_18`
+    per i metalli (le candele partono alle 18 di New York, come su TradingView), falso per il resto."""
+    if weekend(strumento):
+        return True
+    s = STRUMENTI.get(strumento)
+    return ORE_18 if s is not None and s.famiglia == "metalli" else False
 
 
 @dataclass
@@ -69,7 +78,7 @@ def costruisci(minuti: Minuti, tf: TF) -> Candele:
         vuoto = np.empty(0, np.int64)
         return Candele(minuti.strumento, tf, vuoto, vuoto, np.empty((0, 4)), np.empty((0, 4)), np.empty(0))
 
-    fine_sett = weekend(minuti.strumento)
+    fine_sett = calendario(minuti.strumento)
     inizi_minuti = inizio_candela(minuti.t, tf, fine_sett)
     # I minuti sono in ordine, quindi anche gli inizi: ogni cambio e' una candela nuova.
     nuove = np.flatnonzero(np.r_[True, inizi_minuti[1:] != inizi_minuti[:-1]])

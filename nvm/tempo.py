@@ -47,6 +47,11 @@ import numpy as np
 
 NEW_YORK = ZoneInfo("America/New_York")
 SPOSTAMENTO = 7 * 3600  # 17:00 di New York (la mezzanotte di MT5) -> mezzanotte di sessione
+# I metalli (oro, argento) come su TradingView: la sessione apre alle 18 di New York (la mezzanotte italiana, dopo la
+# pausa delle 23), e le candele a 4, 6 e 12 ore partono da li' (00-04-08 italiane, non 23-03-07). Le foto del
+# proprietario sull'oro sono cosi': con le candele dalle 17 le 4/5, 5/5, 5/7 e 5/8 non erano CRT (13/10/2026).
+SPOSTAMENTO_18 = 6 * 3600
+ORE_18 = "18"   # il valore del calendario (`candele.calendario`) per gli strumenti che aprono alle 18
 # La giornata del forex, per i controlli sui dati (`nvm/dati/controlli.py`): chiude alle 17:00 di New York.
 SPOSTAMENTO_FOREX = 7 * 3600
 
@@ -108,9 +113,17 @@ def scarti_ny(t_utc: np.ndarray) -> np.ndarray:
     return scarti[indici]
 
 
-def _utc_da_sessione(sessione: int) -> int:
+def _spostamento(calendario) -> int:
+    return SPOSTAMENTO_18 if calendario == ORE_18 else SPOSTAMENTO
+
+
+def _crypto(calendario) -> bool:
+    return bool(calendario) and calendario != ORE_18
+
+
+def _utc_da_sessione(sessione: int, spostamento: int = SPOSTAMENTO) -> int:
     """Da un istante sulla linea di sessione all'istante UTC corrispondente."""
-    locale = datetime(1970, 1, 1) + timedelta(seconds=sessione - SPOSTAMENTO)
+    locale = datetime(1970, 1, 1) + timedelta(seconds=sessione - spostamento)
     return int(locale.replace(tzinfo=NEW_YORK).timestamp())
 
 
@@ -143,17 +156,19 @@ def _inizio_crypto(t_utc: np.ndarray, tf: TF) -> np.ndarray:
 def inizio_candela(t_utc: np.ndarray, tf: TF, weekend: bool = False) -> np.ndarray:
     """L'istante UTC in cui apre la candela `tf` che contiene ogni istante.
 
-    `weekend`: lo strumento e' una crypto (scambia anche sabato e domenica, candele sul calendario UTC)."""
+    `weekend`: il calendario dello strumento (`candele.calendario`): vero per le crypto (scambiano anche sabato e
+    domenica, candele sul calendario UTC), `ORE_18` per i metalli (sessione dalle 18 di New York), falso per il resto
+    (dalle 17 di New York, come MT5)."""
     t_utc = np.asarray(t_utc, dtype=np.int64)
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         # Gli scarti di New York sono ore intere: questi confini coincidono
         # con quelli UTC.
         passo = PASSO[tf]
         return t_utc - t_utc % passo
-    if weekend:
+    if _crypto(weekend):
         return _inizio_crypto(t_utc, tf)
-
-    sessione = _al_lunedi(t_utc + scarti_ny(t_utc) + SPOSTAMENTO)
+    spostamento = _spostamento(weekend)
+    sessione = _al_lunedi(t_utc + scarti_ny(t_utc) + spostamento)
     if tf in (TF.H4, TF.H6, TF.H12, TF.D1):
         passo = PASSO[tf]
         inizio = sessione - sessione % passo
@@ -166,7 +181,7 @@ def inizio_candela(t_utc: np.ndarray, tf: TF, weekend: bool = False) -> np.ndarr
         raise ValueError(tf)
 
     uniche, indici = np.unique(inizio, return_inverse=True)
-    utc = np.fromiter((_utc_da_sessione(int(s)) for s in uniche), dtype=np.int64, count=len(uniche))
+    utc = np.fromiter((_utc_da_sessione(int(s), spostamento) for s in uniche), dtype=np.int64, count=len(uniche))
     return utc[indici]
 
 
@@ -174,20 +189,21 @@ def fine_candela(inizio_utc: int, tf: TF, weekend: bool = False) -> int:
     """L'istante UTC in cui chiude la candela `tf` che apre a `inizio_utc`."""
     if tf in (TF.M1, TF.M5, TF.M15, TF.H1):
         return inizio_utc + PASSO[tf]
-    if weekend:
+    if _crypto(weekend):
         # Le crypto: il calendario UTC, sette giorni su sette.
         if tf in PASSO:
             return inizio_utc + PASSO[tf]
         if tf is TF.W1:
             return inizio_utc + 7 * 86400
         return int(_mese_dopo(inizio_utc // 86400, MESI[tf])) * 86400
-    sessione = inizio_utc + _scarto_ny(inizio_utc // 3600) + SPOSTAMENTO
+    spostamento = _spostamento(weekend)
+    sessione = inizio_utc + _scarto_ny(inizio_utc // 3600) + spostamento
     if tf in PASSO:
-        return _utc_da_sessione(sessione + PASSO[tf])
+        return _utc_da_sessione(sessione + PASSO[tf], spostamento)
     if tf is TF.W1:
         # La settimana di trading finisce venerdi' sera (5 giorni di sessione dopo l'apertura di domenica).
-        return _utc_da_sessione(sessione + 5 * 86400)
-    return _utc_da_sessione(int(_mese_dopo(sessione // 86400, MESI[tf])) * 86400)
+        return _utc_da_sessione(sessione + 5 * 86400, spostamento)
+    return _utc_da_sessione(int(_mese_dopo(sessione // 86400, MESI[tf])) * 86400, spostamento)
 
 
 def _mese_dopo(giorno: int, mesi: int) -> int:

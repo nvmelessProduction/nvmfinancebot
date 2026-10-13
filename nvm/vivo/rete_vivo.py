@@ -6,6 +6,11 @@ correggerla. La rete e' quella allenata su Kaggle (passo 2, `kaggle_rete/trader.
 verso, stop, TP1, target, key level, direzione). Stima quanti R porta e la probabilita' di chiudere in guadagno.
 All'esame (2023-2026, mai visto) sopra il bot e' arrivata a pareggio: decide cosa proporre, non e' ancora brava.
 
+Sui setup con tutte le regole delle foto (CRT, key level, direzione) entra sempre: il proprietario, 13/10/2026, sulle
+sue foto: *"quelli sono i trade che il bot e la rete neurale devono fare. Sono esattamente quelli"*. Provata foto per
+foto, la rete da sola ne lasciava 19 su 22 (la sua stima sui vent'anni era sotto la soglia): la stima resta scritta,
+ma su quei setup non decide piu' lei. Sugli altri setup entra se la stima supera la soglia, come prima.
+
 La spiegazione:
 - **cosa vedono gli occhi**: le risposte della scuola 2 (direzione di giorno, settimana e mese; CRT e setup a 4 ore e
   del giorno), che si possono controllare sul grafico;
@@ -98,14 +103,24 @@ class Giudizio:
     esame: dict = field(default_factory=dict)
     # Quello che la rete ha visto (finestre, vuote, scheda): si salva con le correzioni, per riallenarla.
     ingressi: Optional[tuple] = field(default=None, repr=False)
+    # Il setup ha tutte le regole delle foto (CRT, key level, direzione): allora la rete entra sempre.
+    regole: bool = False
 
     def righe(self) -> list[str]:
         su = [f"{n} ({_it(v)} R)" for n, v in self.pesa if v > 0][:3]
         giu = [f"{n} ({_it(v)} R)" for n, v in self.pesa if v < 0][:3]
         occhi = [f"{NOMI_DOMANDE.get(k, k)}: {r} ({p:.0%})" for k, (r, p) in self.occhi.items()]
-        fuori = [f"🧠 LA RETE: {'ENTREREI' if self.entra else 'LASCEREI'}",
-                 f"Stima {_it(self.erre)} R a trade, {self.vince:.0%} di chiudere in guadagno (entra da "
-                 f"{_it(self.soglia)} R: i setup del bot che preferisce)."]
+        if self.regole:
+            fuori = ["🧠 LA RETE: ENTREREI. Il setup ha tutte le regole delle foto (CRT, key level, direzione): è un "
+                     "trade da prendere, come quelli del proprietario.",
+                     f"La mia stima sui vent'anni: {_it(self.erre)} R a trade, {self.vince:.0%} di chiudere in "
+                     f"guadagno" + ("." if self.erre >= self.soglia else
+                                     f" (sotto la mia soglia di {_it(self.soglia)} R: è solo un'informazione, "
+                                     "decidono le regole delle foto).")]
+        else:
+            fuori = [f"🧠 LA RETE: {'ENTREREI' if self.entra else 'LASCEREI'}",
+                     f"Stima {_it(self.erre)} R a trade, {self.vince:.0%} di chiudere in guadagno (entra da "
+                     f"{_it(self.soglia)} R: i setup del bot che preferisce)."]
         if occhi:
             fuori.append("Gli occhi vedono: " + "; ".join(occhi) + ".")
         if su or giu:
@@ -119,7 +134,7 @@ class Giudizio:
         return fuori
 
     def dati(self) -> dict:
-        return {"entra": self.entra, "erre": round(self.erre, 4), "vince": round(self.vince, 4),
+        return {"entra": self.entra, "regole": self.regole, "erre": round(self.erre, 4), "vince": round(self.vince, 4),
                 "soglia": round(self.soglia, 4), "occhi": {k: [r, round(p, 3)] for k, (r, p) in self.occhi.items()},
                 "pesa": [[n, round(v, 4)] for n, v in self.pesa[:6]]}
 
@@ -248,4 +263,6 @@ class Rete:
         if getattr(s, "dal_dxy", False) or getattr(s, "dal_totale", False):
             nuovo = (f"⚠️ Setup preso dal {'DXY' if s.dal_dxy else 'grafico della TOTAL'}: nello studio la rete "
                      "non ne ha mai visti, prendi il suo parere con le pinze.")
-        return Giudizio(erre >= self.soglia, erre, vince, self.soglia, occhi, pesa, nuovo, self.esame, (x, v, grezza))
+        regole = bool(grezza[0, SCHEDA.index("A+")])
+        return Giudizio(regole or erre >= self.soglia, erre, vince, self.soglia, occhi, pesa, nuovo, self.esame,
+                        (x, v, grezza), regole=regole)

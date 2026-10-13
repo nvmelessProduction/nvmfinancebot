@@ -22,7 +22,7 @@ import numpy as np
 from nvm.agenti.cacciatore import Verso
 from nvm.agenti.conferme import SOPRA, Bias, Contesto
 from nvm.agenti.grilletto import MODELLI_ROMEO, SPESSORE
-from nvm.dati.candele import Candele, costruisci, weekend
+from nvm.dati.candele import Candele, costruisci, weekend, calendario
 from nvm.dati.minuti import APERTURA, CHIUSURA, MASSIMO, MINIMO
 from nvm.tempo import NEW_YORK, ORDINE as ORDINE_TF, TF, fine_candela, scarti_ny
 
@@ -401,7 +401,7 @@ def _fine_candela_2(crt, basse: Candele, short: bool) -> Optional[bool]:
     """L'estremo della candela 2 e' arrivato nel suo ultimo quarto?"""
     fine_2 = int(crt.armato_quando)
     # La candela 2 comincia dove finisce la candela 1 (il range).
-    inizio_c2 = min(int(fine_candela(int(crt.range_inizio), crt.alto_tf, weekend(crt.strumento))),
+    inizio_c2 = min(int(fine_candela(int(crt.range_inizio), crt.alto_tf, calendario(crt.strumento))),
                     int(crt.manipolazione_inizio))
     a = int(np.searchsorted(basse.inizio, inizio_c2))
     b = int(np.searchsorted(basse.inizio, fine_2))
