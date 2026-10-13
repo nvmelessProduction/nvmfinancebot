@@ -25,6 +25,7 @@ Il progetto è ripartito da zero il 24/09/2026. Il lavoro precedente è archivia
 | File | Cosa |
 |---|---|
 | `documenti/STATO.md` | dove siamo, cosa serve adesso, decisioni prese. **Si legge per primo.** |
+| `documenti/PROGETTO-NAMELESS.md` | il piano del cervello unico: le fasi, gli esami, cosa fa il proprietario |
 | `documenti/VPS.md`, `documenti/AVVIO.md` | come si installa e si avvia il bot sulla VPS |
 | `documenti/MANUALE.md` | come si usa il bot |
 | `documenti/PIANO.md` | l'équipe, come imparano gli agenti, le fasi, le regole del gioco |

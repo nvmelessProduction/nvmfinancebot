@@ -5,6 +5,14 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 13/10/2026 (sera): il progetto Nameless
+
+Il proprietario: *"voglio creare un cervello funzionante, voglio creare un trader che funzioni realmente, come se fosse
+una persona"*. Deciso il piano: **`documenti/PROGETTO-NAMELESS.md`** (un solo cervello al posto di regole, équipe,
+rete e modelli separati; sei fasi, ognuna con un esame; le due pagelle, mestiere e risultato; Kaggle ogni settimana; il
+libro del socio nella fase 6). Prossimo passo: fase 0 (un solo percorso, dati di tutti i mercati sugli orari di
+TradingView, costi veri), appena il proprietario dà il via e conferma il paracadute (2% per trade, 20% dal massimo).
+
 ## 13/10/2026 (pomeriggio): le candele di TradingView così come sono
 
 Il proprietario ha visto un CRT a 4 ore di EURUSD aperto alle 15 italiane: era una candela di MT5 (23-3-7-11-15-19),
