@@ -5,6 +5,13 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 13/10/2026 (notte): fase 0 di Nameless
+
+Il proprietario ha dato il via; i dati li scarica Kaggle. Fatto: 24 foto su 24 anche con gli orari di TradingView;
+lo scaricamento di tutti i mercati su Kaggle (66 da HistData, 20 crypto da Binance: `kaggle_rete/cella_dati.txt`); i
+costi veri del demo (l'entrata e' al prezzo voluto, le perdite vengono dai trade, non dai costi); tolto il Nameless di
+prova. Dettagli e cosa manca: `documenti/PROGETTO-NAMELESS.md`, "A che punto siamo".
+
 ## 13/10/2026 (sera): il progetto Nameless
 
 Il proprietario: *"voglio creare un cervello funzionante, voglio creare un trader che funzioni realmente, come se fosse

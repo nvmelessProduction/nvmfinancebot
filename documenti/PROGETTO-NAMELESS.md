@@ -34,7 +34,7 @@ Non si passa alla fase dopo senza l'esame. Intanto il bot di oggi resta acceso s
 
 | Fase | Cosa si costruisce | Esame | Il proprietario |
 |---|---|---|---|
-| 0 Fondamenta | un solo percorso (via cervelli di settembre, Capo di prima, Nameless LightGBM, metodo dei video, la rete che giudica dopo l'équipe); dati di tutti i mercati (Dukascopy bid e ask: forex, metalli, indici, energia; Binance: crypto) con gli orari di TradingView; controllo qualità; costi veri dal demo | candele uguali a quelle di TradingView; dati senza buchi; 24 foto su 24 con i dati nuovi | il via; conferma del paracadute |
+| 0 Fondamenta | dati di tutti i mercati scaricati su Kaggle (HistData per intero, 66 mercati; Binance, 20 crypto) con gli orari di TradingView; controllo qualità; costi veri dal demo; pulizia di quello che il bot di oggi non usa (il resto nella fase 5) | 24 foto su 24 con gli orari di TradingView; dati controllati (`mercati.json`) | il via; lancia la cella dei dati su Kaggle |
 | 1 Gli occhi | scuola delle candele: indovinare le candele nascoste su tutti i mercati e timeframe | meglio di "copia l'ultima candela" sugli anni mai visti | lancia la cella su Kaggle |
 | 2 Le zone | una testa per materia, con le risposte delle regole delle foto (`nvm/agenti/foto.py`, 24/24) | ogni materia ≥ 98% uguale alle regole sugli anni mai visti; la rete rifà le 24 foto | lancia la cella su Kaggle |
 | 3 Il Capo | il risultato di ogni setup valido (R con i costi veri, TP1 25% + pareggio, target), 20 anni, tutti i mercati | sugli anni mai visti (dal 2023), coi costi: i setup scelti guadagnano più di zero con sicurezza statistica, e più di "prenderli tutti" | niente |
@@ -67,4 +67,21 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
 
 ## A che punto siamo
 
-- 13/10/2026: piano deciso. Prossimo passo: fase 0, appena il proprietario dà il via e conferma il paracadute.
+- 13/10/2026: piano deciso. Il proprietario ha dato il via (*"procedi hai il mio via"*); il paracadute 2% / 20% resta
+  quello proposto finché non dice altro (serve dalla fase 4). I dati si scaricano su Kaggle, non sul suo computer.
+- Fase 0, fatto:
+  - **24 foto su 24 con gli orari di TradingView** (candele dalle 18 di New York anche per il forex, senza spostare
+    l'ora): `python -m strumenti.foto --dati <histdata> --orari-tradingview`.
+  - **Lo scaricamento su Kaggle** (`kaggle_rete/dati.py`, cella `kaggle_rete/cella_dati.txt`): HistData per intero (66
+    mercati: i 38 di prima, 16 esotiche e 4 coppie dello yen e del fiorino, l'oro contro euro, sterlina, franco e dollaro
+    australiano, Australia 200, Francia 40, Hong Kong 50, Euro Stoxx 50) e 20 crypto da Binance; `mercati.json` dice
+    cosa c'e' e cosa ha tagliato il controllo di qualita'. Dukascopy limita le richieste ("troppe richieste"): resta per
+    gli spread a campione, se serviranno.
+  - **I costi veri del demo** (26/09-08/10, dal branch `dati-vps`): su 71 trade il prezzo d'entrata ottenuto e' quello
+    voluto (media -0,02 R, cioe' leggermente meglio; mediana 0). Gli 80 trade chiusi hanno perso -0,16 R l'uno (-12,9 R):
+    le perdite non vengono dai costi d'entrata ma dai trade. E' la domanda della fase 3.
+  - **Pulizia**: tolto il Nameless di prova (`kaggle_rete/nameless.py`, mai acceso). Il resto (cervelli di settembre, Capo
+    di prima, metodo dei video, la rete che giudica dopo l'equipe) lo usa ancora il bot di oggi: si toglie nella fase 5,
+    quando Nameless prende il comando, per non toccare il bot che lavora.
+- Da fare per chiudere la fase 0: il proprietario lancia la cella dei dati su Kaggle (circa 2 ore e mezza, basta il
+  processore) e salva la versione; poi si controlla `mercati.json`.

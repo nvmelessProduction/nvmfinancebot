@@ -66,12 +66,13 @@ FOTO = [
 ]
 
 
-def una(dati: Path, rete, nome, strumento, tf, quando, verso, deve, target) -> tuple[bool, str]:
-    """(giusto, la riga da stampare) per una foto."""
+def una(dati: Path, rete, nome, strumento, tf, quando, verso, deve, target, orari_tv: bool = False) -> tuple[bool, str]:
+    """(giusto, la riga da stampare) per una foto. `orari_tv`: le candele come sui grafici di TradingView del
+    proprietario (dalle 18 di New York, la mezzanotte italiana), come le vede il bot dal vivo dal 13/10/2026."""
     n3 = int(dt.datetime.strptime(quando, "%Y-%m-%d %H:%M").replace(tzinfo=ROMA).timestamp())
-    # Le foto hanno le candele dei future (mezzanotte italiana); il forex quelle di MT5 (le 23). Le orarie e i metalli
-    # (candele del future) non cambiano.
-    if tf is not TF.H1 and strumento not in METALLI:
+    # Le foto hanno le candele dei future (mezzanotte italiana); senza gli orari di TradingView il forex ha quelle di
+    # MT5 (le 23). Le orarie e i metalli (candele del future) non cambiano.
+    if tf is not TF.H1 and strumento not in METALLI and not orari_tv:
         n3 -= 3600
     m, _ = carica(dati, strumento, int(dt.datetime(2010, 1, 1, tzinfo=dt.timezone.utc).timestamp()), n3 + 1,
                   solo_bid=True)
@@ -110,7 +111,15 @@ def main(argv=None) -> int:
                    help="la cartella dei dati (quella di HistData ha tutti gli strumenti delle foto)")
     a.add_argument("--solo", nargs="*", help="solo queste foto (es. 3/4 euro-yen)")
     a.add_argument("--senza-rete", action="store_true", help="senza la rete neurale (senza PyTorch)")
+    a.add_argument("--orari-tradingview", action="store_true",
+                   help="candele dalle 18 di New York per tutto (tranne le crypto), come i grafici di TradingView")
     x = a.parse_args(argv)
+    if x.orari_tradingview:
+        from nvm.dati import candele
+        from nvm.dati.candele import weekend
+        for f in FOTO:
+            if not weekend(f[1]):
+                candele.SESSIONI[f[1]] = "18"
     rete = None
     if not x.senza_rete:
         from nvm.vivo.rete_vivo import Rete
@@ -122,7 +131,7 @@ def main(argv=None) -> int:
         if x.solo and f[0] not in x.solo:
             continue
         try:
-            ok, riga = una(x.dati, rete, *f)
+            ok, riga = una(x.dati, rete, *f, orari_tv=x.orari_tradingview)
         except Exception as errore:
             ok, riga = False, f"{f[0]}: errore ({type(errore).__name__}: {errore})"
         giuste += ok
