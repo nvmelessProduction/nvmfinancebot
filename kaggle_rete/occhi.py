@@ -69,7 +69,7 @@ def carica_sensi(radice: Path, nomi: list[str], scrivi=print) -> tuple[Sensi, di
     pezzi, conti = [], {}
     for n in nomi:
         try:
-            m, _ = carica(radice, n, 0, 2 ** 40, solo_bid=True)
+            m, _ = carica(radice, n, utc(2000, 1, 1), int(time.time()) + 86400, solo_bid=True)
         except Exception as e:
             scrivi(f"{n}: non si legge ({e})")
             continue
