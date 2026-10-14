@@ -48,6 +48,17 @@ class Lettore:
         self.dove = dove
         self.passi = torch.arange(-LUNGHEZZA + 1, 1, device=dove)
 
+    def scala(self, taglio: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """(il prezzo di riferimento, la scala) all'ora `taglio`: la sua chiusura e il range medio delle ultime 14
+        giornate chiuse. Ogni prezzo che la rete vede e' asinh((prezzo - riferimento) / scala)."""
+        p = self.chi[taglio]
+        rif = self.prezzi[0][taglio, 3]
+        kd = self.entro[D1][taglio][:, None] + torch.arange(-GIORNI_SCALA + 1, 1, device=self.dove)
+        buone = kd >= self.primo[p, D1][:, None]
+        g = self.prezzi[D1][kd.clamp(min=0)]
+        rng = torch.where(buone, g[..., 1] - g[..., 2], torch.zeros((), device=self.dove))
+        return rif, (rng.sum(1) / buone.sum(1).clamp(min=1)).clamp(min=1e-12)
+
     def guarda(self, j: torch.Tensor, taglio: torch.Tensor):
         """Le finestre alle ore `j` [B], con tutto quello che chiude dopo l'ora `taglio` [B] (<= j, stesso pezzo)
         segnato in `dopo`. Prezzi rispetto alla chiusura dell'ora del taglio, in unita' del range medio delle ultime
@@ -55,12 +66,7 @@ class Lettore:
 
         (contenuto [B, K, L, 5], tempo [B, K, L, 4], vuote [B, K, L], dopo [B, K, L])."""
         p = self.chi[j]
-        rif = self.prezzi[0][taglio, 3]
-        kd = self.entro[D1][taglio][:, None] + torch.arange(-GIORNI_SCALA + 1, 1, device=self.dove)
-        buone = kd >= self.primo[p, D1][:, None]
-        g = self.prezzi[D1][kd.clamp(min=0)]
-        rng = torch.where(buone, g[..., 1] - g[..., 2], torch.zeros((), device=self.dove))
-        scala = (rng.sum(1) / buone.sum(1).clamp(min=1)).clamp(min=1e-12)
+        rif, scala = self.scala(taglio)
         contenuto, tempo, vuote, dopo = [], [], [], []
         for k in range(len(TF_NAMELESS)):
             idx = self.entro[k][j][:, None] + self.passi
@@ -116,7 +122,12 @@ def vicinato(contenuto: torch.Tensor, vuote: torch.Tensor, nascoste: torch.Tenso
 
 
 class Occhi(nn.Module):
-    def __init__(self, d: int = 128, strati: int = 4, teste: int = 4, abbandono: float = 0.1):
+    """Con `con_mappa` (fase 2b) gli occhi ricevono anche la mappa (`nvm/nameless/mappa.py`): un gettone per elemento,
+    che parla con le candele come le candele fra loro. I pesi della fase 1 vanno bene lo stesso
+    (`load_state_dict(..., strict=False)`): si aggiungono solo i pesi della mappa."""
+
+    def __init__(self, d: int = 128, strati: int = 4, teste: int = 4, abbandono: float = 0.1,
+                 con_mappa: bool = False):
         super().__init__()
         n_tf = len(TF_NAMELESS)
         self.contenuto = nn.Linear(CONTENUTO + VICINATO, d)
@@ -131,9 +142,15 @@ class Occhi(nn.Module):
         nn.init.zeros_(self.ricostruisci.weight)
         nn.init.zeros_(self.ricostruisci.bias)
         self.misura = {"d": d, "strati": strati, "teste": teste}
+        if con_mappa:
+            from nvm.nameless.mappa import CAMPI, ELEMENTI
+            self.mappa_entrata = nn.Linear(CAMPI, d)
+            self.mappa_posto = nn.Parameter(torch.randn(len(ELEMENTI), d) * 0.02)
+            self.misura["con_mappa"] = True
 
-    def forward(self, contenuto, tempo, vuote, nascoste=None):
-        """(riassunto [B, d], candele [B, K, L, d]). Le candele `nascoste` non mostrano il contenuto."""
+    def forward(self, contenuto, tempo, vuote, nascoste=None, mappa=None):
+        """(riassunto [B, d], candele [B, K, L, d]). Le candele `nascoste` non mostrano il contenuto. `mappa`
+        [B, len(ELEMENTI), CAMPI] (`LettoreMappa.leggi`): l'ultimo campo dice se l'elemento c'e'."""
         b, n_tf, lung, _ = contenuto.shape
         if nascoste is None:
             nascoste = torch.zeros_like(vuote)
@@ -143,8 +160,12 @@ class Occhi(nn.Module):
         h = (h + self.tempo(tempo) + self.posto).reshape(b, n_tf * lung, -1)
         h = torch.cat([self.riassunto.expand(b, -1, -1).to(h.dtype), h], dim=1)
         maschera = torch.cat([torch.zeros(b, 1, dtype=torch.bool, device=h.device), vuote.reshape(b, -1)], dim=1)
+        if mappa is not None and hasattr(self, "mappa_entrata"):
+            m = self.mappa_entrata(mappa.to(h.dtype)) + self.mappa_posto.to(h.dtype)
+            h = torch.cat([h, m], dim=1)
+            maschera = torch.cat([maschera, mappa[..., -1] < 0.5], dim=1)
         h = self.fine(self.lettore(h, src_key_padding_mask=maschera))
-        return h[:, 0], h[:, 1:].reshape(b, n_tf, lung, -1)
+        return h[:, 0], h[:, 1:1 + n_tf * lung].reshape(b, n_tf, lung, -1)
 
     def indovina(self, contenuto, tempo, vuote, nascoste) -> torch.Tensor:
         """Apertura, massimo, minimo, chiusura (in scala) di ogni candela [B, K, L, 4]: la rete parte da chi copia

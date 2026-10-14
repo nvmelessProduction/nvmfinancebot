@@ -37,6 +37,8 @@ from kaggle_rete.dati import CRYPTO
 from kaggle_rete.histdata import NOMI
 from kaggle_rete.occhi import CONTROLLO, ESAME, carica_sensi, trova_dati
 from nvm.nameless import materie as M
+from nvm.nameless.lettore_mappa import LettoreMappa
+from nvm.nameless.mappa import tavole
 from nvm.nameless.occhi import Lettore, Occhi
 from nvm.nameless.sensi import TF_NAMELESS, Sensi
 from nvm.nameless.zone import USCITE_CANDELA, USCITE_CRT, Zone, parte
@@ -49,20 +51,23 @@ CLASSI = {"crt": 3, "key level": 3, "entra": 3, "direzione": 2, "target": 3, "ac
 
 
 def _materie_pezzo(argomenti):
-    nome, ore = argomenti
+    nome, ore, con_mappa = argomenti if len(argomenti) == 3 else (*argomenti, False)
     inizio = time.time()
-    return nome, M.Materie.da(ore), time.time() - inizio
+    return nome, M.Materie.da(ore), (tavole(ore) if con_mappa else None), time.time() - inizio
 
 
-def calcola_materie(pezzi: list, processi: int | None = None, scrivi=print) -> dict:
-    """Le materie di ogni pezzo, in parallelo sui processori (prima di accendere la scheda grafica)."""
-    fuori = {}
+def calcola_materie(pezzi: list, processi: int | None = None, scrivi=print, con_mappa: bool = False):
+    """Le materie di ogni pezzo, in parallelo sui processori (prima di accendere la scheda grafica). Con `con_mappa`
+    anche le tavole della mappa (fase 2b): (materie, tavole)."""
+    fuori, mappe = {}, {}
     with Pool(processi or os.cpu_count() or 1) as pool:
-        for nome, m, secondi in pool.imap_unordered(_materie_pezzo, pezzi):
+        for nome, m, t, secondi in pool.imap_unordered(_materie_pezzo, [(n, o, con_mappa) for n, o in pezzi]):
             fuori[nome] = m
+            if t is not None:
+                mappe[nome] = t
             conti = ", ".join(f"{tf.value} {int(m.crt[tf]['entra'].sum())}" for tf in M.TF_CRT)
             scrivi(f"materie {nome}: si entra {conti} ({secondi:.0f} s)")
-    return fuori
+    return (fuori, mappe) if con_mappa else fuori
 
 
 class Etichette:
@@ -148,9 +153,11 @@ class Etichette:
 
 
 def pesi_classi(y: np.ndarray, classi: int) -> torch.Tensor:
-    """Le risposte rare pesano di piu' (l'inverso della frequenza, smussato)."""
+    """Le risposte rare pesano quanto le comuni (l'inverso della frequenza, al massimo 50 volte): l'esame e' la media
+    dei richiami, e un "no" che capita il 3% delle volte deve contare quanto i "si'". Nella fase 2 erano smussate (la
+    radice) e la rete diceva quasi sempre "si'" sulla direzione."""
     conti = np.bincount(y[y >= 0].astype(np.int64), minlength=classi).astype(np.float64) + 1.0
-    w = np.sqrt(conti.sum() / (classi * conti))
+    w = np.minimum(conti.sum() / (classi * conti), 50.0)
     return torch.tensor(w / w.mean(), dtype=torch.float32)
 
 
@@ -167,9 +174,10 @@ def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int) -> dict:
 
 
 class Scuola:
-    def __init__(self, sensi: Sensi, et: Etichette, dove: str):
+    def __init__(self, sensi: Sensi, et: Etichette, dove: str, mappe: dict | None = None):
         self.sensi, self.et, self.dove = sensi, et, dove
         self.lettore = Lettore(sensi, dove)
+        self.mappa = LettoreMappa(sensi, mappe, self.lettore) if mappe else None
         tutte = np.zeros(sensi.ore(), bool)
         tutte[sensi.istanti(0, 2 ** 62)] = True
         self.valide = tutte
@@ -178,22 +186,32 @@ class Scuola:
         self.confini = {n: [c[tutte[c] & (f[c] >= a) & (f[c] < b)] for c in et.confini]
                         for n, (a, b) in self.parti.items()}
         self.ore = {n: np.flatnonzero(tutte & (f >= a) & (f < b)) for n, (a, b) in self.parti.items()}
+        # Le ore dei CRT col key level: le sole con la direzione e il target.
+        self.con_kl = {n: [c[et.crt["direzione"][c, i] >= 0] for i, c in enumerate(cc)]
+                       for n, cc in self.confini.items()}
 
     def lotto(self, j: np.ndarray):
-        contenuto, tempo, vuote, _ = self.lettore.guarda(torch.as_tensor(j, device=self.dove),
-                                                         torch.as_tensor(j, device=self.dove))
+        """(gli ingressi della rete, come argomenti; le risposte dei CRT; gli R; le risposte delle candele)."""
+        jt = torch.as_tensor(j, device=self.dove)
+        contenuto, tempo, vuote, _ = self.lettore.guarda(jt, jt)
+        ingressi = {"contenuto": contenuto, "tempo": tempo, "vuote": vuote}
+        if self.mappa is not None:
+            rif, scala = self.lettore.scala(jt)
+            ingressi["mappa"] = self.mappa.leggi(jt, rif, scala)
         y_crt = {d: self.et.crt[d][j] for d in DOMANDE_CRT}
         y_can = self.et.candele(self.sensi, j)
-        return contenuto, tempo, vuote, y_crt, self.et.rr[j], y_can
+        return ingressi, y_crt, self.et.rr[j], y_can
 
     def esempi(self, rng: np.random.Generator, parte: str, quanti: int) -> np.ndarray:
-        """Meta' all'ultima ora della candela 2 di un timeframe dei CRT (a caso fra i timeframe), meta' a ore
-        qualunque."""
-        meta = quanti // 2
-        tf = rng.integers(len(self.confini[parte]), size=meta)
-        j = [self.confini[parte][i][rng.integers(len(self.confini[parte][i]))] if len(self.confini[parte][i]) else
-             self.ore[parte][rng.integers(len(self.ore[parte]))] for i in tf]
-        return np.r_[np.array(j, np.int64), self.ore[parte][rng.integers(len(self.ore[parte]), size=quanti - meta)]]
+        """Il 40% all'ultima ora della candela 2 di un timeframe dei CRT (a caso fra i timeframe), il 25% su CRT col
+        key level (le domande sulla direzione e sul target), il resto a ore qualunque (le candele)."""
+        def da(liste, n):
+            tf = rng.integers(len(liste), size=n)
+            return [liste[i][rng.integers(len(liste[i]))] if len(liste[i]) else
+                    self.ore[parte][rng.integers(len(self.ore[parte]))] for i in tf]
+        a, b = int(quanti * 0.4), int(quanti * 0.25)
+        return np.r_[np.array(da(self.confini[parte], a) + da(self.con_kl[parte], b), np.int64),
+                     self.ore[parte][rng.integers(len(self.ore[parte]), size=quanti - a - b)]]
 
 
 def perdita(crt, candela, y_crt, rr, y_can, pesi, dove) -> torch.Tensor:
@@ -231,9 +249,9 @@ def previsioni(rete: Zone, scuola: Scuola, j: np.ndarray, lotto: int = 512) -> t
     p_can = {d: [] for d in DOMANDE_CANDELA}
     p_rr = []
     for a in range(0, len(j), lotto):
-        contenuto, tempo, vuote, *_ = scuola.lotto(j[a:a + lotto])
+        ingressi, *_ = scuola.lotto(j[a:a + lotto])
         with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=scuola.dove == "cuda"):
-            crt, candela = rete(contenuto, tempo, vuote)
+            crt, candela = rete(**ingressi)
         for d in DOMANDE_CRT:
             p_crt[d].append(parte(crt, d, USCITE_CRT).argmax(-1).cpu().numpy())
         for d in DOMANDE_CANDELA:
@@ -306,29 +324,49 @@ def foto_rete(rete: Zone, scuola: Scuola, materie: dict) -> list[dict]:
     return fuori
 
 
-def _occhi_della_fase_1(dove: str, scrivi) -> Occhi:
+def _occhi_della_fase_1(dove: str, scrivi, con_mappa: bool = False) -> Occhi:
     trovati = sorted(glob.glob("/kaggle/input/**/occhi_nameless.pt", recursive=True))
     if not trovati:
         scrivi("ATTENZIONE: non trovo gli occhi della fase 1 (occhi_nameless.pt): la rete parte da zero")
-        return Occhi()
+        return Occhi(con_mappa=con_mappa)
     salvato = torch.load(trovati[0], map_location=dove, weights_only=False)
-    occhi = Occhi(**salvato["misura"])
-    occhi.load_state_dict(salvato["pesi"])
+    misura = {k: v for k, v in salvato["misura"].items() if k != "con_mappa"}
+    occhi = Occhi(**misura, con_mappa=con_mappa)
+    occhi.load_state_dict(salvato["pesi"], strict=not con_mappa)
     scrivi(f"occhi della fase 1 da {trovati[0]} ({salvato.get('passi', '?')} passi; esame passato: "
            f"{salvato.get('passa', '?')})")
     return occhi
 
 
+def _rete_di_partenza(dove: str, scrivi, con_mappa: bool) -> Zone:
+    """Con la mappa (fase 2b) si parte dalle zone della fase 2, se ci sono fra gli input: si aggiungono solo i pesi
+    della mappa. Se no dagli occhi della fase 1."""
+    trovati = sorted(glob.glob("/kaggle/input/**/zone_nameless.pt", recursive=True)) if con_mappa else []
+    if trovati:
+        salvato = torch.load(trovati[0], map_location=dove, weights_only=False)
+        misura = {k: v for k, v in salvato["occhi"].items() if k != "con_mappa"}
+        rete = Zone(Occhi(**misura, con_mappa=True))
+        mancano = rete.load_state_dict(salvato["pesi"], strict=False).missing_keys
+        scrivi(f"zone della fase 2 da {trovati[0]} ({salvato.get('passi', '?')} passi); pesi nuovi per la mappa: "
+               f"{', '.join(mancano) or 'nessuno'}")
+        return rete
+    return Zone(_occhi_della_fase_1(dove, scrivi, con_mappa))
+
+
 def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/kaggle/working"),
            solo: list[str] | None = None, lotto: int = 256, seme: int = 1, campione: int = 20000,
-           ogni_minuti: float = 15, processi: int | None = None, occhi: Occhi | None = None, scrivi=None) -> dict:
+           ogni_minuti: float = 15, processi: int | None = None, occhi: Occhi | None = None, mappa: bool = False,
+           scrivi=None) -> dict:
     scrivi = scrivi or (lambda t: print(t, flush=True))
     inizio = time.time()
     rng = np.random.default_rng(seme)
     radice = radice or trova_dati()
     nomi = [n for n in list(NOMI) + list(CRYPTO) if solo is None or n in solo]
     sensi, conti, pezzi = carica_sensi(radice, nomi, scrivi)
-    materie = calcola_materie(pezzi, processi, scrivi)
+    if mappa:
+        materie, mappe = calcola_materie(pezzi, processi, scrivi, con_mappa=True)
+    else:
+        materie, mappe = calcola_materie(pezzi, processi, scrivi), None
     del pezzi
     (uscita / "materie").mkdir(parents=True, exist_ok=True)
     for nome, m in materie.items():
@@ -336,10 +374,10 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
     et = Etichette(sensi, materie, scrivi)
     dove = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(seme)
-    sc = Scuola(sensi, et, dove)
+    sc = Scuola(sensi, et, dove, mappe)
     scrivi("domande sui CRT per imparare: " + ", ".join(f"{tf.value} {len(c)}" for tf, c in
                                                         zip(M.TF_CRT, sc.confini["impara"])))
-    rete = Zone(occhi if occhi is not None else _occhi_della_fase_1(dove, scrivi)).to(dove)
+    rete = (Zone(occhi) if occhi is not None else _rete_di_partenza(dove, scrivi, mappa)).to(dove)
     scrivi(f"pesi della rete: {sum(p.numel() for p in rete.parameters())} ({dove})")
     # I pesi delle risposte, dalle ore per imparare.
     pesi = {"crt": {d: [pesi_classi(et.crt[d][sc.confini['impara'][i], i], CLASSI[d]).to(dove)
@@ -359,9 +397,9 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
         quota = (time.time() - partenza) / max(fine - partenza, 1e-9)
         for g, b in zip(ottimo.param_groups, base):
             g["lr"] = b * min(1.0, (passi + 1) / 300) * (0.05 + 0.475 * (1 + math.cos(math.pi * quota)))
-        contenuto, tempo, vuote, y_crt, rr, y_c = sc.lotto(sc.esempi(rng, "impara", lotto))
+        ingressi, y_crt, rr, y_c = sc.lotto(sc.esempi(rng, "impara", lotto))
         with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=dove == "cuda"):
-            crt, candela = rete(contenuto, tempo, vuote)
+            crt, candela = rete(**ingressi)
         errore = perdita(crt, candela, y_crt, rr, y_c, pesi, dove)
         ottimo.zero_grad(set_to_none=True)
         scala.scale(errore).backward()

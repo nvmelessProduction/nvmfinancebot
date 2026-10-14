@@ -144,6 +144,15 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     accettato contro blocca (proprio la direzione).
   Al controllo la media delle materie e' salita dall'82,5% all'85,2% e nell'ultima ora quasi ferma: piu' tempo da
   solo non basta.
+- **Fase 2b, pronta** (la mappa): `nvm/nameless/mappa.py` fa per ogni pezzo di mercato le tavole dei key level (presi
+  o no dopo la fine del periodo), delle accettazioni e di tutti i gap (quando entrano e escono dalla finestra delle
+  regole, quando sono toccati e riempiti, reazione automatica, liquidazione, estremo); `nvm/nameless/lettore_mappa.py`
+  ne legge a ogni ora 51 gettoni sulla scheda grafica (i 10 key level, le 5 accettazioni, per ogni gap da giorno a 12
+  mesi il muro e il target intatti piu' vicini per lato e il toccato piu' vicino per lato) e gli occhi li ricevono
+  accanto alle candele. Sono i fatti del grafico, non le decisioni: una prova li confronta con le regole delle foto
+  rifatte da zero a 60 ore a caso (oltre 100 gap, i toccati, le fasi e gli estremi). La scuola riparte dalle zone della
+  fase 2; le risposte rare pesano quanto le comuni (l'inverso della frequenza: l'esame e' la media dei richiami) e un
+  quarto degli esempi sono CRT col key level (direzione e target). Cella `kaggle_rete/cella_zone_mappa.txt`.
 - Fase 3, pronta da lanciare dopo l'esame delle zone:
   - **Gli esiti** (`nvm/nameless/esiti.py`): ogni setup in cui il bot entra, gestito come dal vivo (25% al TP1 col
     pareggio e il resto al target finale, o tutto al TP1 se il target non vale 1 R; la scadenza di `giro.TETTO_FOTO`),

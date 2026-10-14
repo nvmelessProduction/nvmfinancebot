@@ -41,6 +41,8 @@ from kaggle_rete.zone import calcola_materie
 from nvm.nameless import capo as C
 from nvm.nameless import esiti as E
 from nvm.nameless import materie as M
+from nvm.nameless.lettore_mappa import LettoreMappa
+from nvm.nameless.mappa import tavole
 from nvm.nameless.occhi import Lettore, Occhi
 from nvm.nameless.sensi import TF_NAMELESS
 from nvm.nameless.zone import Zone
@@ -63,6 +65,19 @@ def carica_materie(pezzi: list, processi: int | None, scrivi) -> dict:
     if mancano:
         materie.update(calcola_materie(mancano, processi, scrivi))
     return materie
+
+
+def _tavole_pezzo(argomenti):
+    nome, ore = argomenti
+    return nome, tavole(ore)
+
+
+def calcola_mappe(pezzi: list, processi: int | None, scrivi) -> dict:
+    """Le tavole della mappa (fase 2b), per le zone che la ricevono."""
+    with Pool(processi or os.cpu_count() or 1) as pool:
+        mappe = dict(pool.imap_unordered(_tavole_pezzo, pezzi))
+    scrivi(f"mappe: {len(mappe)} pezzi")
+    return mappe
 
 
 def _esiti_pezzo(argomenti):
@@ -227,13 +242,17 @@ def scuola(radice: Path | None = None, uscita: Path = Path("/kaggle/working"), s
     sensi, conti, pezzi = carica_sensi(radice, nomi, scrivi)
     materie = carica_materie(pezzi, processi, scrivi)
     esiti = calcola_esiti(pezzi, materie, processi, scrivi)
+    # Le zone si caricano sul processore: le mappe si fanno coi processi paralleli prima di accendere la scheda.
+    zone = zone if zone is not None else _zone("cpu", scrivi)
+    mappe = calcola_mappe(pezzi, processi, scrivi) if hasattr(zone.occhi, "mappa_entrata") else None
     del pezzi
-    op = Operazioni(sensi, materie, esiti, conti, scrivi)
     dove = "cuda" if torch.cuda.is_available() else "cpu"
-    zone = (zone if zone is not None else _zone(dove, scrivi)).to(dove)
+    zone = zone.to(dove)
+    op = Operazioni(sensi, materie, esiti, conti, scrivi)
     lettore = Lettore(sensi, dove)
+    mappa = LettoreMappa(sensi, mappe, lettore) if mappe else None
     t0 = time.time()
-    x = np.concatenate([C.vista(zone, lettore, op.j, op.tf), op.setup], 1).astype(np.float32)
+    x = np.concatenate([C.vista(zone, lettore, op.j, op.tf, mappa=mappa), op.setup], 1).astype(np.float32)
     scrivi(f"vista di {len(x)} setup in {time.time() - t0:.0f} s ({x.shape[1]} numeri per setup)")
     parti = {n: op.parte(n) for n in ("impara", "controllo", "esame")}
     scrivi("setup: " + ", ".join(f"{n} {len(v)}" for n, v in parti.items()))

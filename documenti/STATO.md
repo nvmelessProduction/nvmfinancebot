@@ -5,6 +5,12 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 14/10/2026 (pomeriggio): la mappa per le zone (fase 2b), il Capo su Kaggle
+
+Lanciata la fase 3 (il Capo) con le zone della fase 2 come sono: risponde se c'e' un gruppo di setup che guadagna,
+e il suo esame non dipende dalle zone (sceglie fra i setup decisi dalle regole). Pronta la fase 2b: la mappa dei
+livelli e dei gap tra i sensi, per imparare direzione e target (`kaggle_rete/cella_zone_mappa.txt`).
+
 ## 14/10/2026 (mattina): fase 2 di Nameless, esame non passato
 
 Le zone riconoscono CRT, key level e "si entra" al 91-97% e le candele fino al 97%, ma la direzione (53-56%) e il

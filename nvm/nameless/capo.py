@@ -59,9 +59,10 @@ def setup(crt: dict, righe: np.ndarray, tf: int, spread: np.ndarray, spread_rang
 
 
 @torch.no_grad()
-def vista(zone, lettore, j: np.ndarray, tf: np.ndarray, lotto: int = 1024) -> np.ndarray:
+def vista(zone, lettore, j: np.ndarray, tf: np.ndarray, lotto: int = 1024, mappa=None) -> np.ndarray:
     """Quello che occhi e zone vedono all'ora `j` di ogni setup (col timeframe del suo CRT, indice in `TF_CRT`):
-    [N, 3d + 15 * len(TF_CRT) + 6 * len(TF_CANDELA)] float32."""
+    [N, 3d + 15 * len(TF_CRT) + 6 * len(TF_CANDELA)] float32. `mappa` (`LettoreMappa`): per le zone che la
+    ricevono (fase 2b)."""
     zone.eval()
     pezzi = []
     dove = lettore.dove
@@ -69,8 +70,9 @@ def vista(zone, lettore, j: np.ndarray, tf: np.ndarray, lotto: int = 1024) -> np
     for a in range(0, len(j), lotto):
         jj = torch.as_tensor(j[a:a + lotto], device=dove)
         contenuto, tempo, vuote, _ = lettore.guarda(jj, jj)
+        m = mappa.leggi(jj, *lettore.scala(jj)) if mappa is not None else None
         with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=dove == "cuda"):
-            crt, candela, riassunto, candele = zone(contenuto, tempo, vuote, tutto=True)
+            crt, candela, riassunto, candele = zone(contenuto, tempo, vuote, tutto=True, mappa=m)
         righe = torch.arange(len(jj), device=dove)
         k = k_tf[torch.as_tensor(tf[a:a + lotto], device=dove).long()]
         ultima, prima = candele[righe, k, -1], candele[righe, k, -2]
