@@ -5,6 +5,12 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 14/10/2026 (mattina): fase 2 di Nameless, esame non passato
+
+Le zone riconoscono CRT, key level e "si entra" al 91-97% e le candele fino al 97%, ma la direzione (53-56%) e il
+target finale (57-61%) non li hanno imparati: dipendono da gap e livelli lontani che la rete non vede. Le foto: 23 su
+24 (sbaglia il franco-yen). Serve il 98%: non passata. Proposta: la fase 2b, la mappa dei livelli e dei gap tra i sensi.
+
 ## 14/10/2026: fase 3 di Nameless pronta, il Capo
 
 Preparata la fase 3: il risultato vero di ogni setup che il bot prende (gestito come dal vivo, coi costi) e il Capo

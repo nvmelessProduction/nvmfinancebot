@@ -132,6 +132,18 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     CRT del giorno dal 54% al 79%, quello della settimana all'83%), ma e' lontana dal 98%: il target finale (43-47%) e
     la direzione delle candele dei 3 e 12 mesi (pochi esempi diversi) sono le piu' difficili. Su Kaggle: tutti i
     mercati e cento volte i passi; se non basta si dice dove manca e si allunga la scuola.
+- **Fase 2, esame non passato** (14/10/2026, 3 ore e mezza, 42.716 passi, 0 CRT e 0 candele scartati). Le materie,
+  dal 2023 (media dei richiami; serve il 98%):
+  - il CRT 95-97% su tutti i timeframe, il key level 93-97%, si entra 91-95% (il mese 82%);
+  - la candela: giorno 97%, settimana 95%, mese 84%, 3 mesi 76%, 12 mesi 73%; l'accettazione dal 97% (giorno) all'80%
+    (12 mesi);
+  - **non imparate**: la direzione dalla nostra parte (53-56%: la rete dice quasi sempre si', e il no e' il 2-4% dei
+    casi), il target finale (57-61%) e i suoi R (sbaglia di 1-4 R). Dipendono da gap e livelli di mesi e anni prima,
+    toccati o no ora per ora: la rete vede 40 candele per timeframe e non li ricostruisce;
+  - le foto: la rete ne rifa' 23 su 24 (le regole 24). Sbaglia il franco-yen: entra dove la candela dei 3 mesi che ha
+    accettato contro blocca (proprio la direzione).
+  Al controllo la media delle materie e' salita dall'82,5% all'85,2% e nell'ultima ora quasi ferma: piu' tempo da
+  solo non basta.
 - Fase 3, pronta da lanciare dopo l'esame delle zone:
   - **Gli esiti** (`nvm/nameless/esiti.py`): ogni setup in cui il bot entra, gestito come dal vivo (25% al TP1 col
     pareggio e il resto al target finale, o tutto al TP1 se il target non vale 1 R; la scadenza di `giro.TETTO_FOTO`),
