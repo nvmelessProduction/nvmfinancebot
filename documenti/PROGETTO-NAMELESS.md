@@ -132,4 +132,20 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     CRT del giorno dal 54% al 79%, quello della settimana all'83%), ma e' lontana dal 98%: il target finale (43-47%) e
     la direzione delle candele dei 3 e 12 mesi (pochi esempi diversi) sono le piu' difficili. Su Kaggle: tutti i
     mercati e cento volte i passi; se non basta si dice dove manca e si allunga la scuola.
+- Fase 3, pronta da lanciare dopo l'esame delle zone:
+  - **Gli esiti** (`nvm/nameless/esiti.py`): ogni setup in cui il bot entra, gestito come dal vivo (25% al TP1 col
+    pareggio e il resto al target finale, o tutto al TP1 se il target non vale 1 R; la scadenza di `giro.TETTO_FOTO`),
+    candela per candela sulle ore col campo di prova (`prova.campo.simula`). I costi: HistData ha solo il bid, lo
+    spread si stima all'1% del range medio giornaliero (circa 0,7 pip su EURUSD, piu' largo di un conto raw) piu' la
+    commissione del conto; c'e' anche la prova coi costi doppi. Le operazioni ancora aperte a fine dati non contano.
+  - **Prenderli tutti perde** (prova qui, EURUSD, oro, sterlina): -0,084 R a operazione fino al 2019, -0,068 nel
+    2020-2022, -0,090 dal 2023 (36% vinte). La settimana e il mese sono positivi dal 2023 (+0,24 e +0,32 R) ma con
+    poche operazioni e non in tutti i periodi (la settimana -0,08 nel 2020-2022). Come il demo (-0,16 R).
+  - **Il Capo** (`nvm/nameless/capo.py`, `kaggle_rete/capo.py`, cella `kaggle_rete/cella_capo.txt`): una rete piccola
+    sopra occhi e zone (che restano come sono) mette i setup in classifica per quanti R si aspetta; impara fino al
+    2019, sceglie sul 2020-2022 l'epoca e quanti setup prendere in cima alla classifica (se nemmeno i migliori
+    guadagnano, non ne prende nessuno), cinque semi in media. Esame dal 2023: i setup scelti guadagnano con
+    sicurezza (la media resta sopra zero nel 97,5% delle ricampionature per settimane) e piu' di prenderli tutti.
+  - Prova qui sul processore (3 mercati, zone non allenate): la catena gira; il Capo non trova setup che guadagnino
+    sul controllo, non ne prende e lo dice (non passato). Su Kaggle: tutti i mercati e le zone allenate.
 

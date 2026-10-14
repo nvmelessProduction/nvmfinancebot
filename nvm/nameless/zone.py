@@ -41,14 +41,15 @@ class Zone(nn.Module):
         self.teste_crt = nn.ModuleList([_testa(3 * d, d, 15) for _ in TF_CRT])
         self.teste_candela = nn.ModuleList([_testa(3 * d, d, 6) for _ in TF_CANDELA])
 
-    def forward(self, contenuto, tempo, vuote):
+    def forward(self, contenuto, tempo, vuote, tutto: bool = False):
         """(crt [B, len(TF_CRT), 15], candela [B, len(TF_CANDELA), 6]): i logit di ogni testa (`USCITE_CRT`,
-        `USCITE_CANDELA`)."""
+        `USCITE_CANDELA`). Con `tutto` anche quello che vedono gli occhi (riassunto [B, d], candele [B, K, L, d]): il
+        Capo (fase 3) guarda tutto."""
         riassunto, candele = self.occhi(contenuto, tempo, vuote)
         ingresso = lambda i: torch.cat([riassunto, candele[:, i, -1], candele[:, i, -2]], -1)
         crt = torch.stack([t(ingresso(i)) for t, i in zip(self.teste_crt, self.i_crt)], 1)
         candela = torch.stack([t(ingresso(i)) for t, i in zip(self.teste_candela, self.i_candela)], 1)
-        return crt, candela
+        return (crt, candela, riassunto, candele) if tutto else (crt, candela)
 
 
 def parte(uscite: torch.Tensor, nome: str, quali: dict) -> torch.Tensor:

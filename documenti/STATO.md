@@ -5,6 +5,13 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 14/10/2026: fase 3 di Nameless pronta, il Capo
+
+Preparata la fase 3: il risultato vero di ogni setup che il bot prende (gestito come dal vivo, coi costi) e il Capo
+che li mette in classifica e sceglie quali prendere, giudicato dal 2023. Prenderli tutti perde (circa -0,08 R a
+operazione su EURUSD, oro e sterlina, in tutti i periodi). Si lancia dopo l'esame delle zone con
+`kaggle_rete/cella_capo.txt`. La fase 2 e' da rilanciare: il notebook non aveva la scheda grafica accesa.
+
 ## 14/10/2026: fase 1 di Nameless passata, si lancia la fase 2
 
 Gli occhi hanno passato l'esame su Kaggle (3 ore, tutti i mercati): leggono le candele nascoste molto meglio di chi

@@ -1,0 +1,21 @@
+# NAMELESS FASE 3: IL CAPO. Serve la GPU e tre input: nvm-codice (la versione nuova), il notebook dei dati e il
+# notebook delle zone (fase 2). Alla fine: capo_nameless.pt, esame_capo.json e operazioni.npz nell'output.
+import glob, os, shutil, sys
+CODICE = '/tmp/codice'
+shutil.rmtree(CODICE, ignore_errors=True)
+z = [p for p in glob.glob('/kaggle/input/**/nvm-codice*.zip', recursive=True)]
+if z:
+    shutil.unpack_archive(z[0], CODICE)
+else:
+    d = [os.path.dirname(os.path.dirname(p)) for p in glob.glob('/kaggle/input/**/kaggle_rete/capo.py', recursive=True)]
+    assert d, "MANCA IL CODICE NUOVO: carica il nuovo nvm-codice.zip come nuova versione del dataset"
+    shutil.copytree(d[0], CODICE)
+sys.path.insert(0, CODICE)
+import torch
+assert torch.cuda.is_available(), "MANCA LA GPU: a destra Session options, Accelerator, GPU T4 x2; poi rilancia"
+assert glob.glob('/kaggle/input/**/ore_bid', recursive=True), \
+    "MANCANO I DATI: a destra Add Input, aggiungi il notebook dei dati"
+assert glob.glob('/kaggle/input/**/zone_nameless.pt', recursive=True), \
+    "MANCANO LE ZONE: a destra Add Input, aggiungi il notebook delle zone (fase 2)"
+from kaggle_rete.capo import scuola
+scuola()
