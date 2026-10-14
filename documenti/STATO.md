@@ -5,6 +5,13 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 14/10/2026: fase 1 di Nameless passata, si lancia la fase 2
+
+Gli occhi hanno passato l'esame su Kaggle (3 ore, tutti i mercati): leggono le candele nascoste molto meglio di chi
+copia l'ultima (dal 4% al 17% del suo errore) e prevedono la forma delle prossime candele; sulla direzione nessun
+vantaggio, come previsto. Prossimo passo: la fase 2 (`kaggle_rete/cella_zone.txt`). Dettagli in
+`documenti/PROGETTO-NAMELESS.md`.
+
 ## 14/10/2026 (notte): fase 2 di Nameless pronta, le zone
 
 Mentre su Kaggle gira la fase 1, preparata la fase 2: le risposte delle regole delle foto per ogni CRT e ogni candela

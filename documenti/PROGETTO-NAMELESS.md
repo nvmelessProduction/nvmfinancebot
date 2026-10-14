@@ -110,7 +110,13 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     dal 93% (1h) al 14% (1w) di chi copia. Sulla direzione (la chiusura del futuro) il 103% di chi dice "resta dov'e'":
     nessun vantaggio sulla direzione, come ci si aspetta da questa fase. Su Kaggle: tutti i mercati, rete piu' grande,
     tanti piu' passi.
-- Fase 2, pronta da lanciare dopo l'esame degli occhi:
+- **Fase 1 passata** (14/10/2026, notebook `notebookcb1aee43da`, scheda grafica T4, 3 ore, 50.547 passi, 87 pezzi di
+  mercato, 8,3 milioni di ore; rete da 843 mila pesi). Esame dal 2023, candele nascoste a caso: la rete sbaglia dal 4%
+  (12 ore) al 17% (12 mesi) di chi copia l'ultima candela. Il futuro dopo il taglio: 95% a 1 ora, 68% a 4 ore, 34% a
+  12 ore, 20% al giorno, 6% alla settimana. Sulla chiusura del futuro (la direzione) 100-101% di chi dice "resta
+  dov'e'": nessun vantaggio sulla direzione, come previsto per questa fase. Uguale su forex, metalli, indici, petrolio e
+  crypto. Al controllo migliorava ancora poco dopo le prime due ore (dal 27,5% al 27,1%): piu' ore servirebbero a poco.
+- Fase 2, pronta da lanciare (gli occhi hanno passato l'esame):
   - **Le materie** (`nvm/nameless/materie.py`): per ogni CRT di 1, 4, 6 ore, giorno, settimana e mese le risposte delle
     regole delle foto (c'e' il CRT, ha preso un key level, la direzione e' dalla nostra parte, il target finale e quanti
     R vale, si entra) e per ogni candela di giorno, settimana, 1, 3 e 12 mesi come ha chiuso rispetto a quella prima e
