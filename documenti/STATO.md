@@ -5,6 +5,14 @@ _Aggiornato il 13/10/2026._
 Ogni sessione di lavoro parte da qui e, prima di chiudere, aggiorna questo
 file. Il piano completo è in `documenti/PIANO.md`.
 
+## 15/10/2026: il Capo dice che la strategia, cosi' com'e', perde
+
+Su Kaggle, 85 mercati dal 2003: i 740 mila setup che il bot prende perdono circa -0,08 R a operazione in ogni periodo
+e in ogni anno, e non per i costi (senza spread circa -0,03). Il Capo non trova un gruppo che guadagni. Decisione da
+prendere col proprietario: provare la 3b (filtri e gestioni diverse, scelti fino al 2022 ed esaminati una volta sul
+2023-2026), capire cosa manca alle regole rispetto alle sue scelte, o ripartire dal libro del socio. La 2b (la mappa)
+e' pronta ma in pausa: perfezionare la rete su una strategia che perde non porta guadagni.
+
 ## 14/10/2026 (pomeriggio): la mappa per le zone (fase 2b), il Capo su Kaggle
 
 Lanciata la fase 3 (il Capo) con le zone della fase 2 come sono: risponde se c'e' un gruppo di setup che guadagna,

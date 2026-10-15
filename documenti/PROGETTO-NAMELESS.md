@@ -169,4 +169,12 @@ Dalla fase 5: la VPS manda i dati della settimana, lancia lo studio e riprende l
     sicurezza (la media resta sopra zero nel 97,5% delle ricampionature per settimane) e piu' di prenderli tutti.
   - Prova qui sul processore (3 mercati, zone non allenate): la catena gira; il Capo non trova setup che guadagnino
     sul controllo, non ne prende e lo dice (non passato). Su Kaggle: tutti i mercati e le zone allenate.
+- **Fase 3, esame non passato** (15/10/2026, su Kaggle, 85 mercati, 740.527 setup A+ del bot dal 2003 al 2026).
+  Prenderli tutti perde in ogni periodo: -0,086 R a operazione fino al 2019, -0,077 nel 2020-2022, -0,085 dal 2023
+  (37% vinte), e in ogni anno dal 2003 al 2026 (da -0,04 a -0,15 R). Peggio sui timeframe piccoli (1 ora -0,11, 4 ore
+  -0,11, 6 ore -0,07), quasi zero sul giorno (-0,02); settimana (+0,02) e mese (+0,08) sopra zero ma mai con sicurezza
+  (anni positivi e negativi alternati). Senza lo spread (stima) tutte insieme -0,03 R: non sono i costi. Uscite: stop
+  il 59-64%, target finale il 7-22%, pareggio il 15-34%. Il Capo (5 semi) non ha trovato sul 2020-2022 un gruppo di
+  setup che guadagnasse: non ne ha presi. Le regole delle foto rifanno le scelte del proprietario sulle 24 foto, ma
+  applicate a tutti i setup di 20 anni perdono.
 
