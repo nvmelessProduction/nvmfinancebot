@@ -47,7 +47,9 @@ SOGLIA = 0.98
 MINIMO_ESAME = 200
 DOMANDE_CRT = ("crt", "key level", "entra", "direzione", "target")
 DOMANDE_CANDELA = ("direzione", "accetta")
-CLASSI = {"crt": 3, "key level": 3, "entra": 3, "direzione": 2, "target": 3, "accetta": 3}
+# La direzione CRT e' binaria; quella delle candele ha tre classi (ribassista, neutra, rialzista).
+CLASSI_CRT = {"crt": 3, "key level": 3, "entra": 3, "direzione": 2, "target": 3}
+CLASSI_CANDELA = {"direzione": 3, "accetta": 3}
 
 
 def _materie_pezzo(argomenti):
@@ -274,7 +276,7 @@ def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) 
         j = np.sort(rng.choice(c, size=min(quanti, len(c)), replace=False))
         p_crt, _, p_rr = previsioni(rete, scuola, j)
         for d in DOMANDE_CRT:
-            fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i], CLASSI[d])
+            fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i], CLASSI_CRT[d])
         rr = scuola.et.rr[j, i]
         ok = np.isfinite(rr)
         if ok.any():
@@ -285,7 +287,7 @@ def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) 
     y = scuola.et.candele(scuola.sensi, j)
     for i, tf in enumerate(M.TF_CANDELA):
         for d in DOMANDE_CANDELA:
-            fuori[f"candela {d} {tf.value}"] = metriche(p_can[d][:, i], y[d][:, i], CLASSI[d])
+            fuori[f"candela {d} {tf.value}"] = metriche(p_can[d][:, i], y[d][:, i], CLASSI_CANDELA[d])
     return fuori
 
 
@@ -380,11 +382,11 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
     rete = (Zone(occhi) if occhi is not None else _rete_di_partenza(dove, scrivi, mappa)).to(dove)
     scrivi(f"pesi della rete: {sum(p.numel() for p in rete.parameters())} ({dove})")
     # I pesi delle risposte, dalle ore per imparare.
-    pesi = {"crt": {d: [pesi_classi(et.crt[d][sc.confini['impara'][i], i], CLASSI[d]).to(dove)
+    pesi = {"crt": {d: [pesi_classi(et.crt[d][sc.confini['impara'][i], i], CLASSI_CRT[d]).to(dove)
                         for i in range(len(M.TF_CRT))] for d in DOMANDE_CRT}}
     campione_ore = sc.ore["impara"][rng.integers(len(sc.ore["impara"]), size=min(200000, len(sc.ore["impara"])))]
     y_can = et.candele(sensi, campione_ore)
-    pesi["candela"] = {d: [pesi_classi(y_can[d][:, i], CLASSI[d]).to(dove) for i in range(len(M.TF_CANDELA))]
+    pesi["candela"] = {d: [pesi_classi(y_can[d][:, i], CLASSI_CANDELA[d]).to(dove) for i in range(len(M.TF_CANDELA))]
                        for d in DOMANDE_CANDELA}
     gruppi = [{"params": rete.occhi.parameters(), "lr": 1e-4},
               {"params": [p for n, p in rete.named_parameters() if not n.startswith("occhi.")], "lr": 1e-3}]
