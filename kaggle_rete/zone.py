@@ -364,8 +364,10 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
     rng = np.random.default_rng(seme)
     radice = radice or trova_dati()
     nomi = [n for n in list(NOMI) + list(CRYPTO) if solo is None or n in solo]
+    scrivi(f"carico i dati di {len(nomi)} mercati e preparo le candele...")
     sensi, conti, pezzi = carica_sensi(radice, nomi, scrivi)
     if mappa:
+        scrivi(f"preparo etichette e mappa per {len(pezzi)} pezzi di mercato...")
         materie, mappe = calcola_materie(pezzi, processi, scrivi, con_mappa=True)
     else:
         materie, mappe = calcola_materie(pezzi, processi, scrivi), None
