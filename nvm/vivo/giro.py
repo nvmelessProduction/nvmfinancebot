@@ -337,8 +337,9 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ora = Orario(int(datetime.fromtimestamp(s.n3_inizio, tz=NEW_YORK).hour),
                  int(datetime.fromtimestamp(s.n2_inizio, tz=NEW_YORK).hour))
     x = np.zeros(len(capo.media)) if getattr(capo, "media", None) is not None else np.zeros(1)
+    # La squadra puo' scegliere solo il piano foto canonico: 25% al close, target finale.
     return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
-                     piani_romeo=piani,
+                     piani_romeo=[None, op, None],
                      foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy, "quadro_dxy": quadro_dxy,
                            "totale": totale, "quadro_totale": quadro_totale,
                            "allineati": list(allineati)})
