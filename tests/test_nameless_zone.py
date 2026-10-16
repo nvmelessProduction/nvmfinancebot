@@ -102,6 +102,7 @@ def test_le_metriche_non_si_fanno_ingannare_dal_niente():
     assert m["giuste"] == pytest.approx(0.98)
     assert m["media dei richiami"] == pytest.approx(0.5)
 
+
 def test_campione_esame_stratifica_classi_rare():
     pytest.importorskip("torch")
     from kaggle_rete.zone import _campione_stratificato
