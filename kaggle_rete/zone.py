@@ -436,14 +436,14 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
     contano = {k: x for k, x in esame.items() if x.get("media dei richiami") is not None and x["casi"] >= MINIMO_ESAME}
     passa = all(x["media dei richiami"] >= SOGLIA for x in contano.values()) and all(f["rete"] for f in foto)
     passo_migliore = migliore[2] if migliore is not None else passi
-    controle_migliore = ({"media": migliore[1], "peggiore": migliore[0]} if migliore is not None else None)
+    controllo_migliore = ({"media": migliore[1], "peggiore": migliore[0]} if migliore is not None else None)
     resoconto = {"passa": passa, "esame": esame, "foto": foto, "passi": passi, "miglior_passo": passo_migliore,
-                 "controllo_migliore": controle_migliore, "ore": ore,
+                 "controllo_migliore": controllo_migliore, "ore": ore,
                  "minuti": round((time.time() - inizio) / 60), "storia": storia, "scarti": et.scarti,
                  "mercati": conti}
     torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passo_migliore,
                 "passi_totali": passi, "passa": passa, "esame": esame,
-                "controllo": controle_migliore}, uscita / "zone_nameless.pt")
+                "controllo": controllo_migliore}, uscita / "zone_nameless.pt")
     (uscita / "esame_zone.json").write_text(json.dumps(resoconto, indent=1, ensure_ascii=False), encoding="utf-8")
     stampa(resoconto, scrivi)
     return resoconto
