@@ -173,19 +173,23 @@ def _campione_stratificato(candidati: np.ndarray, etichette: dict[str, np.ndarra
             valori = valori[:, None]
         for i in range(valori.shape[1]):
             for classe in np.unique(valori[:, i]):
-                if classe < 0:
-                    continue
-                indici = np.flatnonzero(valori[:, i] == classe)
-                if len(indici):
-                    gruppi.append(indici)
+                if classe >= 0:
+                    gruppi.append((valori[:, i], int(classe)))
     if not gruppi:
         return np.sort(rng.choice(candidati, size=min(quanti, len(candidati)), replace=False))
     quota = max(1, math.ceil(quanti / len(gruppi)))
-    scelti = [rng.choice(i, size=quota, replace=False) if len(i) > quota else i for i in gruppi]
+    scelti = []
+    for valori, classe in gruppi:
+        indici = np.flatnonzero(valori == classe)
+        scelti.append(rng.choice(indici, size=quota, replace=False) if len(indici) > quota else indici)
     return np.sort(np.unique(candidati[np.concatenate(scelti)]))
 
 
-def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int, disponibili: np.ndarray | None = None) -> dict:
+def _conteggi_classi(veri: np.ndarray, classi: int) -> list[int]:
+    return np.bincount(veri[veri >= 0].astype(np.int64), minlength=classi).tolist()
+
+
+def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int, disponibili: list[int] | None = None) -> dict:
     """Quante ne indovina; il richiamo è calcolato sul campione stratificato per materia e classe."""
     ok = veri >= 0
     p, y = previsti[ok], veri[ok]
@@ -197,8 +201,7 @@ def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int, disponibili: n
                  "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist(),
                  "campionamento": "stratificato per materia e classe"}
     if disponibili is not None:
-        disponibili = disponibili[disponibili >= 0].astype(np.int64)
-        risultato["casi disponibili per classe"] = np.bincount(disponibili, minlength=classi).tolist()
+        risultato["casi disponibili per classe"] = disponibili
     return risultato
 
 
@@ -304,9 +307,9 @@ def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) 
         j = _campione_stratificato(c, disponibili, quanti, rng)
         p_crt, _, p_rr = previsioni(rete, scuola, j)
         for d in DOMANDE_CRT:
-            y_completi = disponibili[d]
+            supporto = _conteggi_classi(disponibili[d], CLASSI_CRT[d])
             fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i],
-                                                 CLASSI_CRT[d], y_completi)
+                                                 CLASSI_CRT[d], supporto)
         rr = scuola.et.rr[j, i]
         ok = np.isfinite(rr)
         if ok.any():
@@ -315,7 +318,8 @@ def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) 
                                        "campionamento": campione_desc}
     ore = scuola.ore[parte_]
     y_tutte = scuola.et.candele(scuola.sensi, ore)
-    supporti = {d: [y_tutte[d][:, i].copy() for i in range(len(M.TF_CANDELA))] for d in DOMANDE_CANDELA}
+    supporti = {d: [_conteggi_classi(y_tutte[d][:, i], CLASSI_CANDELA[d])
+                       for i in range(len(M.TF_CANDELA))] for d in DOMANDE_CANDELA}
     j = _campione_stratificato(ore, y_tutte, quanti, rng)
     del y_tutte
     _, p_can, _ = previsioni(rete, scuola, j)
