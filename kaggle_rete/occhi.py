@@ -69,6 +69,7 @@ def carica_sensi(radice: Path, nomi: list[str], scrivi=print) -> tuple[Sensi, di
     imposta_orari(nomi)
     pezzi, conti = [], {}
     for n in nomi:
+        scrivi(f"carico {n}...")
         try:
             m, _ = carica(radice, n, utc(2000, 1, 1), int(time.time()) + 86400, solo_bid=True)
         except Exception as e:
