@@ -72,8 +72,8 @@ RADICE = Path(__file__).resolve().parent
 # (`nvm/dati/strumenti.py`: forex, oro e argento, petrolio, indici, crypto) che il broker ha.
 # L'utente, 25/09/2026: "testare tutto sul live sempre su mt5". Il proprietario, 07/10/2026: *"togliamo ukoil
 # uk100 jpn225, per il resto tutto ok"*.
-# Tolti dal proprietario: Brent, FTSE e Nikkei (07/10/2026); BTC ed ETH (08/10/2026).
-TOLTI = ("UKOIL", "UK100", "JPN225", "BTCUSD", "ETHUSD")
+# Tolti dal proprietario: Brent, FTSE e Nikkei (07/10/2026). BTC ed ETH sono attivi solo con segnali TOTAL.
+TOLTI = ("UKOIL", "UK100", "JPN225")
 STRUMENTI_VIVO = tuple(s for s in STRUMENTI if s not in TOLTI)
 # Per quanto le decisioni finite restano nello stato, prima dell'archivio.
 TENERE = 14 * 86400
@@ -102,7 +102,8 @@ DIDASCALIA = 1000
 # Analisi su TradingView: per quanto vale una proposta (Apri / Lascia) dall'apertura della candela 3, e il grafico del
 # dollaro se nel .env non c'e' TRADINGVIEW_DXY.
 VALIDITA_PROPOSTA = 1800
-DXY_TRADINGVIEW = "TVC:DXY"
+DXY_TRADINGVIEW = "CAPITALCOM:DXY"
+TOTAL_TRADINGVIEW = "CRYPTOCAP:TOTAL"
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
@@ -378,7 +379,8 @@ class Bot:
             return
         accesso = Accesso(CARTELLA)
         dxy = self.imp.tradingview_dxy or DXY_TRADINGVIEW
-        self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy, self.imp.tradingview_totale)
+        totale = self.imp.tradingview_totale or TOTAL_TRADINGVIEW
+        self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy, totale)
         # Le candele si fanno con gli orari dei grafici di TradingView, non con quelli di MT5: prima di leggerli dalle
         # sue candele a 4 ore (`_candele_tradingview`), quelli salvati l'ultima volta o la mezzanotte italiana.
         self._leggi_candele_tradingview()
@@ -387,8 +389,7 @@ class Bot:
                 _candele_mod.SESSIONI.setdefault(nome, SESSIONE_TRADINGVIEW)
         if not (CARTELLA / "riavvio").exists():
             # Dopo un aggiornamento non si ripete: lo si dice all'avvio a mano.
-            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy,
-                                                          self.imp.tradingview_totale))
+            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy, totale))
         if not accesso.pronto:
             self.allarme("TradingView: manca l'accesso. Sulla VPS fai doppio clic su tradingview_accesso.bat ed entra "
                          "col vostro account. Finché manca non analizzo niente; le operazioni aperte le seguo lo stesso.")
@@ -616,28 +617,31 @@ class Bot:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def aggiorna_dxy(self) -> None:
-        """Il grafico del dollaro del broker (`terminale.GRAFICI`): all'avvio le ore di due anni, poi ogni ora le
-        nuove. Se il conto non ce l'ha, l'agente DXY resta neutro e lo si dice (al massimo una volta l'ora)."""
+        """Carica il DXY di TradingView, con CAPITALCOM:DXY come sorgente predefinita.
+        Se non è disponibile, i segnali sulle coppie USD restano bloccati."""
         self.dxy = getattr(self, "dxy", None)
+        if not self._su_tradingview or not self._fonte.esiste("DXY"):
+            self.dxy = None
+            self.allarme("Per operare sulle coppie USD serve il DXY di TradingView (CAPITALCOM:DXY): "
+                         "i segnali restano bloccati finché non è disponibile.")
+            return
         try:
             if self.dxy is None:
-                if self._fonte.esiste("DXY"):
-                    self.dxy = self._fonte.orarie("DXY", ORARIE)
+                self.dxy = self._fonte.orarie("DXY", ORARIE)
             else:
                 self.dxy = _unisci(self.dxy, self._fonte.orarie("DXY", 50), ORARIE)
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
-        if self.dxy is None and self._su_tradingview:
-            self.allarme(f"TradingView: il grafico del dollaro ({self._fonte.simbolo('DXY')}) non arriva: l'agente DXY "
-                         "resta neutro finché non c'è.")
-        elif self.dxy is None:
-            self.allarme("Sul conto non trovo il grafico del dollaro (USDX): l'agente DXY resta neutro finché non c'è.")
+        if self.dxy is None:
+            self.allarme(f"TradingView: il grafico del dollaro ({self._fonte.simbolo('DXY')}) non arriva: "
+                         "i segnali sulle coppie USD restano bloccati.")
 
     def aggiorna_totale(self) -> None:
-        """La TOTAL di TradingView (TRADINGVIEW_TOTAL), che guida BTC ed ETH: come il grafico del dollaro."""
+        """Carica CRYPTOCAP:TOTAL. Senza le sue candele BTC ed ETH non generano segnali."""
         self.totale = getattr(self, "totale", None)
         if not self._su_tradingview or not self._fonte.esiste("TOTAL"):
             self.totale = None
+            self.allarme("BTC ed ETH restano bloccati: serve la TOTAL di TradingView (CRYPTOCAP:TOTAL).")
             return
         try:
             self.totale = (self._fonte.orarie("TOTAL", ORARIE) if self.totale is None
@@ -645,8 +649,8 @@ class Bot:
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         if self.totale is None:
-            self.allarme(f"TradingView: il grafico della TOTAL ({self._fonte.simbolo('TOTAL')}) non arriva: BTC ed ETH "
-                         "si guardano da soli finché non c'è.")
+            self.allarme(f"TradingView: il grafico della TOTAL ({self._fonte.simbolo('TOTAL')}) non arriva: "
+                         "BTC ed ETH restano bloccati, senza fallback sui CRT locali.")
 
     def gemelli(self) -> dict[str, Minuti]:
         """Le ore di tutti gli strumenti e, se ci sono, del grafico del dollaro (chiave "DXY") e della TOTAL."""

@@ -34,12 +34,11 @@ from nvm.tempo import NEW_YORK, ORDINE, TF
 COPPIE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
 # La quarta coppia di Romeo si guarda con i quarti d'ora di MT5, ogni quarto d'ora.
 COPPIA_VELOCE = (TF.H4, TF.M15)
-# Come nascono le occasioni: "foto" e' il metodo delle foto del proprietario (`documenti/spec/metodo_foto.md`, dal
-# 06/10/2026: entrata all'apertura della candela 3, stop oltre la 2, TP1 l'altro lato del range, target finale
-# il gap o il key level); "candela 3" il metodo dei video (`documenti/spec/metodo_romeo.md`); "model1" quello di prima.
+# Come nascono le occasioni: "foto" è il metodo del proprietario (`documenti/spec/metodo_foto.md`): ingresso
+# all'apertura della candela 3, stop oltre la 2, 25% + pareggio alla chiusura della candela d'ingresso e target
+# finale sul key level del timeframe più basso preso, se disponibile. "candela 3" è il metodo dei video; "model1" quello di prima.
 METODO = "foto"
-# Fino a quando si segue un'occasione del metodo delle foto sulla carta, per timeframe del CRT: i target finali
-# sono gap e key level dei timeframe grandi, possono servire mesi.
+# Fino a quando si segue sulla carta un'occasione del metodo delle foto, per timeframe del CRT.
 TETTO_FOTO = {TF.H1: 10 * 86400, TF.H4: 30 * 86400, TF.H6: 40 * 86400, TF.D1: 90 * 86400,
               TF.W1: 300 * 86400, TF.MN: 800 * 86400}
 
@@ -294,9 +293,8 @@ def setup_buono(s) -> bool:
 
 
 def piani_foto(s, ob, altro, quando: int) -> list:
-    """I piani di Livelli, nell'ordine di `foto.PIANI`: tutto al TP1; il 25% al TP1 e il resto al target finale
-    (quello delle foto, di partenza); il 25% al TP1 e il resto al target dopo. None se non si puo' fare, o se al suo
-    ultimo target non rende almeno `foto.RR_MINIMO` volte il rischio."""
+    """Il piano dal vivo parzializza il 25% al close della candela d'ingresso e manda il resto al target finale.
+    Se questo non rende almeno `foto.RR_MINIMO` volte il rischio, non genera un ingresso."""
     fuori = []
     rischio = abs(s.ingresso - s.stop)
     for parziale, tp2 in ((1.0, s.tp1), (foto.PARZIALE, ob.prezzo), (foto.PARZIALE, None if altro is None else altro.prezzo)):
@@ -318,7 +316,9 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ob = foto.obiettivo_finale(q, s)
     altro = foto.target_dopo(q, s, ob)
     piani = piani_foto(s, ob, altro, s.n3_inizio)
-    op = piani[1] or piani[0]
+    # TP1 temporizzato alla chiusura della candela d'ingresso; serve sempre il piano con target finale.
+    # Se il target manca o non rende il minimo RR, si salta invece di ripiegare sul solo TP1.
+    op = piani[1]
     if op is None:
         return None
     crt = s.crt(TF.H1)
@@ -347,39 +347,43 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
 def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Capo,
                    gemelli: Optional[dict] = None, lunghe: Optional[Minuti] = None,
                    lunghe_dxy: Optional[Minuti] = None, lunghe_totale: Optional[Minuti] = None) -> list[Decisione]:
-    """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso], su uno strumento.
+    """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso].
 
-    Se piu' timeframe danno lo stesso verso alla stessa apertura, l'occasione e' una (quella del timeframe
-    piu' grande) e gli altri sono i "timeframe allineati". Sulle coppie col dollaro anche i setup del DXY
-    (*"se lui ci forma un setup long possiamo shortare tutte le coppie ... con il dollaro al denominatore"*)."""
+    Sulle coppie col dollaro il DXY genera il verso; il CRT locale della coppia è solo un filtro di conferma.
+    BTC ed ETH seguono solo la TOTAL: i loro CRT locali non possono aprire operazioni."""
     if not len(ore):
         return []
     q = _quadro(ore, adesso, lunghe)
-    trovati = [s for tf in foto.TF_CRT for s in foto.trova(q, tf, dal, adesso) if setup_buono(s)]
+    locali = [s for tf in foto.TF_CRT for s in foto.trova(q, tf, dal, adesso) if setup_buono(s)]
+    forex_usd = strumento in foto.FOREX_DOLLARO
+    crypto_totale = strumento in foto.CRYPTO_TOTALE
+    # Per questi strumenti il CRT locale non è una fonte autonoma d'ingresso.
+    trovati = [] if forex_usd or crypto_totale else list(locali)
     qd = _dxy(gemelli, adesso, lunghe_dxy) if strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA else None
     dxy_setup = []
     if qd is not None:
         dxy_setup = [s for tf in foto.TF_CRT for s in foto.trova(qd, tf, dal, adesso) if setup_buono(s)]
         for sd in dxy_setup:
-            if not sd.presi:
+            if not forex_usd:
                 continue
-            gia = any(s.tf is sd.tf and s.n3_inizio == sd.n3_inizio for s in trovati)
-            # Un setup del DXY ne fa uno sulla coppia solo sul forex (correlazione piena): oro e indici a volte vanno
-            # con il dollaro, li' il DXY da' solo il parere.
-            if not gia and strumento in foto.FOREX_DOLLARO:
-                x = foto.dal_dxy(q, sd)
-                if x is not None:
-                    trovati.append(x)
-    # Le crypto con la TOTAL (il proprietario, 12/10/2026): un suo setup fa entrare su BTC ed ETH dalla stessa parte.
-    qt = _dxy(gemelli, adesso, lunghe_totale, "TOTAL") if strumento in foto.CRYPTO_TOTALE else None
+            x = foto.dal_dxy(q, sd)
+            if x is None:
+                continue
+            # La coppia deve avere un CRT dello stesso timeframe, apertura e verso del segnale DXY.
+            # Il suo CRT conferma il segnale ma non ne decide la direzione.
+            conferma = any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso for s in locali)
+            if conferma and not any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso
+                                    for s in trovati):
+                trovati.append(x)
+    # BTC ed ETH entrano solo nella direzione del CRT della TOTAL.
+    qt = _dxy(gemelli, adesso, lunghe_totale, "TOTAL") if crypto_totale else None
     tot_setup = []
     if qt is not None:
         tot_setup = [s for tf in foto.TF_CRT for s in foto.trova(qt, tf, dal, adesso) if setup_buono(s)]
         for st in tot_setup:
-            if not st.presi or any(s.tf is st.tf and s.n3_inizio == st.n3_inizio for s in trovati):
-                continue
             x = foto.dal_totale(q, st)
-            if x is not None:
+            if x is not None and not any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso
+                                          for s in trovati):
                 trovati.append(x)
     # Una sola occasione per apertura e verso: quella del timeframe piu' grande.
     gruppi: dict = {}

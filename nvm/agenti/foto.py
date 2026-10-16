@@ -703,42 +703,30 @@ def kl_liquidazione(q: Quadro, s: Setup) -> Optional[Livello]:
 
 
 def obiettivo_finale(q: Quadro, s: Setup) -> Obiettivo:
-    """Il proprietario: *"il gap il target finale, ovvio che se non c'è gap il target è il kl"*; e mai prima
-    dell'altro lato del key level preso (`target_minimo`: preso il DH, almeno il DL).
-
-    In ordine: il gap valido piu' vicino oltre il primo target (`gap_target`: intatto, la sua terza candela non ha
-    accettato); il key level dove un gap contro di noi va a liquidare l'aggressione (`kl_liquidazione`); il key level
-    dall'altra parte del periodo piu' grande preso (`kl_target`); l'altro lato del key level piu' piccolo preso; se
-    no tutto al primo target (foto 1 della cartella 3). Mai oltre un gap che ha accettato (`muro_accettato`). Le
-    foto e gli esempi dal vivo che lo decidono: `tests/test_foto.py`."""
+    """Se la candela 2 ha preso key level di più timeframe, il target diretto è il key level opposto del timeframe
+    più piccolo (WH + DH -> DL). Se manca quel livello, restano i fallback del metodo originale: gap valido,
+    key level di liquidazione, key level del periodo più grande e infine l'altro lato del range."""
     pavimento = target_minimo(q, s)
+    if pavimento is not None:
+        return Obiettivo(pavimento.prezzo, "key level", pavimento.nome, pavimento.tf)
     muro = muro_accettato(q, s)
-    oltre = (lambda p: True) if pavimento is None else \
-        (lambda p: p <= pavimento.prezzo + 1e-12) if s.short else (lambda p: p >= pavimento.prezzo - 1e-12)
-    candidati = [(g.bordo, Obiettivo(g.bordo, "gap", g.nome, g.tf)) for g in gap_target(q, s) if oltre(g.bordo)]
+    candidati = [(g.bordo, Obiettivo(g.bordo, "gap", g.nome, g.tf)) for g in gap_target(q, s)]
     if candidati:
         return min(candidati, key=lambda c: abs(c[0] - s.tp1))[1]
     for k in (kl_liquidazione(q, s), kl_target(q, s)):
-        if k is not None and oltre(k.prezzo) and _prima_del_muro(s, muro, k.prezzo):
+        if k is not None and _prima_del_muro(s, muro, k.prezzo):
             return Obiettivo(k.prezzo, "key level", k.nome, k.tf)
-    if pavimento is not None:
-        return Obiettivo(pavimento.prezzo, "key level", pavimento.nome, pavimento.tf)
     return Obiettivo(s.tp1, "range", "l'altro lato del range", s.tf)
 
 
 def target_minimo(q: Quadro, s: Setup) -> Optional[Livello]:
-    """Il target finale non sta mai prima dell'altro lato del key level piu' piccolo preso dalla candela 2 (il
-    proprietario, 12/10/2026, AUDUSD: *"avendo sbilanciato il wh e dh, puntiamo almeno al dl come target finale"*;
-    tutti gli esempi delle foto hanno il target li' o oltre). None se non serve: nessun key level preso (di periodi
-    gia' chiusi), o l'altro lato non sta oltre il TP1."""
+    """Il target diretto è il key level opposto del timeframe più piccolo preso dalla candela 2
+    (per esempio, presi WH e DH, il DL). None se quel key level o il suo opposto non esistono."""
     presi = [l for l in s.presi if not l.oggi]
     if not presi:
         return None
     piccolo = min(presi, key=lambda l: ORDINE.index(l.tf))
-    altro = next((l for l in livelli_prima(q, s.n2_inizio, (piccolo.tf,)) if l.alto != piccolo.alto), None)
-    if altro is None or not ((altro.prezzo < s.tp1) if s.short else (altro.prezzo > s.tp1)):
-        return None
-    return altro
+    return next((l for l in livelli_prima(q, s.n2_inizio, (piccolo.tf,)) if l.alto != piccolo.alto), None)
 
 
 def target_dopo(q: Quadro, s: Setup, ob: Obiettivo) -> Optional[Obiettivo]:
