@@ -101,3 +101,15 @@ def test_le_metriche_non_si_fanno_ingannare_dal_niente():
     m = metriche(sempre_niente, veri, 3)
     assert m["giuste"] == pytest.approx(0.98)
     assert m["media dei richiami"] == pytest.approx(0.5)
+
+def test_campione_esame_stratifica_classi_rare():
+    pytest.importorskip("torch")
+    from kaggle_rete.zone import _campione_stratificato
+
+    candidati = np.arange(10_000)
+    etichette = np.zeros(len(candidati), np.int8)
+    etichette[-100:] = 1
+    scelti = _campione_stratificato(candidati, {"direzione": etichette}, 200, np.random.default_rng(7))
+
+    assert len(scelti) == 200
+    assert np.bincount(etichette[scelti], minlength=2).tolist() == [100, 100]
