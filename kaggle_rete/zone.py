@@ -198,10 +198,11 @@ def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int, disponibili: l
     usati = [r for r in richiamo if r is not None]
     risultato = {"casi": int(len(y)), "giuste": float((p == y).mean()) if len(y) else None,
                  "media dei richiami": float(np.mean(usati)) if usati else None, "richiamo": richiamo,
-                 "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist(),
-                 "campionamento": "stratificato per materia e classe"}
+                 "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist()}
     if disponibili is not None:
         risultato["casi disponibili per classe"] = disponibili
+        risultato["campionamento"] = ("stratificato per materia e classe; giuste e precisione non stimano "
+                                      "la prevalenza naturale")
     return risultato
 
 
