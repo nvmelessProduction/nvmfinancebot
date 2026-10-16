@@ -292,8 +292,8 @@ def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) 
 
 
 def voti(m: dict) -> tuple[float, float]:
-    """(la media, la piu' bassa) delle medie dei richiami delle materie con abbastanza casi. Decide l'esame la piu'
-    bassa; la rete migliore durante la scuola si sceglie con la media, che si muove prima."""
+    """(la media, la piu' bassa) delle medie dei richiami delle materie con abbastanza casi. L'esame richiede che
+    passino tutte: durante la scuola si sceglie prima la peggiore, poi la media complessiva."""
     r = [x["media dei richiami"] for x in m.values() if x.get("media dei richiami") is not None and
          x["casi"] >= MINIMO_ESAME]
     return (float(np.mean(r)), float(min(r))) if r else (0.0, 0.0)
@@ -423,21 +423,27 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
                            "la peggiore": minimo})
             scrivi(f"passo {passi}: errore {float(errore.detach()):.3f}; al controllo le materie in media al {v:.1%}, "
                    f"la peggiore ({peggiore}) al {minimo:.1%}")
-            if migliore is None or v > migliore[0]:
-                migliore = (v, {k: t.detach().clone() for k, t in rete.state_dict().items()})
-                torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passi},
+            if migliore is None or (minimo, v) > (migliore[0], migliore[1]):
+                stato = {k: t.detach().clone() for k, t in rete.state_dict().items()}
+                migliore = (minimo, v, passi, stato)
+                torch.save({"pesi": stato, "occhi": rete.occhi.misura, "passi": passi,
+                            "controllo": {"media": v, "peggiore": minimo}},
                            uscita / "zone_nameless.pt")
     if migliore is not None:
-        rete.load_state_dict(migliore[1])
+        rete.load_state_dict(migliore[3])
     esame = misura(rete, sc, "esame", campione)
     foto = foto_rete(rete, sc, materie)
     contano = {k: x for k, x in esame.items() if x.get("media dei richiami") is not None and x["casi"] >= MINIMO_ESAME}
     passa = all(x["media dei richiami"] >= SOGLIA for x in contano.values()) and all(f["rete"] for f in foto)
-    resoconto = {"passa": passa, "esame": esame, "foto": foto, "passi": passi, "ore": ore,
+    passo_migliore = migliore[2] if migliore is not None else passi
+    controle_migliore = ({"media": migliore[1], "peggiore": migliore[0]} if migliore is not None else None)
+    resoconto = {"passa": passa, "esame": esame, "foto": foto, "passi": passi, "miglior_passo": passo_migliore,
+                 "controllo_migliore": controle_migliore, "ore": ore,
                  "minuti": round((time.time() - inizio) / 60), "storia": storia, "scarti": et.scarti,
                  "mercati": conti}
-    torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passi, "passa": passa,
-                "esame": esame}, uscita / "zone_nameless.pt")
+    torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passo_migliore,
+                "passi_totali": passi, "passa": passa, "esame": esame,
+                "controllo": controle_migliore}, uscita / "zone_nameless.pt")
     (uscita / "esame_zone.json").write_text(json.dumps(resoconto, indent=1, ensure_ascii=False), encoding="utf-8")
     stampa(resoconto, scrivi)
     return resoconto
