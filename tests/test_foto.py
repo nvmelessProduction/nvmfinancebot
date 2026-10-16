@@ -508,9 +508,9 @@ def test_l_agente_dxy_legge_il_grafico_usdx_e_non_lo_calcola_piu():
     assert G._dxy({**coppie, "DXY": dxy}, n3).strumento == "DXY"
     con = [d for d in G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), {**coppie, "DXY": dxy})
            if d.r.verso is Verso.SHORT]
-    senza = [d for d in G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), coppie) if d.r.verso is Verso.SHORT]
+    senza = G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), coppie)
     assert con and con[0].foto["dxy"] is not None and con[0].foto["dxy"].verso is Verso.LONG
-    assert senza and senza[0].foto["dxy"] is None
+    assert not senza
 
 
 def test_lo_stoppino_del_rollover_non_e_una_presa():
