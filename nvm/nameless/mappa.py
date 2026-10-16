@@ -40,16 +40,56 @@ ELEMENTI = tuple([f"{tf.value} {lato}" for tf in TF_KL for lato in ("massimo", "
                    "ribassista toccato")])
 
 
-def _primo_oltre(valori: np.ndarray, da: np.ndarray, soglie: np.ndarray, come: str) -> np.ndarray:
-    """Per ogni coppia (da, soglia), il primo indice >= da col valore oltre la soglia (`come`: ">", ">=", "<", "<=");
-    MAI se mai. Gli stessi confronti delle regole delle foto."""
-    fuori = np.full(len(da), MAI, np.int64)
-    confronto = {">": np.greater, ">=": np.greater_equal, "<": np.less, "<=": np.less_equal}[come]
-    for n, (a, s) in enumerate(zip(da.tolist(), soglie.tolist())):
-        oltre = confronto(valori[a:], s)
-        if len(oltre) and oltre.any():
-            fuori[n] = a + int(np.argmax(oltre))
-    return fuori
+class _IndicePrimo:
+    """Indice ad albero: trova il primo superamento dopo un'ora senza riscansionare tutto il futuro."""
+
+    def __init__(self, valori: np.ndarray, massimo: bool):
+        self.n = len(valori)
+        self.massimo = massimo
+        self.dimensione = 1
+        while self.dimensione < self.n:
+            self.dimensione <<= 1
+        neutro = -np.inf if massimo else np.inf
+        self.albero = np.full(2 * self.dimensione, neutro, np.float64)
+        self.albero[self.dimensione:self.dimensione + self.n] = valori
+        combina = np.maximum if massimo else np.minimum
+        livello = self.dimensione
+        while livello > 1:
+            inizio = livello // 2
+            self.albero[inizio:livello] = combina(
+                self.albero[2 * inizio:2 * livello:2],
+                self.albero[2 * inizio + 1:2 * livello:2])
+            livello = inizio
+
+    def primo(self, da: int, soglia: float, come: str) -> int:
+        if da >= self.n:
+            return MAI
+        if self.massimo != (come in (">", ">=")):
+            raise ValueError(f"Indice incompatibile con il confronto {come}")
+
+        def cerca(nodo: int, sinistra: int, destra: int) -> int:
+            if destra <= da:
+                return MAI
+            valore = self.albero[nodo]
+            supera = (valore > soglia if come == ">" else valore >= soglia if come == ">=" else
+                      valore < soglia if come == "<" else valore <= soglia)
+            if not supera:
+                return MAI
+            if destra - sinistra == 1:
+                return sinistra if sinistra < self.n else MAI
+            centro = (sinistra + destra) // 2
+            trovato = cerca(nodo * 2, sinistra, centro)
+            return trovato if trovato != MAI else cerca(nodo * 2 + 1, centro, destra)
+
+        return cerca(1, 0, self.dimensione)
+
+
+def _primo_oltre(valori: np.ndarray, da: np.ndarray, soglie: np.ndarray, come: str,
+                 indice: _IndicePrimo | None = None) -> np.ndarray:
+    """Per ogni coppia (da, soglia), il primo indice >= da col valore oltre la soglia: MAI se mai."""
+    indice = indice or _IndicePrimo(valori, massimo=come in (">", ">="))
+    return np.fromiter((indice.primo(int(a), float(s), come) for a, s in zip(da, soglie)),
+                       dtype=np.int64, count=len(da))
 
 
 def _ore_da(prossimo: np.ndarray, istanti: np.ndarray) -> np.ndarray:
@@ -65,6 +105,7 @@ def tavole(ore: Minuti) -> dict:
     h1 = q.ore
     prossimo = np.maximum(np.r_[h1.inizio[1:], h1.fine[-1:]], h1.fine).astype(np.int64)
     alti, bassi = h1.bid[:, MASSIMO], h1.bid[:, MINIMO]
+    indice_alti, indice_bassi = _IndicePrimo(alti, True), _IndicePrimo(bassi, False)
     fuori = {"ore": len(h1)}
     # I key level: da quale ora il prezzo ha preso il massimo (il minimo) di ogni candela, dopo la sua fine.
     for tf in TF_KL:
@@ -72,8 +113,8 @@ def tavole(ore: Minuti) -> dict:
         da = np.searchsorted(h1.inizio, c.fine).astype(np.int64)
         fuori[f"kl {tf.value}"] = {
             "fine": c.fine.astype(np.int64),
-            "preso alto": _primo_oltre(alti, da, c.bid[:, MASSIMO], ">"),
-            "preso basso": _primo_oltre(bassi, da, c.bid[:, MINIMO], "<")}
+            "preso alto": _primo_oltre(alti, da, c.bid[:, MASSIMO], ">", indice_alti),
+            "preso basso": _primo_oltre(bassi, da, c.bid[:, MINIMO], "<", indice_bassi)}
     # Le accettazioni: per ogni candela (quando e' l'ultima chiusa) il verso, il livello e da quale ora e' preso.
     for tf in TF_ACCETTA:
         c = q.candele[tf]
@@ -94,8 +135,9 @@ def tavole(ore: Minuti) -> dict:
                 j, dentro = j - 1, dentro + 1
             if verso[k]:
                 a = int(np.searchsorted(h1.inizio, int(c.fine[j])))
-                preso[k] = _primo_oltre(alti if verso[k] > 0 else bassi, np.array([a]), np.array([livello[k]]),
-                                        ">" if verso[k] > 0 else "<")[0]
+                preso[k] = _primo_oltre(
+                    alti if verso[k] > 0 else bassi, np.array([a]), np.array([livello[k]]),
+                    ">" if verso[k] > 0 else "<", indice_alti if verso[k] > 0 else indice_bassi)[0]
         fuori[f"accettazione {tf.value}"] = {"fine": c.fine.astype(np.int64), "verso": verso, "livello": livello,
                                              "preso": preso}
     # I gap: tutti, con quando entrano e escono dalla finestra delle regole, quando sono toccati e riempiti, le fasi.
@@ -118,11 +160,11 @@ def tavole(ore: Minuti) -> dict:
                 continue
             a = int(np.searchsorted(h1.inizio, int(c.fine[i])))
             if rialzista:
-                tocco = _primo_oltre(bassi, np.array([a]), np.array([alto]), "<=")[0]
-                pieno = _primo_oltre(bassi, np.array([a]), np.array([basso]), "<")[0]
+                tocco = _primo_oltre(bassi, np.array([a]), np.array([alto]), "<=", indice_bassi)[0]
+                pieno = _primo_oltre(bassi, np.array([a]), np.array([basso]), "<", indice_bassi)[0]
             else:
-                tocco = _primo_oltre(alti, np.array([a]), np.array([basso]), ">=")[0]
-                pieno = _primo_oltre(alti, np.array([a]), np.array([alto]), ">")[0]
+                tocco = _primo_oltre(alti, np.array([a]), np.array([basso]), ">=", indice_alti)[0]
+                pieno = _primo_oltre(alti, np.array([a]), np.array([alto]), ">", indice_alti)[0]
             reazione = liquidazione = MAI
             estremo = np.nan
             if tocco != MAI:
