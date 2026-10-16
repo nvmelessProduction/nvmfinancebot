@@ -45,6 +45,7 @@ from nvm.nameless.zone import USCITE_CANDELA, USCITE_CRT, Zone, parte
 
 SOGLIA = 0.98
 MINIMO_ESAME = 200
+SEME_MISURA = 7
 DOMANDE_CRT = ("crt", "key level", "entra", "direzione", "target")
 DOMANDE_CANDELA = ("direzione", "accetta")
 # La direzione CRT e' binaria; quella delle candele ha tre classi (ribassista, neutra, rialzista).
@@ -295,7 +296,7 @@ def previsioni(rete: Zone, scuola: Scuola, j: np.ndarray, lotto: int = 512) -> t
             np.concatenate(p_rr))
 
 
-def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) -> dict:
+def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = SEME_MISURA) -> dict:
     """Le materie su una parte degli anni: campione stratificato tra risposte e classi per dare supporto alle rare."""
     rng = np.random.default_rng(seme)
     fuori = {}
@@ -455,7 +456,7 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
         passi += 1
         if time.time() - ultimo > 60 * ogni_minuti or time.time() >= fine:
             ultimo = time.time()
-            c = misura(rete, sc, "controllo", 3000)
+            c = misura(rete, sc, "controllo", 3000, seme=SEME_MISURA)
             v, minimo = voti(c)
             peggiore = min((k for k, x in c.items() if x.get("media dei richiami") is not None and
                             x["casi"] >= MINIMO_ESAME), key=lambda k: c[k]["media dei richiami"], default="-")
@@ -468,23 +469,26 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
                 stato = {k: t.detach().clone() for k, t in rete.state_dict().items()}
                 migliore = (minimo, v, passi, stato)
                 torch.save({"pesi": stato, "occhi": rete.occhi.misura, "passi": passi,
-                            "controllo": {"media": v, "peggiore": minimo}},
+                            "controllo": {"media": v, "peggiore": minimo}, "seme": seme, "mappa": bool(mappa)},
                            uscita / "zone_nameless.pt")
     if migliore is not None:
         rete.load_state_dict(migliore[3])
-    esame = misura(rete, sc, "esame", campione)
+    esame = misura(rete, sc, "esame", campione, seme=SEME_MISURA)
     foto = foto_rete(rete, sc, materie)
     contano = {k: x for k, x in esame.items() if x.get("media dei richiami") is not None and x["casi"] >= MINIMO_ESAME}
     passa = all(x["media dei richiami"] >= SOGLIA for x in contano.values()) and all(f["rete"] for f in foto)
     passo_migliore = migliore[2] if migliore is not None else passi
     controllo_migliore = ({"media": migliore[1], "peggiore": migliore[0]} if migliore is not None else None)
     resoconto = {"passa": passa, "esame": esame, "foto": foto, "passi": passi, "miglior_passo": passo_migliore,
-                 "controllo_migliore": controllo_migliore, "ore": ore,
+                 "controllo_migliore": controllo_migliore, "mappa": bool(mappa), "seme": seme,
+                 "seme_misura": SEME_MISURA, "campione_esame": campione,
+                 "campionamento_esame": "stratificato per materia e classe", "ore": ore,
                  "minuti": round((time.time() - inizio) / 60), "storia": storia, "scarti": et.scarti,
                  "mercati": conti}
     torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passo_migliore,
                 "passi_totali": passi, "passa": passa, "esame": esame,
-                "controllo": controllo_migliore}, uscita / "zone_nameless.pt")
+                "controllo": controllo_migliore, "mappa": bool(mappa), "seme": seme,
+                "seme_misura": SEME_MISURA}, uscita / "zone_nameless.pt")
     (uscita / "esame_zone.json").write_text(json.dumps(resoconto, indent=1, ensure_ascii=False), encoding="utf-8")
     stampa(resoconto, scrivi)
     return resoconto
