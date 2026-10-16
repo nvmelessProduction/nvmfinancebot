@@ -163,16 +163,43 @@ def pesi_classi(y: np.ndarray, classi: int) -> torch.Tensor:
     return torch.tensor(w / w.mean(), dtype=torch.float32)
 
 
-def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int) -> dict:
-    """Quante ne indovina, la media dei richiami (le classi con almeno 10 casi) e la precisione per classe."""
+def _campione_stratificato(candidati: np.ndarray, etichette: dict[str, np.ndarray], quanti: int,
+                           rng: np.random.Generator) -> np.ndarray:
+    """Seleziona esempi per ogni classe di ogni risposta, distribuendo quanti esempi circa tra gli strati."""
+    gruppi = []
+    for valori in etichette.values():
+        valori = np.asarray(valori)
+        if valori.ndim == 1:
+            valori = valori[:, None]
+        for i in range(valori.shape[1]):
+            for classe in np.unique(valori[:, i]):
+                if classe < 0:
+                    continue
+                indici = np.flatnonzero(valori[:, i] == classe)
+                if len(indici):
+                    gruppi.append(indici)
+    if not gruppi:
+        return np.sort(rng.choice(candidati, size=min(quanti, len(candidati)), replace=False))
+    quota = max(1, math.ceil(quanti / len(gruppi)))
+    scelti = [rng.choice(i, size=quota, replace=False) if len(i) > quota else i for i in gruppi]
+    return np.sort(np.unique(candidati[np.concatenate(scelti)]))
+
+
+def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int, disponibili: np.ndarray | None = None) -> dict:
+    """Quante ne indovina; il richiamo è calcolato sul campione stratificato per materia e classe."""
     ok = veri >= 0
     p, y = previsti[ok], veri[ok]
     richiamo = [float((p[y == c] == c).mean()) if (y == c).sum() >= 10 else None for c in range(classi)]
     precisione = [float((y[p == c] == c).mean()) if (p == c).sum() >= 10 else None for c in range(classi)]
     usati = [r for r in richiamo if r is not None]
-    return {"casi": int(len(y)), "giuste": float((p == y).mean()) if len(y) else None,
-            "media dei richiami": float(np.mean(usati)) if usati else None, "richiamo": richiamo,
-            "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist()}
+    risultato = {"casi": int(len(y)), "giuste": float((p == y).mean()) if len(y) else None,
+                 "media dei richiami": float(np.mean(usati)) if usati else None, "richiamo": richiamo,
+                 "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist(),
+                 "campionamento": "stratificato per materia e classe"}
+    if disponibili is not None:
+        disponibili = disponibili[disponibili >= 0].astype(np.int64)
+        risultato["casi disponibili per classe"] = np.bincount(disponibili, minlength=classi).tolist()
+    return risultato
 
 
 class Scuola:
@@ -265,29 +292,38 @@ def previsioni(rete: Zone, scuola: Scuola, j: np.ndarray, lotto: int = 512) -> t
 
 
 def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) -> dict:
-    """Le materie su una parte degli anni: per ogni timeframe dei CRT le sue ore di domanda, per le candele ore
-    qualunque."""
+    """Le materie su una parte degli anni: campione stratificato tra risposte e classi per dare supporto alle rare."""
     rng = np.random.default_rng(seme)
     fuori = {}
+    campione_desc = "stratificato per materia e classe"
     for i, tf in enumerate(M.TF_CRT):
         c = scuola.confini[parte_][i]
         if not len(c):
             continue
-        j = np.sort(rng.choice(c, size=min(quanti, len(c)), replace=False))
+        disponibili = {d: scuola.et.crt[d][c, i] for d in DOMANDE_CRT}
+        j = _campione_stratificato(c, disponibili, quanti, rng)
         p_crt, _, p_rr = previsioni(rete, scuola, j)
         for d in DOMANDE_CRT:
-            fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i], CLASSI_CRT[d])
+            y_completi = disponibili[d]
+            fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i],
+                                                 CLASSI_CRT[d], y_completi)
         rr = scuola.et.rr[j, i]
         ok = np.isfinite(rr)
         if ok.any():
             fuori[f"rr {tf.value}"] = {"casi": int(ok.sum()),
-                                       "errore mediano in R": float(np.median(np.abs(p_rr[ok, i] - rr[ok])))}
-    j = np.sort(rng.choice(scuola.ore[parte_], size=min(quanti, len(scuola.ore[parte_])), replace=False))
+                                       "errore mediano in R": float(np.median(np.abs(p_rr[ok, i] - rr[ok]))),
+                                       "campionamento": campione_desc}
+    ore = scuola.ore[parte_]
+    y_tutte = scuola.et.candele(scuola.sensi, ore)
+    supporti = {d: [y_tutte[d][:, i].copy() for i in range(len(M.TF_CANDELA))] for d in DOMANDE_CANDELA}
+    j = _campione_stratificato(ore, y_tutte, quanti, rng)
+    del y_tutte
     _, p_can, _ = previsioni(rete, scuola, j)
     y = scuola.et.candele(scuola.sensi, j)
     for i, tf in enumerate(M.TF_CANDELA):
         for d in DOMANDE_CANDELA:
-            fuori[f"candela {d} {tf.value}"] = metriche(p_can[d][:, i], y[d][:, i], CLASSI_CANDELA[d])
+            fuori[f"candela {d} {tf.value}"] = metriche(p_can[d][:, i], y[d][:, i],
+                                                         CLASSI_CANDELA[d], supporti[d][i])
     return fuori
 
 
