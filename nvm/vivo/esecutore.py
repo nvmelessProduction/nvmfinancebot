@@ -353,7 +353,7 @@ class Esecutore:
                                                              alla_chiusura=bool(v.tp1_entro))))
             elif sposta and v.pareggio_fatto:
                 fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
-                        restano.append(v)
+            restano.append(v)
         return restano, fatti
 
 
