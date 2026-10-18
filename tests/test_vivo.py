@@ -169,6 +169,26 @@ def test_il_grafico_del_dollaro_si_trova_col_nome_del_broker():
     assert not t2.esiste("DXY")
 
 
+def test_il_bot_usa_il_dxy_del_broker_quando_tradingview_non_e_attivo():
+    """Il fallback MT5 gia' mappa DXY su USDX: non deve richiedere TradingView."""
+    import vivo
+
+    dati = ore_finte("DXY", giorni=2)
+    chiamate, allarmi = [], []
+    fonte = NS(esiste=lambda nome: chiamate.append(("esiste", nome)) or True,
+               orarie=lambda nome, quante: (chiamate.append(("orarie", nome, quante)), dati)[1],
+               simbolo=lambda nome: "USDX")
+    bot = object.__new__(vivo.Bot)
+    bot.fonte, bot.terminale, bot.dxy = None, fonte, None
+    bot.allarme = allarmi.append
+
+    bot.aggiorna_dxy()
+
+    assert bot.dxy is dati
+    assert chiamate == [("esiste", "DXY"), ("orarie", "DXY", vivo.ORARIE)]
+    assert allarmi == []
+
+
 # --- il giro fa quello che fa lo storico ---
 
 def test_il_giro_decide_come_lo_storico():
