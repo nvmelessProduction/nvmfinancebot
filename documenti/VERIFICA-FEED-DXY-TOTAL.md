@@ -8,14 +8,14 @@ Il bot live in `nvm/vivo/giro.py` usa due contesti esterni: per le coppie FX con
 
 La scuola del Capo in `kaggle_rete/capo.py` costruisce invece setup e risultati dai CRT locali contenuti in `materie.crt`, per ciascun mercato. Non carica una serie storica DXY/TOTAL per applicare l'instradamento del live. L'esito negativo di questa fase, quindi, non è ancora un test conclusivo della strategia DXY/TOTAL richiesta: serve prima un dataset coerente e la stessa logica di segnali.
 
-C'è anche una discrepanza da risolvere nella scelta del simbolo DXY: `nvm/vivo/ambiente.py` documenta `CAPITALCOM:DXY` come default, mentre il commento in `nvm/vivo/giro.py` nomina FP Markets USDX. Il file `.env` non è nel repository e non va caricato qui; la configurazione effettiva va letta in modo locale e senza stampare segreti.
+La configurazione TradingView documenta `CAPITALCOM:DXY`, mentre `nvm/vivo/terminale.py` già mappa il DXY MT5 su `USDX` e `DX` (FP Markets). `vivo.py` prima rifiutava questa strada quando TradingView era disattivato. Questa PR aggiunge il fallback: con TradingView spento, il bot può leggere il DXY dal conto MT5; il test copre il routing verso il feed broker. La disponibilità e la profondità storica vanno comunque controllate sul conto demo.
 
 ## Feed alternativi verificati
 
 ### DXY
 
-- L'API ufficiale Capital.com espone prezzi storici in candele con risoluzione `HOUR`, intervallo `from/to` e massimo 1.000 barre per richiesta. Richiede una sessione API del conto; documentazione: [Capital.com Public API](https://open-api.capital.com/).
-- Capital.com offre il CFD sullo US Dollar Index e il codice già cita `CAPITALCOM:DXY`. È il primo candidato da confrontare con la configurazione effettiva, ma bisogna verificare l'epic disponibile nel conto e quanta storia oraria è scaricabile.
+- La via preferita è il feed MT5 del broker operativo: il codice già cerca `USDX` e `DX` per lo strumento DXY e MetaTrader espone le barre orarie del simbolo disponibile sul conto. FP Markets presenta USDX tra i propri indici e dichiara il supporto agli Expert Advisor su MT5; ciò non garantisce che ogni conto esponga quel simbolo o lo stesso storico. [FP Markets: MT5 ed Expert Advisor](https://www.fpmarkets.com/platforms/mt5/) · [USDX su FP Markets](https://www.fpmarkets.com/it-it/indices/).
+- Se l'epic/simbolo non è disponibile o lo storico è insufficiente, Capital.com è un'alternativa API: risoluzione `HOUR`, intervallo `from/to`, massimo 1.000 barre per richiesta e sessione del conto richiesta. Prima di usarla vanno verificati epic, copertura e differenza rispetto al feed di esecuzione. [Capital.com Public API](https://open-api.capital.com/).
 - ICE descrive il DXY ufficiale come indice calcolato intraday dai prezzi midpoint delle sei valute componenti e offre serie intraday a un'ora. È un riferimento autorevole, ma non dimostra che la serie coincida con il CFD del broker; accesso e licenza vanno quotati direttamente da ICE. [ICE U.S. Dollar Index](https://developer.ice.com/fixed-income-data-services/catalog/ice-data-indices-currency-indices) · [ICE serie orarie I60](https://developer.ice.com/fixed-income-data-services/guides/ice-python-user-guide-overview/gettimeseries)
 
 ### TOTAL
@@ -33,8 +33,8 @@ Questo vincolo si applica già allo shadow automatico e al backtest che usano da
 
 ## Percorso raccomandato
 
-1. Verificare la copertura, il mapping dei simboli e le condizioni d'uso di Capital.com per DXY e degli strumenti effettivamente tradati. Per TOTAL, valutare il feed OHLC CoinDesk e ottenere conferma che il piano/licenza copra l'uso previsto dal bot automatico.
-2. Se si accetta una definizione di TOTAL diversa dal top-125 TradingView, trattare Capital.com/CoinDesk come una nuova variante della strategia: usare solo le serie dei feed autorizzati, con orari UTC e candele chiuse, e registrare fonte, metodo, versione, timestamp di acquisizione e copertura.
+1. Verificare sul conto demo che MT5 fornisca `USDX` con sufficiente storico e usare MT5 per le coppie che il bot effettivamente opera; per TOTAL, valutare CoinDesk e ottenere conferma che piano e licenza coprano l'uso automatico previsto. Capital.com resta il fallback per DXY se il broker non fornisce il simbolo o la copertura.
+2. Se si accetta una definizione di TOTAL diversa dal top-125 TradingView, trattare MT5/CoinDesk come una nuova variante della strategia: usare solo feed autorizzati, candele UTC chiuse e registrare fonte, metodo, versione, data di acquisizione e copertura.
 3. Modificare la fase 3 affinché ricostruisca l'instradamento live FX/DXY e BTC/ETH/TOTAL e usi le stesse fonti autorizzate, candele, fusi e regole di esecuzione. La validazione deve includere dataset e mapping nel rapporto dell'esame.
 4. Se è requisito riprodurre esattamente i simboli di TradingView, fermarsi prima della raccolta automatica e richiedere una licenza/autorizzazione scritta per quello specifico uso. Senza quella, la fase 3 e l'online vanno valutati con una strategia basata su feed alternativi, senza presentarla come identica.
 
