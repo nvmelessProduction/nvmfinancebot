@@ -672,13 +672,12 @@ class Bot:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def aggiorna_dxy(self) -> None:
-        """Carica il DXY di TradingView, con CAPITALCOM:DXY come sorgente predefinita.
-        Se non è disponibile, i segnali sulle coppie USD restano bloccati."""
+        """Carica il DXY dal feed attivo: su MT5 è USDX (FP Markets), se disponibile.
+        Se il conto non espone il simbolo, i segnali sulle coppie USD restano bloccati."""
         self.dxy = getattr(self, "dxy", None)
-        if not self._su_tradingview or not self._fonte.esiste("DXY"):
+        if not self._fonte.esiste("DXY"):
             self.dxy = None
-            self.allarme("Per operare sulle coppie USD serve il DXY di TradingView (CAPITALCOM:DXY): "
-                         "i segnali restano bloccati finché non è disponibile.")
+            self.allarme("Segnali USD bloccati: il simbolo DXY (USDX su FP Markets) non è disponibile nel feed.")
             return
         try:
             if self.dxy is None:
@@ -691,7 +690,7 @@ class Bot:
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         if self.dxy is None:
-            self.allarme(f"TradingView: il grafico del dollaro ({self._fonte.simbolo('DXY')}) non arriva: "
+            self.allarme(f"Il feed DXY ({self._fonte.simbolo('DXY')}) non arriva: "
                          "i segnali sulle coppie USD restano bloccati.")
 
     def aggiorna_totale(self) -> None:
