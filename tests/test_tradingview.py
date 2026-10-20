@@ -19,8 +19,8 @@ from nvm.vivo.esecutore import Esecutore
 from nvm.vivo.stato import Seguita, Stato
 from nvm.vivo.telegram import Telegram
 from nvm.vivo.terminale import Terminale
-from nvm.vivo.tradingview import (REGISTRA, TOKEN, Accesso, AccessoScaduto, Fonte, TradingView, _barre, _messaggi,
-                                  leggi_simboli, minuti)
+from nvm.vivo.tradingview import (MARGINE_QUOTA, REGISTRA, TOKEN, Accesso, AccessoScaduto, Fonte, QuotaFinita,
+                                  TradingView, _barre, _messaggi, fine_quota, leggi_simboli, minuti)
 from tests.mt5_finto import MT5Finto
 from tests.test_vivo import _una_decisione
 
@@ -499,7 +499,11 @@ def test_la_rete_vera_giudica_un_setup_e_spiega_cosa_vede():
     ore, n3 = _foto_base()
     righe = [(int(t), *(float(x) * ore.punto for x in b)) for t, b in zip(ore.t, ore.bid)]
     prima = [(int(ore.t[0]) - k * ORA_F, 1.1000, 1.1003, 1.0997, 1.1000) for k in range(240, 0, -1)]
-    (d,) = G.occasioni_foto("EURUSD", _ore(prima + righe, "EURUSD"), n3, n3, CapoFinto(), {})
+    euro = _ore(prima + righe, "EURUSD")
+    # Su EURUSD si entra solo col pattern del DXY (20/10/2026): il DXY e' lo specchio dell'euro, prende il DH e rientra.
+    dxy = _ore([(t, 100 / o, 100 / l, 100 / h, 100 / c) for t, o, h, l, c in prima + righe], "DXY", spread=0.0)
+    (d,) = G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), {"EURUSD": euro, "DXY": dxy})
+    assert d.foto["setup"].dal_dxy and d.foto["dxy"].presi
     rete, perche = Rete.carica()
     assert rete is not None, perche
     g = rete.giudica(d)
@@ -583,8 +587,49 @@ def test_se_tradingview_chiede_di_rallentare_si_aspetta_e_si_riprova(tmp_path):
         tv2.candele("FX_IDC:EURUSD", 3600, 10)
 
 
-def test_su_tradingview_i_quarti_d_ora_si_chiedono_a_turno():
+def test_la_quota_giornaliera_finita_ferma_le_richieste_fino_a_mezzanotte_utc(tmp_path):
+    """Il server, 20/10/2026 alle 16:07 UTC: *"TOOL_QUOTA_EXCEEDED - Tool call quota exceeded (Daily tool-call quota
+    for this user is exhausted. It resets at 00:00 UTC, in about 7h 53m; do not retry"*."""
+    adesso = [float(utc(2026, 10, 20, 16, 7))]
+    barre = [{"t": 3600, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 3}]
+    server = ServerFinto(barre)
+    server.scaduta = True
+    finita = [True]
+    vero = server.__call__
+    testo = ("tool_pre_invoke blocked by plugin ToolQuotaPlugin: TOOL_QUOTA_EXCEEDED - Tool call quota exceeded "
+             "(Daily tool-call quota for this user is exhausted. It resets at 00:00 UTC, in about 7h 53m; do not retry)")
+
+    def con_quota(url, dati, intestazioni):
+        m = json.loads(dati)
+        if m.get("method") == "tools/call" and finita[0]:
+            corpo = json.dumps({"jsonrpc": "2.0", "id": m["id"],
+                                "result": {"isError": True, "content": [{"type": "text", "text": testo}]}})
+            return 200, {"Content-Type": "application/json"}, corpo.encode()
+        return vero(url, dati, intestazioni)
+    tv = TradingView(_accesso(tmp_path), posta=con_quota, intervallo=0.0, orologio=lambda: adesso[0])
+    with pytest.raises(QuotaFinita) as preso:
+        tv.candele("FX_IDC:USDJPY", 3600, 10)
+    assert preso.value.fino_a == utc(2026, 10, 21) + MARGINE_QUOTA and tv.ferma and tv.chiamate_oggi == 1
+    # Fino ad allora nessuna richiesta parte (*"do not retry"*).
+    prima = len(server.chiamate)
+    for simbolo in ("FX_IDC:USDCAD", "FX_IDC:AUDCAD"):
+        with pytest.raises(QuotaFinita):
+            tv.candele(simbolo, 3600, 10)
+    assert len(server.chiamate) == prima
+    # Dopo la mezzanotte UTC (e il margine) si riparte, e il conto del giorno ricomincia.
+    finita[0] = False
+    adesso[0] = utc(2026, 10, 21) + MARGINE_QUOTA + 1
+    assert tv.candele("FX_IDC:USDJPY", 3600, 10) == barre and not tv.ferma and tv.chiamate_oggi == 1
+    # Gli altri errori non sono la quota.
+    assert fine_quota("get_ohlcv: symbol not found", adesso[0]) is None
+    assert fine_quota("Tool call quota exceeded", float(utc(2026, 10, 20, 23, 0))) == utc(2026, 10, 21) + MARGINE_QUOTA
+
+
+def test_su_tradingview_i_quarti_d_ora_si_chiedono_a_turno(monkeypatch):
     import vivo
+    from nvm.vivo import giro as il_giro
+    monkeypatch.setattr(il_giro, "METODO", "candela 3")      # col metodo delle foto arrivano da MT5
+    monkeypatch.setattr(vivo, "giro_orario", lambda *a, **k: [])
     chieste = []
     bot = object.__new__(vivo.Bot)
     bot.fonte = NS(barre=lambda s, quante, passo: chieste.append((s, quante)) or vivo.Minuti.vuoti(s, 900))
@@ -592,7 +637,10 @@ def test_su_tradingview_i_quarti_d_ora_si_chiedono_a_turno():
     bot.fini = {s: vivo.Minuti.vuoti(s, 900) for s in bot.strumenti}
     bot.stato = Stato()
     bot.stato.ultimo_quarto = 0
-    for nome in ("uscite", "parla"):
+    bot.terminale = NS(barre=lambda *a: pytest.fail("non da MT5"))
+    bot.basi = {s: vivo.Minuti.vuoti(s, 3600) for s in bot.strumenti}
+    bot.capo = None
+    for nome in ("uscite", "parla", "_decidi", "gemelli"):
         setattr(bot, nome, lambda *a: None)
     bot.giro_veloce(900 * 5)                                 # turno 1: gli strumenti 1 e 5
     assert chieste == [("S1", 12), ("S5", 12)]

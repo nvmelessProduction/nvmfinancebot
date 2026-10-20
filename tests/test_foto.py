@@ -4,6 +4,7 @@ Le prove con i dati scritti a mano rifanno la struttura delle foto; quelle in fo
 sui dati di Dukascopy, se ci sono (stanno in `dati/`, che non va nel repository)."""
 
 import datetime as dt
+from dataclasses import replace
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -511,6 +512,34 @@ def test_l_agente_dxy_legge_il_grafico_usdx_e_non_lo_calcola_piu():
     senza = G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), coppie)
     assert con and con[0].foto["dxy"] is not None and con[0].foto["dxy"].verso is Verso.LONG
     assert not senza
+
+
+def test_sulle_coppie_col_dollaro_entra_solo_il_pattern_del_dxy(monkeypatch):
+    """Il proprietario, 20/10/2026: il bot era entrato short su GBPUSD per un CRT 4 ore suo, dopo uno sbilanciamento;
+    *"il bot si deve basare solo ed esclusivamente solo sul dxy ... solo ed esclusivamente quando il dxy da il pattern
+    quindi il crt con i vari sbilanciamenti"*."""
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    ore, n3 = _foto_base()
+    righe = [(int(t), *(float(x) * ore.punto for x in b)) for t, b in zip(ore.t, ore.bid)]
+    prima = [(int(ore.t[0]) - k * ORA, 1.1000, 1.1003, 1.0997, 1.1000) for k in range(240, 0, -1)]
+    righe = prima + righe
+    dxy = _ore([(t, 90 * o, 90 * h, 90 * l, 90 * c) for t, o, h, l, c in righe], "DXY", spread=0.0)
+    sterlina = _ore([(t, 1.21 / o, 1.21 / l, 1.21 / h, 1.21 / c) for t, o, h, l, c in righe], "GBPUSD")
+    piatto = _ore([(t, 90.0, 90.01, 89.99, 90.0) for t, *_ in righe], "DXY", spread=0.0)
+    # La sterlina ha il suo CRT short, ma il DXY non fa niente: non si entra.
+    assert any(s.verso is Verso.SHORT for tf in F.TF_CRT for s in F.trova(F.Quadro.da(sterlina, n3), tf, n3, n3))
+    assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": piatto})
+    # Il DXY fa il CRT col key level preso: si entra dalla parte opposta, anche senza il CRT della sterlina.
+    vero = F.trova
+    monkeypatch.setattr(F, "trova", lambda q, *a: [] if q.strumento == "GBPUSD" else vero(q, *a))
+    con = G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy})
+    assert con and all(d.r.verso is Verso.SHORT and d.foto["setup"].dal_dxy for d in con)
+    assert all(d.foto["dxy"].presi for d in con)
+    # Un CRT del DXY senza key level presi non e' il pattern: non si entra.
+    monkeypatch.setattr(F, "trova", lambda q, *a: [] if q.strumento == "GBPUSD" else
+                        [replace(s, presi=[]) for s in vero(q, *a)])
+    assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy})
 
 
 def test_lo_stoppino_del_rollover_non_e_una_presa():

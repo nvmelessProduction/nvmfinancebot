@@ -397,6 +397,7 @@ class Setup:
     dal_dxy: bool = False                       # nato da un setup del DXY
     dal_totale: bool = False                    # nato da un setup della TOTAL (le crypto)
     prima_inizio: int = 0                       # l'inizio della candela prima del range
+    presi_guida: list = field(default_factory=list)  # i key level presi dal DXY (dalla TOTAL), se nato da lui
 
     @property
     def short(self) -> bool:
@@ -723,10 +724,14 @@ def target_minimo(q: Quadro, s: Setup) -> Optional[Livello]:
     """Il target diretto è il key level opposto del timeframe più piccolo preso dalla candela 2
     (per esempio, presi WH e DH, il DL). None se quel key level o il suo opposto non esistono."""
     presi = [l for l in s.presi if not l.oggi]
+    # Sui setup nati dal DXY (dalla TOTAL) lo sbilanciamento che conta e' il suo: se la coppia non ha preso key level
+    # suoi, il timeframe e' quello del key level piu' piccolo preso dal DXY, e il target il livello di quel periodo
+    # della coppia dalla parte dove va l'operazione (il DXY prende il DH, EURUSD compra: il DH di EURUSD).
+    presi = presi or [l for l in s.presi_guida if not l.oggi]
     if not presi:
         return None
     piccolo = min(presi, key=lambda l: ORDINE.index(l.tf))
-    return next((l for l in livelli_prima(q, s.n2_inizio, (piccolo.tf,)) if l.alto != piccolo.alto), None)
+    return next((l for l in livelli_prima(q, s.n2_inizio, (piccolo.tf,)) if l.alto == (not s.short)), None)
 
 
 def target_dopo(q: Quadro, s: Setup, ob: Obiettivo) -> Optional[Obiettivo]:
@@ -940,10 +945,15 @@ COSTANTE_DXY = 50.14348112 * 10 ** 0.042
 # 100% di correlazione come le coppie forex ma hanno circa l'85% di correlazione, quindi a volte può capitare che il
 # DXY va long e anche gold esempio va long"*.
 FOREX_SOTTO = ("EURUSD", "GBPUSD", "AUDUSD", "NZDUSD")
-CORRELATI_85 = ("XAUUSD", "XAGUSD", "SPX500", "US30", "NAS100")
+CORRELATI_85 = ("XAUUSD", "XAGUSD", "XPTUSD", "SPX500", "US30", "NAS100")
 DOLLARO_SOTTO = FOREX_SOTTO + CORRELATI_85
 DOLLARO_SOPRA = ("USDJPY", "USDCHF", "USDCAD")
 FOREX_DOLLARO = FOREX_SOTTO + DOLLARO_SOPRA
+# Gli strumenti che entrano solo coi setup del DXY, mai coi CRT loro: il proprietario, 20/10/2026 (*"il bot si deve
+# basare solo ed esclusivamente solo sul dxy ... deve entrare negli asset con il dxy solo ed esclusivamente quando il
+# dxy da il pattern quindi il crt con i vari sbilanciamenti"*), con la lista *"dxy, eurusd, gbpusd, nzdusd, audusd,
+# xauusd, xagusd, xptusd, usdchf, usdcad"*: le coppie col dollaro e i metalli.
+GUIDATI_DAL_DXY = FOREX_DOLLARO + ("XAUUSD", "XAGUSD", "XPTUSD")
 # La direzione di fondo del DXY nei timeframe alti, quella che il proprietario si aspetta nei prossimi anni (08/10/2026:
 # *"il DXY è un asset prettamente short nei TF alti"*; sul mensile si aspetta un CRT ribassista nei TF alti *"che
 # dovremo cavalcare quindi buy sulle coppie come EURUSD, GBPUSD"*; la foto era un esempio di struttura, non livelli da
@@ -1024,6 +1034,7 @@ def dal_dxy(q: Quadro, s_dxy: Setup, verso: Optional[Verso] = None) -> Optional[
               s_dxy.n3_inizio, s_dxy.n3_fine, h2, l2, c2, entrata, spread, stop, tp1, dal_dxy=True,
               prima_inizio=int(c.inizio[max(m - 1, 0)]))
     s.presi = key_level_presi(q, s)
+    s.presi_guida = list(s_dxy.presi)
     return s
 
 

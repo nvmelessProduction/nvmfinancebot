@@ -52,6 +52,8 @@ BASE = ("EURUSD", "GBPUSD", "AUDUSD", "USDCHF", "USDJPY", "XAUUSD")
 ALTRI = (
     Strumento("XAUUSD", 1e-3, 1.0, 2, 0.07, "metalli", mt5=("GOLD",)),
     Strumento("XAGUSD", 1e-3, 0.01, 3, 0.0, "metalli", mt5=("SILVER",)),
+    # Il platino, dal 20/10/2026 (il proprietario: *"aggiungiamo xptusd"*): come l'oro, quotato in dollari.
+    Strumento("XPTUSD", 1e-3, 0.1, 2, 0.0, "metalli", mt5=("PLATINUM", "XPTUSD.")),
     Strumento("USOIL", 1e-3, 0.01, 3, 0.0, "petrolio", "LIGHTCMDUSD", ("XTIUSD", "WTI", "USOUSD", "WTIUSD", "CL-OIL")),
     Strumento("UKOIL", 1e-3, 0.01, 3, 0.0, "petrolio", "BRENTCMDUSD", ("XBRUSD", "BRENT", "UKOUSD", "BRENTUSD")),
     Strumento("SPX500", 1e-3, 1.0, 2, 0.0, "indici", "USA500IDXUSD", ("US500", "US500.cash", "SP500", "USA500", "US500Cash")),

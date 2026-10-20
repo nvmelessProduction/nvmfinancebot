@@ -46,14 +46,6 @@ def quando(t: int) -> str:
     return datetime.fromtimestamp(int(t), tz=timezone.utc).astimezone(NEW_YORK).strftime("%d/%m %H:%M NY")
 
 
-def _tp1_temporizzato(d) -> Optional[str]:
-    setup = (getattr(d, "foto", None) or {}).get("setup")
-    if setup is None:
-        return None
-    tf = NOMI_TF.get(setup.tf, getattr(setup.tf, "value", str(setup.tf)))
-    return f"alla chiusura della candela {tf} ({quando(setup.n3_fine)})"
-
-
 def erre(x: float) -> str:
     """Un risultato in R, cioè in volte il rischio: '+1,50 R'."""
     return ("+" if x >= 0 else "−") + _it(abs(x)) + " R"
@@ -118,8 +110,6 @@ _MOTIVI = {"stop": "è arrivata allo stop", "target": "ha raggiunto l'obiettivo"
            "pareggio": "è tornata al prezzo d'entrata",
            "primo target e poi secondo target": "ha raggiunto tutti e due gli obiettivi",
            "primo target e poi pareggio": "una parte chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata",
-           "candela d'ingresso chiusa e poi secondo target": "dopo il close della candela d'ingresso ha raggiunto il target finale",
-           "candela d'ingresso chiusa e poi pareggio": "dopo il close della candela d'ingresso il resto è tornato al pareggio",
            "chiusa a mano": "l'hai chiusa a mano: la squadra non la conta come risultato del metodo"}
 
 
@@ -189,7 +179,6 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
     `uscita`: "due meta'", "primo target" o "secondo target" (`nvm/agenti/rischio.USCITE`); `meta`: i lotti
     che il bot chiude al TP1 (la posizione e' una sola)."""
     k, op, r = d.r.strumento, d.op, d.r
-    momento_tp1 = _tp1_temporizzato(d)
     vende = r.verso is Verso.SHORT
     distanza = abs(prezzo_vero - op.stop) or 1e-12
     def guadagno(target: float, parte: float) -> str:
@@ -202,12 +191,8 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
         righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp1)} → circa {guadagno(op.tp1, 1.0)}")
     elif uscita == "secondo target" and getattr(d, "foto", None) and 0 < op.parziale < 1:
         ob = d.foto.get("obiettivo")
-        if momento_tp1:
-            righe.append(f"⏱ TP1: {momento_tp1} → sposto lo stop al prezzo d'entrata. "
-                         f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
-        else:
-            righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop al prezzo d'entrata. "
-                         f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
+        righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop a pareggio (commissioni coperte). "
+                     f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → tutto, "
                      f"circa {guadagno(op.tp2, 1.0)}")
     elif uscita == "secondo target":
@@ -217,12 +202,8 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
         ob = d.foto.get("obiettivo")
         p = op.parziale if 0 < op.parziale < 1 else 0.25
         mezzo = f" ({_it(meta, 2)} lotti)" if meta else ""
-        if momento_tp1:
-            righe.append(f"⏱ TP1: {momento_tp1} → chiudo il {_it(100 * p, 0)}%{mezzo} a mercato e metto lo stop "
-                         "al prezzo d'entrata")
-        else:
-            righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo il {_it(100 * p, 0)}%{mezzo}, "
-                         f"circa {guadagno(op.tp1, p)}, e metto lo stop al prezzo d'entrata")
+        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo il {_it(100 * p, 0)}%{mezzo}, "
+                     f"circa {guadagno(op.tp1, p)}, e metto lo stop a pareggio (commissioni coperte)")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → il resto, "
                      f"circa {guadagno(op.tp2, 1 - p)}")
     else:
@@ -233,16 +214,12 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
 
 
 def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None,
-                 parte: Optional[float] = None, alla_chiusura: bool = False) -> str:
+                 parte: Optional[float] = None) -> str:
     quanto = f"il {_it(100 * parte, 0)}%" if parte else "la quota prevista"
-    if alla_chiusura:
-        testa = f"⏱ {k}: candela d'ingresso chiusa; ho chiuso {quanto} a mercato."
-        if a_pareggio:
-            return f"{testa}\nSul resto lo stop è al prezzo d'entrata ({prezzo(k, ingresso)})."
-        return f"{testa}\nNon sono riuscito a spostare lo stop a pareggio: resta al livello precedente e ci riprovo."
     testa = f"🎯 {k}: primo obiettivo raggiunto, ho chiuso {quanto} in guadagno."
     if a_pareggio:
-        return f"{testa}\nSul resto lo stop ora è al prezzo d'entrata ({prezzo(k, ingresso)}): da qui non può più perdere."
+        return (f"{testa}\nSul resto lo stop ora è a pareggio, con le commissioni coperte ({prezzo(k, ingresso)}): "
+                "da qui non può più perdere.")
     return f"{testa}\nSul resto lo stop andrà al prezzo d'entrata quando il prezzo arriva a {prezzo(k, livello)}."
 
 
@@ -250,17 +227,13 @@ def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
     return f"✋ {k}: chiudo prima dello stop, {motivo}."
 
 
-def pareggio(k: str, verso: Verso, ingresso: float, tp1: bool = False, alla_chiusura: bool = False,
-             a_pareggio: bool = True) -> str:
-    if alla_chiusura:
-        testa = f"⏱ {k}: candela d'ingresso chiusa. "
-        coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
-        stato = (f"Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)})." if a_pareggio else
-                 "Lo stop è ancora al livello precedente; riprovo a spostarlo a pareggio.")
-        return f"{testa}{stato}{coda}"
+def pareggio(k: str, verso: Verso, ingresso: float, tp1: bool = False, a_pareggio: bool = True) -> str:
     testa = f"🎯 {k}: TP1 raggiunto. " if tp1 else f"🛡 {k}: "
     coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
-    return f"{testa}Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}). Da qui non può più perdere.{coda}"
+    if not a_pareggio:
+        return f"{testa}MT5 non ha ancora accettato lo stop a pareggio: ci riprovo ogni minuto.{coda}"
+    return (f"{testa}Ho spostato lo stop a pareggio, con le commissioni coperte ({prezzo(k, ingresso)}). "
+            f"Da qui non può più perdere.{coda}")
 
 
 def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: str) -> str:
@@ -288,12 +261,9 @@ def proposta(d: Decisione, scade: int, grafico: str, rete: Optional[list] = None
     allineati = [NOMI_TF.get(x, getattr(x, "value", str(x))) for x in f.get("allineati", [])]
     if allineati:
         righe.append(f"Stesso setup anche su: {', '.join(allineati)}")
-    momento_tp1 = _tp1_temporizzato(d)
-    tp1 = (f"⏱ TP1: {momento_tp1} (25% a mercato se il lotto si divide + stop a pareggio)" if momento_tp1 else
-           f"🎯 TP1: {prezzo(k, op.tp1)} (RR 1:{_it(abs(op.tp1 - op.ingresso) / rischio, 1)})")
     righe += [f"Entrata: {prezzo(k, op.ingresso)} (apertura della candela 3)",
               f"🛑 Stop: {prezzo(k, op.stop)}",
-              tp1,
+              f"🎯 TP1: {prezzo(k, op.tp1)} (RR 1:{_it(abs(op.tp1 - op.ingresso) / rischio, 1)})",
               f"🎯 Target finale{f' ({ob.nome})' if ob is not None else ''}: {prezzo(k, op.tp2)} "
               f"(RR 1:{_it(abs(op.tp2 - op.ingresso) / rischio, 1)})",
               f"La rete l'ha lasciato: se volete entrare lo stesso, «Apri lo stesso» vale fino alle "

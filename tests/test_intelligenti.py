@@ -207,14 +207,22 @@ def test_nessuna_ai_esterna():
         assert "anthropic" not in testo and "openai" not in testo
 
 
+def _dxy_specchio(base):
+    """Il DXY che va al contrario di EURUSD: dal 20/10/2026 su EURUSD si entra solo coi suoi setup."""
+    from tests.test_foto import _ore
+    righe = [(int(t), *(float(x) * base.punto for x in b)) for t, b in zip(base.t, base.bid)]
+    return _ore([(t, 100 / o, 100 / l, 100 / h, 100 / c) for t, o, h, l, c in righe], "DXY", spread=0.0)
+
+
 def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
     from nvm.vivo.giro import giro
     from nvm.intelligenti.squadra import AGENTI
     from tests.test_vivo import CapoFinto, ore_finte
     import vivo
     base = ore_finte(giorni=400)
-    decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
-    assert decisioni and all(d.foto and d.r.scatto.modello == "apertura N3" for d in decisioni)
+    decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto(),
+                     gemelli={"EURUSD": base, "DXY": _dxy_specchio(base)})
+    assert decisioni and all(d.foto and d.r.scatto.modello == "dal DXY" for d in decisioni)
     assert all(d.piani_romeo is not None and len(d.piani_romeo) == 3 for d in decisioni)
     # Si entra all'apertura della candela 3, con lo stop oltre la candela 2 e il TP1 all'altro lato del range.
     for d in decisioni:
@@ -270,7 +278,8 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     # La squadra e' d'accordo (qui si prova il bot, non i voti: quelli sono in `test_pareri.py`).
     monkeypatch.setattr(al_lavoro.P, "tutti", lambda d, ctx, prev, *altro: [Parere(a, 1, ["prova"]) for a in VOTANO])
     base = ore_finte(giorni=400)
-    tutte = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())
+    tutte = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto(),
+                 gemelli={"EURUSD": base, "DXY": _dxy_specchio(base)})
     decisioni, tardiva = tutte[-2:], tutte[-3]
     assert decisioni
     mandati, aperte = [], []

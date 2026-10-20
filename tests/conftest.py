@@ -13,3 +13,13 @@ def _orari_dei_grafici_puliti():
     yield
     candele.SESSIONI.clear()
     candele.SESSIONI.update(prima)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _orari_dei_grafici_puliti_nel_modulo():
+    """Lo stesso per le preparazioni di un modulo intero (`scope="module"`): quelle partono prima della pulizia di ogni
+    prova, e i loro orari restavano alle prove dei moduli dopo (cinque prove cadevano solo con tutta la serie)."""
+    prima = dict(candele.SESSIONI)
+    yield
+    candele.SESSIONI.clear()
+    candele.SESSIONI.update(prima)

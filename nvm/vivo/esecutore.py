@@ -18,6 +18,7 @@ from nvm.agenti.cacciatore import Verso
 from nvm.agenti import portafoglio
 from nvm.agenti.rischio import USCITE, crescita_creduta, esiti, kelly
 from nvm.dati.minuti import CHIUSURA
+from nvm.prova.campo import COMMISSIONE
 from nvm.vivo import messaggi
 from nvm.vivo.giro import Decisione
 from nvm.vivo.terminale import Conto, ErroreMT5, Terminale
@@ -63,14 +64,17 @@ class Viva:
     # strumenti aperti che vanno insieme a lei, per cui ha rischiato meno.
     da_sola: float = 0.0
     legate: list[str] = field(default_factory=list)
-    # Quando è scattato il TP1 (a prezzo raggiunto o alla chiusura della candela d'ingresso).
+    # Quando il prezzo ha toccato il primo obiettivo (per il kiss of death che non va superato).
     primo_quando: int = 0
     # La posizione sola: quanti lotti chiude il bot al TP1 (0 = nessun parziale: il lotto non si divide, o le
     # operazioni di prima con due posizioni) e se l'ha gia' fatto.
     meta: float = 0.0
     meta_fatta: bool = False
-    # Chiusura della candela d'ingresso per il TP1 temporizzato (0 per posizioni non foto/preesistenti).
+    # Non si usa piu': era la chiusura della candela d'ingresso, quando il pareggio scattava li' (dal 16 al
+    # 20/10/2026). Resta perche' lo stato salvato sulla VPS lo contiene.
     tp1_entro: int = 0
+    # MT5 ha rifiutato lo stop a pareggio: si riprova ogni minuto senza ripetere l'allarme.
+    pareggio_rifiutato: bool = False
     # Chiusa da una persona (dal terminale o dal telefono): il risultato non insegna niente alla squadra.
     a_mano: bool = False
 
@@ -195,7 +199,7 @@ class Esecutore:
                 # Col lotto minimo non si divide: tutto al target del piano (col pareggio al TP1).
                 uscita = USCITE[1] if op.parziale == 1.0 else USCITE[2]
             elif getattr(d, "foto", None):
-                # Senza lotto divisibile si tiene tutto fino al target finale e si prova il pareggio al close.
+                # Senza lotto divisibile si tiene tutto fino al target finale, col pareggio al TP1.
                 uscita = USCITE[2]
                 migliore = crescita_creduta(esiti(d.p1, d.q, rr1, rr2, costi, uscita), quota, parte, togli)
             else:
@@ -235,8 +239,7 @@ class Esecutore:
                     tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a, basso=d.r.basso_tf.value,
                     livello=float(op.livello_model1 or 0.0), invalida_candele=op.invalida_candele,
                     tempo_candele=op.tempo_candele, da_sola=da_sola, legate=legate if togli > 0 else [],
-                    meta=meta if len(tickets) == 1 else 0.0,
-                    tp1_entro=int(getattr((d.foto or {}).get("setup"), "n3_fine", 0)))
+                    meta=meta if len(tickets) == 1 else 0.0)
         try:
             testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita,
                                       rischio / conto.saldo if conto.saldo else None, meta=meta)
@@ -288,7 +291,7 @@ class Esecutore:
                     motivo = v.uscita_anticipata
                 elif v.pareggio_fatto and r > 0.1:
                     finale = "secondo target" if r > 0.5 * abs(v.tp1 - v.ingresso) / abs(v.ingresso - v.stop) + 0.1 else "pareggio"
-                    motivo = (("candela d'ingresso chiusa e poi " if v.tp1_entro else "primo target e poi ") + finale)
+                    motivo = "primo target e poi " + finale
                 fatti.append(Fatto(messaggi.chiusa(v.strumento, Verso(v.verso), v.incassato, r, v.valuta, motivo), erre=r,
                                    libro={"strumento": v.strumento, "verso": v.verso, "tickets": v.tickets,
                                           "volume": v.volume, "ingresso": v.ingresso, "rischio": v.rischio,
@@ -297,45 +300,47 @@ class Esecutore:
                 continue
             bid, ask = self.t.prezzo(v.strumento)
             sola = len(v.tickets) == 1
-            # Il TP1 foto scatta al close della candela d'ingresso; le posizioni precedenti mantengono
-            # la vecchia regola basata sul raggiungimento del prezzo.
+            # Il primo target: la parte al TP1 e' stata incassata, o il prezzo ci e' arrivato (anche fra un controllo
+            # e l'altro: le barre da un minuto dopo l'apertura). Lo stop va a pareggio solo li', mai alla chiusura della
+            # candela d'ingresso (il proprietario, 20/10/2026: *"lo deve mettere solo al tp1"*), anche sulle posizioni
+            # aperte prima, quando c'era quella regola (`tp1_entro`).
             alto, basso = bid, bid
-            if sola and not v.tp1_entro and (not v.pareggio_fatto or (v.meta > 0 and not v.meta_fatta)):
+            if sola and (not v.pareggio_fatto or (v.meta > 0 and not v.meta_fatta)):
                 try:
                     e = self.t.estremi(v.strumento, v.quando)
                 except Exception:
                     e = None
                 if e is not None:
                     alto, basso = max(bid, e[0]), min(bid, e[1])
-            if v.tp1_entro:
-                primo_preso = time.time() >= v.tp1_entro or bool(v.primo_quando)
-            else:
-                primo_preso = (v.uscita == USCITE[0] and not sola and v.tickets[0] in v.chiusi and v.incassato > 0) or (
-                    (min(ask, basso + (ask - bid)) <= v.tp1) if v.short else (alto >= v.tp1))
+            primo_preso = (v.uscita == USCITE[0] and not sola and v.tickets[0] in v.chiusi and v.incassato > 0) or (
+                (min(ask, basso + (ask - bid)) <= v.tp1) if v.short else (alto >= v.tp1))
             if sola and v.meta > 0 and not v.meta_fatta and primo_preso:
-                # Il parziale temporizzato è un ordine a mercato: viene riprovato se MT5 lo rifiuta.
+                # Il TP1: il bot chiude la sua parte della posizione (*"Quando arriva ... parzializza"*).
                 e = self.t.chiudi_posizione(v.strumento, ancora[0], v.meta)
                 if e.ok:
                     v.meta_fatta = True
                 else:
                     parte = 100 * v.meta / v.volume if v.volume else 25
-                    fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: candela d'ingresso chiusa, ma non riesco "
-                                                        f"a chiudere il {parte:.0f}% ({e.messaggio}): "
-                                                        "riprovo al minuto dopo.")))
+                    fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: TP1 preso ma non riesco a chiudere il "
+                                                        f"{parte:.0f}% ({e.messaggio}): riprovo al minuto dopo.")))
                     primo_preso = False
-            # Il pareggio si prova al close temporizzato; sugli altri trade resta al vecchio livello di prezzo.
+            # Il pareggio: al livello che i Livelli avevano scelto all'apertura (nel metodo delle foto, il TP1). Se MT5
+            # lo rifiuta (mercato chiuso) si riprova ogni minuto, ma l'allarme arriva una volta sola.
             livello = v.ingresso + v.pareggio_a * (v.tp1 - v.ingresso)
             oltre = (ask <= livello) if v.short else (bid >= livello)
-            sposta = not v.pareggio_fatto and (
-                primo_preso if v.tp1_entro else (oltre or (primo_preso and v.pareggio_a <= 1)))
+            sposta = not v.pareggio_fatto and (oltre or (primo_preso and v.pareggio_a <= 1))
+            pari = self.pareggio(v, ancora) if sposta or (primo_preso and not v.primo_detto) else v.ingresso
             if sposta:
                 tutto_spostato = True
                 for ticket in ancora:
+                    # Ogni posizione tiene il suo target: la prima meta' il primo, la seconda il secondo.
                     primo = v.uscita == USCITE[1] or (v.uscita == USCITE[0] and not sola and ticket == v.tickets[0])
-                    e = self.t.sposta_stop(v.strumento, ticket, v.ingresso, v.tp1 if primo else v.tp2)
+                    e = self.t.sposta_stop(v.strumento, ticket, pari, v.tp1 if primo else v.tp2)
                     if not e.ok:
                         tutto_spostato = False
-                        fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}")))
+                        if not v.pareggio_rifiutato:
+                            fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}. Riprovo ogni minuto.")))
+                v.pareggio_rifiutato = not tutto_spostato
                 if tutto_spostato:
                     v.pareggio_fatto = True
             if primo_preso and not v.primo_quando:
@@ -343,18 +348,35 @@ class Esecutore:
             if primo_preso and not v.primo_detto and v.uscita != USCITE[1]:
                 v.primo_detto = True
                 if sola and not v.meta_fatta:
-                    fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso, tp1=True,
-                                                         alla_chiusura=bool(v.tp1_entro),
+                    # Il lotto non si divideva: niente parziale, solo lo stop a pareggio.
+                    fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), pari, tp1=True,
                                                          a_pareggio=v.pareggio_fatto)))
                 else:
-                    fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
+                    fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), pari, v.pareggio_fatto,
                                                              None if v.pareggio_fatto else livello,
-                                                             parte=(v.meta / v.volume) if sola and v.meta and v.volume else None,
-                                                             alla_chiusura=bool(v.tp1_entro))))
+                                                             parte=(v.meta / v.volume) if sola and v.meta and v.volume else None)))
             elif sposta and v.pareggio_fatto:
-                fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
+                fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), pari)))
             restano.append(v)
         return restano, fatti
+
+    def pareggio(self, v: Viva, ancora: list[int]) -> float:
+        """Dove va lo stop a pareggio: un poco oltre l'ingresso, quanto copre le commissioni d'apertura e di chiusura
+        (il proprietario, 20/10/2026: *"il be non va messo preciso al prezzo di entrata ... ma leggermente in guadagno
+        per coprire i costi di commissione"*). La commissione e' quella vera dell'apertura su MT5 (la chiusura costa
+        uguale); se MT5 non la da', quella della tabella degli strumenti."""
+        segno = -1 if v.short else 1
+        costo = COMMISSIONE.get(v.strumento, 0.0)
+        try:
+            pagata = sum(self.t.commissione_aperta(t) or 0.0 for t in v.tickets)
+            distanza = abs(v.ingresso - v.stop)
+            per_lotto = self.t.perdita_per_lotto(v.strumento, Verso(v.verso), v.ingresso, v.stop) / distanza
+            if pagata > 0 and v.volume > 0 and per_lotto > 0:
+                # Per lotto e per unita' di prezzo: apertura e chiusura.
+                costo = 2 * pagata / v.volume / per_lotto
+        except Exception:
+            pass
+        return v.ingresso + segno * costo
 
 
     def uscita_anticipata(self, v: Viva, basse) -> Optional[Fatto]:

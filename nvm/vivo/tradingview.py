@@ -19,6 +19,7 @@ import base64
 import hashlib
 import http.server
 import json
+import re
 import secrets
 import threading
 import time
@@ -26,6 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -78,6 +80,34 @@ class RispostaRifiutata(ErroreTradingView):
 
 class AccessoScaduto(ErroreTradingView):
     """L'accesso non si rinnova piu': va rifatto il login con `tradingview_accesso.bat`."""
+
+
+class QuotaFinita(ErroreTradingView):
+    """TradingView non accetta piu' richieste fino a `fino_a`: la quota giornaliera dell'account e' finita (*"do not
+    retry"*). Fino ad allora il bot non manda richieste: riprovarle non serve."""
+
+    def __init__(self, testo: str, fino_a: float):
+        super().__init__(testo)
+        self.fino_a = float(fino_a)
+
+
+# Dopo l'ora in cui TradingView azzera la quota (mezzanotte UTC) si aspetta ancora qualche minuto.
+MARGINE_QUOTA = 120
+
+
+def fine_quota(testo: str, adesso: float) -> Optional[float]:
+    """Se `testo` dice che la quota giornaliera e' finita, quando si puo' ripartire: alla prossima ora UTC che dice
+    (*"It resets at 00:00 UTC"*; se non la dice, mezzanotte UTC), piu' `MARGINE_QUOTA`. None se non e' la quota."""
+    alto = testo.upper()
+    if "QUOTA_EXCEEDED" not in alto and "QUOTA EXCEEDED" not in alto:
+        return None
+    m = re.search(r"resets at (\d{1,2}):(\d{2}) UTC", testo, re.IGNORECASE)
+    ore, minuti_ = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+    quando = datetime.fromtimestamp(adesso, timezone.utc).replace(hour=ore % 24, minute=minuti_ % 60, second=0,
+                                                                 microsecond=0)
+    if quando.timestamp() <= adesso:
+        quando += timedelta(days=1)
+    return quando.timestamp() + MARGINE_QUOTA
 
 
 def _contesto():
@@ -294,7 +324,8 @@ class TradingView:
     """Le chiamate al server MCP di TradingView. Una sessione MCP, riaperta da sola se scade."""
 
     def __init__(self, accesso: Accesso, posta: Callable = _richiesta, server: str = SERVER,
-                 intervallo: float = INTERVALLO, attese: tuple = ATTESE_RALLENTA, dormi: Callable = time.sleep):
+                 intervallo: float = INTERVALLO, attese: tuple = ATTESE_RALLENTA, dormi: Callable = time.sleep,
+                 orologio: Callable[[], float] = time.time):
         self.accesso = accesso
         self._posta = posta
         self._server = server
@@ -305,6 +336,22 @@ class TradingView:
         self._sessione: Optional[str] = None
         self._numero = 0
         self._lucchetto = threading.Lock()
+        self._orologio = orologio
+        # Fino a quando la quota giornaliera e' finita (0: non lo e'), e quante richieste di dati oggi (UTC).
+        self.ferma_fino = 0.0
+        self.chiamate_oggi = 0
+        self._giorno = -1
+
+    @property
+    def ferma(self) -> bool:
+        """La quota giornaliera e' finita e non e' ancora ripartita."""
+        return self._orologio() < self.ferma_fino
+
+    def _conta(self) -> None:
+        giorno = int(self._orologio() // 86400)
+        if giorno != self._giorno:
+            self._giorno, self.chiamate_oggi = giorno, 0
+        self.chiamate_oggi += 1
 
     def _manda(self, messaggio: dict) -> tuple[int, dict, bytes]:
         attesa = self._ultima + self._intervallo - time.monotonic()
@@ -338,11 +385,14 @@ class TradingView:
     def chiama(self, nome: str, argomenti: dict) -> object:
         """Uno strumento del server (tools/call): il risultato, gia' letto dal JSON se e' JSON."""
         with self._lucchetto:
+            if self.ferma:
+                raise QuotaFinita(f"{nome}: la quota giornaliera di TradingView è finita", self.ferma_fino)
             if self._numero == 0:
                 self._apri_sessione()
             rallentato = 0
             for tentativo in range(3 + len(self._attese)):
                 self._numero += 1
+                self._conta()
                 codice, intestazioni, corpo = self._manda({
                     "jsonrpc": "2.0", "id": self._numero, "method": "tools/call",
                     "params": {"name": nome, "arguments": argomenti}})
@@ -370,10 +420,13 @@ class TradingView:
         if m is None:
             raise ErroreTradingView(f"TradingView non ha dato una risposta a {nome}")
         if "error" in m:
-            raise ErroreTradingView(f"{nome}: {str(m['error'].get('message', m['error']))[:200]}")
+            testo = str(m["error"].get("message", m["error"]))
+            self._quota(nome, testo)
+            raise ErroreTradingView(f"{nome}: {testo[:200]}")
         r = m.get("result") or {}
         testi = [c.get("text", "") for c in r.get("content", []) if c.get("type") == "text"]
         if r.get("isError"):
+            self._quota(nome, " ".join(testi))
             raise ErroreTradingView(f"{nome}: {' '.join(testi)[:200]}")
         if r.get("structuredContent") is not None:
             return r["structuredContent"]
@@ -384,11 +437,20 @@ class TradingView:
                 continue
         return " ".join(testi)
 
+    def _quota(self, nome: str, testo: str) -> None:
+        """Se la risposta dice che la quota giornaliera e' finita: niente piu' richieste fino a quando riparte."""
+        fino = fine_quota(testo, self._orologio())
+        if fino is not None:
+            self.ferma_fino = fino
+            raise QuotaFinita(f"{nome}: {testo[:200]}", fino)
+
     def candele(self, simbolo: str, passo, quante: int) -> list[dict]:
         """Le candele di `simbolo`: `passo` in secondi (`INTERVALLI`) o il nome dell'intervallo ("4h", "1W", "M")."""
         intervallo = passo if isinstance(passo, str) else INTERVALLI[passo]
         try:
             r = self.chiama("get_ohlcv", {"symbol": simbolo, "interval": intervallo, "count": int(min(quante, MASSIMO))})
+        except QuotaFinita:
+            raise
         except ErroreTradingView as errore:
             if str(errore).startswith("get_ohlcv:"):
                 raise RispostaRifiutata(f"{simbolo} {intervallo}: {str(errore)[11:]}") from None

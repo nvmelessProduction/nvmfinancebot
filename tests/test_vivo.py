@@ -22,7 +22,7 @@ from nvm.vivo.messaggi import pareri
 from nvm.vivo.riunione import Storico, riunione
 from nvm.vivo.stato import Seguita
 from nvm.vivo.telegram import Telegram
-from nvm.vivo.terminale import Terminale
+from nvm.vivo.terminale import Esito, Terminale
 from tests.mt5_finto import BARRA, MT5Finto
 
 ORA = 3600
@@ -225,6 +225,34 @@ def test_la_prova_del_collegamento_non_manda_ordini_e_spiega_i_rifiuti():
     assert "tutti i 2 mercati" in tutto_bene
 
 
+def _pari(v, costo=None):
+    """Lo stop a pareggio: oltre l'ingresso di quanto costano le commissioni (sul conto finto, quelle della tabella)."""
+    from nvm.prova.campo import COMMISSIONE
+    costo = COMMISSIONE[v.strumento] if costo is None else costo
+    return round(v.ingresso + (-1 if v.short else 1) * costo, 5)
+
+
+def test_il_pareggio_copre_le_commissioni():
+    """Il proprietario, 20/10/2026: *"il be non va messo preciso al prezzo di entrata ... ma leggermente in guadagno
+    per coprire i costi di commissione"*. Con la commissione vera dell'apertura su MT5, apertura e chiusura."""
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    (a,) = viva.tickets
+    # 3 euro a lotto all'apertura: con la chiusura 6 a lotto, cioe' 0,6 pip su EURUSD (100.000 euro a lotto per unita').
+    m._affari(a, viva.ingresso)[0].commission = -3.0 * viva.volume
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.tp1, ask=d.op.tp1 + 0.0001)
+    vive, fatti = e.sorveglia([viva])
+    assert vive[0].pareggio_fatto and m.posizioni[a].sl == _pari(viva, 0.00006)
+    assert (m.posizioni[a].sl > viva.ingresso) == (not viva.short) and "commissioni coperte" in fatti[0].testo
+    # Senza la commissione di MT5, quella della tabella (0,7 pip su EURUSD).
+    assert e.pareggio(replace(viva, tickets=[999]), [999]) == pytest.approx(_pari(viva), abs=1e-9)
+
+
 def test_una_posizione_sola_meta_al_tp1_dal_bot_pareggio_e_chiude():
     # Il proprietario, 07/10/2026: *"vorrei che apri una sola operazione. Quando arriva [al TP1], parzializza.
     # Se si può parzializzare, altrimenti no. E continua fino al TP"*.
@@ -255,7 +283,7 @@ def test_una_posizione_sola_meta_al_tp1_dal_bot_pareggio_e_chiude():
     v = vive[0]
     assert v.meta_fatta and v.pareggio_fatto
     assert abs(m.posizioni[a].volume - (volume - v.meta)) < 1e-9          # chiusa meta', il resto resta
-    assert m.posizioni[a].sl == round(v.ingresso, 5) and m.posizioni[a].tp == round(d.op.tp2, 5)
+    assert m.posizioni[a].sl == _pari(v) and m.posizioni[a].tp == round(d.op.tp2, 5)
     assert "primo obiettivo" in fatti[0].testo
     vive, fatti = e.sorveglia(vive)            # una volta sola
     assert not fatti and abs(m.posizioni[a].volume - (volume - v.meta)) < 1e-9
@@ -264,6 +292,51 @@ def test_una_posizione_sola_meta_al_tp1_dal_bot_pareggio_e_chiude():
     vive, fatti = e.sorveglia(vive)
     assert vive == [] and "chiusa in guadagno" in fatti[0].testo
     assert fatti[0].libro["netto"] > 0         # il parziale e' nel risultato
+
+
+def test_il_pareggio_solo_al_tp1_mai_alla_chiusura_della_candela_d_ingresso():
+    """Il proprietario, 20/10/2026: *"levi assolutamente la funzione che alla chiusura della candela d'entrata il bot
+    mette be. lo deve mettere solo al tp1"*. Anche una posizione aperta quando c'era quella regola (`tp1_entro`)."""
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    assert viva.tp1_entro == 0
+    (a,) = viva.tickets
+    volume = m.posizioni[a].volume
+    viva.tp1_entro = int(time.time()) - 60          # la candela d'ingresso e' chiusa da un minuto
+    vive, fatti = e.sorveglia([viva])
+    v = vive[0]
+    assert not v.pareggio_fatto and not v.meta_fatta and not fatti
+    assert m.posizioni[a].sl == round(d.op.stop, 5) and m.posizioni[a].volume == volume
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.tp1, ask=d.op.tp1 + 0.0001)   # il TP1
+    vive, fatti = e.sorveglia(vive)
+    assert vive[0].pareggio_fatto and vive[0].meta_fatta and m.posizioni[a].sl == _pari(v)
+    assert "primo obiettivo" in fatti[0].testo
+
+
+def test_se_mt5_rifiuta_il_pareggio_riprova_ma_l_allarme_arriva_una_volta():
+    d = _una_decisione()
+    m = MT5Finto()
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    t.scarto = m.scarto
+    e = Esecutore(t)
+    viva, _ = e.apri(d, t.conto())
+    vero = t.sposta_stop
+    t.sposta_stop = lambda *a: Esito(False, "stop non spostato: mercato chiuso")
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.tp1, ask=d.op.tp1 + 0.0001)
+    vive, fatti = e.sorveglia([viva])
+    assert not vive[0].pareggio_fatto and sum("mercato chiuso" in f.testo for f in fatti) == 1
+    for _ in range(3):
+        vive, fatti = e.sorveglia(vive)
+        assert not any("mercato chiuso" in f.testo for f in fatti)
+    t.sposta_stop = vero
+    vive, fatti = e.sorveglia(vive)
+    assert vive[0].pareggio_fatto and not vive[0].pareggio_rifiutato
 
 
 def test_il_tp1_toccato_fra_due_controlli_si_vede_dalle_barre_da_un_minuto():
@@ -303,7 +376,7 @@ def test_se_il_lotto_non_si_divide_niente_parziale_e_tutto_al_target_finale():
     assert m.posizioni[a].tp == round(d.op.tp2, 5)
     m.tick["EURUSD"] = NS(time=0, bid=d.op.tp1, ask=d.op.tp1 + 0.0001)
     vive, fatti = e.sorveglia([viva])
-    assert m.posizioni[a].volume == viva.volume and m.posizioni[a].sl == round(viva.ingresso, 5)
+    assert m.posizioni[a].volume == viva.volume and m.posizioni[a].sl == _pari(viva)
     assert "non si poteva dividere" in fatti[0].testo
 
 
@@ -607,8 +680,8 @@ def test_il_pareggio_prima_del_primo_obiettivo_tiene_il_target_finale():
     m.tick["EURUSD"] = NS(time=0, bid=meta, ask=meta + 0.00001) if not viva.short else NS(time=0, bid=meta - 0.00001, ask=meta)
     volume = m.posizioni[a].volume
     vive, fatti = e.sorveglia([viva])
-    assert vive[0].pareggio_fatto and "prezzo d'entrata" in fatti[0].testo
-    assert m.posizioni[a].sl == round(viva.ingresso, 5) and m.posizioni[a].tp == round(d.op.tp2, 5)
+    assert vive[0].pareggio_fatto and "pareggio" in fatti[0].testo
+    assert m.posizioni[a].sl == _pari(viva) and m.posizioni[a].tp == round(d.op.tp2, 5)
     assert m.posizioni[a].volume == volume and not vive[0].meta_fatta     # il TP1 non e' ancora arrivato
 
 
@@ -765,13 +838,22 @@ def test_la_lista_degli_strumenti_del_broker(tmp_path, monkeypatch):
     assert mandati and mandati[0][0] == "eq" and "✅ EURUSD.x" in mandati[0][1]
 
 
-def test_il_bot_non_guarda_brent_ftse_nikkei_e_le_crypto():
-    """Il proprietario, 07/10/2026: *"togliamo ukoil uk100 jpn225, per il resto tutto ok"*; 08/10/2026: *"togliamo
-    dagli asset del bot btc e ethusd"*."""
+def test_il_bot_guarda_solo_i_mercati_della_lista_del_20_10():
+    """Il proprietario, 20/10/2026: *"lasciamo solo dxy, eurusd, gbpusd, nzdusd, audusd, xauusd, xagusd, aggiungiamo
+    xptusd, usdchf usdcad poi total, btcusd, ethusd"*. Anche se il .env di TradingView ne ha altri."""
     import vivo
-    assert len(vivo.STRUMENTI_VIVO) == 35
-    assert not {"UKOIL", "UK100", "JPN225", "BTCUSD", "ETHUSD"} & set(vivo.STRUMENTI_VIVO)
-    assert {"USOIL", "GER40", "XAGUSD", "EURUSD"} <= set(vivo.STRUMENTI_VIVO)
+    from nvm.agenti import foto
+    assert set(vivo.STRUMENTI_VIVO) == {"EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "XAUUSD", "XAGUSD", "XPTUSD",
+                                        "USDCHF", "USDCAD", "BTCUSD", "ETHUSD"}
+    assert all(n in vivo.STRUMENTI for n in vivo.STRUMENTI_VIVO)
+    # Tutti guidati: dal DXY i dieci col dollaro, dalla TOTAL le crypto.
+    assert {n for n in vivo.STRUMENTI_VIVO if n not in foto.CRYPTO_TOTALE} <= set(foto.GUIDATI_DAL_DXY)
+    assert foto.verso_dal_dxy("XPTUSD", Verso.LONG) is Verso.SHORT and foto.verso_dal_dxy("USDCAD", Verso.LONG) is Verso.LONG
+    dal_env = [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:USDJPY", "USDJPY"), ("OANDA:US30USD", "US30"),
+               ("FX_IDC:GBPUSD", "GBPUSD")]
+    assert vivo.grafici_da_guardare(dal_env) == [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:GBPUSD", "GBPUSD"),
+                                                 ("OANDA:XPTUSD", "XPTUSD")]
+    assert vivo.grafici_da_guardare([("TVC:PLATINUM", "XPTUSD")]) == [("TVC:PLATINUM", "XPTUSD")]
 
 
 def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monkeypatch):
@@ -798,7 +880,8 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     bot.allarme = allarmi.append
     finestre = []
     bot._decidi = lambda dd, adesso, finestra: (decise.extend(d.chiave for d in dd), finestre.append((adesso, finestra)))
-    for nome in ("aggiorna_lunghe", "aggiorna_dxy", "uscite", "aggiorna_disegni", "controlla_disegni", "parla"):
+    for nome in ("aggiorna_lunghe", "aggiorna_dxy", "aggiorna_totale", "uscite", "aggiorna_disegni",
+                 "controlla_disegni", "parla"):
         setattr(bot, nome, lambda *a: None)
     ora = utc(2025, 1, 1, 5)
     bot.giro(ora)
@@ -817,6 +900,76 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     with pytest.raises(RuntimeError):
         bot.giro(ora + 7200)
     assert bot.stato.ultimo_giro == ora + 3600
+
+
+def test_con_la_quota_di_tradingview_finita_un_messaggio_solo_e_nessuna_richiesta(tmp_path, monkeypatch):
+    """20/10/2026: finita la quota giornaliera di TradingView, il bot mandava un allarme per grafico a ogni minuto (il
+    testo cambiava col conto alla rovescia) e riprovava il giro, bruciando altre richieste. Ora: un messaggio, il giro
+    dell'ora si chiude senza occasioni, e fino a mezzanotte UTC non si chiede piu' niente."""
+    import vivo
+    from nvm.vivo.stato import Stato
+    from nvm.vivo.tradingview import QuotaFinita
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    monkeypatch.setattr(vivo, "giro_orario", lambda *a, **k: [])
+    adesso = time.time()
+    fine = adesso + 7 * 3600
+    tv = NS(ferma=False, ferma_fino=0.0, chiamate_oggi=812)
+    chieste = []
+
+    def orarie(s, quante):
+        chieste.append(s)
+        if s == "GBPUSD" and not tv.ferma_fino:
+            tv.ferma, tv.ferma_fino = True, fine
+            raise QuotaFinita(f"get_ohlcv: TOOL_QUOTA_EXCEEDED ... in about {len(chieste)}h", fine)
+        return ore_finte(s, giorni=1)
+    bot = object.__new__(vivo.Bot)
+    bot.fonte = NS(tv=tv, orarie=orarie, esiste=lambda s: True)
+    bot.terminale = NS(scarto=3)
+    bot.strumenti = ["EURUSD", "GBPUSD", "AUDUSD", "USDJPY"]
+    bot.basi = {s: ore_finte(s, giorni=1) for s in bot.strumenti}
+    bot.fini, bot.lunghe, bot.squadra, bot.capo = {}, {}, None, None
+    bot.stato = Stato()
+    bot.stato.ultimo_giro = utc(2025, 1, 1)
+    detti = []
+    bot.tg = NS(operativo=detti.append)
+    bot.allarme = detti.append
+    bot._decidi = lambda *a: None
+    for nome in ("aggiorna_lunghe", "aggiorna_dxy", "aggiorna_totale", "uscite", "aggiorna_disegni",
+                 "controlla_disegni", "parla"):
+        setattr(bot, nome, lambda *a: None)
+    ora = utc(2025, 1, 1, 5)
+    bot.giro(ora)
+    # Dopo la quota finita non si chiede piu' niente, e il giro non si ripete al minuto dopo.
+    assert chieste == ["EURUSD", "GBPUSD"] and bot.stato.ultimo_giro == ora
+    assert len(detti) == 1 and "finite le richieste di oggi" in detti[0] and "812" in detti[0]
+    bot.giro(ora + 3600)
+    bot.giro(ora + 7200)
+    assert chieste == ["EURUSD", "GBPUSD"] and len(detti) == 1 and bot.stato.ultimo_giro == ora + 7200
+    # A mezzanotte UTC la quota riparte: si torna a chiedere.
+    tv.ferma = False
+    bot.giro(ora + 10800)
+    assert chieste[2:] == bot.strumenti
+
+
+def test_col_metodo_delle_foto_i_quarti_d_ora_arrivano_da_mt5():
+    """Su TradingView i quarti d'ora erano circa 900 richieste al giorno, e col metodo delle foto non servono a
+    decidere: si prendono da MT5, tutti a ogni quarto d'ora, e a TradingView non si chiedono."""
+    import vivo
+    from nvm.vivo.stato import Stato
+    if vivo.il_metodo() != "foto":
+        pytest.skip("solo col metodo delle foto")
+    da_tv, da_mt5 = [], []
+    bot = object.__new__(vivo.Bot)
+    bot.fonte = NS(barre=lambda s, quante, passo: da_tv.append(s) or vivo.Minuti.vuoti(s, 900))
+    bot.terminale = NS(barre=lambda s, quante, passo: da_mt5.append((s, quante, passo)) or vivo.Minuti.vuoti(s, 900))
+    bot.strumenti = [f"S{i}" for i in range(4)]
+    bot.fini = {s: vivo.Minuti.vuoti(s, 900) for s in bot.strumenti}
+    bot.stato = Stato()
+    bot.stato.ultimo_quarto = 0
+    for nome in ("uscite", "parla"):
+        setattr(bot, nome, lambda *a: None)
+    bot.giro_veloce(900 * 5)
+    assert da_tv == [] and [x[0] for x in da_mt5] == bot.strumenti and all(x[2] == 900 for x in da_mt5)
 
 
 def test_il_bot_non_rimette_sul_tavolo_un_crt_gia_visto(tmp_path, monkeypatch):

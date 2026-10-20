@@ -63,18 +63,19 @@ from nvm.prova.allenamento import leggi_memoria
 from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
 from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
-from nvm.vivo.tradingview import (INTERVALLI_TF, Accesso, ErroreTradingView, Fonte, RispostaRifiutata, TradingView,
-                                  candele_tv, ora_di_sessione)
+from nvm.vivo.tradingview import (INTERVALLI_TF, Accesso, ErroreTradingView, Fonte, QuotaFinita, RispostaRifiutata,
+                                  TradingView, candele_tv, ora_di_sessione)
 from nvm.vivo import rete_vivo
 
 RADICE = Path(__file__).resolve().parent
-# Gli strumenti su cui il bot opera dal vivo, sul conto demo: tutti quelli che conosce
-# (`nvm/dati/strumenti.py`: forex, oro e argento, petrolio, indici, crypto) che il broker ha.
-# L'utente, 25/09/2026: "testare tutto sul live sempre su mt5". Il proprietario, 07/10/2026: *"togliamo ukoil
-# uk100 jpn225, per il resto tutto ok"*.
-# Tolti dal proprietario: Brent, FTSE e Nikkei (07/10/2026). BTC ed ETH sono attivi solo con segnali TOTAL.
-TOLTI = ("UKOIL", "UK100", "JPN225")
-STRUMENTI_VIVO = tuple(s for s in STRUMENTI if s not in TOLTI)
+# Gli strumenti su cui il bot opera dal vivo, sul conto demo, se il broker li ha. Il proprietario, 20/10/2026:
+# *"leviamo le coppie inutili e lasciamo solo dxy, eurusd, gbpusd, nzdusd, audusd, xauusd, xagusd, aggiungiamo xptusd,
+# usdchf usdcad poi total, btcusd, ethusd"*. Il DXY e la TOTAL sono i grafici che guidano (`foto.GUIDATI_DAL_DXY`,
+# `foto.CRYPTO_TOTALE`): su di loro non si opera. Anche se nel .env ci sono altri grafici, si guardano solo questi.
+STRUMENTI_VIVO = ("EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "USDCHF", "USDCAD", "XAUUSD", "XAGUSD", "XPTUSD",
+                  "BTCUSD", "ETHUSD")
+# Su TradingView, il grafico di uno strumento che nel .env (TRADINGVIEW_SIMBOLI) manca: il platino, aggiunto il 20/10.
+GRAFICI_PREDEFINITI = {"XPTUSD": "OANDA:XPTUSD"}
 # Per quanto le decisioni finite restano nello stato, prima dell'archivio.
 TENERE = 14 * 86400
 CARTELLA = RADICE / "dati" / "vivo"
@@ -107,6 +108,14 @@ TOTAL_TRADINGVIEW = "CRYPTOCAP:TOTAL"
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
+
+
+def grafici_da_guardare(scelti) -> list[tuple[str, str]]:
+    """I grafici di TradingView (simbolo, nome del bot) da guardare: quelli del .env fra gli `STRUMENTI_VIVO`, piu'
+    quelli di `GRAFICI_PREDEFINITI` che nel .env mancano."""
+    fuori = [(x, n) for x, n in scelti if n in STRUMENTI_VIVO]
+    presi = {n for _, n in fuori}
+    return fuori + [(x, n) for n, x in GRAFICI_PREDEFINITI.items() if n not in presi]
 
 
 def il_metodo() -> str:
@@ -367,6 +376,13 @@ class Bot:
     def _su_tradingview(self) -> bool:
         return getattr(self, "fonte", None) is not None
 
+    @property
+    def _fonte_quarti(self):
+        """Da dove arrivano i quarti d'ora. Col metodo delle foto non fanno nascere le occasioni (decide il giro
+        orario sulle candele di TradingView): servono solo a seguire e disegnare, e si prendono da MT5. Su TradingView
+        erano circa 900 richieste al giorno, e la quota giornaliera finiva (20/10/2026)."""
+        return self.terminale if il_metodo() == "foto" else self._fonte
+
     def _accendi_tradingview(self) -> None:
         """Con i grafici di TradingView nel .env (TRADINGVIEW_SIMBOLI) il bot analizza li'. Le condizioni di
         TradingView vietano il trading automatico sui loro dati senza un permesso scritto: il bot propone, e apre
@@ -380,7 +396,15 @@ class Bot:
         accesso = Accesso(CARTELLA)
         dxy = self.imp.tradingview_dxy or DXY_TRADINGVIEW
         totale = self.imp.tradingview_totale or TOTAL_TRADINGVIEW
-        self.fonte = Fonte(TradingView(accesso), list(self.imp.tradingview), dxy, totale)
+        simboli = grafici_da_guardare(self.imp.tradingview)
+        fuori = [n for _, n in self.imp.tradingview if n not in STRUMENTI_VIVO]
+        if fuori:
+            di(f"TradingView: nel .env ci sono anche {', '.join(fuori)}: li lascio fuori (la lista del 20/10/2026).")
+        mancano = [n for n in STRUMENTI_VIVO if n not in {x for _, x in simboli}]
+        if mancano:
+            self.allarme("TradingView: nel .env (TRADINGVIEW_SIMBOLI) mancano i grafici di " + ", ".join(mancano) +
+                         ": finché non ci sono, su questi non analizzo.")
+        self.fonte = Fonte(TradingView(accesso), simboli, dxy, totale)
         # Le candele si fanno con gli orari dei grafici di TradingView, non con quelli di MT5: prima di leggerli dalle
         # sue candele a 4 ore (`_candele_tradingview`), quelli salvati l'ultima volta o la mezzanotte italiana.
         self._leggi_candele_tradingview()
@@ -389,7 +413,7 @@ class Bot:
                 _candele_mod.SESSIONI.setdefault(nome, SESSIONE_TRADINGVIEW)
         if not (CARTELLA / "riavvio").exists():
             # Dopo un aggiornamento non si ripete: lo si dice all'avvio a mano.
-            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in self.imp.tradingview], dxy, totale))
+            self.tg.operativo(messaggi.tradingview_acceso([x for x, _ in simboli], dxy, totale))
         if not accesso.pronto:
             self.allarme("TradingView: manca l'accesso. Sulla VPS fai doppio clic su tradingview_accesso.bat ed entra "
                          "col vostro account. Finché manca non analizzo niente; le operazioni aperte le seguo lo stesso.")
@@ -400,6 +424,26 @@ class Bot:
             self._allarmi[testo] = time.time()
             di(f"Allarme: {testo}")
             self.tg.operativo(messaggi.allarme(testo))
+
+    @property
+    def _tv_ferma(self) -> bool:
+        """La quota giornaliera di TradingView e' finita: fino a quando riparte non si chiede niente."""
+        return self._su_tradingview and bool(getattr(getattr(self.fonte, "tv", None), "ferma", False))
+
+    def _quota_tradingview(self, errore: QuotaFinita) -> None:
+        """Finite le richieste di oggi su TradingView: un messaggio solo per volta, non uno per grafico e per minuto
+        (il 20/10/2026 il testo di TradingView cambiava a ogni minuto, *"in about 7h 53m"*, e ne arrivavano centinaia)."""
+        if getattr(self, "_quota_detta", None) == errore.fino_a:
+            return
+        self._quota_detta = errore.fino_a
+        chiamate = getattr(getattr(self.fonte, "tv", None), "chiamate_oggi", 0)
+        registra(CARTELLA, "errore", testo=f"TradingView, quota finita dopo {chiamate} richieste oggi: {errore}")
+        testo = (f"TradingView: finite le richieste di oggi (la quota giornaliera dell'account, dopo {chiamate} "
+                 f"richieste del bot da mezzanotte UTC). Fino alle {messaggi.ora_italiana(int(errore.fino_a))} italiane "
+                 "non posso leggere le candele: non analizzo e non apro niente. Le operazioni aperte le seguo lo stesso "
+                 "su MT5 (stop, TP1, pareggio).")
+        di(f"Allarme: {testo}")
+        self.tg.operativo(messaggi.allarme(testo))
 
     # --- avvio ---
 
@@ -426,7 +470,8 @@ class Bot:
         self._accendi_tradingview()
         self._accendi_rete()
         # Su TradingView si guardano i grafici scelti nel .env; se no tutti quelli che il bot conosce.
-        da_guardare = [n for _, n in self.imp.tradingview] if self._su_tradingview else list(STRUMENTI_VIVO)
+        da_guardare = ([n for n in STRUMENTI_VIVO if self.fonte.esiste(n)] if self._su_tradingview
+                       else list(STRUMENTI_VIVO))
         # Il broker puo' non avere tutti gli strumenti: quelli che mancano si saltano, e si dice quali.
         self.strumenti, mancanti = [], []
         for i, strumento in enumerate(da_guardare, 1):
@@ -436,10 +481,14 @@ class Bot:
                 continue
             try:
                 self.basi[strumento] = self._fonte.orarie(strumento, ORARIE)
-                self.fini[strumento] = self._fonte.barre(strumento, QUARTI, 900)
+                self.fini[strumento] = self._fonte_quarti.barre(strumento, QUARTI, 900)
                 self.strumenti.append(strumento)
             except ErroreMT5:
                 mancanti.append(strumento)
+            except QuotaFinita as errore:
+                # Si riprova dopo, quando la quota riparte: lo strumento resta fra quelli guardati.
+                self.strumenti.append(strumento)
+                self._quota_tradingview(errore)
             except ErroreTradingView as errore:
                 # Si riprova a ogni giro: lo strumento resta fra quelli guardati.
                 self.strumenti.append(strumento)
@@ -551,8 +600,10 @@ class Bot:
         if not hasattr(self, "_prossime_tv"):
             self._prossime_tv, self._tf_rifiutati = {}, set()
         nomi = list(self.strumenti) + [x for x in ("DXY", "TOTAL") if self.fonte.esiste(x)]
-        cambiato = False
+        cambiato = finita = False
         for s in nomi:
+            if finita:
+                break
             d = self.lunghe.get(s)
             d = dict(d) if isinstance(d, dict) else {}
             for tf, quante in DIRETTE.items():
@@ -563,6 +614,10 @@ class Bot:
                     quante = min(quante, max(5, mancano))
                 try:
                     barre = self.fonte.grezze(s, tf, quante)
+                except QuotaFinita as errore:
+                    self._quota_tradingview(errore)
+                    finita = True
+                    break
                 except RispostaRifiutata as errore:
                     if tf in NON_ELENCATI:
                         self._tf_rifiutati.add(tf)
@@ -630,6 +685,9 @@ class Bot:
                 self.dxy = self._fonte.orarie("DXY", ORARIE)
             else:
                 self.dxy = _unisci(self.dxy, self._fonte.orarie("DXY", 50), ORARIE)
+        except QuotaFinita as errore:
+            self._quota_tradingview(errore)
+            return
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         if self.dxy is None:
@@ -646,6 +704,9 @@ class Bot:
         try:
             self.totale = (self._fonte.orarie("TOTAL", ORARIE) if self.totale is None
                            else _unisci(self.totale, self._fonte.orarie("TOTAL", 50), ORARIE))
+        except QuotaFinita as errore:
+            self._quota_tradingview(errore)
+            return
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         if self.totale is None:
@@ -1390,15 +1451,23 @@ class Bot:
         # Su TradingView i quarti d'ora si chiedono a turno, un quarto degli strumenti per volta (12 candele: tre ore):
         # tutti insieme, con le ore allo scoccare dell'ora, erano troppe richieste.
         turno = (quarto // 900) % 4
+        fonte = self._fonte_quarti
+        su_tv = fonte is not self.terminale
         for i, s in enumerate(self.strumenti):
             self._pulsanti_subito()
-            if self._su_tradingview and s in self.fini and i % 4 != turno:
+            if su_tv and (self._tv_ferma or (s in self.fini and i % 4 != turno)):
                 continue
             try:
-                self.fini[s] = (_unisci(self.fini[s], self._fonte.barre(s, 12 if self._su_tradingview else 20, 900),
-                                        QUARTI) if s in self.fini else self._fonte.barre(s, QUARTI, 900))
+                self.fini[s] = (_unisci(self.fini[s], fonte.barre(s, 12 if su_tv else 20, 900),
+                                        QUARTI) if s in self.fini else fonte.barre(s, QUARTI, 900))
+            except QuotaFinita as errore:
+                self._quota_tradingview(errore)
+                continue
             except ErroreTradingView as errore:
                 self.allarme(f"TradingView: {errore}")
+                continue
+            except ErroreMT5:
+                registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
                 continue
             if il_metodo() == "foto":
                 # Col metodo delle foto si entra all'apertura delle candele, che cadono tutte allo scoccare
@@ -1416,21 +1485,29 @@ class Bot:
         # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini. Un errore su uno
         # strumento non ferma gli altri e non fa ripartire il giro (prima rifaceva da capo anche gli strumenti
         # gia' guardati); se non va nessuno (MT5 staccato) si riprova al minuto dopo.
-        self.aggiorna_dxy()
-        self.aggiorna_totale()
-        self.aggiorna_lunghe(time.time())
+        # Con la quota di TradingView finita non si chiede niente: il giro di quest'ora resta senza occasioni (riprovarlo
+        # ogni minuto bruciava richieste e mandava un allarme per grafico).
+        if not self._tv_ferma:
+            self.aggiorna_dxy()
+            self.aggiorna_totale()
+            self.aggiorna_lunghe(time.time())
         andati, ultimo_errore = 0, None
         foto_metodo = il_metodo() == "foto"
         # Prima le occasioni di tutti gli strumenti, poi si decide su tutte insieme: il Capo sceglie le migliori del
         # giro (il proprietario, 07/10/2026: *"il capo deve selezionare i crt"*).
         tutte: dict[str, list] = {}
         for s in self.strumenti:
+            if self._tv_ferma:
+                self.stato.saltate["quota di TradingView finita"] = self.stato.saltate.get("quota di TradingView finita", 0) + 1
+                break
             self._pulsanti_subito()
             try:
                 self._ore_nuove(s)
                 tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.gemelli(),
                                        lunghe=self.lunghe)
                 andati += 1
+            except QuotaFinita as errore:
+                self._quota_tradingview(errore)
             except ErroreTradingView as errore:
                 # Lo stesso allarme per tutti gli strumenti: arriva una volta sola, non uno per grafico.
                 ultimo_errore = errore
@@ -1440,7 +1517,7 @@ class Bot:
                 ultimo_errore = errore
                 registra(CARTELLA, "errore", testo=f"{s}: {traceback.format_exc()}")
                 self.allarme(f"{s}: errore nel giro dell'ora ({errore!r}). Gli altri strumenti vanno avanti.")
-        if not andati and ultimo_errore is not None:
+        if not andati and ultimo_errore is not None and not self._tv_ferma:
             raise ultimo_errore
         # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi (riavvio, MT5
         # lento) non si entra a un prezzo che non e' piu' quello.

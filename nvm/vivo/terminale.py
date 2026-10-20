@@ -345,6 +345,15 @@ class Terminale:
         motivo = getattr(uscite[-1], "reason", None)
         return motivo is not None and int(motivo) in a_mano
 
+    def commissione_aperta(self, ticket: int) -> Optional[float]:
+        """La commissione pagata all'apertura della posizione (nella valuta del conto, positiva); None se MT5 non ha
+        ancora l'affare d'apertura."""
+        affari = self.mt5.history_deals_get(position=int(ticket)) or []
+        entrate = [d for d in affari if int(d.entry) == self.mt5.DEAL_ENTRY_IN]
+        if not entrate:
+            return None
+        return abs(sum(float(d.commission) for d in entrate))
+
     def chiusura(self, ticket: int) -> tuple[float, float]:
         """Profitto netto (con commissioni e swap) e prezzo d'uscita di una posizione chiusa."""
         affari = self.mt5.history_deals_get(position=int(ticket))
