@@ -291,6 +291,10 @@ class Terminale:
             raise ErroreMT5(f"non riesco a convertire le commissioni in prezzo per {simbolo}: {self.mt5.last_error()}")
         ticks = math.ceil(da_recuperare / float(utile_per_tick) - 1e-12) if da_recuperare else 0
         stop = prezzo + segno * ticks * passo
+        # Un pareggio automatico non deve peggiorare uno stop gia' spostato in profitto a mano.
+        stop_attuale = float(getattr(p, "sl", 0.0) or 0.0)
+        if stop_attuale > 0:
+            stop = max(stop, stop_attuale) if not short else min(stop, stop_attuale)
         return round(stop, int(info.digits))
 
     def lotti(self, strumento: str) -> tuple[float, float, float]:
