@@ -233,16 +233,20 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
 
 
 def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None,
-                 parte: Optional[float] = None, alla_chiusura: bool = False) -> str:
+                 parte: Optional[float] = None, alla_chiusura: bool = False,
+                 stop_netto: Optional[float] = None) -> str:
     quanto = f"il {_it(100 * parte, 0)}%" if parte else "la quota prevista"
+    protetto = (f"lo stop è a {prezzo(k, stop_netto)}, oltre l'entrata per coprire le commissioni previste."
+                if stop_netto is not None else
+                f"lo stop è al prezzo d'entrata ({prezzo(k, ingresso)}).")
     if alla_chiusura:
         testa = f"⏱ {k}: candela d'ingresso chiusa; ho chiuso {quanto} a mercato."
         if a_pareggio:
-            return f"{testa}\nSul resto lo stop è al prezzo d'entrata ({prezzo(k, ingresso)})."
+            return f"{testa}\nSul resto {protetto}"
         return f"{testa}\nNon sono riuscito a spostare lo stop a pareggio: resta al livello precedente e ci riprovo."
     testa = f"🎯 {k}: primo obiettivo raggiunto, ho chiuso {quanto} in guadagno."
     if a_pareggio:
-        return f"{testa}\nSul resto lo stop ora è al prezzo d'entrata ({prezzo(k, ingresso)}): da qui non può più perdere."
+        return f"{testa}\nSul resto {protetto}"
     return f"{testa}\nSul resto lo stop andrà al prezzo d'entrata quando il prezzo arriva a {prezzo(k, livello)}."
 
 
@@ -251,16 +255,18 @@ def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
 
 
 def pareggio(k: str, verso: Verso, ingresso: float, tp1: bool = False, alla_chiusura: bool = False,
-             a_pareggio: bool = True) -> str:
+             a_pareggio: bool = True, stop_netto: Optional[float] = None) -> str:
+    protetto = (f"Ho spostato lo stop a {prezzo(k, stop_netto)}, oltre l'entrata per coprire le commissioni previste."
+                if stop_netto is not None else
+                f"Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}).")
     if alla_chiusura:
         testa = f"⏱ {k}: candela d'ingresso chiusa. "
         coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
-        stato = (f"Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)})." if a_pareggio else
-                 "Lo stop è ancora al livello precedente; riprovo a spostarlo a pareggio.")
+        stato = protetto if a_pareggio else "Lo stop è ancora al livello precedente; riprovo a spostarlo a pareggio."
         return f"{testa}{stato}{coda}"
     testa = f"🎯 {k}: TP1 raggiunto. " if tp1 else f"🛡 {k}: "
     coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
-    return f"{testa}Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}). Da qui non può più perdere.{coda}"
+    return f"{testa}{protetto}{coda}"
 
 
 def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: str) -> str:
