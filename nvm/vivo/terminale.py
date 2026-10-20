@@ -282,7 +282,6 @@ class Terminale:
         costo_totale = max(costi_pagati + costo_apertura_mancante + costo_futuro, costo_round_turn)
 
         da_recuperare = max(0.0, costo_totale - utile_realizzato - swap)
-        da_recuperare = max(0.0, costo_totale - utile_realizzato - swap)
         passo = float(getattr(info, "trade_tick_size", 0.0) or getattr(info, "point", 0.0))
         if passo <= 0:
             raise ErroreMT5(f"MT5 non fornisce il tick size di {simbolo}")
