@@ -51,6 +51,13 @@ usano il CRT locale solo come conferma del segnale DXY. BTC ed ETH seguono esclu
 Il TP1 si esegue alla chiusura della candela d'ingresso; il target finale usa il key level del timeframe più
 basso preso, se disponibile.
 
+Il pareggio e' netto: alla chiusura del timeframe d'ingresso, lo stop va al livello che copre le commissioni
+previste dell'intera operazione, quindi normalmente oltre il prezzo d'entrata. Quando disponibili, si usano
+le commissioni e le fee effettive registrate da MT5 e si stima la chiusura dal costo d'apertura; in mancanza
+del dato si usa la stima round-turn dello strumento. Le etichette e i risultati usati per addestrare o valutare
+la rete dovranno riflettere il PnL netto dei costi, non considerare il prezzo d'entrata esatto come pareggio.
+La rete Kaggle attualmente in addestramento resta invariata.
+
 ## Le regole e dove stanno
 
 | Regola | Da dove | Codice |
