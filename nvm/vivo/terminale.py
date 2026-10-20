@@ -210,6 +210,72 @@ class Terminale:
             raise ErroreMT5(f"non riesco a calcolare il valore di un lotto su {simbolo}: {self.mt5.last_error()}")
         return abs(float(perdita))
 
+    def stop_pareggio_netto(self, strumento: str, ticket: int, verso: Verso, ingresso: float,
+                            volume_iniziale: float) -> float:
+        """Prezzo dello stop che copre i costi stimati dell'intera operazione, nella valuta del conto.
+
+        Usa commissioni e fee reali gia' registrate da MT5 e stima la commissione di chiusura usando
+        quella d'apertura. Se MT5 non ha ancora registrato la commissione, usa la stima round-turn
+        dello strumento in strumenti.py. Il profitto per tick viene convertito nella valuta del conto
+        da MT5, cosi' funziona anche quando la valuta quotata non e' quella del conto.
+        """
+        simbolo = self.simbolo(strumento)
+        info = self.mt5.symbol_info(simbolo)
+        posizioni = self.mt5.positions_get(ticket=int(ticket))
+        if info is None or not posizioni:
+            raise ErroreMT5(f"non riesco a leggere la posizione {ticket} su {simbolo}")
+        p = posizioni[0]
+        short = verso is Verso.SHORT
+        segno = -1 if short else 1
+        tipo = self.mt5.ORDER_TYPE_SELL if short else self.mt5.ORDER_TYPE_BUY
+        volume = float(p.volume)
+        prezzo = float(getattr(p, "price_open", ingresso) or ingresso)
+        identita = int(getattr(p, "identifier", ticket) or ticket)
+        affari = self.mt5.history_deals_get(position=identita)
+        if affari is None and identita != int(ticket):
+            affari = self.mt5.history_deals_get(position=int(ticket))
+        affari = affari or ()
+
+        entrate = {getattr(self.mt5, "DEAL_ENTRY_IN", 0),
+                   getattr(self.mt5, "DEAL_ENTRY_INOUT", -1)}
+        aperture = [d for d in affari if int(getattr(d, "entry", -99)) in entrate]
+        volume_aperto = sum(float(getattr(d, "volume", 0.0)) for d in aperture)
+        costo_apertura = sum(max(0.0, -float(getattr(d, "commission", 0.0))
+                                 - float(getattr(d, "fee", 0.0))) for d in aperture)
+        costi_pagati = sum(max(0.0, -float(getattr(d, "commission", 0.0))
+                                - float(getattr(d, "fee", 0.0))) for d in affari)
+        utile_realizzato = sum(float(getattr(d, "profit", 0.0)) for d in affari)
+        swap = sum(float(getattr(d, "swap", 0.0)) for d in affari) + float(getattr(p, "swap", 0.0))
+
+        if volume_aperto > 0 and costo_apertura > 0:
+            commissione_uscita = costo_apertura / volume_aperto * volume
+            costo_totale = costi_pagati + commissione_uscita
+        else:
+            # In assenza del dato MT5, la tabella contiene il costo stimato del giro completo
+            # (apertura + chiusura), espresso come distanza di prezzo per unita' di strumento.
+            strumento_info = STRUMENTI.get(strumento)
+            distanza = float(getattr(strumento_info, "commissione", 0.0))
+            volume_stimato = volume_aperto or float(volume_iniziale) or volume
+            stimato = 0.0
+            if distanza > 0:
+                utile_stimato = self.mt5.order_calc_profit(tipo, simbolo, volume_stimato,
+                                                          prezzo, prezzo + segno * distanza)
+                if utile_stimato is None:
+                    raise ErroreMT5(f"non riesco a stimare le commissioni per {simbolo}: {self.mt5.last_error()}")
+                stimato = abs(float(utile_stimato))
+            costo_totale = max(costi_pagati, stimato)
+
+        da_recuperare = max(0.0, costo_totale - utile_realizzato - swap)
+        passo = float(getattr(info, "trade_tick_size", 0.0) or getattr(info, "point", 0.0))
+        if passo <= 0:
+            raise ErroreMT5(f"MT5 non fornisce il tick size di {simbolo}")
+        utile_per_tick = self.mt5.order_calc_profit(tipo, simbolo, volume, prezzo, prezzo + segno * passo)
+        if utile_per_tick is None or float(utile_per_tick) <= 0:
+            raise ErroreMT5(f"non riesco a convertire le commissioni in prezzo per {simbolo}: {self.mt5.last_error()}")
+        ticks = math.ceil(da_recuperare / float(utile_per_tick) - 1e-12) if da_recuperare else 0
+        stop = prezzo + segno * ticks * passo
+        return round(stop, int(info.digits))
+
     def lotti(self, strumento: str) -> tuple[float, float, float]:
         """Lotto minimo, passo e massimo."""
         info = self.mt5.symbol_info(self.simbolo(strumento))
