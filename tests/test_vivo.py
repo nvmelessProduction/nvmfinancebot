@@ -840,20 +840,19 @@ def test_la_lista_degli_strumenti_del_broker(tmp_path, monkeypatch):
 
 def test_il_bot_guarda_solo_i_mercati_della_lista_del_20_10():
     """Il proprietario, 20/10/2026: *"lasciamo solo dxy, eurusd, gbpusd, nzdusd, audusd, xauusd, xagusd, aggiungiamo
-    xptusd, usdchf usdcad poi total, btcusd, ethusd"*. Anche se il .env di TradingView ne ha altri."""
+    xptusd, usdchf usdcad poi total, btcusd, ethusd"*, e poco dopo *"togli xpt"*. Anche se il .env di TradingView ne ha
+    altri."""
     import vivo
     from nvm.agenti import foto
-    assert set(vivo.STRUMENTI_VIVO) == {"EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "XAUUSD", "XAGUSD", "XPTUSD",
+    assert set(vivo.STRUMENTI_VIVO) == {"EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "XAUUSD", "XAGUSD",
                                         "USDCHF", "USDCAD", "BTCUSD", "ETHUSD"}
     assert all(n in vivo.STRUMENTI for n in vivo.STRUMENTI_VIVO)
     # Tutti guidati: dal DXY i dieci col dollaro, dalla TOTAL le crypto.
     assert {n for n in vivo.STRUMENTI_VIVO if n not in foto.CRYPTO_TOTALE} <= set(foto.GUIDATI_DAL_DXY)
-    assert foto.verso_dal_dxy("XPTUSD", Verso.LONG) is Verso.SHORT and foto.verso_dal_dxy("USDCAD", Verso.LONG) is Verso.LONG
+    assert foto.verso_dal_dxy("XAGUSD", Verso.LONG) is Verso.SHORT and foto.verso_dal_dxy("USDCAD", Verso.LONG) is Verso.LONG
     dal_env = [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:USDJPY", "USDJPY"), ("OANDA:US30USD", "US30"),
-               ("FX_IDC:GBPUSD", "GBPUSD")]
-    assert vivo.grafici_da_guardare(dal_env) == [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:GBPUSD", "GBPUSD"),
-                                                 ("OANDA:XPTUSD", "XPTUSD")]
-    assert vivo.grafici_da_guardare([("TVC:PLATINUM", "XPTUSD")]) == [("TVC:PLATINUM", "XPTUSD")]
+               ("FX_IDC:GBPUSD", "GBPUSD"), ("OANDA:XPTUSD", "XPTUSD")]
+    assert vivo.grafici_da_guardare(dal_env) == [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:GBPUSD", "GBPUSD")]
 
 
 def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monkeypatch):

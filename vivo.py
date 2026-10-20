@@ -70,12 +70,12 @@ from nvm.vivo import rete_vivo
 RADICE = Path(__file__).resolve().parent
 # Gli strumenti su cui il bot opera dal vivo, sul conto demo, se il broker li ha. Il proprietario, 20/10/2026:
 # *"leviamo le coppie inutili e lasciamo solo dxy, eurusd, gbpusd, nzdusd, audusd, xauusd, xagusd, aggiungiamo xptusd,
-# usdchf usdcad poi total, btcusd, ethusd"*. Il DXY e la TOTAL sono i grafici che guidano (`foto.GUIDATI_DAL_DXY`,
+# usdchf usdcad poi total, btcusd, ethusd"*; poco dopo: *"togli xpt"*. Il DXY e la TOTAL sono i grafici che guidano (`foto.GUIDATI_DAL_DXY`,
 # `foto.CRYPTO_TOTALE`): su di loro non si opera. Anche se nel .env ci sono altri grafici, si guardano solo questi.
-STRUMENTI_VIVO = ("EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "USDCHF", "USDCAD", "XAUUSD", "XAGUSD", "XPTUSD",
-                  "BTCUSD", "ETHUSD")
-# Su TradingView, il grafico di uno strumento che nel .env (TRADINGVIEW_SIMBOLI) manca: il platino, aggiunto il 20/10.
-GRAFICI_PREDEFINITI = {"XPTUSD": "OANDA:XPTUSD"}
+STRUMENTI_VIVO = ("EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "USDCHF", "USDCAD", "XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD")
+# Su TradingView, il grafico di uno strumento che nel .env (TRADINGVIEW_SIMBOLI) manca (nome: simbolo). Per ora nessuno:
+# il platino, aggiunto e poi tolto il 20/10/2026, aveva OANDA:XPTUSD.
+GRAFICI_PREDEFINITI: dict[str, str] = {}
 # Per quanto le decisioni finite restano nello stato, prima dell'archivio.
 TENERE = 14 * 86400
 CARTELLA = RADICE / "dati" / "vivo"
