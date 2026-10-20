@@ -1,10 +1,8 @@
 """L'Esecutore: porta sul conto demo le decisioni del Capo, con la puntata del Rischio.
 
-Ogni operazione e' una posizione sola (il proprietario, 07/10/2026: *"vorrei che apri una sola operazione"*),
-con lo stop e il target finale sul broker: se il bot si spegne, la posizione resta protetta. Quando il prezzo
-arriva al TP1 il bot chiude meta' e mette lo stop al prezzo d'entrata; se il lotto non si puo' dividere, sposta
-solo lo stop e tiene tutto fino al target finale. E' la stessa regola delle prove sullo storico
-(`nvm/prova/campo.py`).
+Ogni operazione e' una posizione sola, con lo stop e il target finale sul broker: se il bot si spegne,
+la posizione resta protetta. Nel metodo foto, alla chiusura della candela d'ingresso il bot chiude il 25%
+se il lotto si divide e sposta lo stop al livello necessario a coprire i costi stimati dell'operazione.
 """
 
 from __future__ import annotations
