@@ -239,33 +239,49 @@ class Terminale:
 
         entrate = {getattr(self.mt5, "DEAL_ENTRY_IN", 0),
                    getattr(self.mt5, "DEAL_ENTRY_INOUT", -1)}
+        uscite = {getattr(self.mt5, "DEAL_ENTRY_OUT", 1),
+                  getattr(self.mt5, "DEAL_ENTRY_OUT_BY", -2)}
         aperture = [d for d in affari if int(getattr(d, "entry", -99)) in entrate]
+        chiusure = [d for d in affari if int(getattr(d, "entry", -99)) in uscite]
         volume_aperto = sum(float(getattr(d, "volume", 0.0)) for d in aperture)
+        volume_chiuso = sum(float(getattr(d, "volume", 0.0)) for d in chiusure)
         costo_apertura = sum(max(0.0, -float(getattr(d, "commission", 0.0))
                                  - float(getattr(d, "fee", 0.0))) for d in aperture)
+        costo_chiusure = sum(max(0.0, -float(getattr(d, "commission", 0.0))
+                                 - float(getattr(d, "fee", 0.0))) for d in chiusure)
         costi_pagati = sum(max(0.0, -float(getattr(d, "commission", 0.0))
                                 - float(getattr(d, "fee", 0.0))) for d in affari)
         utile_realizzato = sum(float(getattr(d, "profit", 0.0)) for d in affari)
         swap = sum(float(getattr(d, "swap", 0.0)) for d in affari) + float(getattr(p, "swap", 0.0))
 
-        if volume_aperto > 0 and costo_apertura > 0:
-            commissione_uscita = costo_apertura / volume_aperto * volume
-            costo_totale = costi_pagati + commissione_uscita
-        else:
-            # In assenza del dato MT5, la tabella contiene il costo stimato del giro completo
-            # (apertura + chiusura), espresso come distanza di prezzo per unita' di strumento.
-            strumento_info = STRUMENTI.get(strumento)
-            distanza = float(getattr(strumento_info, "commissione", 0.0))
-            volume_stimato = volume_aperto or float(volume_iniziale) or volume
-            stimato = 0.0
-            if distanza > 0:
-                utile_stimato = self.mt5.order_calc_profit(tipo, simbolo, volume_stimato,
-                                                          prezzo, prezzo + segno * distanza)
-                if utile_stimato is None:
-                    raise ErroreMT5(f"non riesco a stimare le commissioni per {simbolo}: {self.mt5.last_error()}")
-                stimato = abs(float(utile_stimato))
-            costo_totale = max(costi_pagati, stimato)
+        # La tabella e' round-turn (apertura + chiusura); la si usa come minimo prudenziale
+        # quando il broker non ha ancora registrato una delle commissioni nel deal history.
+        strumento_info = STRUMENTI.get(strumento)
+        distanza = float(getattr(strumento_info, "commissione", 0.0))
+        volume_stimato = volume_aperto or float(volume_iniziale) or volume
+        costo_round_turn = 0.0
+        costo_lato_per_volume = 0.0
+        if distanza > 0:
+            utile_stimato = self.mt5.order_calc_profit(tipo, simbolo, volume_stimato,
+                                                      prezzo, prezzo + segno * distanza)
+            if utile_stimato is None:
+                raise ErroreMT5(f"non riesco a stimare le commissioni per {simbolo}: {self.mt5.last_error()}")
+            costo_round_turn = abs(float(utile_stimato))
+            costo_lato_per_volume = costo_round_turn / (2 * volume_stimato)
 
+        if volume_aperto > 0 and costo_apertura > 0:
+            costo_lato_per_volume = costo_apertura / volume_aperto
+            costo_apertura_mancante = 0.0
+        elif volume_chiuso > 0 and costo_chiusure > 0:
+            costo_lato_per_volume = costo_chiusure / volume_chiuso
+            costo_apertura_mancante = costo_lato_per_volume * volume_stimato
+        else:
+            costo_apertura_mancante = costo_lato_per_volume * volume_stimato
+
+        costo_futuro = costo_lato_per_volume * volume
+        costo_totale = max(costi_pagati + costo_apertura_mancante + costo_futuro, costo_round_turn)
+
+        da_recuperare = max(0.0, costo_totale - utile_realizzato - swap)
         da_recuperare = max(0.0, costo_totale - utile_realizzato - swap)
         passo = float(getattr(info, "trade_tick_size", 0.0) or getattr(info, "point", 0.0))
         if passo <= 0:
