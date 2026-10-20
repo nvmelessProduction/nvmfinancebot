@@ -237,7 +237,7 @@ def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True,
                  stop_netto: Optional[float] = None) -> str:
     quanto = f"il {_it(100 * parte, 0)}%" if parte else "la quota prevista"
     protetto = (f"lo stop è a {prezzo(k, stop_netto)}, oltre l'entrata per coprire le commissioni previste."
-                if stop_netto is not None else
+                if stop_netto is not None and abs(stop_netto - ingresso) > 1e-9 else
                 f"lo stop è al prezzo d'entrata ({prezzo(k, ingresso)}).")
     if alla_chiusura:
         testa = f"⏱ {k}: candela d'ingresso chiusa; ho chiuso {quanto} a mercato."
@@ -257,7 +257,7 @@ def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
 def pareggio(k: str, verso: Verso, ingresso: float, tp1: bool = False, alla_chiusura: bool = False,
              a_pareggio: bool = True, stop_netto: Optional[float] = None) -> str:
     protetto = (f"Ho spostato lo stop a {prezzo(k, stop_netto)}, oltre l'entrata per coprire le commissioni previste."
-                if stop_netto is not None else
+                if stop_netto is not None and abs(stop_netto - ingresso) > 1e-9 else
                 f"Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}).")
     if alla_chiusura:
         testa = f"⏱ {k}: candela d'ingresso chiusa. "
