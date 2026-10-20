@@ -115,11 +115,11 @@ def _candela_range(d: Decisione) -> str:
 # i soldi in euro invece delle sigle, una cosa per riga.
 
 _MOTIVI = {"stop": "è arrivata allo stop", "target": "ha raggiunto l'obiettivo",
-           "pareggio": "è tornata al prezzo d'entrata",
+           "pareggio": "il risultato netto è vicino allo zero",
            "primo target e poi secondo target": "ha raggiunto tutti e due gli obiettivi",
-           "primo target e poi pareggio": "una parte chiusa al primo obiettivo, il resto è tornato al prezzo d'entrata",
+           "primo target e poi pareggio": "una parte è stata chiusa al primo obiettivo e il resto ha chiuso in pareggio netto",
            "candela d'ingresso chiusa e poi secondo target": "dopo il close della candela d'ingresso ha raggiunto il target finale",
-           "candela d'ingresso chiusa e poi pareggio": "dopo il close della candela d'ingresso il resto è tornato al pareggio",
+           "candela d'ingresso chiusa e poi pareggio": "dopo il close della candela d'ingresso il resto ha chiuso in pareggio netto",
            "chiusa a mano": "l'hai chiusa a mano: la squadra non la conta come risultato del metodo"}
 
 
@@ -203,26 +203,26 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
     elif uscita == "secondo target" and getattr(d, "foto", None) and 0 < op.parziale < 1:
         ob = d.foto.get("obiettivo")
         if momento_tp1:
-            righe.append(f"⏱ TP1: {momento_tp1} → sposto lo stop al prezzo d'entrata. "
+            righe.append(f"⏱ TP1: {momento_tp1} → sposto lo stop al pareggio netto, commissioni incluse. "
                          f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
         else:
-            righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop al prezzo d'entrata. "
+            righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop al pareggio netto, commissioni incluse. "
                          f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → tutto, "
                      f"circa {guadagno(op.tp2, 1.0)}")
     elif uscita == "secondo target":
         righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp2)} → circa {guadagno(op.tp2, 1.0)}")
-        righe.append(f"🛡 A {prezzo(k, op.tp1)} sposto lo stop al prezzo d'entrata: da lì non può più perdere")
+        righe.append(f"🛡 A {prezzo(k, op.tp1)} sposto lo stop al pareggio netto, commissioni incluse")
     elif getattr(d, "foto", None):
         ob = d.foto.get("obiettivo")
         p = op.parziale if 0 < op.parziale < 1 else 0.25
         mezzo = f" ({_it(meta, 2)} lotti)" if meta else ""
         if momento_tp1:
-            righe.append(f"⏱ TP1: {momento_tp1} → chiudo il {_it(100 * p, 0)}%{mezzo} a mercato e metto lo stop "
-                         "al prezzo d'entrata")
+            righe.append(f"⏱ TP1: {momento_tp1} → chiudo il {_it(100 * p, 0)}%{mezzo} a mercato e sposto lo stop "
+                         "al pareggio netto, commissioni incluse")
         else:
             righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo il {_it(100 * p, 0)}%{mezzo}, "
-                         f"circa {guadagno(op.tp1, p)}, e metto lo stop al prezzo d'entrata")
+                         f"circa {guadagno(op.tp1, p)}, e sposto lo stop al pareggio netto, commissioni incluse")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → il resto, "
                      f"circa {guadagno(op.tp2, 1 - p)}")
     else:
@@ -233,16 +233,20 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
 
 
 def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True, livello: Optional[float] = None,
-                 parte: Optional[float] = None, alla_chiusura: bool = False) -> str:
+                 parte: Optional[float] = None, alla_chiusura: bool = False,
+                 stop_netto: Optional[float] = None) -> str:
     quanto = f"il {_it(100 * parte, 0)}%" if parte else "la quota prevista"
+    protetto = (f"lo stop è a {prezzo(k, stop_netto)}, oltre l'entrata per coprire le commissioni previste."
+                if stop_netto is not None and abs(stop_netto - ingresso) > 1e-9 else
+                f"lo stop è al prezzo d'entrata ({prezzo(k, ingresso)}).")
     if alla_chiusura:
         testa = f"⏱ {k}: candela d'ingresso chiusa; ho chiuso {quanto} a mercato."
         if a_pareggio:
-            return f"{testa}\nSul resto lo stop è al prezzo d'entrata ({prezzo(k, ingresso)})."
+            return f"{testa}\nSul resto {protetto}"
         return f"{testa}\nNon sono riuscito a spostare lo stop a pareggio: resta al livello precedente e ci riprovo."
     testa = f"🎯 {k}: primo obiettivo raggiunto, ho chiuso {quanto} in guadagno."
     if a_pareggio:
-        return f"{testa}\nSul resto lo stop ora è al prezzo d'entrata ({prezzo(k, ingresso)}): da qui non può più perdere."
+        return f"{testa}\nSul resto {protetto}"
     return f"{testa}\nSul resto lo stop andrà al prezzo d'entrata quando il prezzo arriva a {prezzo(k, livello)}."
 
 
@@ -251,16 +255,18 @@ def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
 
 
 def pareggio(k: str, verso: Verso, ingresso: float, tp1: bool = False, alla_chiusura: bool = False,
-             a_pareggio: bool = True) -> str:
+             a_pareggio: bool = True, stop_netto: Optional[float] = None) -> str:
+    protetto = (f"Ho spostato lo stop a {prezzo(k, stop_netto)}, oltre l'entrata per coprire le commissioni previste."
+                if stop_netto is not None and abs(stop_netto - ingresso) > 1e-9 else
+                f"Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}).")
     if alla_chiusura:
         testa = f"⏱ {k}: candela d'ingresso chiusa. "
         coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
-        stato = (f"Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)})." if a_pareggio else
-                 "Lo stop è ancora al livello precedente; riprovo a spostarlo a pareggio.")
+        stato = protetto if a_pareggio else "Lo stop è ancora al livello precedente; riprovo a spostarlo a pareggio."
         return f"{testa}{stato}{coda}"
     testa = f"🎯 {k}: TP1 raggiunto. " if tp1 else f"🛡 {k}: "
     coda = " Il lotto non si poteva dividere: tengo tutto fino al target finale." if tp1 else ""
-    return f"{testa}Ho spostato lo stop al prezzo d'entrata ({prezzo(k, ingresso)}). Da qui non può più perdere.{coda}"
+    return f"{testa}{protetto}{coda}"
 
 
 def chiusa(k: str, verso: Verso, netto: float, r: float, valuta: str, motivo: str) -> str:

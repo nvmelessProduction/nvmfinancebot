@@ -1,10 +1,8 @@
 """L'Esecutore: porta sul conto demo le decisioni del Capo, con la puntata del Rischio.
 
-Ogni operazione e' una posizione sola (il proprietario, 07/10/2026: *"vorrei che apri una sola operazione"*),
-con lo stop e il target finale sul broker: se il bot si spegne, la posizione resta protetta. Quando il prezzo
-arriva al TP1 il bot chiude meta' e mette lo stop al prezzo d'entrata; se il lotto non si puo' dividere, sposta
-solo lo stop e tiene tutto fino al target finale. E' la stessa regola delle prove sullo storico
-(`nvm/prova/campo.py`).
+Ogni operazione e' una posizione sola, con lo stop e il target finale sul broker: se il bot si spegne,
+la posizione resta protetta. Nel metodo foto, alla chiusura della candela d'ingresso il bot chiude il 25%
+se il lotto si divide e sposta lo stop al livello necessario a coprire i costi stimati dell'operazione.
 """
 
 from __future__ import annotations
@@ -18,6 +16,7 @@ from nvm.agenti.cacciatore import Verso
 from nvm.agenti import portafoglio
 from nvm.agenti.rischio import USCITE, crescita_creduta, esiti, kelly
 from nvm.dati.minuti import CHIUSURA
+from nvm.dati.strumenti import STRUMENTI
 from nvm.vivo import messaggi
 from nvm.vivo.giro import Decisione
 from nvm.vivo.terminale import Conto, ErroreMT5, Terminale
@@ -71,6 +70,8 @@ class Viva:
     meta_fatta: bool = False
     # Chiusura della candela d'ingresso per il TP1 temporizzato (0 per posizioni non foto/preesistenti).
     tp1_entro: int = 0
+    # Livello di stop oltre l'entrata che copre i costi stimati del trade, se il BE e' scattato.
+    stop_pareggio: float = 0.0
     # Chiusa da una persona (dal terminale o dal telefono): il risultato non insegna niente alla squadra.
     a_mano: bool = False
 
@@ -330,14 +331,33 @@ class Esecutore:
                 primo_preso if v.tp1_entro else (oltre or (primo_preso and v.pareggio_a <= 1)))
             if sposta:
                 tutto_spostato = True
+                livelli_pareggio = []
                 for ticket in ancora:
                     primo = v.uscita == USCITE[1] or (v.uscita == USCITE[0] and not sola and ticket == v.tickets[0])
-                    e = self.t.sposta_stop(v.strumento, ticket, v.ingresso, v.tp1 if primo else v.tp2)
+                    try:
+                        calcola = getattr(self.t, "stop_pareggio_netto", None)
+                        if calcola is not None:
+                            volume_ticket = v.volume / max(len(v.tickets), 1)
+                            stop_netto = calcola(v.strumento, ticket, Verso(v.verso), v.ingresso, volume_ticket)
+                        else:
+                            scheda = STRUMENTI.get(v.strumento)
+                            commissione = float(getattr(scheda, "commissione", 0.0))
+                            stop_netto = v.ingresso + (-1 if v.short else 1) * commissione
+                    except ErroreMT5 as errore:
+                        tutto_spostato = False
+                        fatti.append(Fatto(messaggi.allarme(
+                            f"{v.strumento}: non riesco a calcolare il pareggio netto ({errore}); "
+                            "lo stop resta al livello precedente e riprovo.")))
+                        continue
+                    e = self.t.sposta_stop(v.strumento, ticket, stop_netto, v.tp1 if primo else v.tp2)
                     if not e.ok:
                         tutto_spostato = False
                         fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {e.messaggio}")))
+                    else:
+                        livelli_pareggio.append(stop_netto)
                 if tutto_spostato:
                     v.pareggio_fatto = True
+                    v.stop_pareggio = livelli_pareggio[0] if livelli_pareggio else 0.0
             if primo_preso and not v.primo_quando:
                 v.primo_quando = int(time.time())
             if primo_preso and not v.primo_detto and v.uscita != USCITE[1]:
@@ -345,14 +365,17 @@ class Esecutore:
                 if sola and not v.meta_fatta:
                     fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso, tp1=True,
                                                          alla_chiusura=bool(v.tp1_entro),
-                                                         a_pareggio=v.pareggio_fatto)))
+                                                         a_pareggio=v.pareggio_fatto,
+                                                         stop_netto=v.stop_pareggio or None)))
                 else:
                     fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), v.ingresso, v.pareggio_fatto,
                                                              None if v.pareggio_fatto else livello,
                                                              parte=(v.meta / v.volume) if sola and v.meta and v.volume else None,
-                                                             alla_chiusura=bool(v.tp1_entro))))
+                                                             alla_chiusura=bool(v.tp1_entro),
+                                                             stop_netto=v.stop_pareggio or None)))
             elif sposta and v.pareggio_fatto:
-                fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso)))
+                fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), v.ingresso,
+                                                       stop_netto=v.stop_pareggio or None)))
             restano.append(v)
         return restano, fatti
 
