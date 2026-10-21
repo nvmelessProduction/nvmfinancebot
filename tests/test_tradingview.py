@@ -42,6 +42,16 @@ def test_i_grafici_si_scrivono_come_su_tradingview(tmp_path):
     assert impostazioni(tmp_path / "vuota", {}).tradingview == ()
 
 
+def test_le_fonti_guida_tv_non_vengono_attivate_per_impostazione_predefinita(tmp_path):
+    """DXY usa USDX da MT5 e TOTAL resta assente finché non si sceglie una sorgente esplicita."""
+    imp = impostazioni(tmp_path, {"TRADINGVIEW_SIMBOLI": "OANDA:EURUSD"})
+    tv = NS()
+    fonte = Fonte(tv, list(imp.tradingview), imp.tradingview_dxy, imp.tradingview_totale)
+
+    assert imp.tradingview_dxy == imp.tradingview_totale == ""
+    assert not fonte.esiste("DXY") and not fonte.esiste("TOTAL")
+
+
 # --- le candele ---
 
 def test_le_candele_di_tradingview_diventano_quelle_del_bot():

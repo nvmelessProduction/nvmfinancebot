@@ -169,6 +169,66 @@ def test_il_grafico_del_dollaro_si_trova_col_nome_del_broker():
     assert not t2.esiste("DXY")
 
 
+def test_il_bot_usa_il_dxy_del_broker_quando_tradingview_non_e_attivo():
+    """Il DXY deve arrivare da MT5 (USDX) anche senza grafici TradingView."""
+    import vivo
+
+    dati = ore_finte("DXY", giorni=2)
+    chiamate, allarmi = [], []
+    fonte = NS(esiste=lambda nome: chiamate.append(("esiste", nome)) or True,
+               orarie=lambda nome, quante: (chiamate.append(("orarie", nome, quante)), dati)[1],
+               simbolo=lambda nome: "USDX")
+    bot = object.__new__(vivo.Bot)
+    bot.fonte, bot.terminale, bot.dxy = None, fonte, None
+    bot.allarme = allarmi.append
+
+    bot.aggiorna_dxy()
+
+    assert bot.dxy is dati
+    assert chiamate == [("esiste", "DXY"), ("orarie", "DXY", vivo.ORARIE)]
+    assert allarmi == []
+
+
+def test_con_asset_tradingview_il_dxy_guida_arriva_da_mt5_se_non_scelto_su_tv():
+    """Il feed TV degli asset non deve imporre un DXY TV implicito: senza override usa USDX su MT5."""
+    import vivo
+
+    dati = ore_finte("DXY", giorni=2)
+    allarmi = []
+    terminale = NS(esiste=lambda nome: nome == "DXY",
+                   orarie=lambda nome, quante: dati,
+                   simbolo=lambda nome: "USDX")
+    tv = NS(esiste=lambda nome: False, simbolo=lambda nome: "")
+    bot = object.__new__(vivo.Bot)
+    bot.fonte, bot.terminale, bot.dxy = tv, terminale, None
+    bot.allarme = allarmi.append
+
+    bot.aggiorna_dxy()
+
+    assert bot._fonte_dxy is terminale
+    assert bot.dxy is dati
+    assert allarmi == []
+
+
+def test_con_asset_tradingview_i_timeframe_lunghi_del_dxy_restano_sullo_stesso_feed():
+    """Le giornaliere guida MT5 vanno tenute separate dalle candele dirette degli asset TV."""
+    import vivo
+
+    adesso = utc(2026, 10, 21, 12)
+    lunghe = ore_finte("DXY", giorni=2)
+    chiamate = []
+    terminale = NS(giornaliere=lambda nome, quante: chiamate.append((nome, quante)) or lunghe)
+    tv = NS(esiste=lambda nome: False)
+    bot = object.__new__(vivo.Bot)
+    bot.fonte, bot.terminale, bot.dxy, bot.lunghe = tv, terminale, ore_finte("DXY", giorni=2), {}
+    bot._candele_tradingview = lambda istante: None
+
+    bot.aggiorna_lunghe(adesso)
+
+    assert bot.lunghe["DXY"] is lunghe
+    assert chiamate == [("DXY", vivo.LUNGHE)]
+
+
 # --- il giro fa quello che fa lo storico ---
 
 def test_il_giro_decide_come_lo_storico():
@@ -536,6 +596,27 @@ def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch
     assert uscita.value.code == vivo.AGGIORNATO
     assert (tmp_path / "riavvio").read_text(encoding="utf-8") == "Romeo nell'equipe"
     assert vivo.CONTROLLO_VERSIONE <= 120
+
+
+def test_il_bot_segnala_anche_un_git_pull_fatto_a_mano(monkeypatch):
+    import vivo
+    monkeypatch.setattr(vivo, "_versione_precedente_pull", lambda versione: "")
+    assert vivo._titolo_aggiornamento_manual("abc123456789", "") == ""
+    assert vivo._titolo_aggiornamento_manual("abc123456789", "abc123456789") == ""
+    monkeypatch.setattr(vivo, "_git", lambda *args: "Corregge il feed DXY")
+    assert vivo._titolo_aggiornamento_manual("abc123456789", "vecchia") == "Corregge il feed DXY"
+    monkeypatch.setattr(vivo, "_git", lambda *args: (_ for _ in ()).throw(RuntimeError("git non disponibile")))
+    assert vivo._titolo_aggiornamento_manual("abc123456789", "vecchia") == "commit abc1234567"
+
+
+def test_il_bot_riconosce_il_primo_pull_dal_reflog(monkeypatch):
+    import vivo
+    def git(*args):
+        if args[0] == "reflog":
+            return "nuova\tpull: Fast-forward\nvecchia\tcommit: versione precedente"
+        return "Aggiorna il CRT DXY"
+    monkeypatch.setattr(vivo, "_git", git)
+    assert vivo._titolo_aggiornamento_manual("nuova", "") == "Aggiorna il CRT DXY"
 
 
 # --- Romeo dal vivo: il comando /romeo ---

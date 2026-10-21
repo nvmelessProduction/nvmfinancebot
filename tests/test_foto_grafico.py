@@ -10,6 +10,7 @@ from nvm.dati.candele import costruisci
 from nvm.tempo import TF
 from nvm.vivo import foto_grafico
 from nvm.vivo.giro import giro
+from tests.test_foto import _ore
 from tests.test_vivo import CapoFinto, ore_finte
 
 PNG = b"\x89PNG\r\n\x1a\n"
@@ -17,7 +18,11 @@ PNG = b"\x89PNG\r\n\x1a\n"
 
 def _decisione():
     base = ore_finte(giorni=400)
-    return giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())[-1]
+    dxy = _ore([(int(t), 100 / (o * base.punto), 100 / (l * base.punto),
+                 100 / (h * base.punto), 100 / (c * base.punto))
+                for t, (o, h, l, c) in zip(base.t, base.bid)], "DXY", spread=0.0)
+    return giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto(),
+                gemelli={"EURUSD": base, "DXY": dxy})[-1]
 
 
 def test_la_foto_di_un_operazione_e_un_png_grande_e_chiaro():

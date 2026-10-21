@@ -108,9 +108,12 @@ proprietario: conservatela). Webhook il bot non ne usa.
 2. **I grafici.** Nel file `.env` aggiungi la riga coi grafici, scritti come su TradingView (la fonte prima dei due
    punti come la scrive TradingView: ICE e' `FX_IDC:`, FXCM e' `FX:`, Capital.com e' `CAPITALCOM:`):
    `TRADINGVIEW_SIMBOLI=FX_IDC:EURUSD, FX:XAUUSD, FX:SPX500, CRYPTO:BTCUSD`. Se il nome dopo i due punti e' diverso
-   da quello del bot, aggiungi il nome del bot dopo l'uguale: `OANDA:US30USD=US30`. Per il dollaro:
-   `TRADINGVIEW_DXY=CAPITALCOM:DXY` (se manca, TVC:DXY). Per le crypto: `TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL` (un
-   setup CRT sulla TOTAL fa entrare su BTC ed ETH dalla stessa parte).
+   da quello del bot, aggiungi il nome del bot dopo l'uguale: `OANDA:US30USD=US30`. La guida DXY usa per
+   impostazione predefinita il simbolo `USDX` di FP Markets su MT5, anche quando gli asset sono letti da TradingView.
+   Per scegliere esplicitamente un grafico DXY TradingView scrivi `TRADINGVIEW_DXY=CAPITALCOM:DXY`; non viene
+   aggiunto da solo. La TOTAL non viene caricata automaticamente: BTC ed ETH restano bloccati finché non configuri
+   una fonte oraria autorizzata e validata. Solo se hai scelto esplicitamente TradingView, puoi impostare
+   `TRADINGVIEW_TOTAL=CRYPTOCAP:TOTAL`.
 3. **Riavvia il bot** (chiudi la finestra di `avvia.bat` e rifai doppio clic). Sul canale operativo arriva
    "📺 Da adesso analizzo su TradingView e apro da solo".
 
