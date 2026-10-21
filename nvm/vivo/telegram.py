@@ -278,6 +278,9 @@ class Telegram:
                 if n == self._tentativi - 1:
                     self._stampa(f"[{canale}] messaggio non partito: {errore}")
                 else:
+                    # Dopo troppi messaggi Telegram blocca il bot anche per ore: lo si vede nella finestra del bot.
+                    self._stampa(f"[{canale}] Telegram blocca i messaggi del bot per {errore.dopo:g} secondi "
+                                 "(troppi messaggi): aspetto e riprovo.")
                     time.sleep(errore.dopo)
             except Exception as errore:  # la rete non deve mai fermare il bot
                 if n == self._tentativi - 1:

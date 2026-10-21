@@ -522,6 +522,25 @@ def test_il_diario_parla_come_una_persona():
     assert firma("Grilletto", x) == "primo colpo, senza liquidità presa"
 
 
+def test_un_errore_all_avvio_si_dice_su_telegram(tmp_path, monkeypatch):
+    """21/10/2026: un errore all'avvio che non fosse di MT5 chiudeva il bot senza un messaggio, e avvia.bat lo rifaceva
+    partire ogni minuto in silenzio. Ora lo dice sul canale operativo, ed esce col codice che fa riprovare."""
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    detti = []
+
+    class BotRotto:
+        tg = NS(operativo=detti.append, svuota=lambda *a: True)
+
+        def avvia(self):
+            raise KeyError("qualcosa che manca")
+    monkeypatch.setattr(vivo, "Bot", BotRotto)
+    with pytest.raises(SystemExit) as uscita:
+        vivo.main()
+    assert uscita.value.code == 1 and len(detti) == 1 and "Non parto per un errore del bot" in detti[0]
+    assert "KeyError" in detti[0] and (tmp_path / "registro.jsonl").exists()
+
+
 def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch):
     import pytest
     import vivo

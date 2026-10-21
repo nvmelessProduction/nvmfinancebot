@@ -2206,6 +2206,18 @@ def main() -> None:
         di(f"Non parto: {errore}")
         bot.tg.operativo(messaggi.allarme(f"Non parto: {errore}"))
         sys.exit(1)
+    except SystemExit:
+        raise
+    except Exception as errore:
+        # Qualunque altro errore all'avvio: prima il bot si chiudeva senza dire niente e avvia.bat lo rifaceva
+        # partire ogni minuto, in silenzio (21/10/2026). Ora lo dice, sul canale e qui.
+        testo = traceback.format_exc()
+        registra(CARTELLA, "errore", testo=testo)
+        di(f"Non parto per un errore del bot:\n{testo}")
+        bot.tg.operativo(messaggi.allarme(f"Non parto per un errore del bot: {errore!r}. Riprovo fra un minuto; "
+                                          "il dettaglio è nel registro e nella finestra del bot sulla VPS."))
+        bot.tg.svuota(30)
+        sys.exit(1)
     di(f"Partito: lavoro su {len(bot.strumenti)} mercati. Da qui scrivo su Telegram; questa finestra resta aperta "
        "(chiuderla ferma il bot).")
     bot.battito = time.time()
