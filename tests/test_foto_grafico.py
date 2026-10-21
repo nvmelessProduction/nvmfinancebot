@@ -16,8 +16,11 @@ PNG = b"\x89PNG\r\n\x1a\n"
 
 
 def _decisione():
+    # Su EURUSD si entra solo col pattern del DXY (20/10/2026): un DXY che va al contrario dell'euro.
+    from tests.test_intelligenti import _dxy_specchio
     base = ore_finte(giorni=400)
-    return giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto())[-1]
+    return giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto(),
+                gemelli={"EURUSD": base, "DXY": _dxy_specchio(base)})[-1]
 
 
 def test_la_foto_di_un_operazione_e_un_png_grande_e_chiaro():

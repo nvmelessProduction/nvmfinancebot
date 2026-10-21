@@ -5,6 +5,7 @@ lascia un'A+ solo con le prove; i risultati veri contano piu' di quelli sulla ca
 from types import SimpleNamespace as NS
 
 from nvm.intelligenti import al_lavoro
+from nvm.tempo import TF
 from nvm.intelligenti.metodo import Domanda, Metodo
 from nvm.intelligenti.pareri import VOTANO, Parere
 from nvm.intelligenti.squadra import (ESPERIENZA_MINIMA, MINIMO_SIMILI, PIANO_ROMEO, PUNTATA_INIZIALE, SOGLIA_PUNTI,
@@ -251,6 +252,44 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
     finto = NS(_verdetti=verdetti, _decidono_i_cervelli=False, squadra=sq)
     for d in decisioni:
         assert vivo.Bot._entra(finto, d, None) is (verdetti[d.chiave].entra and verdetti[d.chiave].puntata > 0)
+
+
+def test_sugli_strumenti_guidati_le_regole_le_da_il_crt_del_dxy():
+    """21/10/2026: la TOTAL fa il CRT short a 4 ore alle 22 (prende il massimo della candela 1, nessun DH), il giro fa
+    l'occasione su BTC ed ETH ma la squadra la scarta per "manca il key level", in silenzio. Sugli strumenti guidati lo
+    sbilanciamento e' quello del CRT del DXY (della TOTAL), e la direzione dello strumento e' un parere."""
+    from dataclasses import replace as cambia
+    from nvm.intelligenti import metodo
+    from nvm.vivo.giro import giro
+    from tests.test_vivo import CapoFinto, ore_finte
+    base = ore_finte(giorni=400)
+    decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto(),
+                     gemelli={"EURUSD": base, "DXY": _dxy_specchio(base)})
+    assert decisioni
+    for d in decisioni:
+        senza = cambia(d, foto={**d.foto, "dxy": cambia(d.foto["dxy"], presi=[])})
+        m = metodo.valuta_foto(senza)
+        if d.foto["setup"].tf is not TF.H1:
+            assert m.a_piu, [(x.nome, x.perche) for x in m.mancano]
+            assert "il DXY ha preso" in m.obbligatorie[1].perche
+        assert m.obbligatorie[2].si and "comanda il DXY" in m.obbligatorie[2].perche
+
+
+def test_le_occasioni_non_aperte_dicono_perche():
+    import vivo
+    bot = object.__new__(vivo.Bot)
+    bot.squadra = object()
+    capo = {"mancano": ["key level"], "veto": ""}
+    bot._verdetti = {"k": NS(pareri={"Capo": capo}, lasciata="", puntata=0.01, punti=1.0)}
+    d = NS(chiave="k")
+    assert "manca un key level" in bot._perche_no(d, None)
+    capo["mancano"] = []
+    capo["veto"] = "domenica abbiamo detto BTCUSD rialzista per la settimana"
+    assert bot._perche_no(d, None).startswith("domenica abbiamo detto")
+    capo["veto"] = ""
+    bot._verdetti["k"].lasciata = "su BTCUSD c'è già un'operazione aperta"
+    assert "già un'operazione" in bot._perche_no(d, None)
+    assert "non è riuscita a riunirsi" in bot._perche_no(NS(chiave="altra"), None)
 
 
 def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tmp_path, monkeypatch):

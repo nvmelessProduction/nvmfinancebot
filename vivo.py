@@ -1737,6 +1737,25 @@ class Bot:
         """Decidono i cervelli se hanno vinto l'esame, o se l'ha scelto il proprietario (`scelte.json`)."""
         return bool(self.cervelli is not None and (self.cervelli_info.get("decidono") or self.scelte.get("decidono_i_cervelli")))
 
+    def _perche_no(self, d, g: Optional[dict]) -> str:
+        """Perche' chi decide non prende l'occasione, in parole semplici."""
+        v = self._verdetti.get(d.chiave)
+        if v is None:
+            if self.squadra is not None:
+                return "la squadra non è riuscita a riunirsi su questa occasione (il dettaglio è nel registro)"
+            return "il Capo non la prende"
+        capo = v.pareri.get("Capo", {})
+        mancano = capo.get("mancano", [])
+        if mancano:
+            return "manca " + ", ".join(MANCA_IN_PAROLE.get(x, x) for x in mancano)
+        if v.lasciata:
+            return v.lasciata
+        if capo.get("veto"):
+            return capo["veto"]
+        if v.puntata <= 0:
+            return "il Rischio non trova una puntata possibile"
+        return "la squadra non è convinta" + (f" ({v.punti:+.1f} punti)" if v.punti else "")
+
     def _entra(self, d, g: Optional[dict]) -> bool:
         """Chi decide: la squadra intelligente. Solo se e' spenta (`scelte.json`), i cervelli o il Capo di prima."""
         v = self._verdetti.get(d.chiave)
@@ -1822,6 +1841,8 @@ class Bot:
         decisioni = [self._con_piano(d, giudizi[d.chiave]) for d in decisioni]
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
         aperte, da_dire = set(), []
+        # Perche' un'occasione non si e' aperta, quando non lo decide la squadra (`_perche_no`).
+        motivi_no: dict[str, str] = {}
         for d in decisioni:
             g = giudizi[d.chiave]
             v = self._verdetti.get(d.chiave)
@@ -1831,6 +1852,7 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: candela 3 aperta da {int(adesso - d.r.quando)} s")
+                motivi_no[d.chiave] = f"arrivato tardi: la candela 3 era aperta da {int(adesso - d.r.quando) // 60} minuti"
             occupato = any(x.strumento == d.r.strumento for x in self.stato.vive)
             if self._entra(d, g) and adesso - d.r.quando <= finestra and occupato:
                 # Il proprietario, 07/10/2026: al massimo un'operazione aperta per strumento. Le altre occasioni
@@ -1840,12 +1862,14 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
+                motivi_no[d.chiave] = f"su {d.r.strumento} c'è già un'operazione aperta"
             elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._lascia_la_rete(d):
                 # In automatico decide la rete (il proprietario, 12/10/2026: *"voglio che sia la rete a decidere"*):
                 # questo lo lascia. In équipe, con «Apri lo stesso» e «Correggi». Un setup con tutte le regole delle
                 # foto la rete non lo lascia mai (`rete_vivo.Giudizio.regole`).
                 self.stato.saltate["la rete neurale lo lascia"] = self.stato.saltate.get("la rete neurale lo lascia", 0) + 1
                 self._proponi(d, v, self._giudizi_rete.get(d.chiave))
+                motivi_no[d.chiave] = "la rete neurale la lascia: è in équipe con «Apri lo stesso»"
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
                     # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
@@ -1867,6 +1891,8 @@ class Bot:
                 if viva is None and v is not None and self.squadra is not None:
                     # L'ordine non e' partito: per imparare conta come non presa.
                     self.squadra.annulla(d.chiave)
+                if viva is None:
+                    motivi_no[d.chiave] = fatto.saltata or fatto.testo.replace("⚠️", "").strip()
                 if viva is not None:
                     self.stato.vive.append(viva)
                     aperte.add(d.chiave)
@@ -1883,6 +1909,15 @@ class Bot:
                                     tp2=viva.tp2, rischio=viva.rischio, valuta=viva.valuta, chiave=viva.chiave,
                                     chi_decide=("squadra intelligente" if d.chiave in self._verdetti else
                                                 "cervelli" if self._decidono_i_cervelli else "Capo"))
+        # Le occasioni del metodo delle foto non aperte, col perche', sul canale operativo: il 21/10/2026 il bot non e'
+        # entrato su BTC ed ETH dopo il CRT della TOTAL e non l'ha detto da nessuna parte.
+        righe_no = [f"• {d.r.strumento} {'vendita' if d.r.verso is Verso.SHORT else 'acquisto'} "
+                    f"({d.r.alto_tf.value}): {motivi_no.get(d.chiave) or self._perche_no(d, giudizi[d.chiave])}"
+                    for d in decisioni if getattr(d, "foto", None) and d.chiave not in aperte]
+        if righe_no:
+            testo_no = "⏸ Occasioni non aperte:\n" + "\n".join(righe_no)
+            registra(CARTELLA, "non aperte", testo=testo_no)
+            self.tg.operativo(testo_no)
         for fatto in da_dire:
             if fatto.saltata:
                 # Non fa rumore: si conta nel riepilogo della sera (e resta nel registro).
