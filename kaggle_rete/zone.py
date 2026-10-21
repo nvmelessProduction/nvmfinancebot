@@ -45,6 +45,7 @@ from nvm.nameless.zone import USCITE_CANDELA, USCITE_CRT, Zone, parte
 
 SOGLIA = 0.98
 MINIMO_ESAME = 200
+SEME_MISURA = 7
 DOMANDE_CRT = ("crt", "key level", "entra", "direzione", "target")
 DOMANDE_CANDELA = ("direzione", "accetta")
 # La direzione CRT e' binaria; quella delle candele ha tre classi (ribassista, neutra, rialzista).
@@ -163,16 +164,47 @@ def pesi_classi(y: np.ndarray, classi: int) -> torch.Tensor:
     return torch.tensor(w / w.mean(), dtype=torch.float32)
 
 
-def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int) -> dict:
-    """Quante ne indovina, la media dei richiami (le classi con almeno 10 casi) e la precisione per classe."""
+def _campione_stratificato(candidati: np.ndarray, etichette: dict[str, np.ndarray], quanti: int,
+                           rng: np.random.Generator) -> np.ndarray:
+    """Seleziona esempi per ogni classe di ogni risposta, distribuendo quanti esempi circa tra gli strati."""
+    gruppi = []
+    for valori in etichette.values():
+        valori = np.asarray(valori)
+        if valori.ndim == 1:
+            valori = valori[:, None]
+        for i in range(valori.shape[1]):
+            for classe in np.unique(valori[:, i]):
+                if classe >= 0:
+                    gruppi.append((valori[:, i], int(classe)))
+    if not gruppi:
+        return np.sort(rng.choice(candidati, size=min(quanti, len(candidati)), replace=False))
+    quota = max(1, math.ceil(quanti / len(gruppi)))
+    scelti = []
+    for valori, classe in gruppi:
+        indici = np.flatnonzero(valori == classe)
+        scelti.append(rng.choice(indici, size=quota, replace=False) if len(indici) > quota else indici)
+    return np.sort(np.unique(candidati[np.concatenate(scelti)]))
+
+
+def _conteggi_classi(veri: np.ndarray, classi: int) -> list[int]:
+    return np.bincount(veri[veri >= 0].astype(np.int64), minlength=classi).tolist()
+
+
+def metriche(previsti: np.ndarray, veri: np.ndarray, classi: int, disponibili: list[int] | None = None) -> dict:
+    """Quante ne indovina; il richiamo è calcolato sul campione stratificato per materia e classe."""
     ok = veri >= 0
     p, y = previsti[ok], veri[ok]
     richiamo = [float((p[y == c] == c).mean()) if (y == c).sum() >= 10 else None for c in range(classi)]
     precisione = [float((y[p == c] == c).mean()) if (p == c).sum() >= 10 else None for c in range(classi)]
     usati = [r for r in richiamo if r is not None]
-    return {"casi": int(len(y)), "giuste": float((p == y).mean()) if len(y) else None,
-            "media dei richiami": float(np.mean(usati)) if usati else None, "richiamo": richiamo,
-            "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist()}
+    risultato = {"casi": int(len(y)), "giuste": float((p == y).mean()) if len(y) else None,
+                 "media dei richiami": float(np.mean(usati)) if usati else None, "richiamo": richiamo,
+                 "precisione": precisione, "per classe": np.bincount(y.astype(np.int64), minlength=classi).tolist()}
+    if disponibili is not None:
+        risultato["casi disponibili per classe"] = disponibili
+        risultato["campionamento"] = ("stratificato per materia e classe; giuste e precisione non stimano "
+                                      "la prevalenza naturale")
+    return risultato
 
 
 class Scuola:
@@ -264,36 +296,46 @@ def previsioni(rete: Zone, scuola: Scuola, j: np.ndarray, lotto: int = 512) -> t
             np.concatenate(p_rr))
 
 
-def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = 7) -> dict:
-    """Le materie su una parte degli anni: per ogni timeframe dei CRT le sue ore di domanda, per le candele ore
-    qualunque."""
+def misura(rete: Zone, scuola: Scuola, parte_: str, quanti: int, seme: int = SEME_MISURA) -> dict:
+    """Le materie su una parte degli anni: campione stratificato tra risposte e classi per dare supporto alle rare."""
     rng = np.random.default_rng(seme)
     fuori = {}
+    campione_desc = "stratificato per materia e classe"
     for i, tf in enumerate(M.TF_CRT):
         c = scuola.confini[parte_][i]
         if not len(c):
             continue
-        j = np.sort(rng.choice(c, size=min(quanti, len(c)), replace=False))
+        disponibili = {d: scuola.et.crt[d][c, i] for d in DOMANDE_CRT}
+        j = _campione_stratificato(c, disponibili, quanti, rng)
         p_crt, _, p_rr = previsioni(rete, scuola, j)
         for d in DOMANDE_CRT:
-            fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i], CLASSI_CRT[d])
+            supporto = _conteggi_classi(disponibili[d], CLASSI_CRT[d])
+            fuori[f"{d} {tf.value}"] = metriche(p_crt[d][:, i], scuola.et.crt[d][j, i],
+                                                 CLASSI_CRT[d], supporto)
         rr = scuola.et.rr[j, i]
         ok = np.isfinite(rr)
         if ok.any():
             fuori[f"rr {tf.value}"] = {"casi": int(ok.sum()),
-                                       "errore mediano in R": float(np.median(np.abs(p_rr[ok, i] - rr[ok])))}
-    j = np.sort(rng.choice(scuola.ore[parte_], size=min(quanti, len(scuola.ore[parte_])), replace=False))
+                                       "errore mediano in R": float(np.median(np.abs(p_rr[ok, i] - rr[ok]))),
+                                       "campionamento": campione_desc}
+    ore = scuola.ore[parte_]
+    y_tutte = scuola.et.candele(scuola.sensi, ore)
+    supporti = {d: [_conteggi_classi(y_tutte[d][:, i], CLASSI_CANDELA[d])
+                       for i in range(len(M.TF_CANDELA))] for d in DOMANDE_CANDELA}
+    j = _campione_stratificato(ore, y_tutte, quanti, rng)
+    del y_tutte
     _, p_can, _ = previsioni(rete, scuola, j)
     y = scuola.et.candele(scuola.sensi, j)
     for i, tf in enumerate(M.TF_CANDELA):
         for d in DOMANDE_CANDELA:
-            fuori[f"candela {d} {tf.value}"] = metriche(p_can[d][:, i], y[d][:, i], CLASSI_CANDELA[d])
+            fuori[f"candela {d} {tf.value}"] = metriche(p_can[d][:, i], y[d][:, i],
+                                                         CLASSI_CANDELA[d], supporti[d][i])
     return fuori
 
 
 def voti(m: dict) -> tuple[float, float]:
-    """(la media, la piu' bassa) delle medie dei richiami delle materie con abbastanza casi. Decide l'esame la piu'
-    bassa; la rete migliore durante la scuola si sceglie con la media, che si muove prima."""
+    """(la media, la piu' bassa) delle medie dei richiami delle materie con abbastanza casi. L'esame richiede che
+    passino tutte: durante la scuola si sceglie prima la peggiore, poi la media complessiva."""
     r = [x["media dei richiami"] for x in m.values() if x.get("media dei richiami") is not None and
          x["casi"] >= MINIMO_ESAME]
     return (float(np.mean(r)), float(min(r))) if r else (0.0, 0.0)
@@ -414,7 +456,7 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
         passi += 1
         if time.time() - ultimo > 60 * ogni_minuti or time.time() >= fine:
             ultimo = time.time()
-            c = misura(rete, sc, "controllo", 3000)
+            c = misura(rete, sc, "controllo", 3000, seme=SEME_MISURA)
             v, minimo = voti(c)
             peggiore = min((k for k, x in c.items() if x.get("media dei richiami") is not None and
                             x["casi"] >= MINIMO_ESAME), key=lambda k: c[k]["media dei richiami"], default="-")
@@ -423,21 +465,30 @@ def scuola(ore: float = 3.0, radice: Path | None = None, uscita: Path = Path("/k
                            "la peggiore": minimo})
             scrivi(f"passo {passi}: errore {float(errore.detach()):.3f}; al controllo le materie in media al {v:.1%}, "
                    f"la peggiore ({peggiore}) al {minimo:.1%}")
-            if migliore is None or v > migliore[0]:
-                migliore = (v, {k: t.detach().clone() for k, t in rete.state_dict().items()})
-                torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passi},
+            if migliore is None or (minimo, v) > (migliore[0], migliore[1]):
+                stato = {k: t.detach().clone() for k, t in rete.state_dict().items()}
+                migliore = (minimo, v, passi, stato)
+                torch.save({"pesi": stato, "occhi": rete.occhi.misura, "passi": passi,
+                            "controllo": {"media": v, "peggiore": minimo}, "seme": seme, "mappa": bool(mappa)},
                            uscita / "zone_nameless.pt")
     if migliore is not None:
-        rete.load_state_dict(migliore[1])
-    esame = misura(rete, sc, "esame", campione)
+        rete.load_state_dict(migliore[3])
+    esame = misura(rete, sc, "esame", campione, seme=SEME_MISURA)
     foto = foto_rete(rete, sc, materie)
     contano = {k: x for k, x in esame.items() if x.get("media dei richiami") is not None and x["casi"] >= MINIMO_ESAME}
     passa = all(x["media dei richiami"] >= SOGLIA for x in contano.values()) and all(f["rete"] for f in foto)
-    resoconto = {"passa": passa, "esame": esame, "foto": foto, "passi": passi, "ore": ore,
+    passo_migliore = migliore[2] if migliore is not None else passi
+    controllo_migliore = ({"media": migliore[1], "peggiore": migliore[0]} if migliore is not None else None)
+    resoconto = {"passa": passa, "esame": esame, "foto": foto, "passi": passi, "miglior_passo": passo_migliore,
+                 "controllo_migliore": controllo_migliore, "mappa": bool(mappa), "seme": seme,
+                 "seme_misura": SEME_MISURA, "campione_esame": campione,
+                 "campionamento_esame": "stratificato per materia e classe", "ore": ore,
                  "minuti": round((time.time() - inizio) / 60), "storia": storia, "scarti": et.scarti,
                  "mercati": conti}
-    torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passi, "passa": passa,
-                "esame": esame}, uscita / "zone_nameless.pt")
+    torch.save({"pesi": rete.state_dict(), "occhi": rete.occhi.misura, "passi": passo_migliore,
+                "passi_totali": passi, "passa": passa, "esame": esame,
+                "controllo": controllo_migliore, "mappa": bool(mappa), "seme": seme,
+                "seme_misura": SEME_MISURA}, uscita / "zone_nameless.pt")
     (uscita / "esame_zone.json").write_text(json.dumps(resoconto, indent=1, ensure_ascii=False), encoding="utf-8")
     stampa(resoconto, scrivi)
     return resoconto
