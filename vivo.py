@@ -1496,6 +1496,8 @@ class Bot:
         # Prima le occasioni di tutti gli strumenti, poi si decide su tutte insieme: il Capo sceglie le migliori del
         # giro (il proprietario, 07/10/2026: *"il capo deve selezionare i crt"*).
         tutte: dict[str, list] = {}
+        # Cosa fanno i CRT del DXY e della TOTAL sugli strumenti che guidano: lo si dice, anche quando non si entra.
+        guide: list = []
         for s in self.strumenti:
             if self._tv_ferma:
                 self.stato.saltate["quota di TradingView finita"] = self.stato.saltate.get("quota di TradingView finita", 0) + 1
@@ -1504,7 +1506,7 @@ class Bot:
             try:
                 self._ore_nuove(s)
                 tutte[s] = giro_orario({s: self.basi[s]}, dal, ora, self.capo, COPPIE, gemelli=self.gemelli(),
-                                       lunghe=self.lunghe)
+                                       lunghe=self.lunghe, guide=guide)
                 andati += 1
             except QuotaFinita as errore:
                 self._quota_tradingview(errore)
@@ -1519,6 +1521,13 @@ class Bot:
                 self.allarme(f"{s}: errore nel giro dell'ora ({errore!r}). Gli altri strumenti vanno avanti.")
         if not andati and ultimo_errore is not None and not self._tv_ferma:
             raise ultimo_errore
+        if guide:
+            try:
+                for testo in messaggi.guide(guide):
+                    registra(CARTELLA, "guida", testo=testo)
+                    self.tg.operativo(testo)
+            except Exception:
+                registra(CARTELLA, "errore", testo=traceback.format_exc())
         # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi (riavvio, MT5
         # lento) non si entra a un prezzo che non e' piu' quello.
         adesso, finestra = (int(time.time()), RITARDO_MASSIMO) if foto_metodo else (ora, 3600)

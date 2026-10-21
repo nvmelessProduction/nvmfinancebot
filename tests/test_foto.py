@@ -15,6 +15,7 @@ from nvm.agenti import foto as F
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.minuti import Minuti
 from nvm.tempo import TF, ny, utc
+from nvm.vivo import messaggi
 from tests.aiuti import candele
 
 ORA = 3600
@@ -530,16 +531,46 @@ def test_sulle_coppie_col_dollaro_entra_solo_il_pattern_del_dxy(monkeypatch):
     # La sterlina ha il suo CRT short, ma il DXY non fa niente: non si entra.
     assert any(s.verso is Verso.SHORT for tf in F.TF_CRT for s in F.trova(F.Quadro.da(sterlina, n3), tf, n3, n3))
     assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": piatto})
-    # Il DXY fa il CRT col key level preso: si entra dalla parte opposta, anche senza il CRT della sterlina.
+    # Il DXY fa il CRT: si entra dalla parte opposta, anche senza il CRT della sterlina.
     vero = F.trova
     monkeypatch.setattr(F, "trova", lambda q, *a: [] if q.strumento == "GBPUSD" else vero(q, *a))
-    con = G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy})
+    guide = []
+    con = G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy}, guide=guide)
     assert con and all(d.r.verso is Verso.SHORT and d.foto["setup"].dal_dxy for d in con)
-    assert all(d.foto["dxy"].presi for d in con)
-    # Un CRT del DXY senza key level presi non e' il pattern: non si entra.
+    # E lo si dice su Telegram, CRT per CRT del DXY.
+    assert guide and all(g.guida == "DXY" and g.strumento == "GBPUSD" and g.verso is Verso.SHORT for g in guide)
+    assert any(g.entra for g in guide)
+    testo = "\n".join(messaggi.guide(guide))
+    assert testo.startswith("📐 DXY: CRT long") and "▶️ GBPUSD: occasione in vendita" in testo
+    # Basta il CRT del DXY, anche senza un key level giornaliero preso: il 21/10/2026 il proprietario e' entrato
+    # sull'oro col CRT a 4 ore del DXY delle 12, che non l'aveva, e il bot no.
     monkeypatch.setattr(F, "trova", lambda q, *a: [] if q.strumento == "GBPUSD" else
                         [replace(s, presi=[]) for s in vero(q, *a)])
-    assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy})
+    assert G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy})
+    # Quando non si entra, il perche'.
+    guide = []
+    monkeypatch.setattr(F, "dal_dxy", lambda q, sd, verso=None: None)
+    assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy}, guide=guide)
+    assert guide and not any(g.entra for g in guide)
+    assert "✖️ GBPUSD: niente, le sue candele non si possono mettere accanto" in "\n".join(messaggi.guide(guide))
+
+
+def test_senza_target_finale_tutto_al_tp1(monkeypatch):
+    """Se il target finale manca (o non rende 1 R) si va tutto al TP1, come nella foto 1 della cartella 3. Dal 16 al
+    21/10/2026 si saltava: il 21/10 il bot non e' entrato sull'argento."""
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    ore, n3 = _foto_base()
+    q = F.Quadro.da(ore, n3)
+    trovati = F.trova(q, TF.H4, n3, n3)
+    assert trovati
+    # Il TP1 a 2 R (nella foto base e' a mezzo R: troppo poco anche per il solo TP1).
+    s = trovati[0]
+    s = replace(s, tp1=s.ingresso + 2 * (s.ingresso - s.stop))
+    monkeypatch.setattr(F, "obiettivo_finale", lambda q, s: F.Obiettivo(s.tp1, "range", "l'altro lato del range"))
+    monkeypatch.setattr(F, "target_dopo", lambda q, s, ob: None)
+    d = G._decisione_foto(s, q, CapoFinto())
+    assert d is not None and d.op.parziale == 1.0 and d.op.tp2 == s.tp1 and d.piani_romeo[0] is d.op
 
 
 def test_lo_stoppino_del_rollover_non_e_una_presa():

@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from nvm.agenti.cacciatore import Verso
 from nvm.agenti.conferme import Bias, Contesto
 from nvm.dati.strumenti import STRUMENTI
-from nvm.tempo import NEW_YORK, TF
+from nvm.tempo import NEW_YORK, ORDINE, TF
 from nvm.vivo.giro import Decisione
 from nvm.vivo.romeo_vivo import PIP as PIP_ROMEO
 
@@ -273,6 +273,32 @@ def proposta(d: Decisione, scade: int, grafico: str, rete: Optional[list] = None
     if rete:
         righe = righe[:1] + [rete[0]] + righe[1:] + [""] + rete[1:]
     return "\n".join(righe)
+
+
+def guide(elenco: list) -> list[str]:
+    """I CRT del DXY e della TOTAL del giro, e su quali strumenti nasce l'occasione (`giro.Guida`): un messaggio per
+    CRT (stesso grafico, apertura e verso), anche quando non si entra da nessuna parte, col perche'."""
+    gruppi: dict = {}
+    for g in elenco:
+        gruppi.setdefault((g.guida, g.n3, g.verso_guida), []).append(g)
+    fuori = []
+    for (guida, n3, verso), gg in sorted(gruppi.items(), key=lambda x: (x[0][1], x[0][0])):
+        tfs = sorted({g.tf for g in gg}, key=ORDINE.index)
+        righe = [f"📐 {guida}: CRT {'short' if verso is Verso.SHORT else 'long'} "
+                 f"{', '.join(NOMI_TF.get(t, t.value) for t in tfs)} (candela 3 alle {ora_italiana(n3)} italiane)"]
+        per: dict = {}
+        for g in gg:
+            per.setdefault(g.strumento, []).append(g)
+        for k in sorted(per):
+            dentro = [g for g in per[k] if g.entra]
+            if dentro:
+                g = dentro[0]
+                righe.append(f"▶️ {k}: occasione in {'vendita' if g.verso is Verso.SHORT else 'acquisto'}"
+                             + (f" ({g.perche})" if g.perche else ""))
+            else:
+                righe.append(f"✖️ {k}: niente, {per[k][0].perche}")
+        fuori.append("\n".join(righe))
+    return fuori
 
 
 def tradingview_acceso(grafici: list[str], dxy: str, totale: str = "") -> str:

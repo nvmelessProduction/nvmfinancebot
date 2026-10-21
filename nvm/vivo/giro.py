@@ -183,12 +183,14 @@ def _piani(r, basse) -> Optional[list]:
 
 def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPPIE,
          orarie: Optional[dict[str, Minuti]] = None, gemelli: Optional[dict[str, Minuti]] = None,
-         metodo: Optional[str] = None, lunghe: Optional[dict[str, Minuti]] = None) -> list[Decisione]:
+         metodo: Optional[str] = None, lunghe: Optional[dict[str, Minuti]] = None,
+         guide: Optional[list] = None) -> list[Decisione]:
     """Le decisioni con lo scatto in [dal, adesso], su candele chiuse entro `adesso`.
 
     `orarie` sono le ore di ogni strumento, se `basi` sono i quarti d'ora: da
     li' vengono il timeframe sopra, la settimana e i CRT piu' grandi. `lunghe`: le giornaliere di tanti anni
-    (per i 3, 6 e 12 mesi del metodo delle foto).
+    (per i 3, 6 e 12 mesi del metodo delle foto). `guide`: se c'e', ci si aggiunge cosa hanno fatto i setup del DXY e
+    della TOTAL su ogni strumento (`Guida`).
     """
     orarie = basi if orarie is None else orarie
     metodo = METODO if metodo is None else metodo
@@ -200,7 +202,7 @@ def giro(basi: dict[str, Minuti], dal: int, adesso: int, capo: Capo, coppie=COPP
                 continue
             decisioni += occasioni_foto(strumento, ore, dal, adesso, capo, gemelli or orarie,
                                         (lunghe or {}).get(strumento), (lunghe or {}).get("DXY"),
-                                        (lunghe or {}).get("TOTAL"))
+                                        (lunghe or {}).get("TOTAL"), guide)
         decisioni.sort(key=lambda d: (d.r.quando, d.r.strumento))
         return decisioni
     decisioni = []
@@ -316,9 +318,10 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ob = foto.obiettivo_finale(q, s)
     altro = foto.target_dopo(q, s, ob)
     piani = piani_foto(s, ob, altro, s.n3_inizio)
-    # Serve sempre il piano con target finale: se il target manca o non rende il minimo RR, si salta invece di
-    # ripiegare sul solo TP1 (scelta del 16/10/2026).
-    op = piani[1]
+    # Il 25% al TP1 e il resto al target finale; se il target finale manca o non rende 1 R, tutto al TP1 (foto 1 della
+    # cartella 3; la regola scritta: *"se manca quel livello, valgono i fallback ... o altro lato del range"*). Dal
+    # 16/10 al 21/10/2026 in quel caso si saltava: il 21/10 il bot non e' entrato sull'argento.
+    op = piani[1] or piani[0]
     if op is None:
         return None
     crt = s.crt(TF.H1)
@@ -337,23 +340,43 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ora = Orario(int(datetime.fromtimestamp(s.n3_inizio, tz=NEW_YORK).hour),
                  int(datetime.fromtimestamp(s.n2_inizio, tz=NEW_YORK).hour))
     x = np.zeros(len(capo.media)) if getattr(capo, "media", None) is not None else np.zeros(1)
-    # La squadra puo' scegliere solo il piano foto canonico: 25% al TP1, target finale.
+    # La squadra puo' scegliere solo il piano del metodo: 25% al TP1 e target finale, o tutto al TP1.
     return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
-                     piani_romeo=[None, op, None],
+                     piani_romeo=[op, None, None] if op is piani[0] else [None, op, None],
                      foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy, "quadro_dxy": quadro_dxy,
                            "totale": totale, "quadro_totale": quadro_totale,
                            "allineati": list(allineati)})
 
 
+@dataclass
+class Guida:
+    """Cosa ha fatto su uno strumento un setup del grafico che lo guida (il DXY o la TOTAL): per dirlo su Telegram,
+    anche quando non si entra (il 21/10/2026 il DXY aveva il CRT, il bot non e' entrato e non ha detto niente)."""
+
+    guida: str              # "DXY" o "TOTAL"
+    tf: TF
+    verso_guida: Verso
+    n3: int                 # l'apertura della candela 3
+    strumento: str
+    verso: Optional[Verso]  # sullo strumento
+    entra: bool
+    perche: str             # se non entra; se entra con un altro timeframe, quale
+
+
 def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Capo,
                    gemelli: Optional[dict] = None, lunghe: Optional[Minuti] = None,
-                   lunghe_dxy: Optional[Minuti] = None, lunghe_totale: Optional[Minuti] = None) -> list[Decisione]:
+                   lunghe_dxy: Optional[Minuti] = None, lunghe_totale: Optional[Minuti] = None,
+                   guide: Optional[list] = None) -> list[Decisione]:
     """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso].
 
-    Le coppie col dollaro e i metalli (`foto.GUIDATI_DAL_DXY`) entrano solo coi CRT del DXY che hanno preso key level
-    (*"solo ed esclusivamente quando il dxy da il pattern quindi il crt con i vari sbilanciamenti"*, il proprietario,
-    20/10/2026), mai coi CRT loro; BTC ed ETH solo con quelli della TOTAL, nello stesso verso. Gli altri strumenti coi
-    CRT loro. Il 20/10/2026 il bot era entrato short su GBPUSD per un CRT 4 ore suo: non deve piu' succedere."""
+    Le coppie col dollaro e i metalli (`foto.GUIDATI_DAL_DXY`) entrano solo coi CRT del DXY, mai coi CRT loro; BTC ed
+    ETH solo con quelli della TOTAL, nello stesso verso (il proprietario, 20/10/2026: *"solo ed esclusivamente quando il
+    dxy da il pattern quindi il crt con i vari sbilanciamenti"*). Il pattern e' il CRT del DXY: la candela 2 prende il
+    massimo (minimo) del range e rientra; quello a 1 ora solo se prende anche il key level del giorno e il massimo
+    (minimo) a 4 ore (`setup_buono`). Non serve che il DXY prenda un key level giornaliero: il 21/10/2026 il CRT a 4
+    ore del DXY delle 12 non l'aveva, e il proprietario e' entrato sull'oro proprio col setup che ne nasce (ingresso,
+    stop, TP1 e target uguali). Gli altri strumenti coi CRT loro. `guide`: ci si aggiunge cosa ha fatto ogni setup
+    del DXY (della TOTAL) su questo strumento (`Guida`)."""
     if not len(ore):
         return []
     q = _quadro(ore, adesso, lunghe)
@@ -362,48 +385,55 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
     # Per questi strumenti il CRT locale non fa mai entrare.
     trovati = [] if guidato_dxy or crypto_totale else \
         [s for tf in foto.TF_CRT for s in foto.trova(q, tf, dal, adesso) if setup_buono(s)]
+    portati = []                # (guida, il suo setup, il setup sullo strumento o None)
     qd = _dxy(gemelli, adesso, lunghe_dxy) if strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA else None
     dxy_setup = []
     if qd is not None:
         dxy_setup = [s for tf in foto.TF_CRT for s in foto.trova(qd, tf, dal, adesso) if setup_buono(s)]
-        for sd in dxy_setup:
-            # Il pattern del DXY: il CRT con lo sbilanciamento di un key level.
-            if not guidato_dxy or not sd.presi:
-                continue
-            x = foto.dal_dxy(q, sd)
-            if x is not None and not any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso
-                                          for s in trovati):
-                trovati.append(x)
-    # BTC ed ETH entrano solo nella direzione del CRT della TOTAL, con lo sbilanciamento di un key level.
+        if guidato_dxy:
+            portati += [("DXY", sd, foto.dal_dxy(q, sd)) for sd in dxy_setup]
     qt = _dxy(gemelli, adesso, lunghe_totale, "TOTAL") if crypto_totale else None
     tot_setup = []
     if qt is not None:
         tot_setup = [s for tf in foto.TF_CRT for s in foto.trova(qt, tf, dal, adesso) if setup_buono(s)]
-        for st in tot_setup:
-            if not st.presi:
-                continue
-            x = foto.dal_totale(q, st)
-            if x is not None and not any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso
-                                          for s in trovati):
-                trovati.append(x)
-    # Una sola occasione per apertura e verso: quella del timeframe piu' grande.
+        portati += [("TOTAL", st, foto.dal_totale(q, st)) for st in tot_setup]
+    for _, _, x in portati:
+        if x is not None and not any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso
+                                      for s in trovati):
+            trovati.append(x)
+    # Una sola occasione per apertura e verso: quella del timeframe piu' grande che ha un piano.
     gruppi: dict = {}
     for s in trovati:
         gruppi.setdefault((s.n3_inizio, s.verso), []).append(s)
-    decisioni = []
+    decisioni, prese = [], {}
     for (n3, verso), gruppo in sorted(gruppi.items(), key=lambda g: g[0][0]):
         gruppo.sort(key=lambda s: -ORDINE.index(s.tf))
-        s = gruppo[0]
-        qq = q.taglia(s.n3_inizio) if s.n3_inizio < adesso else q
-        stessi = [x.tf for x in gruppo[1:]]
-        dxy = next((sd for sd in dxy_setup if sd.tf is s.tf and sd.n3_inizio == s.n3_inizio), None)
-        totale = next((st for st in tot_setup if st.tf is s.tf and st.n3_inizio == s.n3_inizio), None)
-        try:
-            d = _decisione_foto(s, qq, capo, dxy, stessi, qd, totale, qt)
-        except Exception:
-            d = None
-        if d is not None:
-            decisioni.append(d)
+        for s in gruppo:
+            qq = q.taglia(s.n3_inizio) if s.n3_inizio < adesso else q
+            stessi = [x.tf for x in gruppo if x is not s]
+            dxy = next((sd for sd in dxy_setup if sd.tf is s.tf and sd.n3_inizio == s.n3_inizio), None)
+            totale = next((st for st in tot_setup if st.tf is s.tf and st.n3_inizio == s.n3_inizio), None)
+            try:
+                d = _decisione_foto(s, qq, capo, dxy, stessi, qd, totale, qt)
+            except Exception:
+                d = None
+            if d is not None:
+                decisioni.append(d)
+                prese[(n3, verso)] = s.tf
+                break
+    if guide is not None:
+        for guida, sg, x in portati:
+            if x is None:
+                g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, None, False,
+                          f"le sue candele non si possono mettere accanto a quelle del {guida} (orari o prezzi)")
+            elif (x.n3_inizio, x.verso) not in prese:
+                g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, x.verso, False,
+                          "nessun piano da almeno 1 R fra stop, TP1 e target")
+            else:
+                tf = prese[(x.n3_inizio, x.verso)]
+                g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, x.verso, True,
+                          "" if tf is x.tf else f"col CRT {tf.value}")
+            guide.append(g)
     return decisioni
 
 
