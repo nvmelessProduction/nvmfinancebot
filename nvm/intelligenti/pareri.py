@@ -285,7 +285,8 @@ def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional
     from nvm.agenti import foto
     segno = -1 if s.short else 1
     rag, punti = [], 0.0
-    col_dxy = foto.segno_col_dxy(s.strumento) if s.strumento in foto.FOREX_DOLLARO else 0
+    # Dal 20/10/2026 anche i metalli seguono il DXY (`foto.GUIDATI_DAL_DXY`).
+    col_dxy = foto.segno_col_dxy(s.strumento) if s.strumento in foto.GUIDATI_DAL_DXY else 0
     dxy_decide = False
     if col_dxy:
         f = foto.FONDO_DXY * col_dxy
@@ -533,6 +534,10 @@ def tutti(d, ctx: Contesto, p: Optional[Previsione], p_dxy: Optional[Previsione]
     allineati = list(info.get("allineati", [])) + [t for t in foto.allineati(q, s) if t not in info.get("allineati", [])]
     costo = float(getattr(d.r, "costo_erre", 0.0) or 0.0)
     domenica = ctx.domenica.get(s.strumento) or settimana(q, s.n3_inizio)
+    qt = info.get("quadro_totale")
+    if getattr(s, "dal_totale", False) and qt is not None:
+        # BTC ed ETH seguono la TOTAL anche nella previsione della settimana.
+        domenica = ctx.domenica.get("TOTAL") or settimana(qt, s.n3_inizio)
     qd = info.get("quadro_dxy")
     domenica_dxy = (ctx.domenica.get("DXY") or settimana(qd, s.n3_inizio)) if qd is not None else None
     return [cacciatore(s, allineati), key_level(s), bias(s, q, p, domenica, p_dxy, qd, domenica_dxy),

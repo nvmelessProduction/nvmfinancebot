@@ -509,6 +509,8 @@ def test_la_rete_vera_giudica_un_setup_e_spiega_cosa_vede():
     g = rete.giudica(d)
     # Sui setup con tutte le regole delle foto entra sempre; sugli altri decide la sua stima.
     assert set(g.occhi) >= {"direzione D1", "crt H4"} and 0 <= g.vince <= 1 and g.entra == (g.regole or g.erre >= g.soglia)
+    # Nato dal CRT del DXY: le regole le da' lui, la rete non lo lascia (21/10/2026).
+    assert g.regole and g.entra
     # Sul CRT a 4 ore della foto base gli occhi vedono il CRT d'acquisto.
     assert g.occhi["crt H4"][0] == "acquisto"
     testo = "\n".join(g.righe())

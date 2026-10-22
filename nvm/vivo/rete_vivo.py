@@ -263,6 +263,9 @@ class Rete:
         if getattr(s, "dal_dxy", False) or getattr(s, "dal_totale", False):
             nuovo = (f"⚠️ Setup preso dal {'DXY' if s.dal_dxy else 'grafico della TOTAL'}: nello studio la rete "
                      "non ne ha mai visti, prendi il suo parere con le pinze.")
-        regole = bool(grezza[0, SCHEDA.index("A+")])
+        # Sugli strumenti guidati le regole le da' il CRT del DXY (della TOTAL), non lo strumento: la rete non lo lascia
+        # (il proprietario, 20/10/2026: *"solo ed esclusivamente quando il dxy da il pattern"*; il 21/10 lasciava in
+        # équipe i setup di BTC ed ETH nati dal CRT della TOTAL, che nello studio non ha mai visto).
+        regole = bool(grezza[0, SCHEDA.index("A+")]) or bool(nuovo)
         return Giudizio(regole or erre >= self.soglia, erre, vince, self.soglia, occhi, pesa, nuovo, self.esame,
                         (x, v, grezza), regole=regole)
