@@ -473,7 +473,8 @@ class Squadra:
                 # Con tutte le regole del metodo si entra: la squadra da' il suo parere ma non blocca piu' (il
                 # proprietario, 12/10/2026, dopo un AUDUSD perfetto lasciato per un voto contro: *"tu devi seguire
                 # quello che c'è scritto nelle foto e tutte le varie cose che io ti ho detto"*). Restano i no
-                # delle regole (`veto`: mai contro la previsione) e il Rischio decide quanto.
+                # delle regole e il Rischio decide quanto. La previsione della domenica dal 22/10/2026 e' solo un
+                # parere (*"Leva il veto ovunque"*): nessun parere mette piu' il `veto`.
                 capo_entra = m.a_piu and stop_ok and not veto
                 parte, z = self._rischio(p, esposizione, stesso)
             else:

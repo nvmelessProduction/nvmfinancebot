@@ -31,7 +31,7 @@ le cose che vanno in conflitto, anche cose silenziose ... che tu mi analizzi let
 | 3 | Per ogni CRT della guida, il setup sullo strumento negli orari della guida (dal 22/10): stop oltre la sua candela 2, TP1 l'altro lato del suo range, target finale il key level opposto. Se lo strumento fa anche lui il CRT nel verso, ★ | `foto.dal_dxy`, `foto.dal_totale`, `foto.crt_propri`, `foto.obiettivo_finale` |
 | 4 | Il piano: 25% al TP1 e il resto al target; senza target (o sotto 1 R) tutto al TP1; se neanche il TP1 vale 1 R, niente | `giro._decisione_foto`, `giro.piani_foto` |
 | 5 | Messaggio 📐 sul canale operativo: su quali strumenti nasce l'occasione e, dove no, perché | `messaggi.guide` |
-| 6 | La squadra: regole del metodo (il CRT della guida col key level preso), voti (solo un parere), previsione della settimana della guida (può dire no), il Rischio (quanto puntare) | `metodo.valuta_foto`, `pareri`, `squadra.Squadra.riunione` |
+| 6 | La squadra: regole del metodo (il CRT della guida col key level preso), voti (solo un parere), previsione della domenica (solo un voto, dal 22/10), il Rischio (quanto puntare) | `metodo.valuta_foto`, `pareri`, `squadra.Squadra.riunione` |
 | 7 | Il Capo: tutte le occasioni, una per strumento | `al_lavoro.scegli` |
 | 8 | La rete neurale: sui setup del DXY e della TOTAL scrive solo il suo parere | `rete_vivo.Rete.giudica` |
 | 9 | L'ordine su MT5, entro 10 minuti dall'apertura della candela 3, coi controlli del broker | `esecutore.Esecutore.apri` |
@@ -49,7 +49,6 @@ Ognuno può dire no. Ora tutti lo dicono, col 📐 o col ⏸.
 | Pattern della guida | il CRT del DXY (della TOTAL) non ha preso un key level, o è lo stesso movimento di un CRT di prima | 📐 dal 22/10 |
 | Prezzi dello strumento | nelle ore delle candele della guida l'ingresso non sta fra stop e TP1 | 📐 dal 22/10 (prima: «candele non confrontabili», e il 22/10 alle 10 ha fermato tutte le coppie) |
 | Piano | né il target né il TP1 valgono 1 R | 📐 dal 21/10 |
-| Previsione della settimana | il bot ha detto la guida dall'altra parte, la domenica | ⏸ dal 21/10 |
 | Rischio | non trova una puntata possibile | ⏸ dal 21/10 |
 | Uno per strumento | c'è già un'operazione aperta su quello strumento | ⏸ dal 21/10 |
 | Arrivato tardi | la candela 3 è aperta da più di 10 minuti | ⏸ dal 21/10 |
@@ -64,9 +63,8 @@ Nei giorni scorsi due controlli dicevano no **in silenzio**. Erano proprio quell
 
 ## Regole in conflitto: servono le tue decisioni
 
-1. **La previsione della domenica.** Il 07/10 si era deciso: *"la squadra non deve andare contro le previsioni che fa
-   la domenica"*. Oggi è la previsione che il bot fa sul DXY o sulla TOTAL, e può ancora fermare un CRT del DXY. Con
-   la regola *"solo ed esclusivamente quando il DXY dà il pattern"* la toglierei.
+1. **La previsione della domenica.** Deciso il 22/10: *"Leva il veto ovunque"*. Ora è solo un voto, su tutti gli
+   strumenti.
 2. **Una sola operazione per strumento.** Nel codice c'è (07/10: *"vorrei che apri una sola operazione"*).
    `nvm/vivo/scelte.json` dice invece *"sullo stesso strumento decide il Rischio"*. Quale delle due vale?
 3. **La rete neurale di adesso.** Sui setup del DXY e della TOTAL non decide più, scrive solo il suo parere e manda i

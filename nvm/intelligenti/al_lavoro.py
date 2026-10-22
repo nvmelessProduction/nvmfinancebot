@@ -189,12 +189,6 @@ def _p(x: float) -> str:
     return f"{x:.0%}"
 
 
-def _punti(x: float) -> str:
-    return f"{x:+.1f}".replace(".", ",")
-
-
-
-
 def valuta_piani(squadra: Squadra, basi: dict, fini: dict, adesso: int) -> int:
     """Livelli rivede i piani delle occasioni passate: come sarebbe andato ogni stop e ogni uscita.
     Quando sono finiti tutti (o e' scaduta l'occasione) li impara. Restituisce quante ne ha imparate."""
@@ -282,8 +276,9 @@ def benvenuto(strumenti: int) -> str:
             "liquidità ha preso, il Bias la sua previsione del giorno (la dice all'apertura e la tiene fino a sera) e "
             "quella della domenica, il Gap i gap, il DXY il dollaro, l'Orario l'ora, Livelli i costi e i target, il "
             "Grilletto la finta. Poi ci sentiamo fra colleghi: chi ha un motivo cambia voto e lo dice. Il Capo ascolta "
-            "tutti, pesa ognuno per quanto ci ha preso dal vivo, ed entra solo con almeno "
-            f"{_punti(SOGLIA_PUNTI)} punti a favore e mai contro la previsione della domenica; in ogni giro mette i CRT "
+            "tutti, pesa ognuno per quanto ci ha preso dal vivo, ed entra quando ci sono tutte le regole del metodo: i "
+            "voti, anche la previsione della domenica, cambiano la fiducia e la puntata, non dicono no; in ogni giro "
+            "mette i CRT "
             "in ordine di probabilità e li prende tutti, uno per strumento, e dice cosa prende e cosa lascia. "
             "Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
             "Il Rischio parte dall'1% del conto e si corregge coi risultati. Non siamo un'intelligenza artificiale che "

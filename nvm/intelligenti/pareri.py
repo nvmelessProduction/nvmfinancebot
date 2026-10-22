@@ -343,7 +343,6 @@ def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional
             rag.append((-2, f"all'apertura del giorno ho detto {p.testo}: resto della mia idea, questa va contro"))
     elif p is not None and not dxy_decide:
         rag.append((0, f"per oggi non ho una direzione: {p.motivo}" if p.motivo else "per oggi non ho una direzione"))
-    veto = ""
     da = ""
     if col_dxy and domenica_dxy in ("rialzista", "ribassista"):
         v = (1 if domenica_dxy == "rialzista" else -1) * col_dxy
@@ -355,13 +354,14 @@ def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional
             punti += 0.5
             rag.append((0.5, f"e domenica la settimana di {s.strumento} l'abbiamo detta {domenica}{da}"))
         else:
-            # Il proprietario, 07/10/2026: la squadra non deve andare contro le previsioni che fa la domenica.
-            punti -= 4
-            veto = (f"domenica abbiamo detto {s.strumento} {domenica} per la settimana{da}: non andiamo contro la "
-                    "nostra previsione")
-            rag.append((-4, veto))
+            # La previsione della domenica e' un parere, non un no: il proprietario, 22/10/2026, *"Leva il veto
+            # ovunque"*. Dal 07/10 era un no ("la squadra non deve andare contro le previsioni che fa la domenica"),
+            # e poteva fermare un CRT valido del DXY su tutte le coppie insieme.
+            punti -= 0.5
+            rag.append((-0.5, f"domenica la settimana di {s.strumento} l'abbiamo detta {domenica}{da}: questa va "
+                              "contro (è un parere, non un no)"))
     segni = {"contro previsione"} if punti < 0 else set()
-    return Parere("Bias", _voto(punti), _ordina(rag), segni=segni, veto=veto)
+    return Parere("Bias", _voto(punti), _ordina(rag), segni=segni)
 
 
 def gap(s, q, ob, dentro) -> Parere:

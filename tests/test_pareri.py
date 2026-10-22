@@ -158,18 +158,20 @@ def test_nel_secondo_giro_si_sentono_e_cambiano_idea_dicendo_perche():
     assert not P.confronto(pareri, {"Cacciatore sente Bias"}) and pareri[0].voto == 1
 
 
-def test_la_squadra_non_va_mai_contro_la_previsione_della_domenica(tmp_path):
+def test_la_previsione_della_domenica_e_un_parere_non_un_no(tmp_path):
+    """Il proprietario, 22/10/2026: *"Leva il veto ovunque"*. Dal 07/10 la previsione della domenica contraria fermava
+    l'operazione; ora e' un voto contro e basta."""
     ore = ore_finte(giorni=500)
     q = Quadro.da(ore, int(ore.t[-1]) + 3600)
     b = P.bias(_setup(), q, None, "ribassista")
-    assert b.voto == -2 and b.veto and "domenica" in b.veto
-    assert not P.bias(_setup(short=True), q, None, "ribassista").veto
-    # Anche con tutti gli altri a favore il Capo non entra contro la previsione, e lo dice.
+    assert not b.veto and any("domenica" in r and "va contro" in r for r in b.ragioni)
+    assert b.voto < P.bias(_setup(), q, None, "rialzista").voto
+    # Con gli altri a favore il Capo entra lo stesso.
     sq = Squadra(tmp_path)
     voti = _pareri(Cacciatore=2, Key_level=2, Gap=2, DXY=1, Livelli=2, Grilletto=1)
     voti[2] = b
     v = sq.riunione("contro", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=voti)
-    assert v.a_piu and not v.entra and "non andiamo contro la nostra previsione" in v.voci[-1][1]
+    assert v.a_piu and v.entra and not v.pareri["Capo"]["veto"]
 
 
 def test_le_correlazioni_col_dxy():
@@ -209,10 +211,11 @@ def test_il_dxy_comanda_il_bias_del_forex_anche_la_domenica_e_di_fondo_e_ribassi
     # Di fondo: l'euro in acquisto ha +1, l'USDCAD in acquisto -1 (il dollaro di fondo scende).
     assert P.bias(_setup(n3=giorno + 3600), q, None, None).voto == 1
     assert P.bias(_setup(strumento="USDCAD", n3=giorno + 3600), q, None, None).voto == -1
-    # La domenica del DXY rialzista vale per l'euro come ribassista: comprare l'euro e' contro, veto.
+    # La domenica del DXY rialzista vale per l'euro come ribassista: comprare l'euro e' contro (un voto, non un no).
     giu = P.bias(_setup(n3=giorno + 3600), q, None, None, None, q, "rialzista")
-    assert giu.veto and "il DXY domenica l'abbiamo detto rialzista" in giu.veto
-    assert not P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista").veto
+    su = P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista")
+    assert not giu.veto and any("il DXY domenica l'abbiamo detto rialzista" in r for r in giu.ragioni)
+    assert not su.veto and any("il DXY domenica l'abbiamo detto rialzista" in r for r in su.ragioni)
 
 
 def test_l_oro_non_e_fermato_dalla_previsione_della_settimana_del_dxy():
