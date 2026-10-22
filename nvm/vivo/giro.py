@@ -8,9 +8,10 @@ chiusi. Per questo il bot dal vivo decide come avrebbe deciso sullo storico:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import numpy as np
 
@@ -361,6 +362,39 @@ class Guida:
     verso: Optional[Verso]  # sullo strumento
     entra: bool
     perche: str             # se non entra; se entra con un altro timeframe, quale
+    propri: list = field(default_factory=list)   # i timeframe in cui lo strumento fa anche lui il CRT nel verso
+    della_guida: bool = False                     # il no e' del CRT della guida, uguale per tutti gli strumenti
+
+
+ROMA = ZoneInfo("Europe/Rome")
+_NOMI = {TF.H1: "a 1 ora", TF.H4: "a 4 ore", TF.H6: "a 6 ore", TF.H12: "a 12 ore", TF.D1: "giornaliero",
+         TF.W1: "settimanale", TF.MN: "mensile"}
+
+
+def _ora(t: int) -> str:
+    return datetime.fromtimestamp(int(t), tz=ROMA).strftime("%H:%M")
+
+
+def stesso_movimento(qg, sg) -> Optional[foto.Setup]:
+    """Il CRT della guida di prima, nello stesso verso e col pattern, di cui `sg` e' lo stesso movimento: la sua
+    candela 2 si sovrappone a quella di `sg` e la sua candela 3 e' ancora in corso quando apre quella di `sg`. Il
+    22/10/2026 il DXY ha preso il WL e il DL e ha fatto il CRT a 4 ore delle 10; alle 12 il CRT a 6 ore e' la stessa
+    presa. Il proprietario: *"non doveva essere aperto nessun trade alle 12:00"*, *"alle 10 entravi short su eurusd,
+    gbpusd"*: si entra una volta, al primo CRT."""
+    for tf in foto.TF_CRT:
+        for x in foto.trova(qg, tf, sg.n2_inizio + 1, sg.n3_inizio - 1):
+            if x.verso is sg.verso and x.n3_inizio < sg.n3_inizio < x.n3_fine and x.presi and setup_buono(x):
+                return x
+    return None
+
+
+def _guida_vicina(qg, s) -> Optional[foto.Setup]:
+    """Per uno strumento coi CRT suoi (l'oro, l'argento): il CRT della guida dello stesso timeframe con la candela 3
+    partita durante la candela 2 dello strumento o insieme alla sua 3. Solo per il parere del DXY: i grafici possono
+    avere orari diversi (il DXY di Capital.com alle 2-6-10 italiane, l'oro alle 0-4-8)."""
+    if qg is None:
+        return None
+    return next((x for x in foto.trova(qg, s.tf, s.n2_inizio + 1, s.n3_inizio) if setup_buono(x)), None)
 
 
 def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Capo,
@@ -369,14 +403,18 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
                    guide: Optional[list] = None) -> list[Decisione]:
     """Le occasioni del metodo delle foto con la candela 3 che apre in [dal, adesso].
 
-    Le coppie col dollaro e i metalli (`foto.GUIDATI_DAL_DXY`) entrano solo coi CRT del DXY, mai coi CRT loro; BTC ed
-    ETH solo con quelli della TOTAL, nello stesso verso (il proprietario, 20/10/2026: *"solo ed esclusivamente quando il
-    dxy da il pattern quindi il crt con i vari sbilanciamenti"*). Il pattern e' il CRT del DXY: la candela 2 prende il
-    massimo (minimo) del range e rientra; quello a 1 ora solo se prende anche il key level del giorno e il massimo
-    (minimo) a 4 ore (`setup_buono`). Non serve che il DXY prenda un key level giornaliero: il 21/10/2026 il CRT a 4
-    ore del DXY delle 12 non l'aveva, e il proprietario e' entrato sull'oro proprio col setup che ne nasce (ingresso,
-    stop, TP1 e target uguali). Gli altri strumenti coi CRT loro. `guide`: ci si aggiunge cosa ha fatto ogni setup
-    del DXY (della TOTAL) su questo strumento (`Guida`)."""
+    Le coppie forex col dollaro (`foto.GUIDATI_DAL_DXY`) entrano solo coi CRT del DXY, mai coi CRT loro; BTC ed ETH solo
+    con quelli della TOTAL, nello stesso verso. Il pattern e' il CRT della guida che ha preso un key level (il
+    proprietario, 20/10/2026: *"solo ed esclusivamente quando il dxy da il pattern quindi il crt con i vari
+    sbilanciamenti"*; 22/10/2026: *"il prezzo aveva preso due kl (WL-DL) e poi ha formato un crt h4 il bot doveva
+    entrare automaticamente"*); quello a 1 ora solo se prende il key level del giorno e il massimo (minimo) a 4 ore
+    (`setup_buono`). Dal 21 al 22/10 il key level della guida non si chiedeva: era un errore. Un CRT della guida che e'
+    lo stesso movimento di uno di prima non fa entrare di nuovo (`stesso_movimento`). Il CRT dello strumento nello
+    stesso verso non decide, ma conta per scegliere (`foto.crt_propri`, il Cacciatore).
+
+    Gli altri strumenti coi CRT loro: l'oro e l'argento coi loro CRT e le regole di sempre, il DXY solo come parere
+    (22/10/2026: *"Gold e Silver: possono essere tradati sulla base del loro setup CRT, anche senza un CRT sul DXY"*).
+    `guide`: ci si aggiunge cosa ha fatto ogni setup del DXY (della TOTAL) su questo strumento (`Guida`)."""
     if not len(ore):
         return []
     q = _quadro(ore, adesso, lunghe)
@@ -385,19 +423,36 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
     # Per questi strumenti il CRT locale non fa mai entrare.
     trovati = [] if guidato_dxy or crypto_totale else \
         [s for tf in foto.TF_CRT for s in foto.trova(q, tf, dal, adesso) if setup_buono(s)]
-    portati = []                # (guida, il suo setup, il setup sullo strumento o None)
+    # (guida, il suo setup, il setup sullo strumento o None, perche' no, se il no e' del CRT della guida)
+    portati = []
+    da_guida = {}               # id del setup sullo strumento -> il setup della guida da cui viene
+
+    def porta(nome: str, qg, sg, fai) -> None:
+        del_ = "del DXY" if nome == "DXY" else "della TOTAL"
+        if not sg.presi:
+            portati.append((nome, sg, None, f"il CRT {_NOMI.get(sg.tf, sg.tf.value)} {del_} non ha preso un key level: "
+                                            "non è il pattern", True))
+            return
+        prima = stesso_movimento(qg, sg)
+        if prima is not None:
+            portati.append((nome, sg, None, f"è lo stesso movimento del CRT {_NOMI.get(prima.tf, prima.tf.value)} "
+                                            f"{del_} delle {_ora(prima.n3_inizio)}, già usato per entrare", True))
+            return
+        x = fai(sg)
+        if x is not None:
+            da_guida[id(x)] = sg
+        portati.append((nome, sg, x, "con i suoi prezzi in quelle ore l'ingresso non sta fra lo stop e il TP1 (o "
+                                     "mancano le sue ore)", False))
+
     qd = _dxy(gemelli, adesso, lunghe_dxy) if strumento in foto.DOLLARO_SOTTO + foto.DOLLARO_SOPRA else None
-    dxy_setup = []
-    if qd is not None:
-        dxy_setup = [s for tf in foto.TF_CRT for s in foto.trova(qd, tf, dal, adesso) if setup_buono(s)]
-        if guidato_dxy:
-            portati += [("DXY", sd, foto.dal_dxy(q, sd)) for sd in dxy_setup]
+    if qd is not None and guidato_dxy:
+        for sd in (s for tf in foto.TF_CRT for s in foto.trova(qd, tf, dal, adesso) if setup_buono(s)):
+            porta("DXY", qd, sd, lambda sd: foto.dal_dxy(q, sd))
     qt = _dxy(gemelli, adesso, lunghe_totale, "TOTAL") if crypto_totale else None
-    tot_setup = []
     if qt is not None:
-        tot_setup = [s for tf in foto.TF_CRT for s in foto.trova(qt, tf, dal, adesso) if setup_buono(s)]
-        portati += [("TOTAL", st, foto.dal_totale(q, st)) for st in tot_setup]
-    for _, _, x in portati:
+        for st in (s for tf in foto.TF_CRT for s in foto.trova(qt, tf, dal, adesso) if setup_buono(s)):
+            porta("TOTAL", qt, st, lambda st: foto.dal_totale(q, st))
+    for _, _, x, _, _ in portati:
         if x is not None and not any(s.tf is x.tf and s.n3_inizio == x.n3_inizio and s.verso is x.verso
                                       for s in trovati):
             trovati.append(x)
@@ -405,14 +460,18 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
     gruppi: dict = {}
     for s in trovati:
         gruppi.setdefault((s.n3_inizio, s.verso), []).append(s)
-    decisioni, prese = [], {}
+    decisioni, prese, propri = [], {}, {}
     for (n3, verso), gruppo in sorted(gruppi.items(), key=lambda g: g[0][0]):
         gruppo.sort(key=lambda s: -ORDINE.index(s.tf))
         for s in gruppo:
             qq = q.taglia(s.n3_inizio) if s.n3_inizio < adesso else q
             stessi = [x.tf for x in gruppo if x is not s]
-            dxy = next((sd for sd in dxy_setup if sd.tf is s.tf and sd.n3_inizio == s.n3_inizio), None)
-            totale = next((st for st in tot_setup if st.tf is s.tf and st.n3_inizio == s.n3_inizio), None)
+            sg = da_guida.get(id(s))
+            if sg is not None:
+                # Gli allineati di un setup della guida sono i CRT dello strumento stesso.
+                propri[id(s)] = stessi = foto.crt_propri(qq, s)
+            dxy = sg if s.dal_dxy else None if s.dal_totale else _guida_vicina(qd, s)
+            totale = sg if s.dal_totale else None
             try:
                 d = _decisione_foto(s, qq, capo, dxy, stessi, qd, totale, qt)
             except Exception:
@@ -422,17 +481,17 @@ def occasioni_foto(strumento: str, ore: Minuti, dal: int, adesso: int, capo: Cap
                 prese[(n3, verso)] = s.tf
                 break
     if guide is not None:
-        for guida, sg, x in portati:
+        for guida, sg, x, perche, della_guida in portati:
             if x is None:
-                g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, None, False,
-                          f"le sue candele non si possono mettere accanto a quelle del {guida} (orari o prezzi)")
+                g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, None, False, perche,
+                          della_guida=della_guida)
             elif (x.n3_inizio, x.verso) not in prese:
                 g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, x.verso, False,
-                          "nessun piano da almeno 1 R fra stop, TP1 e target")
+                          "nessun piano da almeno 1 R fra stop, TP1 e target", propri.get(id(x), []))
             else:
                 tf = prese[(x.n3_inizio, x.verso)]
                 g = Guida(guida, sg.tf, sg.verso, sg.n3_inizio, strumento, x.verso, True,
-                          "" if tf is x.tf else f"col CRT {tf.value}")
+                          "" if tf is x.tf else f"col CRT {tf.value}", propri.get(id(x), []))
             guide.append(g)
     return decisioni
 

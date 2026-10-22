@@ -27,11 +27,11 @@ le cose che vanno in conflitto, anche cose silenziose ... che tu mi analizzi let
 | Passo | Cosa fa | Dove |
 |---|---|---|
 | 1 | Ogni ora le candele da TradingView: 10 strumenti, il DXY e la TOTAL. I quarti d'ora da MT5 | `vivo.Bot.giro`, `tradingview.Fonte` |
-| 2 | I CRT del DXY e della TOTAL. Quello a 1 ora solo se prende il key level del giorno e il massimo o minimo a 4 ore | `foto.trova`, `giro.setup_buono` |
-| 3 | Per ogni CRT della guida, il setup sullo strumento: stop oltre la sua candela 2, TP1 l'altro lato del suo range, target finale il key level opposto | `foto.dal_dxy`, `foto.dal_totale`, `foto.obiettivo_finale` |
+| 2 | I CRT del DXY e della TOTAL che hanno preso un key level (dal 22/10). Quello a 1 ora solo se prende il key level del giorno e il massimo o minimo a 4 ore. L'oro e l'argento coi loro CRT (dal 22/10) | `foto.trova`, `giro.setup_buono`, `giro.occasioni_foto` |
+| 3 | Per ogni CRT della guida, il setup sullo strumento negli orari della guida (dal 22/10): stop oltre la sua candela 2, TP1 l'altro lato del suo range, target finale il key level opposto. Se lo strumento fa anche lui il CRT nel verso, ★ | `foto.dal_dxy`, `foto.dal_totale`, `foto.crt_propri`, `foto.obiettivo_finale` |
 | 4 | Il piano: 25% al TP1 e il resto al target; senza target (o sotto 1 R) tutto al TP1; se neanche il TP1 vale 1 R, niente | `giro._decisione_foto`, `giro.piani_foto` |
 | 5 | Messaggio 📐 sul canale operativo: su quali strumenti nasce l'occasione e, dove no, perché | `messaggi.guide` |
-| 6 | La squadra: regole del metodo (il CRT della guida basta), voti (solo un parere), previsione della settimana della guida (può dire no), il Rischio (quanto puntare) | `metodo.valuta_foto`, `pareri`, `squadra.Squadra.riunione` |
+| 6 | La squadra: regole del metodo (il CRT della guida col key level preso), voti (solo un parere), previsione della settimana della guida (può dire no), il Rischio (quanto puntare) | `metodo.valuta_foto`, `pareri`, `squadra.Squadra.riunione` |
 | 7 | Il Capo: tutte le occasioni, una per strumento | `al_lavoro.scegli` |
 | 8 | La rete neurale: sui setup del DXY e della TOTAL scrive solo il suo parere | `rete_vivo.Rete.giudica` |
 | 9 | L'ordine su MT5, entro 10 minuti dall'apertura della candela 3, coi controlli del broker | `esecutore.Esecutore.apri` |
@@ -46,7 +46,8 @@ Ognuno può dire no. Ora tutti lo dicono, col 📐 o col ⏸.
 |---|---|---|
 | CRT valido | la candela 2 non rientra, tocca l'altro lato o sfora | è la definizione del CRT |
 | CRT a 1 ora | non ha preso il key level del giorno e il massimo o minimo a 4 ore | regola del 06/10 |
-| Candele confrontabili | quelle dello strumento non si mettono accanto a quelle del DXY (orari o prezzi) | 📐 dal 21/10 |
+| Pattern della guida | il CRT del DXY (della TOTAL) non ha preso un key level, o è lo stesso movimento di un CRT di prima | 📐 dal 22/10 |
+| Prezzi dello strumento | nelle ore delle candele della guida l'ingresso non sta fra stop e TP1 | 📐 dal 22/10 (prima: «candele non confrontabili», e il 22/10 alle 10 ha fermato tutte le coppie) |
 | Piano | né il target né il TP1 valgono 1 R | 📐 dal 21/10 |
 | Previsione della settimana | il bot ha detto la guida dall'altra parte, la domenica | ⏸ dal 21/10 |
 | Rischio | non trova una puntata possibile | ⏸ dal 21/10 |
@@ -56,7 +57,8 @@ Ognuno può dire no. Ora tutti lo dicono, col 📐 o col ⏸.
 
 Nei giorni scorsi due controlli dicevano no **in silenzio**. Erano proprio quelli che bloccavano tutto:
 
-- la squadra voleva un key level giornaliero preso dal CRT del DXY: tolto il 21/10;
+- la squadra voleva la direzione dello strumento dalla sua parte anche sui setup della guida: il 21/10 alle 22 ha
+  scartato così BTC ed ETH dopo il CRT della TOTAL. Tolto alle 23:26 dello stesso giorno;
 - la rete neurale lasciava i setup del DXY e della TOTAL, che nello studio non ha mai visto: il 22/10, sui prezzi del
   21/10 alle 12, ne lasciava 7 su 8, oro compreso. Tolto il 22/10.
 

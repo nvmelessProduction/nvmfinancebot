@@ -238,25 +238,43 @@ def _ordina(ragioni: list[tuple[float, str]]) -> list[str]:
 def cacciatore(s, allineati) -> Parere:
     """Il CRT: se altri timeframe fanno il CRT nello stesso verso, se il range ha caricato (inside bar)."""
     punti, rag = 0.0, []
-    if allineati:
+    guida = "il DXY" if getattr(s, "dal_dxy", False) else "la TOTAL" if getattr(s, "dal_totale", False) else ""
+    if allineati and guida:
+        # La direzione la da' la guida; il CRT dello strumento dice dove c'e' piu' vantaggio (il proprietario,
+        # 22/10/2026).
+        punti += 1
+        rag.append((1, f"{s.strumento} fa anche lui il CRT {', '.join(NOMI.get(x, x.value) for x in allineati[:3])} "
+                       f"nel verso che dà {guida}: fra gli strumenti che {guida} muove, questo ha più vantaggio"))
+    elif allineati:
         punti += 1
         rag.append((1, f"anche il CRT {', '.join(NOMI.get(x, x.value) for x in allineati[:3])} va nello stesso verso"))
     if s.dentro:
         punti += 0.5
         rag.append((0.5, f"il range è una candela madre con {s.dentro} inside bar: il prezzo ha caricato"))
-    if not rag:
+    if not rag and guida:
+        rag.append((0, f"il CRT {NOMI.get(s.tf, s.tf.value)} è {'del DXY' if s.dal_dxy else 'della TOTAL'}: "
+                       f"{s.strumento} da solo non fa il CRT nello stesso verso"))
+    elif not rag:
         rag.append((0, f"CRT {NOMI.get(s.tf, s.tf.value)}, senza altri timeframe allineati"))
     return Parere("Cacciatore", _voto(punti), _ordina(rag), segni={"inside bar"} if s.dentro else set())
 
 
 def key_level(s) -> Parere:
-    """Il key level preso dalla finta: piu' e' grande il periodo, piu' liquidita' c'era."""
+    """Il key level preso dalla finta: piu' e' grande il periodo, piu' liquidita' c'era. Su un setup della guida (il
+    DXY, la TOTAL) il key level della guida e' una regola (`metodo.valuta_foto`); qui conta quello preso dallo
+    strumento stesso, che dice quale ha piu' vantaggio (il proprietario, 22/10/2026: *"una presa di liquidità ... può
+    offrire un setup tecnicamente più interessante"*)."""
     veri = [l for l in s.presi if not l.oggi]
     rag, punti = [], 0.0
+    guida = "il DXY" if getattr(s, "dal_dxy", False) else "la TOTAL" if getattr(s, "dal_totale", False) else ""
     if not veri:
+        della = [l.nome for l in getattr(s, "presi_guida", []) if not l.oggi]
+        dopo = f" (lo ha preso {guida}: {', '.join(della[:3])})" if guida and della else ""
+        su = f"su {s.strumento} " if guida else ""
         if s.presi:
-            return Parere("Key level", -1, ["la finta ha preso solo un livello di oggi, non del periodo prima"])
-        return Parere("Key level", -1, ["la finta non ha preso un key level"])
+            return Parere("Key level", -1,
+                          [f"{su}la finta ha preso solo un livello di oggi, non del periodo prima{dopo}"])
+        return Parere("Key level", -1, [f"{su}la finta non ha preso un key level{dopo}"])
     grande = max(veri, key=lambda l: ORDINE.index(l.tf))
     if grande.tf in (TF.Q3, TF.S6, TF.Y1):
         punti += 2
@@ -285,7 +303,8 @@ def bias(s, q, p: Optional[Previsione], domenica: Optional[str], p_dxy: Optional
     from nvm.agenti import foto
     segno = -1 if s.short else 1
     rag, punti = [], 0.0
-    # Dal 20/10/2026 anche i metalli seguono il DXY (`foto.GUIDATI_DAL_DXY`).
+    # Solo le coppie forex col dollaro (`foto.GUIDATI_DAL_DXY`): per l'oro e l'argento il DXY e' un parere a parte
+    # (`dxy`), non la loro previsione (il proprietario, 22/10/2026).
     col_dxy = foto.segno_col_dxy(s.strumento) if s.strumento in foto.GUIDATI_DAL_DXY else 0
     dxy_decide = False
     if col_dxy:

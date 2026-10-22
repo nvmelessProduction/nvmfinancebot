@@ -866,8 +866,10 @@ def test_il_bot_guarda_solo_i_mercati_della_lista_del_20_10():
     assert set(vivo.STRUMENTI_VIVO) == {"EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "XAUUSD", "XAGUSD",
                                         "USDCHF", "USDCAD", "BTCUSD", "ETHUSD"}
     assert all(n in vivo.STRUMENTI for n in vivo.STRUMENTI_VIVO)
-    # Tutti guidati: dal DXY i dieci col dollaro, dalla TOTAL le crypto.
-    assert {n for n in vivo.STRUMENTI_VIVO if n not in foto.CRYPTO_TOTALE} <= set(foto.GUIDATI_DAL_DXY)
+    # Guidati: dal DXY le coppie forex col dollaro, dalla TOTAL le crypto; l'oro e l'argento coi CRT loro (22/10/2026).
+    assert {n for n in vivo.STRUMENTI_VIVO if n not in foto.CRYPTO_TOTALE + ("XAUUSD", "XAGUSD")} <= \
+        set(foto.GUIDATI_DAL_DXY)
+    assert not {"XAUUSD", "XAGUSD"} & set(foto.GUIDATI_DAL_DXY)
     assert foto.verso_dal_dxy("XAGUSD", Verso.LONG) is Verso.SHORT and foto.verso_dal_dxy("USDCAD", Verso.LONG) is Verso.LONG
     dal_env = [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:USDJPY", "USDJPY"), ("OANDA:US30USD", "US30"),
                ("FX_IDC:GBPUSD", "GBPUSD"), ("OANDA:XPTUSD", "XPTUSD")]

@@ -949,11 +949,13 @@ CORRELATI_85 = ("XAUUSD", "XAGUSD", "XPTUSD", "SPX500", "US30", "NAS100")
 DOLLARO_SOTTO = FOREX_SOTTO + CORRELATI_85
 DOLLARO_SOPRA = ("USDJPY", "USDCHF", "USDCAD")
 FOREX_DOLLARO = FOREX_SOTTO + DOLLARO_SOPRA
-# Gli strumenti che entrano solo coi setup del DXY, mai coi CRT loro: il proprietario, 20/10/2026 (*"il bot si deve
-# basare solo ed esclusivamente solo sul dxy ... deve entrare negli asset con il dxy solo ed esclusivamente quando il
-# dxy da il pattern quindi il crt con i vari sbilanciamenti"*), con la lista *"dxy, eurusd, gbpusd, nzdusd, audusd,
-# xauusd, xagusd, xptusd, usdchf, usdcad"*: le coppie col dollaro e i metalli.
-GUIDATI_DAL_DXY = FOREX_DOLLARO + ("XAUUSD", "XAGUSD", "XPTUSD")
+# Gli strumenti che entrano solo coi setup del DXY, mai coi CRT loro: le coppie forex col dollaro. Il proprietario,
+# 20/10/2026: *"il bot si deve basare solo ed esclusivamente solo sul dxy ... deve entrare negli asset con il dxy solo
+# ed esclusivamente quando il dxy da il pattern quindi il crt con i vari sbilanciamenti"*. L'oro e l'argento no: il
+# 22/10/2026 *"per tradare Gold e Silver non devi attendere obbligatoriamente un CRT sul DXY ... Il DXY può aiutarti a
+# contestualizzare il movimento ... ma non deve essere un requisito obbligatorio"*. Dal 20 al 22/10 c'erano anche
+# loro, e il 21/10 il bot non e' entrato sul CRT a 4 ore dell'oro delle 12 (preso il DL).
+GUIDATI_DAL_DXY = FOREX_DOLLARO
 # La direzione di fondo del DXY nei timeframe alti, quella che il proprietario si aspetta nei prossimi anni (08/10/2026:
 # *"il DXY è un asset prettamente short nei TF alti"*; sul mensile si aspetta un CRT ribassista nei TF alti *"che
 # dovremo cavalcare quindi buy sulle coppie come EURUSD, GBPUSD"*; la foto era un esempio di struttura, non livelli da
@@ -1006,33 +1008,43 @@ def verso_dal_dxy(strumento: str, verso_dxy: Verso) -> Optional[Verso]:
 
 
 def dal_dxy(q: Quadro, s_dxy: Setup, verso: Optional[Verso] = None) -> Optional[Setup]:
-    """Il setup del DXY portato su una coppia col dollaro: le stesse candele, i prezzi della coppia.
-    Stop oltre l'estremo della candela 2 della coppia, primo target l'altro lato del suo range. `verso`: quello sullo
-    strumento, se non e' quello che viene dal dollaro (la TOTAL, `dal_totale`)."""
+    """Il setup del DXY portato su una coppia col dollaro: gli stessi istanti del CRT del DXY (le sue candele, cosi'
+    come sono), i prezzi della coppia in quegli istanti, dalle sue ore. Il range e' quello della coppia mentre il DXY
+    faceva la candela 1 (con le inside bar), la candela 2 quella della coppia mentre il DXY faceva la sua 2; si entra
+    all'apertura della candela 3 del DXY. Stop oltre l'estremo della coppia nella candela 2 (allargato fino al minimo,
+    `stop_minimo`), primo target l'altro lato del suo range. `verso`: quello sullo strumento, se non e' quello che
+    viene dal dollaro (la TOTAL, `dal_totale`).
+
+    Per orari e non per candela: il 22/10/2026 il DXY di Capital.com aveva le 4 ore alle 2-6-10 italiane e le coppie
+    alle 0-4-8. Cercando la candela della coppia che partiva alla stessa ora, il CRT a 4 ore del DXY delle 10 (presi il
+    WL e il DL) non arrivava a nessuna coppia, e il proprietario e' entrato short su EURUSD e GBPUSD alle 10."""
     verso = verso or verso_dal_dxy(q.strumento, s_dxy.verso)
     if verso is None:
         return None
-    c = q.candele.get(s_dxy.tf)
-    if c is None:
+    ore = q.ore
+    if not len(ore) or int(ore.inizio[0]) > s_dxy.range_inizio:
+        return None             # le ore della coppia non arrivano fino al range della guida
+    a, b, c = (int(x) for x in np.searchsorted(ore.inizio, [s_dxy.range_inizio, s_dxy.n2_inizio, s_dxy.n3_inizio]))
+    if not a < b < c:
         return None
-    k2 = int(np.searchsorted(c.inizio, s_dxy.n2_inizio))
-    if k2 >= len(c) or int(c.inizio[k2]) != s_dxy.n2_inizio or k2 < 1:
-        return None
-    m = int(np.searchsorted(c.inizio, s_dxy.range_inizio))
-    if m >= len(c) or int(c.inizio[m]) != s_dxy.range_inizio:
-        m = k2 - 1
-    alto, basso = float(c.bid[m, MASSIMO]), float(c.bid[m, MINIMO])
-    h2, l2, c2 = float(c.bid[k2, MASSIMO]), float(c.bid[k2, MINIMO]), float(c.bid[k2, CHIUSURA])
-    spread = max(float(c.ask[k2, CHIUSURA] - c.bid[k2, CHIUSURA]), 0.0)
+    alto, basso = float(ore.bid[a:b, MASSIMO].max()), float(ore.bid[a:b, MINIMO].min())
+    h2, l2 = float(ore.bid[b:c, MASSIMO].max()), float(ore.bid[b:c, MINIMO].min())
+    c2 = float(ore.bid[c - 1, CHIUSURA])
+    spread = max(float(ore.ask[c - 1, CHIUSURA] - ore.bid[c - 1, CHIUSURA]), 0.0)
     entrata = _apertura(q, s_dxy.n3_inizio, c2)
+    minimo = stop_minimo(q, s_dxy.n3_inizio)
+    # Come in `trova`: l'estremo della candela 2 senza l'ora del rollover per le prese, quello vero per lo stop.
+    pulita = (h2, l2) if weekend(q.strumento) else (_senza_rollover(q, s_dxy.n2_inizio, s_dxy.n3_inizio) or (h2, l2))
     short = verso is Verso.SHORT
-    stop = float(c.ask[k2, MASSIMO]) if short else l2
-    tp1 = basso if short else alto
+    if short:
+        stop, tp1 = max(float(ore.ask[b:c, MASSIMO].max()), entrata + minimo), basso
+    else:
+        stop, tp1 = min(l2, entrata + spread - minimo), alto
     if not ((stop > entrata > tp1) if short else (stop < entrata + spread < tp1)):
         return None
-    s = Setup(q.strumento, s_dxy.tf, verso, int(c.inizio[m]), alto, basso, k2 - 1 - m, s_dxy.n2_inizio,
-              s_dxy.n3_inizio, s_dxy.n3_fine, h2, l2, c2, entrata, spread, stop, tp1, dal_dxy=True,
-              prima_inizio=int(c.inizio[max(m - 1, 0)]))
+    s = Setup(q.strumento, s_dxy.tf, verso, s_dxy.range_inizio, alto, basso, s_dxy.dentro, s_dxy.n2_inizio,
+              s_dxy.n3_inizio, s_dxy.n3_fine, pulita[0], pulita[1], c2, entrata, spread, stop, tp1, dal_dxy=True,
+              prima_inizio=s_dxy.prima_inizio)
     s.presi = key_level_presi(q, s)
     s.presi_guida = list(s_dxy.presi)
     return s
@@ -1060,6 +1072,18 @@ def dal_totale(q: Quadro, s_totale: Setup) -> Optional[Setup]:
     if s is not None:
         s.dal_dxy, s.dal_totale = False, True
     return s
+
+
+def crt_propri(q: Quadro, s: Setup) -> list[TF]:
+    """Per un setup portato dalla guida (`dal_dxy`, `dal_totale`): i timeframe in cui lo strumento stesso fa il CRT
+    nello stesso verso, con la candela 3 partita mentre la guida faceva la sua candela 2 o insieme alla sua 3, o in
+    corso. La direzione la decide la guida; questi dicono quali strumenti hanno piu' vantaggio (il proprietario,
+    22/10/2026: *"ovvio che se tra questi asset ci sono alcuni che hanno fatto crt rispetto ad altri avranno più
+    vantaggio statistico"*; *"i pattern sulle singole coppie aiutano a selezionare e valutare l'opportunità, ma non
+    possono invertire o sostituire autonomamente il segnale direzionale"*). Anche lo stesso timeframe della guida, che
+    sulla coppia puo' avere altri orari (il DXY di Capital.com alle 2-6-10 italiane, le coppie alle 0-4-8)."""
+    fuori = [tf for tf in TF_CRT if any(x.verso is s.verso for x in trova(q, tf, s.n2_inizio + 1, s.n3_inizio))]
+    return sorted(set(fuori) | set(allineati(q, s)), key=ORDINE.index)
 
 
 def allineati(q: Quadro, s: Setup) -> list[TF]:

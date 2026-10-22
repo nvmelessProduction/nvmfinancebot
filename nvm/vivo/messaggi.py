@@ -286,17 +286,25 @@ def guide(elenco: list) -> list[str]:
         tfs = sorted({g.tf for g in gg}, key=ORDINE.index)
         righe = [f"📐 {guida}: CRT {'short' if verso is Verso.SHORT else 'long'} "
                  f"{', '.join(NOMI_TF.get(t, t.value) for t in tfs)} (candela 3 alle {ora_italiana(n3)} italiane)"]
+        # Un no del CRT della guida (niente key level preso, lo stesso movimento di prima) vale per tutti: una riga.
+        della_guida = sorted({g.perche for g in gg if getattr(g, "della_guida", False)})
+        for perche in della_guida:
+            righe.append(f"✖️ Niente da nessuna parte: {perche}.")
         per: dict = {}
         for g in gg:
-            per.setdefault(g.strumento, []).append(g)
-        for k in sorted(per):
+            if not getattr(g, "della_guida", False):
+                per.setdefault(g.strumento, []).append(g)
+        # Prima gli strumenti che fanno anche loro il CRT nel verso della guida: hanno piu' vantaggio (22/10/2026).
+        for k in sorted(per, key=lambda k: (not any(g.propri for g in per[k]), k)):
             dentro = [g for g in per[k] if g.entra]
+            g = next((g for g in dentro if not g.perche), dentro[0]) if dentro else per[k][0]
+            propri = sorted({t for x in per[k] for t in getattr(x, "propri", [])}, key=ORDINE.index)
+            stella = f" ★ fa anche lui il CRT {', '.join(NOMI_TF.get(t, t.value) for t in propri)}" if propri else ""
             if dentro:
-                g = dentro[0]
                 righe.append(f"▶️ {k}: occasione in {'vendita' if g.verso is Verso.SHORT else 'acquisto'}"
-                             + (f" ({g.perche})" if g.perche else ""))
+                             + (f" ({g.perche})" if g.perche else "") + stella)
             else:
-                righe.append(f"✖️ {k}: niente, {per[k][0].perche}")
+                righe.append(f"✖️ {k}: niente, {g.perche}" + stella)
         fuori.append("\n".join(righe))
     return fuori
 

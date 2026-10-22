@@ -193,8 +193,8 @@ def test_le_correlazioni_col_dxy():
     b = P.bias(_setup(n3=giorno + 3600), q, euro_su, None, dxy_su, q)
     assert b.voto == -1 and "dollaro sale" in b.ragioni[0]
     assert P.bias(_setup(short=True, n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 1
-    # Dal 20/10/2026 anche l'oro entra solo col DXY, e nel Bias comanda lui come sul forex.
-    assert P.bias(_setup(strumento="XAUUSD", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == -1
+    # L'oro entra coi CRT suoi: nel Bias conta la sua previsione, il DXY e' un parere a parte (22/10/2026).
+    assert P.bias(_setup(strumento="XAUUSD", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 2
     # Fuori dagli strumenti guidati (il Nasdaq) il DXY non entra nel Bias.
     assert P.bias(_setup(strumento="NAS100", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 2
 
@@ -215,15 +215,15 @@ def test_il_dxy_comanda_il_bias_del_forex_anche_la_domenica_e_di_fondo_e_ribassi
     assert not P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista").veto
 
 
-def test_oro_e_crypto_seguono_la_previsione_della_settimana_della_loro_guida():
-    """Dal 20/10/2026 l'oro entra solo col DXY e BTC solo con la TOTAL: anche il no della previsione della domenica
-    viene dalla guida, non dallo strumento."""
+def test_l_oro_non_e_fermato_dalla_previsione_della_settimana_del_dxy():
+    """Il proprietario, 22/10/2026: *"per tradare Gold e Silver non devi attendere obbligatoriamente un CRT sul DXY ...
+    Il DXY può aiutarti a contestualizzare il movimento ... ma non deve essere un requisito obbligatorio"*. L'oro entra
+    coi CRT suoi: la previsione della domenica del DXY non lo ferma (dal 20 al 22/10 lo fermava)."""
     from nvm.agenti import foto
     from nvm.agenti.cacciatore import Verso
     from nvm.intelligenti import pareri as P
     oro = NS(strumento="XAUUSD", short=False, verso=Verso.LONG, n3_inizio=0)
-    # Il DXY detto ribassista per la settimana: l'oro in acquisto va con lui, nessun no.
-    assert not P.bias(oro, None, None, "ribassista", None, None, "ribassista").veto
-    # Il DXY detto rialzista: l'oro in acquisto va contro, anche se l'oro da solo era detto rialzista.
-    assert P.bias(oro, None, None, "rialzista", None, None, "rialzista").veto
-    assert "XAUUSD" in foto.GUIDATI_DAL_DXY
+    assert not P.bias(oro, None, None, None, None, None, "rialzista").veto
+    assert "XAUUSD" not in foto.GUIDATI_DAL_DXY and "XAGUSD" not in foto.GUIDATI_DAL_DXY
+    # Le coppie forex col dollaro si', tutte.
+    assert set(foto.FOREX_DOLLARO) <= set(foto.GUIDATI_DAL_DXY)

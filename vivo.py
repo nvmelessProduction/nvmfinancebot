@@ -762,7 +762,9 @@ class Bot:
     @staticmethod
     def _tema(d) -> str:
         """Di quale operazione si parla, in testa a ogni messaggio in equipe."""
-        return conversazione.tema(d.r.strumento, d.r.verso.value, d.r.alto_tf.value)
+        s = (getattr(d, "foto", None) or {}).get("setup")
+        guida = "DXY" if getattr(s, "dal_dxy", False) else "TOTAL" if getattr(s, "dal_totale", False) else ""
+        return conversazione.tema(d.r.strumento, d.r.verso.value, d.r.alto_tf.value, guida)
 
     def _disegna(self, d, viva, adesso: int, testo: Optional[str] = None) -> None:
         if getattr(d, "foto", None):

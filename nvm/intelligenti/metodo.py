@@ -540,23 +540,25 @@ def valuta_foto(d) -> Metodo:
     # 2. Il key level (Key level): il massimo o minimo del periodo prima preso dal CRT.
     presi = (sd.presi if (s.dal_dxy and sd is not None) else st.presi if (dal_totale and st is not None)
              else s.presi)
-    # Sugli strumenti guidati dal DXY (dalla TOTAL) lo sbilanciamento e' quello del suo CRT: la candela 2 che prende il
-    # massimo (minimo) della candela 1. Un key level giornaliero in piu' non serve (il proprietario, 20/10/2026: *"solo ed
-    # esclusivamente quando il dxy da il pattern"*; il 21/10 e' entrato sull'oro col CRT a 4 ore del DXY che non l'aveva).
+    # Sugli strumenti guidati dal DXY (dalla TOTAL) il key level lo deve prendere il CRT della guida (il proprietario,
+    # 22/10/2026: *"il prezzo aveva preso due kl (WL-DL) e poi ha formato un crt h4 il bot doveva entrare
+    # automaticamente"*). Dal 21 al 22/10/2026 non si chiedeva: era un errore.
     guida = sd if s.dal_dxy else st if dal_totale else None
     nome_guida = "il DXY" if s.dal_dxy else "la TOTAL"
     if s.tf is TF.H1:
-        kl_ok = bool(s.h4_preso is not None and any(l.tf is TF.D1 and not l.oggi for l in presi))
-        perche = (f"il CRT a 1 ora ha preso il {', il '.join(l.nome for l in presi if l.tf is TF.D1)} e il "
-                  f"{_v(short, 'minimo', 'massimo')} delle 4 ore ({numero(s.h4_preso)}): entriamo sulla terza candela "
-                  "di un'ora, che anticipa la candela a 4 ore dopo" if kl_ok else
+        h4 = guida.h4_preso if guida is not None else s.h4_preso
+        kl_ok = bool(h4 is not None and any(l.tf is TF.D1 and not l.oggi for l in presi))
+        perche = (("" if guida is None else f"{nome_guida}: ")
+                  + f"il CRT a 1 ora ha preso il {', il '.join(l.nome for l in presi if l.tf is TF.D1)} e il "
+                  f"{_v(guida.short if guida is not None else short, 'minimo', 'massimo')} delle 4 ore ({numero(h4)}): "
+                  "entriamo sulla terza candela di un'ora, che anticipa la candela a 4 ore dopo" if kl_ok else
                   "il CRT a 1 ora vale solo se prende il key level giornaliero e il massimo (minimo) a 4 ore")
     elif s.dal_dxy or dal_totale:
-        kl_ok = True
-        lato_g = _v(guida.short, "il minimo", "il massimo") if guida is not None else "un lato"
-        perche = (f"{nome_guida} ha preso {lato_g} della candela 1"
-                  + (f" e {' e '.join(f'il {l.nome}' for l in presi[:3])}" if presi else "")
-                  + ": è lo sbilanciamento che conta, sul grafico che comanda")
+        kl_ok = bool(presi)
+        perche = (f"{nome_guida} ha preso {' e '.join(f'il {l.nome} ({numero(l.prezzo)})' for l in presi[:3])} e poi "
+                  "ha fatto il CRT: è il pattern, sul grafico che comanda" if kl_ok else
+                  f"il CRT {'del DXY' if s.dal_dxy else 'della TOTAL'} non ha preso nessun key level: non è il "
+                  "pattern")
     else:
         kl_ok = bool(presi)
         perche = (f"la finta ha preso {' e '.join(f'il {l.nome} ({numero(l.prezzo)})' for l in presi[:3])}: un key "

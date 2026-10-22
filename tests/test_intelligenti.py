@@ -255,9 +255,9 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
 
 
 def test_sugli_strumenti_guidati_le_regole_le_da_il_crt_del_dxy():
-    """21/10/2026: la TOTAL fa il CRT short a 4 ore alle 22 (prende il massimo della candela 1, nessun DH), il giro fa
-    l'occasione su BTC ed ETH ma la squadra la scarta per "manca il key level", in silenzio. Sugli strumenti guidati lo
-    sbilanciamento e' quello del CRT del DXY (della TOTAL), e la direzione dello strumento e' un parere."""
+    """Sugli strumenti guidati il key level lo deve prendere il CRT della guida (il proprietario, 22/10/2026: *"il
+    prezzo aveva preso due kl (WL-DL) e poi ha formato un crt h4 il bot doveva entrare automaticamente"*); dal 21 al
+    22/10 non si chiedeva, ed era un errore. La direzione dello strumento e' un parere: comanda la guida."""
     from dataclasses import replace as cambia
     from nvm.intelligenti import metodo
     from nvm.vivo.giro import giro
@@ -267,11 +267,14 @@ def test_sugli_strumenti_guidati_le_regole_le_da_il_crt_del_dxy():
                      gemelli={"EURUSD": base, "DXY": _dxy_specchio(base)})
     assert decisioni
     for d in decisioni:
-        senza = cambia(d, foto={**d.foto, "dxy": cambia(d.foto["dxy"], presi=[])})
-        m = metodo.valuta_foto(senza)
+        assert d.foto["dxy"].presi, "il giro porta sulle coppie solo i CRT del DXY che hanno preso un key level"
+        m = metodo.valuta_foto(d)
+        kl = m.obbligatorie[1]
+        assert kl.si and kl.perche.startswith("il DXY") or d.foto["setup"].tf is TF.H1, kl.perche
+        senza = metodo.valuta_foto(cambia(d, foto={**d.foto, "dxy": cambia(d.foto["dxy"], presi=[])}))
+        assert not senza.a_piu and not senza.obbligatorie[1].si
         if d.foto["setup"].tf is not TF.H1:
-            assert m.a_piu, [(x.nome, x.perche) for x in m.mancano]
-            assert "il DXY ha preso" in m.obbligatorie[1].perche
+            assert "non è il pattern" in senza.obbligatorie[1].perche
         assert m.obbligatorie[2].si and "comanda il DXY" in m.obbligatorie[2].perche
 
 
