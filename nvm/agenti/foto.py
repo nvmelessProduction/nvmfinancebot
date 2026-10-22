@@ -1081,9 +1081,27 @@ def crt_propri(q: Quadro, s: Setup) -> list[TF]:
     22/10/2026: *"ovvio che se tra questi asset ci sono alcuni che hanno fatto crt rispetto ad altri avranno più
     vantaggio statistico"*; *"i pattern sulle singole coppie aiutano a selezionare e valutare l'opportunità, ma non
     possono invertire o sostituire autonomamente il segnale direzionale"*). Anche lo stesso timeframe della guida, che
-    sulla coppia puo' avere altri orari (il DXY di Capital.com alle 2-6-10 italiane, le coppie alle 0-4-8)."""
-    fuori = [tf for tf in TF_CRT if any(x.verso is s.verso for x in trova(q, tf, s.n2_inizio + 1, s.n3_inizio))]
-    return sorted(set(fuori) | set(allineati(q, s)), key=ORDINE.index)
+    sulla coppia puo' avere altri orari (il DXY di Capital.com alle 2-6-10 italiane, le coppie alle 0-4-8). Contano solo
+    i CRT con la presa di un key level, come per entrare (*"un pattern coerente con la direzione del DXY, una presa di
+    liquidità e gli altri elementi richiesti dalla strategia"*): senza, il 22/10 lo facevano tutte e sei le coppie."""
+    fuori = set()
+    for tf in (TF.H1, TF.H4, TF.H6, TF.H12, TF.D1, TF.W1, TF.MN):
+        vicini = trova(q, tf, s.n2_inizio + 1, s.n3_inizio)
+        if _sopra(tf, s.tf):
+            # Il CRT piu' grande la cui candela 3 e' in corso (al piu' un mese).
+            vicini += [x for x in trova(q, tf, s.n3_inizio - 35 * 86400, s.n2_inizio)
+                       if x.n3_inizio <= s.n3_inizio < x.n3_fine]
+        if any(x.verso is s.verso and con_la_presa(x) for x in vicini):
+            fuori.add(tf)
+    return sorted(fuori, key=ORDINE.index)
+
+
+def con_la_presa(x: Setup) -> bool:
+    """Un CRT con la presa di un key level, come per entrare: quello a 1 ora col key level del giorno e il massimo
+    (minimo) a 4 ore (`giro.setup_buono`)."""
+    if x.tf is TF.H1:
+        return x.h4_preso is not None and any(l.tf is TF.D1 and not l.oggi for l in x.presi)
+    return bool(x.presi)
 
 
 def allineati(q: Quadro, s: Setup) -> list[TF]:

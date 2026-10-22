@@ -581,7 +581,10 @@ def valuta_foto(d) -> Metodo:
                            dz.testo if dz.ok else dz.testo + ": nelle foto si entra solo col comando dalla nostra parte"))
 
     # --- Le confluenze ---
-    allineati = list(info.get("allineati", [])) + [tf for tf in foto.allineati(q, s) if tf not in info.get("allineati", [])]
+    allineati = list(info.get("allineati", []))
+    if not (s.dal_dxy or dal_totale):
+        # Sui setup della guida gli allineati sono gia' i CRT dello strumento con la presa (`foto.crt_propri`).
+        allineati += [tf for tf in foto.allineati(q, s) if tf not in allineati]
     co.append(Domanda("timeframe allineati", "Cacciatore", FOTO, bool(allineati),
                       f"anche {', '.join(NOMI_TF_FOTO.get(t, t.value) for t in allineati[:3])} "
                       f"{'fa' if len(allineati) == 1 else 'fanno'} il CRT nello stesso verso" if allineati else

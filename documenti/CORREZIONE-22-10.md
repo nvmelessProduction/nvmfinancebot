@@ -69,7 +69,7 @@ in cui la logica si discosta dalle regole"*.
 |---|---|
 | `foto.dal_dxy` | il setup sulla coppia negli orari delle candele del DXY: il range nelle ore della candela 1, la candela 2 nelle ore della sua candela 2, l'ingresso all'apertura della candela 3 del DXY; lo stop allargato fino allo stop minimo come in `trova` |
 | `foto.GUIDATI_DAL_DXY` | solo le coppie forex col dollaro |
-| `foto.crt_propri` | i CRT della coppia nel verso della guida, anche sullo stesso timeframe con altri orari |
+| `foto.crt_propri` | i CRT della coppia nel verso della guida, anche sullo stesso timeframe con altri orari, solo quelli con la presa di un key level (senza, il 22/10 la stella l'avevano tutte e sei le coppie; con, tre su sei) |
 | `giro.occasioni_foto` | la guida deve avere preso un key level; un CRT della guida che è lo stesso movimento di uno di prima non fa entrare; i CRT propri vanno al Cacciatore; l'oro e l'argento coi loro CRT, col CRT del DXY vicino come parere |
 | `metodo.valuta_foto` | il key level obbligatorio è quello della guida (per il CRT a 1 ora anche il massimo o minimo a 4 ore della guida) |
 | `pareri` | il Cacciatore dice quando la coppia fa anche lei il CRT; il key level della coppia dice che è della coppia; il Bias segue il DXY solo sulle coppie forex |

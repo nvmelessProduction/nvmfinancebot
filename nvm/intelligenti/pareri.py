@@ -550,7 +550,10 @@ def tutti(d, ctx: Contesto, p: Optional[Previsione], p_dxy: Optional[Previsione]
     from nvm.intelligenti.metodo import _gap_a_favore
     info = d.foto
     s, q, ob = info["setup"], info["quadro"], info["obiettivo"]
-    allineati = list(info.get("allineati", [])) + [t for t in foto.allineati(q, s) if t not in info.get("allineati", [])]
+    allineati = list(info.get("allineati", []))
+    if not (getattr(s, "dal_dxy", False) or getattr(s, "dal_totale", False)):
+        # Sui setup della guida gli allineati sono gia' i CRT dello strumento con la presa (`foto.crt_propri`).
+        allineati += [t for t in foto.allineati(q, s) if t not in allineati]
     costo = float(getattr(d.r, "costo_erre", 0.0) or 0.0)
     domenica = ctx.domenica.get(s.strumento) or settimana(q, s.n3_inizio)
     qt = info.get("quadro_totale")
