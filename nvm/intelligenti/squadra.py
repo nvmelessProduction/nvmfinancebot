@@ -97,8 +97,6 @@ FIDUCIA_MASSIMA = 1.0
 BASE_VOTI = math.log(0.4 / 0.6)
 # Il Capo entra con almeno questi punti pesati a favore (un punto = un voto +1 di chi ha la fiducia di partenza).
 SOGLIA_PUNTI = 3.0
-# In un giro il Capo sceglie al massimo queste operazioni nuove: quelle con piu' probabilita'.
-MASSIMO_PER_GIRO = 3
 # Un ascolto del secondo giro si spegne se dal vivo, dopo almeno tante volte, ha cambiato il voto nel verso giusto
 # meno di questa parte delle volte (sentire quel collega non aiuta).
 ASCOLTO_MINIMO = 20

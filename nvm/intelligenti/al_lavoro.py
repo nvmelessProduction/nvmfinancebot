@@ -17,7 +17,7 @@ from datetime import datetime
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import costruisci
 from nvm.intelligenti import metodo, pareri as P
-from nvm.intelligenti.squadra import MASSIMO_PER_GIRO, SOGLIA_PUNTI, Squadra, Verdetto
+from nvm.intelligenti.squadra import SOGLIA_PUNTI, Squadra, Verdetto
 from nvm.prova.campo import Operazione, Uscita, simula
 from nvm.tempo import NEW_YORK, TF
 
@@ -123,8 +123,10 @@ def previsioni_del_giorno(squadra: Squadra, quadri: dict, adesso: int) -> str:
 
 
 def scegli(squadra: Squadra, decisioni, verdetti: dict, ctx: P.Contesto, occupati: set) -> str:
-    """Il Capo sceglie le migliori del giro: in ordine di probabilita', al massimo `MASSIMO_PER_GIRO`, niente sugli
-    strumenti gia' occupati. Quelle lasciate non si aprono (si seguono sulla carta e la squadra impara lo stesso).
+    """Il Capo mette in ordine le occasioni del giro, per probabilita', e le prende tutte, una per strumento e niente
+    sugli strumenti gia' occupati: nessun massimo (il proprietario, 22/10/2026: *"non deve esserci un massimo di
+    operazioni di apertura"*; quando il DXY fa il CRT nascono fino a 8 occasioni insieme, e il massimo di 3 lasciava
+    fuori l'argento). Quelle lasciate non si aprono (si seguono sulla carta e la squadra impara lo stesso).
     Restituisce il riassunto per l'equipe ("" se nel giro non c'era niente con tutte le regole del metodo)."""
     per_chiave = {d.chiave: d for d in decisioni}
     giri: dict = {}
@@ -159,8 +161,6 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
             motivo = f"su {s} c'è già un'operazione aperta"
         elif any(s == x for x, _, _ in scelte):
             motivo = f"su {s} ho già scelto un'altra occasione in questo giro"
-        elif len(scelte) >= MASSIMO_PER_GIRO:
-            motivo = f"ho già scelto le {MASSIMO_PER_GIRO} migliori di questo giro"
         if motivo:
             if v.entra:
                 v.entra = False
@@ -284,8 +284,8 @@ def benvenuto(strumenti: int) -> str:
             "Grilletto la finta. Poi ci sentiamo fra colleghi: chi ha un motivo cambia voto e lo dice. Il Capo ascolta "
             "tutti, pesa ognuno per quanto ci ha preso dal vivo, ed entra solo con almeno "
             f"{_punti(SOGLIA_PUNTI)} punti a favore e mai contro la previsione della domenica; in ogni giro mette i CRT "
-            f"in ordine di probabilità e sceglie al massimo i {MASSIMO_PER_GIRO} migliori, e dice cosa prende e cosa "
-            "lascia. Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
+            "in ordine di probabilità e li prende tutti, uno per strumento, e dice cosa prende e cosa lascia. "
+            "Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
             "Il Rischio parte dall'1% del conto e si corregge coi risultati. Non siamo un'intelligenza artificiale che "
             "parla: siamo il metodo, il mestiere di ognuno e numeri che si correggono coi fatti.")
 

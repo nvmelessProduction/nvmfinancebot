@@ -8,7 +8,7 @@ from nvm.agenti.cacciatore import Verso
 from nvm.agenti.foto import Livello, Quadro
 from nvm.intelligenti import al_lavoro, pareri as P
 from nvm.intelligenti.metodo import Domanda, Metodo
-from nvm.intelligenti.squadra import FIDUCIA_VOTO, MASSIMO_PER_GIRO, SOGLIA_PUNTI, Squadra
+from nvm.intelligenti.squadra import FIDUCIA_VOTO, SOGLIA_PUNTI, Squadra
 from nvm.tempo import TF, utc
 from tests.test_vivo import ore_finte
 
@@ -139,9 +139,8 @@ def test_il_capo_sceglie_le_migliori_del_giro(tmp_path):
         decisioni.append(NS(chiave=s, r=NS(strumento=s, quando=n3, verso=Verso.LONG)))
     testo = al_lavoro.scegli(sq, decisioni, verdetti, P.Contesto(), {"USDCHF"})
     presi = [s for s, v in verdetti.items() if v.entra]
-    # I CRT con piu' probabilita', al massimo tre, niente sugli strumenti gia' occupati.
-    assert presi == ["CADJPY", "NZDJPY", "GBPUSD"] and len(presi) == MASSIMO_PER_GIRO
-    assert "già scelto le 3 migliori" in verdetti["EURCHF"].lasciata
+    # Tutti, nessun massimo (22/10/2026), niente sugli strumenti gia' occupati.
+    assert presi == ["CADJPY", "NZDJPY", "GBPUSD", "EURCHF", "AUDCAD"]
     assert "già un'operazione aperta" in verdetti["USDCHF"].lasciata
     assert testo.startswith("Giro delle 03:00 di New York") and "Scelgo: CADJPY" in testo and "Lascio:" in testo
 
