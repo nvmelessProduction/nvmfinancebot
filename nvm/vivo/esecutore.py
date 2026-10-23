@@ -124,10 +124,12 @@ class Esecutore:
 
     def apri(self, d: Decisione, conto: Conto, aperte: list = (), pieno: Optional[float] = None,
              parte: Optional[float] = None, fiducia_minima: Optional[float] = None,
-             riduci: bool = True) -> tuple[Optional[Viva], Fatto]:
+             riduci: bool = True, sempre_il_minimo: bool = False) -> tuple[Optional[Viva], Fatto]:
         """Apre la decisione sul conto. `aperte`: le operazioni gia' aperte (`Viva`), perche' il
         Rischio punti sul conto intero e non su un'operazione alla volta. `riduci=False`: la puntata
-        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce."""
+        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce.
+        `sempre_il_minimo`: se la puntata sta sotto il lotto minimo si apre il minimo, sempre (un setup valido
+        della squadra non resta fuori per la grandezza del conto)."""
         k, op, verso = d.r.strumento, d.op, d.r.verso
         if not conto.demo:
             return None, Fatto(messaggi.allarme(f"il conto {conto.login} non è un demo: non apro {k}."))
@@ -193,7 +195,13 @@ class Esecutore:
             # molte volte la puntata giusta, e un conto piccolo si brucerebbe).
             v = max(volume, minimo)
             quota = v * per_lotto / conto.saldo
-            if dei_cervelli:
+            if sempre_il_minimo:
+                # Il proprietario, 23/10/2026, sull'oro lasciato per "conto troppo piccolo per il lotto minimo" (900 €,
+                # 0,01 lotti con lo stop di un CRT a 4 ore sono circa il 2-4% del conto): *"Se ci sta una cosa
+                # valida, deve aprire"*. Si apre il minimo e il messaggio dice quanto rischia davvero.
+                migliore = 1.0
+                uscita = USCITE[1] if op.parziale == 1.0 else USCITE[2]
+            elif dei_cervelli:
                 # La crescita torna a zero al doppio della puntata giusta (`crescita_creduta`).
                 migliore = 1.0 if quota < 2 * (da_sola - togli) else -1.0
                 # Col lotto minimo non si divide: tutto al target del piano (col pareggio al TP1).
@@ -247,7 +255,9 @@ class Esecutore:
             # L'ordine e' gia' sul conto: un messaggio sbagliato non deve farla perdere di vista al bot.
             testo = f"{'🔴 HO VENDUTO' if verso is Verso.SHORT else '🟢 HO COMPRATO'} {k}: {messi:g} lotti a {ingresso:g}"
         if volume < minimo:
-            testo += f"\n(La puntata giusta era più piccola del minimo che il broker accetta: apro il minimo, {minimo:g} lotti.)"
+            testo += (f"\n(La puntata giusta era più piccola del minimo che il broker accetta: apro il minimo, {minimo:g} "
+                      f"lotti, che rischia {rischio:.2f} {conto.valuta}"
+                      + (f", il {rischio / conto.saldo:.1%} del conto.)" if conto.saldo else ".)"))
         return viva, Fatto(testo)
 
     def sorveglia(self, vive: list[Viva]) -> tuple[list[Viva], list[Fatto]]:

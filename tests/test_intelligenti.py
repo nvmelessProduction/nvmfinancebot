@@ -332,9 +332,10 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     mandati, aperte = [], []
 
     class Esecutore:
-        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True):
+        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True,
+                 sempre_il_minimo=False):
             assert con_stop(d.op)
-            aperte.append((pieno, parte, riduci))
+            aperte.append((pieno, parte, riduci, sempre_il_minimo))
             viva = NS(chiave=d.chiave, strumento="EURUSD", verso=d.r.verso.value, tickets=[1], volume=0.1,
                       ingresso=d.op.ingresso, stop=d.op.stop, tp1=d.op.tp1, tp2=d.op.tp2, rischio=pieno * parte * 10000,
                       valuta="EUR", da_sola=pieno * parte, legate=[], pareggio_fatto=False)
@@ -354,7 +355,8 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot.strumenti = ["EURUSD"]
     bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
-    assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci for x, p, riduci in aperte)
+    # Sotto il lotto minimo la squadra apre il minimo, sempre (23/10/2026).
+    assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci and minimo for x, p, riduci, minimo in aperte)
     # Lo stesso CRT una volta sola, anche se il giro si ripete.
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
     assert len(aperte) == 1

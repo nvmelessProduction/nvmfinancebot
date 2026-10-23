@@ -52,7 +52,7 @@ Ognuno può dire no. Ora tutti lo dicono, col 📐 o col ⏸.
 | Rischio | non trova una puntata possibile | ⏸ dal 21/10 |
 | Uno per strumento | c'è già un'operazione aperta su quello strumento | ⏸ dal 21/10 |
 | Arrivato tardi | la candela 3 è aperta da più di 10 minuti | ⏸ dal 21/10 |
-| Broker | conto non demo, Algo Trading spento, prezzo già oltre stop o TP1, stop troppo vicino, lotto minimo troppo grande | ⏸ dal 21/10 |
+| Broker | conto non demo, Algo Trading spento, prezzo già oltre stop o TP1, stop troppo vicino, lotto minimo troppo grande (dal 23/10 sui setup della squadra si apre il minimo, sempre) | ⏸ dal 21/10 |
 
 Nei giorni scorsi due controlli dicevano no **in silenzio**. Erano proprio quelli che bloccavano tutto:
 

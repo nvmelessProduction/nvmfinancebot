@@ -432,6 +432,27 @@ def test_il_lotto_minimo_si_apre_solo_se_il_conto_lo_regge():
             assert fatto.saltata == "conto troppo piccolo per il lotto minimo" and m.richieste == []
 
 
+def test_un_setup_della_squadra_si_apre_sempre_almeno_col_lotto_minimo():
+    """Il proprietario, 23/10/2026: *"Se ci sta una cosa valida, deve aprire"*. Con la puntata della squadra sotto il
+    lotto minimo, anche su un conto minuscolo, si apre il minimo e il messaggio dice quanto rischia davvero."""
+    d = _una_decisione()
+    m = MT5Finto(saldo=5.0)
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    e = Esecutore(t)
+    viva, fatto = e.apri(d, t.conto(), pieno=0.01, parte=1.0, fiducia_minima=0.0, riduci=False,
+                         sempre_il_minimo=True)
+    assert viva is not None and fatto.saltata == "", fatto.testo
+    assert viva.volume == t.lotti("EURUSD")[0] and viva.meta == 0.0
+    assert "apro il minimo" in fatto.testo and "del conto" in fatto.testo
+    # Senza: la squadra con la stessa puntata lascia il minimo che rischia piu' del doppio.
+    m2 = MT5Finto(saldo=5.0)
+    m2.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t2 = Terminale(mt5=m2)
+    viva2, fatto2 = Esecutore(t2).apri(d, t2.conto(), pieno=0.01, parte=1.0, fiducia_minima=0.0, riduci=False)
+    assert viva2 is None and fatto2.saltata == "conto troppo piccolo per il lotto minimo"
+
+
 # --- l'equipe e la riunione ---
 
 def test_ogni_agente_dice_la_sua():

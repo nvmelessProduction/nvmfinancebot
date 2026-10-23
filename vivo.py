@@ -1410,7 +1410,7 @@ class Bot:
         if v is not None:
             # Quanto puntare l'ha deciso il Rischio della squadra quando ha proposto.
             viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata, parte=1.0,
-                                              fiducia_minima=0.0, riduci=False)
+                                              fiducia_minima=0.0, riduci=False, sempre_il_minimo=True)
         else:
             viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
         del self.proposte[ident]
@@ -1943,8 +1943,11 @@ class Bot:
                     puntata = v.puntata
                     if self.squadra is not None and conto is not None:
                         puntata = self.squadra.ripunta(d.chiave, self._esposizione(conto.saldo)[1]) or v.puntata
+                    # Sotto il lotto minimo si apre il minimo, sempre: un setup valido non resta fuori per la
+                    # grandezza del conto (il proprietario, 23/10/2026: *"Se ci sta una cosa valida, deve aprire"*).
                     viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=puntata,
-                                                      parte=1.0, fiducia_minima=0.0, riduci=False)
+                                                      parte=1.0, fiducia_minima=0.0, riduci=False,
+                                                      sempre_il_minimo=True)
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
                     # Quanto puntare lo dice il cervello del Rischio.

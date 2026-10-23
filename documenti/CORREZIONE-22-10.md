@@ -137,3 +137,12 @@ funzionerà ... sarà la rete neurale a decidere quanto rischiare"*. Quindi, sen
 - rifà la puntata subito prima di ogni ordine, vedendo le operazioni appena aperte nello stesso giro
   (`Squadra.ripunta`): quando il DXY fa il CRT le coppie si aprono dalla migliore e le altre, mosse dallo stesso
   dollaro, prendono di meno. Quanto di meno lo impara dai risultati.
+
+Poi, lo stesso giorno, l'oro a 4 ore delle 16 lasciato ancora per "conto troppo piccolo per il lotto minimo". Con
+900 € e un CRT a 4 ore dell'oro, 0,01 lotti (un'oncia) con uno stop di 20-30 dollari rischiano circa il 2-4% del
+conto, più del doppio della puntata del Rischio, e il bot non apriva (la leva non c'entra: decide il margine, non
+quanto si perde allo stop). Il proprietario: *"Se ci sta una cosa valida, deve aprire"*. Da ora sui setup della
+squadra, se la puntata sta sotto il lotto minimo, si apre il minimo, sempre, e il messaggio d'apertura dice quanto
+rischia davvero (`Esecutore.apri(sempre_il_minimo=True)`, `tests/test_vivo.py::
+test_un_setup_della_squadra_si_apre_sempre_almeno_col_lotto_minimo`). Con 0,01 lotti il 25% al TP1 non si può
+chiudere: tutta la posizione va al target finale, col pareggio al TP1.

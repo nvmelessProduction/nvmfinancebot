@@ -151,7 +151,8 @@ bot non può toccare.
 
 **Il bot apre poche operazioni.** È voluto. Il Capo sceglie solo i CRT su cui la squadra è convinta,
 al massimo tre per giro. Su conti piccoli il lotto minimo del broker
-può essere troppo grande per la puntata giusta: in quel caso l'operazione si lascia.
+può essere più grande della puntata giusta: dal 23/10/2026 il bot apre lo stesso il lotto minimo e
+nel messaggio scrive quanto rischia davvero.
 
 **Quanto rischia?** Il Rischio parte dall'1% del conto per operazione, punta un po' di più quando
 il Capo è più convinto del solito e meno quando ci sono altre operazioni aperte, e si corregge coi
