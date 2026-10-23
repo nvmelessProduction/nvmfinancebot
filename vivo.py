@@ -1897,6 +1897,9 @@ class Bot:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
         # Quando decidono i cervelli, i Livelli scelgono anche il piano: dove lo stop, come il profitto.
         decisioni = [self._con_piano(d, giudizi[d.chiave]) for d in decisioni]
+        # Prima le occasioni in cui la squadra crede di piu': le altre del giro le vedono gia' aperte e il Rischio ci
+        # punta di meno.
+        decisioni.sort(key=lambda d: -(self._verdetti[d.chiave].fiducia if d.chiave in self._verdetti else 0.0))
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
         aperte, da_dire = set(), []
         # Perche' un'occasione non si e' aperta, quando non lo decide la squadra (`_perche_no`).
@@ -1930,8 +1933,13 @@ class Bot:
                 motivi_no[d.chiave] = "la rete neurale la lascia: è in équipe con «Apri lo stesso»"
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
-                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
-                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,
+                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce. Lo rifa' adesso,
+                    # vedendo anche le operazioni appena aperte in questo giro (il proprietario, 23/10/2026: *"su
+                    # trade punterà di più, su altri trade punterà di meno, deve essere intelligente"*).
+                    puntata = v.puntata
+                    if self.squadra is not None and conto is not None:
+                        puntata = self.squadra.ripunta(d.chiave, self._esposizione(conto.saldo)[1]) or v.puntata
+                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=puntata,
                                                       parte=1.0, fiducia_minima=0.0, riduci=False)
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})

@@ -121,8 +121,19 @@ Il DXY apre alle 2 italiane, eppure il bot ha detto "CRT a 6 ore" con la candela
   liquidazione, key level piu' grande) e, prima di arrendersi al TP1, all'altro lato di ieri (DH, DL)
   (`foto.target_minimo`, `foto.obiettivo_finale`). Delle 24 foto ne resta fuori una, la 4/6.
 
-## Il lotto minimo su ETH
+## Il lotto minimo su ETH e l'oro non aperto per "conto troppo piccolo"
 
 Il messaggio "la puntata giusta era più piccola del minimo che il broker accetta: apro il minimo" vuol dire che il
-Rischio della squadra aveva una puntata sotto lo 0,01. Il Rischio parte dall'1% e la corregge dopo ogni operazione,
-senza un minimo: dopo una serie di perdite scende molto. Serve la decisione del proprietario sulla puntata.
+Rischio della squadra aveva una puntata sotto lo 0,01; il 23/10 alle 8 per lo stesso motivo non si è aperto il CRT a 4
+ore dell'oro ("conto troppo piccolo per il lotto minimo"). Il Rischio aveva imparato anche dalle operazioni aperte su
+CRT del DXY che non c'erano.
+
+Il proprietario, 23/10/2026: *"deve decidere lui quanto puntare e basta, resetta tutto quanto ciò che riguarda il
+rischio ... su trade punterà di più, su altri trade punterà di meno, deve essere intelligente"*; *"quando il bot
+funzionerà ... sarà la rete neurale a decidere quanto rischiare"*. Quindi, senza tetti:
+
+- il Rischio riparte da zero una volta (`squadra.RIPARTENZA_RISCHIO`): puntata base 1%;
+- punta di più dove il Capo crede di più fin dalla prima occasione (prima aspettava 10 occasioni);
+- rifà la puntata subito prima di ogni ordine, vedendo le operazioni appena aperte nello stesso giro
+  (`Squadra.ripunta`): quando il DXY fa il CRT le coppie si aprono dalla migliore e le altre, mosse dallo stesso
+  dollaro, prendono di meno. Quanto di meno lo impara dai risultati.

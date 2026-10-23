@@ -83,6 +83,10 @@ MINIMO_SIMILI = 15
 CERTEZZA_EVITA = 2.0
 # Il Rischio nasce puntando l'1% del conto: Romeo non dice un numero, dice di non esagerare.
 PUNTATA_INIZIALE = 0.01
+# Il Rischio riparte da zero una volta (il proprietario, 23/10/2026: *"resetta tutto quanto ciò che riguarda il rischio e
+# deve decidere lui quanto puntare"*): aveva imparato anche dalle operazioni aperte su CRT del DXY che non c'erano. Se
+# un giorno serve ripartire ancora, si cambia questa data.
+RIPARTENZA_RISCHIO = "2026-10-23"
 PASSO_RISCHIO = 0.01
 # Livelli nasce col piano delle foto (`foto.PIANI`).
 PIANO_ROMEO = 1
@@ -221,6 +225,9 @@ class Memoria:
         for a in VOTANO:
             self.capo["voti"].setdefault(a, FIDUCIA_VOTO)
         self.capo.setdefault("base_voti", BASE_VOTI)
+        if self.rischio.get("ripartito") != RIPARTENZA_RISCHIO:
+            self.rischio.clear()
+            self.rischio["ripartito"] = RIPARTENZA_RISCHIO
         for k, v in (("base", PUNTATA_INIZIALE), ("convinzione", 0.2), ("aperte", 0.2), ("stesso", 0.2), ("media", 0.0),
                      ("scarto", 0.1), ("volte", 0)):
             self.rischio.setdefault(k, v)
@@ -429,10 +436,29 @@ class Squadra:
         meno ancora se sono sullo stesso strumento. Quanto pesa ognuna lo impara dai risultati (il proprietario,
         07/10/2026: un'operazione alla volta per strumento? *"lo gestisce l'agente rischio. decisione sua"*)."""
         ri = self.memoria.rischio
-        # Quanto e' convinto il Capo rispetto al solito: si sa solo dopo un po' di occasioni.
-        z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0) if ri.get("volte", 0) >= 10 else 0.0
+        # Quanto e' convinto il Capo rispetto al solito. Finche' il solito non lo sa (meno di 10 occasioni prese),
+        # rispetto a una su due: punta di piu' sulle occasioni migliori fin dalla prima.
+        if ri.get("volte", 0) >= 10:
+            z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0)
+        else:
+            z = _stretto((p - 0.5) / 0.1, -3.0, 3.0)
         esponente = ri["convinzione"] * z - ri["aperte"] * 100 * esposizione - ri.get("stesso", 0.2) * 100 * stesso
         return ri["base"] * math.exp(_stretto(esponente, -5.0, 3.0)), z
+
+    def ripunta(self, chiave: str, esposizione: float) -> float:
+        """La puntata di un'occasione gia' discussa, rifatta con quanto e' a rischio adesso, subito prima dell'ordine:
+        quando il DXY fa il CRT si aprono piu' coppie nello stesso giro, e ognuna vede quelle appena aperte (che con
+        lei vanno insieme, perche' le muove lo stesso dollaro). Quanto pesano lo impara il Rischio dai risultati.
+        0 se l'occasione non si conosce."""
+        with self._lucchetto:
+            d = self.memoria.discusse.get(chiave)
+            if not d:
+                return 0.0
+            g = d.setdefault("pareri", {}).setdefault("Rischio", {})
+            parte, z = self._rischio(float(d.get("fiducia", 0.5)), esposizione, float(g.get("stesso", 0.0)))
+            g.update({"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6)})
+            d["puntata"] = round(parte, 6)
+            return parte
 
     def riunione(self, chiave: str, strumento: str, m: Metodo, quando: int, piani: Optional[list] = None,
                  esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None, stesso: float = 0.0,

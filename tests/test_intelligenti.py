@@ -2,7 +2,10 @@
 allora; mai senza stop; ogni agente impara il suo giudizio dal vivo; si confrontano e cambiano idea; il Capo
 lascia un'A+ solo con le prove; i risultati veri contano piu' di quelli sulla carta."""
 
+import math
 from types import SimpleNamespace as NS
+
+import pytest
 
 from nvm.intelligenti import al_lavoro
 from nvm.tempo import TF
@@ -36,7 +39,9 @@ def _op(stop=1.0950, ingresso=1.1000, tp1=1.1050):
 def test_col_setup_delle_foto_si_entra_e_ognuno_dice_la_sua(tmp_path):
     sq = Squadra(tmp_path)
     v = sq.riunione("k1", "EURUSD", _metodo(), 1_700_000_000, op=_op())
-    assert v.entra and v.a_piu and v.puntata == PUNTATA_INIZIALE and all(v.lista.values())
+    assert v.entra and v.a_piu and all(v.lista.values())
+    # La puntata parte dall'1% e il Rischio ci mette di piu' quanto piu' il Capo ci crede, dalla prima occasione.
+    assert v.puntata == pytest.approx(PUNTATA_INIZIALE * math.exp(0.2 * (v.fiducia - 0.5) / 0.1), rel=0.01)
     chi = [c for c, _ in v.voci]
     assert chi[:3] == [a for _, a in OBBLIGATORIE] and chi[-2:] == ["Capo", "Rischio"]
     assert all(t.startswith("✅") for _, t in v.voci[:3])
@@ -508,3 +513,28 @@ def test_sullo_stesso_strumento_decide_il_rischio(tmp_path):
         sq.riunione(f"s{i}", "EURUSD", _metodo(), 0, op=_op(), stesso=0.01)
         sq.rifletti(f"s{i}", 2.0, preso=True)
     assert sq.memoria.rischio["stesso"] < prima
+
+
+def test_il_rischio_riparte_da_zero_una_volta_e_punta_di_piu_sulle_migliori(tmp_path):
+    """Il proprietario, 23/10/2026: *"resetta tutto quanto ciò che riguarda il rischio e deve decidere lui quanto
+    puntare, su trade punterà di più, su altri trade punterà di meno"*."""
+    import json
+    from nvm.intelligenti import squadra as S
+    sq = Squadra(tmp_path)
+    sq.memoria.rischio.update({"base": 0.0001, "aperte": 3.0, "volte": 40, "media": 0.9})
+    sq.memoria.rischio.pop("ripartito")
+    sq.memoria.salva()
+    sq = Squadra(tmp_path)
+    assert sq.memoria.rischio["base"] == PUNTATA_INIZIALE and sq.memoria.rischio["volte"] == 0
+    assert sq.memoria.rischio["ripartito"] == S.RIPARTENZA_RISCHIO
+    # Ripartito una volta: quello che impara dopo resta.
+    sq.memoria.rischio["base"] = 0.02
+    sq.memoria.salva()
+    assert Squadra(tmp_path).memoria.rischio["base"] == 0.02
+    # Di piu' sull'occasione in cui il Capo crede di piu', di meno sulle altre.
+    assert sq._rischio(0.7, 0.0)[0] > sq._rischio(0.5, 0.0)[0] > sq._rischio(0.3, 0.0)[0]
+    # Le operazioni appena aperte nello stesso giro (lo stesso dollaro) gli fanno puntare di meno.
+    sq.riunione("k", "EURUSD", _metodo(), 1_700_000_000, op=_op())
+    sola = sq.ripunta("k", 0.0)
+    assert 0 < sq.ripunta("k", 0.03) < sola and sq.ripunta("non c'e'", 0.0) == 0.0
+    assert json.loads(json.dumps(sq.memoria.discusse["k"]["pareri"]["Rischio"]))["esposizione"] == 0.03

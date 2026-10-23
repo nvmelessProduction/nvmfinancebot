@@ -281,7 +281,9 @@ def benvenuto(strumenti: int) -> str:
             "mette i CRT "
             "in ordine di probabilità e li prende tutti, uno per strumento, e dice cosa prende e cosa lascia. "
             "Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
-            "Il Rischio parte dall'1% del conto e si corregge coi risultati. Non siamo un'intelligenza artificiale che "
+            "Il Rischio decide da solo quanto puntare: parte dall'1% del conto, punta di più dove il Capo crede di più e "
+            "di meno quando ha già altre operazioni aperte, anche nello stesso giro, e si corregge coi risultati. Non "
+            "siamo un'intelligenza artificiale che "
             "parla: siamo il metodo, il mestiere di ognuno e numeri che si correggono coi fatti.")
 
 
