@@ -69,8 +69,9 @@ Nei giorni scorsi due controlli dicevano no **in silenzio**. Erano proprio quell
    `nvm/vivo/scelte.json` dice invece *"sullo stesso strumento decide il Rischio"*. Quale delle due vale?
 3. **La rete neurale di adesso.** Sui setup del DXY e della TOTAL non decide più, scrive solo il suo parere e manda i
    «Correggi». Va bene tenerla così finché non arriva quella nuova (Nameless), o la togliamo dal bot?
-4. **Le foto.** 9 prove delle 24 foto falliscono col target finale "key level opposto" (16/10, confermato il 20/10).
-   Le foto sono anche il materiale da cui impara la rete: aggiorniamo le prove delle foto alla regola nuova?
+4. **Le foto.** Il 23/10 trovato il motivo per cui 9 prove delle 24 foto fallivano: il key level opposto che non
+   stava oltre il TP1 veniva preso lo stesso come target, il piano diventava impossibile e si andava tutto al TP1.
+   Corretto: ora ne fallisce una sola, la 4/6 (il bot punta al DL, la foto al WL oltre il DL).
 5. **Il metodo dei video (Romeo).** Il 06/10: *"resta nel codice ma il bot usa le foto"*. Lo togliamo?
 
 ## Codice che non serve più

@@ -110,6 +110,15 @@ TOTAL_TRADINGVIEW = "CRYPTOCAP:TOTAL"
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
 
 
+def _orario_in_parole(ora) -> str:
+    """L'orario di un grafico (`candele.SESSIONI`) come lo legge il proprietario."""
+    if ora is True:
+        return "orari UTC (4 ore alle 2-6-10 italiane con l'ora legale, alle 1-5-9 con l'ora solare)"
+    if ora in ("17", "18", "19", "20"):
+        return f"sessione dalle {ora} di New York"
+    return "nessun orario"
+
+
 def grafici_da_guardare(scelti) -> list[tuple[str, str]]:
     """I grafici di TradingView (simbolo, nome del bot) da guardare: quelli del .env fra gli `STRUMENTI_VIVO`, piu'
     quelli di `GRAFICI_PREDEFINITI` che nel .env mancano."""
@@ -599,6 +608,7 @@ class Bot:
         bot e della rete. Un timeframe si riprende quando ne deve essere chiusa una candela nuova."""
         if not hasattr(self, "_prossime_tv"):
             self._prossime_tv, self._tf_rifiutati = {}, set()
+        self._orari_dalle_candele()
         nomi = list(self.strumenti) + [x for x in ("DXY", "TOTAL") if self.fonte.esiste(x)]
         cambiato = finita = False
         for s in nomi:
@@ -653,6 +663,28 @@ class Bot:
             self.lunghe[s] = d
         if cambiato:
             self._salva_candele_tradingview()
+
+    def _orari_dalle_candele(self) -> None:
+        """L'orario di ogni grafico riletto dalle sue candele a 4 ore gia' avute, senza chiedere niente a TradingView. Se
+        e' un altro da quello in uso (la lettura di prima non era riuscita, o era sbagliata), le candele di quel grafico
+        si riprendono tutte con l'orario giusto. L'orario si leggeva solo quando arrivavano tutte le candele a 4 ore: fino
+        al 23/10/2026 il DXY e' rimasto sulle 18 di New York, gli orari delle coppie, anche dopo i riavvii."""
+        for s, d in list(self.lunghe.items()):
+            c = d.get(TF.H4) if isinstance(d, dict) else None
+            if c is None or len(c) < 60 or weekend(s):
+                continue
+            ora = ora_di_sessione(c.inizio[-DIRETTE[TF.H4]:])
+            prima = _candele_mod.SESSIONI.get(s)
+            if ora is None or ora == prima:
+                continue
+            _candele_mod.SESSIONI[s] = ora
+            self.lunghe[s] = {}
+            self._prossime_tv = {k: v for k, v in self._prossime_tv.items() if k[0] != s}
+            testo = (f"Orari del grafico {s} corretti: {_orario_in_parole(prima)} → {_orario_in_parole(ora)}. "
+                     "Riprendo tutte le sue candele con gli orari giusti.")
+            registra(CARTELLA, "orari", testo=testo)
+            di(testo)
+            self.tg.operativo("🕑 " + testo)
 
     def aggiorna_lunghe(self, adesso: float) -> None:
         """Le giornaliere lunghe, una volta al giorno: senza, i 3, 6 e 12 mesi si fanno con le orarie (due anni). Sui

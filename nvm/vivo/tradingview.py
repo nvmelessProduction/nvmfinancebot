@@ -492,18 +492,24 @@ def minuti(strumento: str, barre: list[dict], passo: int, adesso: float) -> Minu
 def ora_di_sessione(inizi) -> object:
     """Il calendario di un grafico di TradingView, dalle sue candele a 4 ore: partono dall'apertura della sessione ogni
     4 ore, quindi l'ora di New York della partenza dice la sessione ("17" come MT5, "18" come i future, "19", "20").
-    True se seguono l'UTC (0, 4, 8... UTC tutto l'anno), None se non si capisce. Basta il 98% delle candele: un
-    giorno di festa con orari strani non cambia niente."""
+    True se seguono l'UTC (0, 4, 8... UTC tutto l'anno), None se non si capisce. Basta il 90% delle candele, e vince
+    la griglia che ne spiega di piu': il DXY di Capital.com apre la settimana la domenica sera con una candela fuori
+    griglia (una ogni 30 circa). Fino al 23/10/2026 ci voleva il 98%: sul DXY non si capiva, il bot usava le 18 di
+    New York (le 0-4-8 italiane, gli orari delle coppie) invece dell'UTC (2-6-10), prendeva per chiuse candele a meta'
+    e vedeva CRT che sul grafico non c'erano (il "CRT a 6 ore delle 00:00" del 23/10, quando il DXY apre alle 2)."""
     t = np.asarray(inizi, np.int64)
-    if len(t) < 6 or np.mean(t % 3600 == 0) < 0.98:
+    if len(t) < 6 or np.mean(t % 3600 == 0) < 0.9:
         return None
     t = t[t % 3600 == 0]
     resti_ny = (((t + scarti_ny(t)) // 3600) % 24) % 4
     valori, quanti = np.unique(resti_ny, return_counts=True)
-    if quanti.max() >= 0.98 * len(t):
-        return {1: "17", 2: "18", 3: "19", 0: "20"}[int(valori[np.argmax(quanti)])]
-    if np.mean((t // 3600) % 4 == 0) >= 0.98:
+    quota_ny = quanti.max() / len(t)
+    quota_utc = float(np.mean((t // 3600) % 4 == 0))
+    # Col solo orario estivo (o solo invernale) l'UTC e una sessione di New York si confondono: vale l'UTC.
+    if quota_utc >= 0.9 and quota_utc >= quota_ny:
         return True
+    if quota_ny >= 0.9:
+        return {1: "17", 2: "18", 3: "19", 0: "20"}[int(valori[np.argmax(quanti)])]
     return None
 
 

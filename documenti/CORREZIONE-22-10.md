@@ -94,3 +94,35 @@ Il modulo che apre gli ordini su MT5 (`esecutore.py`) non è cambiato.
   - Se il DXY non ha preso un key level, una riga sola: «non ha preso un key level: non è il pattern».
   - Se il CRT è lo stesso movimento di uno di prima, lo dice.
 - **In équipe.** Il titolo dice «CRT … del DXY».
+
+## La notte del 23/10: il "CRT a 6 ore del DXY delle 00:00"
+
+Il DXY apre alle 2 italiane, eppure il bot ha detto "CRT a 6 ore" con la candela 3 alle 00:00 e ha aperto delle coppie.
+
+- **La causa.** L'orario di ogni grafico si legge dalle sue candele a 4 ore: ci voleva che il 98% partisse a orari
+  fissi. Il DXY di Capital.com apre la settimana la domenica sera con una candela fuori griglia, una ogni 30 circa:
+  l'orario non si capiva e il bot usava le 18 di New York, gli orari delle coppie (0-4-8 italiane), invece dell'UTC
+  (2-6-10). Con l'orario sbagliato il bot prendeva per chiuse candele del DXY a meta' e vedeva CRT che sul grafico non
+  c'erano. E l'orario si rileggeva solo quando arrivavano tutte le candele a 4 ore: dopo i riavvii restava quello.
+- **La prova.** Il bot intero simulato la notte del 23/10, col DXY che apre la domenica fuori griglia e TradingView che
+  non da' le 6 e 12 ore: alle 00:00 "CRT long 6 ore, giornaliero del DXY" e quattro coppie aperte, col target finale
+  sul TP1. Con la correzione: alle 00:00 niente, alle 2:00 il CRT giornaliero del DXY, sui suoi orari.
+- **La correzione.**
+  - L'orario si capisce col 90% delle candele, e vince la griglia che ne spiega di piu' (`tradingview.ora_di_sessione`).
+  - Si rilegge dalle candele a 4 ore gia' avute a ogni aggiornamento; se era sbagliato, le candele di quel grafico si
+    riprendono tutte e lo si dice sul canale operativo con 🕑 (`vivo.Bot._orari_dalle_candele`).
+
+## Il target finale sul TP1 (il buy di ETH del 22/10)
+
+- **La causa.** Il key level opposto si prendeva come target anche se non stava oltre il TP1: il piano col target
+  finale diventava impossibile e si andava tutto al TP1. Era anche il motivo per cui 8 delle 9 prove delle foto
+  fallivano.
+- **La correzione.** Il key level opposto vale solo oltre il TP1; se no si passa agli altri target del metodo (gap,
+  liquidazione, key level piu' grande) e, prima di arrendersi al TP1, all'altro lato di ieri (DH, DL)
+  (`foto.target_minimo`, `foto.obiettivo_finale`). Delle 24 foto ne resta fuori una, la 4/6.
+
+## Il lotto minimo su ETH
+
+Il messaggio "la puntata giusta era più piccola del minimo che il broker accetta: apro il minimo" vuol dire che il
+Rischio della squadra aveva una puntata sotto lo 0,01. Il Rischio parte dall'1% e la corregge dopo ogni operazione,
+senza un minimo: dopo una serie di perdite scende molto. Serve la decisione del proprietario sulla puntata.

@@ -1072,3 +1072,28 @@ def test_col_comando_piano_si_cambia_il_piano_di_un_operazione_aperta(tmp_path, 
     assert v.tp1 == 7799.0 and "sopra" in detti[-1]
     bot._piano(NS(chat="1", testo="/piano EURUSD 1.2 1.3"))
     assert "Non ho operazioni aperte su EURUSD" in detti[-1]
+
+
+def test_l_orario_sbagliato_salvato_si_corregge_dalle_candele_gia_avute(tmp_path, monkeypatch):
+    """Sulla VPS l'orario del DXY era rimasto sulle 18 di New York anche dopo i riavvii (si leggeva solo quando
+    arrivavano tutte le candele a 4 ore). Ora si rilegge dalle candele gia' avute: se e' un altro, si riprendono."""
+    import vivo
+    from nvm.dati import candele as C
+    from nvm.dati.candele import Candele
+    from nvm.tempo import TF, utc
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    monkeypatch.setitem(C.SESSIONI, "DXY", "18")
+    t = np.array([utc(2026, 9, 1) + k * 4 * 3600 for k in range(300)], np.int64)
+    p = np.ones((len(t), 4))
+    bot = object.__new__(vivo.Bot)
+    detti = []
+    bot.tg = NS(operativo=detti.append)
+    bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
+    bot._prossime_tv = {("DXY", TF.H4): 1, ("EURUSD", TF.H4): 2}
+    bot._orari_dalle_candele()
+    assert C.SESSIONI["DXY"] is True and bot.lunghe["DXY"] == {} and bot._prossime_tv == {("EURUSD", TF.H4): 2}
+    assert detti and "DXY" in detti[0] and "UTC" in detti[0]
+    # Gia' giusto: niente.
+    bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
+    bot._orari_dalle_candele()
+    assert len(detti) == 1 and bot.lunghe["DXY"]

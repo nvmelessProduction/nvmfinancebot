@@ -759,3 +759,19 @@ def test_il_crt_della_coppia_nel_verso_del_dxy_da_piu_vantaggio(monkeypatch):
     # Il titolo dei messaggi dice che il CRT e' del DXY (il 22/10 "AUDUSD · vendita · CRT H6" sembrava di AUDUSD).
     import vivo
     assert vivo.Bot._tema(con[0]).endswith("del DXY")
+
+
+def test_il_target_finale_sta_oltre_il_tp1_se_no_si_cerca_il_successivo():
+    """Il buy di ETH del 22/10/2026: il target finale sul TP1, dove doveva esserci il pareggio. Il key level opposto
+    non stava oltre il TP1: il piano col target finale era impossibile e si andava tutto al TP1, senza cercare gli
+    altri target. Era anche il motivo per cui 8 delle foto del proprietario non tornavano."""
+    ore, n3 = _foto_base()
+    q = F.Quadro.da(ore, n3)
+    (s,) = [s for s in F.trova(q, TF.H4, n3, n3) if s.verso is Verso.LONG]
+    # Il DH (1.1060) e' oltre il TP1 (1.1020): e' il target.
+    assert F.target_minimo(q, s).nome == "DH"
+    # Con il TP1 oltre il DH, il DH non e' piu' un target: si va avanti (qui, il DH di ieri e' lo stesso livello).
+    oltre = replace(s, tp1=1.1070)
+    assert F.target_minimo(q, oltre) is None
+    ob = F.obiettivo_finale(q, oltre)
+    assert ob.tipo == "range" or ob.prezzo > oltre.tp1

@@ -717,12 +717,20 @@ def obiettivo_finale(q: Quadro, s: Setup) -> Obiettivo:
     for k in (kl_liquidazione(q, s), kl_target(q, s)):
         if k is not None and _prima_del_muro(s, muro, k.prezzo):
             return Obiettivo(k.prezzo, "key level", k.nome, k.tf)
+    # Se la candela 2 ha preso solo il massimo (minimo) di oggi e non c'e' altro: l'altro lato di ieri, il key level
+    # opposto (*"il prezzo prende kl sbilanciamento dl ... targhettizzare il dh"*). Il 22/10/2026 sul buy di ETH il
+    # target finale era sul TP1, dove doveva esserci il pareggio.
+    ieri = next((l for l in livelli_prima(q, s.n2_inizio, (TF.D1,)) if l.alto == (not s.short)), None)
+    if ieri is not None and _oltre_il_tp1(s, ieri.prezzo) and _prima_del_muro(s, muro, ieri.prezzo):
+        return Obiettivo(ieri.prezzo, "key level", ieri.nome, ieri.tf)
     return Obiettivo(s.tp1, "range", "l'altro lato del range", s.tf)
 
 
 def target_minimo(q: Quadro, s: Setup) -> Optional[Livello]:
     """Il target diretto è il key level opposto del timeframe più piccolo preso dalla candela 2
-    (per esempio, presi WH e DH, il DL). None se quel key level o il suo opposto non esistono."""
+    (per esempio, presi WH e DH, il DL). Solo se sta oltre il TP1: se no None, e restano gli altri target. Fino al
+    23/10/2026 un livello non oltre il TP1 rendeva impossibile il piano col target finale e si andava tutto al TP1
+    (anche in 7 delle foto del proprietario)."""
     presi = [l for l in s.presi if not l.oggi]
     # Sui setup nati dal DXY (dalla TOTAL) lo sbilanciamento che conta e' il suo: se la coppia non ha preso key level
     # suoi, il timeframe e' quello del key level piu' piccolo preso dal DXY, e il target il livello di quel periodo
@@ -731,7 +739,12 @@ def target_minimo(q: Quadro, s: Setup) -> Optional[Livello]:
     if not presi:
         return None
     piccolo = min(presi, key=lambda l: ORDINE.index(l.tf))
-    return next((l for l in livelli_prima(q, s.n2_inizio, (piccolo.tf,)) if l.alto == (not s.short)), None)
+    altro = next((l for l in livelli_prima(q, s.n2_inizio, (piccolo.tf,)) if l.alto == (not s.short)), None)
+    return altro if altro is not None and _oltre_il_tp1(s, altro.prezzo) else None
+
+
+def _oltre_il_tp1(s: Setup, prezzo: float) -> bool:
+    return (prezzo < s.tp1) if s.short else (prezzo > s.tp1)
 
 
 def target_dopo(q: Quadro, s: Setup, ob: Obiettivo) -> Optional[Obiettivo]:
