@@ -766,3 +766,14 @@ def test_l_orario_del_dxy_si_legge_anche_con_la_candela_della_domenica_fuori_gri
     mezzanotte = _ora_italiana(2026, 10, 5, 0)
     coppia = [mezzanotte + k * 4 * 3600 for k in range(60)] + [mezzanotte + 3600]
     assert ora_di_sessione(coppia) == "18"
+
+
+def test_la_griglia_che_spiega_piu_candele():
+    from nvm.vivo.tradingview import griglia
+    t = [utc(2026, 10, 1) + k * 4 * 3600 for k in range(80)]
+    assert griglia(t) == (True, 1.0)
+    # Con il 15% fuori posto non e' "chiaro" (ora_di_sessione dice None), ma la griglia giusta resta l'UTC.
+    storte = t[:68] + [x + 3600 for x in t[68:]]
+    ora, quota = griglia(storte)
+    assert ora is True and 0.8 < quota < 0.9
+    assert griglia([1, 2]) == (None, 0.0)

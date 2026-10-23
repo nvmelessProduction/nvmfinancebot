@@ -1097,3 +1097,24 @@ def test_l_orario_sbagliato_salvato_si_corregge_dalle_candele_gia_avute(tmp_path
     bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
     bot._orari_dalle_candele()
     assert len(detti) == 1 and bot.lunghe["DXY"]
+
+
+def test_all_avvio_il_bot_dice_gli_orari_del_dxy_e_della_total(monkeypatch):
+    """Il 23/10/2026 il DXY era sulle 18 di New York e non lo sapeva nessuno: ora a ogni avvio il bot dice che orari
+    usa per i grafici guida e la loro ultima candela a 4 ore, da confrontare col grafico."""
+    import vivo
+    from nvm.dati import candele as C
+    from nvm.dati.candele import Candele
+    from nvm.tempo import TF, utc
+    monkeypatch.setitem(C.SESSIONI, "DXY", True)
+    t = np.array([utc(2026, 10, 1) + k * 4 * 3600 for k in range(120)], np.int64)
+    p = np.ones((len(t), 4))
+    bot = object.__new__(vivo.Bot)
+    detti = []
+    bot.tg = NS(operativo=detti.append)
+    bot.fonte = NS(esiste=lambda s: s in ("DXY", "TOTAL"))
+    bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
+    bot._di_gli_orari()
+    (testo,) = detti
+    assert testo.startswith("🕑 Orari dei grafici guida") and "DXY: orari UTC" in testo and "100%" in testo
+    assert "ultima candela a 4 ore chiusa 22:00–02:00" in testo and "TOTAL: orari UTC" in testo

@@ -64,7 +64,7 @@ from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
 from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
 from nvm.vivo.tradingview import (INTERVALLI_TF, Accesso, ErroreTradingView, Fonte, QuotaFinita, RispostaRifiutata,
-                                  TradingView, candele_tv, ora_di_sessione)
+                                  TradingView, candele_tv, griglia)
 from nvm.vivo import rete_vivo
 
 RADICE = Path(__file__).resolve().parent
@@ -518,6 +518,7 @@ class Bot:
         self.aggiorna_totale()
         di("Scarico le giornaliere di tanti anni (3, 6 e 12 mesi)...")
         self.aggiorna_lunghe(time.time())
+        self._di_gli_orari()
         adesso = time.time()
         if self.stato.ultimo_giro is None:
             self.stato.ultimo_giro = _su(adesso, 3600)
@@ -604,7 +605,7 @@ class Bot:
         """Sui grafici di TradingView le candele di ogni timeframe sono le sue, cosi' come sono, con i suoi orari (il
         proprietario, 13/10/2026: *"non deve costruire niente ma utilizzare i dati con gli orari che gli vengono forniti
         così come sono"*; *"1h 4h 6h 12h 1d 1w 1m 3m 12m"*). Le 1 ora sono le orarie (`_ore_nuove`); qui le altre. Dalle
-        candele a 4 ore si legge l'orario del grafico (`tradingview.ora_di_sessione`), che vale per tutti i calcoli del
+        candele a 4 ore si legge l'orario del grafico (`tradingview.griglia`), che vale per tutti i calcoli del
         bot e della rete. Un timeframe si riprende quando ne deve essere chiusa una candela nuova."""
         if not hasattr(self, "_prossime_tv"):
             self._prossime_tv, self._tf_rifiutati = {}, set()
@@ -643,11 +644,12 @@ class Bot:
                     continue
                 if tf is TF.H4 and not weekend(s) and quante == DIRETTE[tf]:
                     # L'orario si legge quando arrivano tutte (le poche di un aggiornamento non bastano).
-                    ora = ora_di_sessione([int(b["t"]) // (1000 if int(b["t"]) > 10**11 else 1) for b in barre])
-                    if ora is None:
-                        self.allarme(f"TradingView: le candele a 4 ore di {s} non partono a orari fissi: uso "
-                                     f"{_candele_mod.SESSIONI.get(s, SESSIONE_TRADINGVIEW)} di New York.")
-                    elif _candele_mod.SESSIONI.get(s) != ora:
+                    ora, quota = griglia([int(b["t"]) // (1000 if int(b["t"]) > 10**11 else 1) for b in barre])
+                    if ora is not None and quota < 0.9:
+                        # Non e' chiaro: si usa la griglia che spiega piu' candele, non per forza quella delle coppie.
+                        self.allarme(f"TradingView: le candele a 4 ore di {s} non partono tutte a orari fissi (lo fa il "
+                                     f"{quota:.0%}): uso {_orario_in_parole(ora)}.")
+                    if ora is not None and _candele_mod.SESSIONI.get(s) != ora:
                         # L'orario del grafico e' un altro: le candele gia' avute si riprendono tutte con quello.
                         _candele_mod.SESSIONI[s] = ora
                         d = {}
@@ -673,9 +675,9 @@ class Bot:
             c = d.get(TF.H4) if isinstance(d, dict) else None
             if c is None or len(c) < 60 or weekend(s):
                 continue
-            ora = ora_di_sessione(c.inizio[-DIRETTE[TF.H4]:])
+            ora, quota = griglia(c.inizio[-DIRETTE[TF.H4]:])
             prima = _candele_mod.SESSIONI.get(s)
-            if ora is None or ora == prima:
+            if ora is None or ora == prima or quota < 0.6:
                 continue
             _candele_mod.SESSIONI[s] = ora
             self.lunghe[s] = {}
@@ -685,6 +687,28 @@ class Bot:
             registra(CARTELLA, "orari", testo=testo)
             di(testo)
             self.tg.operativo("🕑 " + testo)
+
+    def _di_gli_orari(self) -> None:
+        """A ogni avvio, sul canale operativo, gli orari che il bot usa per il DXY e la TOTAL e la loro ultima candela a
+        4 ore chiusa: se sono sbagliati si vede subito sul grafico (fino al 23/10/2026 il DXY era sulle 18 di New York e
+        non lo diceva nessuno)."""
+        if not self._su_tradingview:
+            return
+        righe = []
+        for s in ("DXY", "TOTAL"):
+            if not self.fonte.esiste(s):
+                continue
+            d = self.lunghe.get(s)
+            c = d.get(TF.H4) if isinstance(d, dict) else None
+            riga = f"{s}: {_orario_in_parole(_candele_mod.calendario(s))}"
+            if c is not None and len(c):
+                if not weekend(s):
+                    riga += f", come il {griglia(c.inizio[-DIRETTE[TF.H4]:])[1]:.0%} delle sue candele a 4 ore"
+                riga += (f"; ultima candela a 4 ore chiusa {messaggi.ora_italiana(int(c.inizio[-1]))}–"
+                         f"{messaggi.ora_italiana(int(c.fine[-1]))} italiane")
+            righe.append(riga)
+        if righe:
+            self.tg.operativo("🕑 Orari dei grafici guida\n" + "\n".join(righe))
 
     def aggiorna_lunghe(self, adesso: float) -> None:
         """Le giornaliere lunghe, una volta al giorno: senza, i 3, 6 e 12 mesi si fanno con le orarie (due anni). Sui
