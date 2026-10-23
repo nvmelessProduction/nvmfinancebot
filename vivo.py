@@ -115,7 +115,11 @@ def _orario_in_parole(ora) -> str:
     if ora is True:
         return "orari UTC (4 ore alle 2-6-10 italiane con l'ora legale, alle 1-5-9 con l'ora solare)"
     if ora in ("17", "18", "19", "20"):
-        return f"sessione dalle {ora} di New York"
+        # L'Italia sta 6 ore avanti a New York, tranne le poche settimane in cui l'ora legale cambia in una e non
+        # ancora nell'altra.
+        prima = (int(ora) + 6) % 24
+        return (f"sessione dalle {ora} di New York (di solito 4 ore alle "
+                f"{'-'.join(str((prima + 4 * k) % 24) for k in range(3))} italiane)")
     return "nessun orario"
 
 
