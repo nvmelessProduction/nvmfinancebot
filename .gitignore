@@ -31,3 +31,4 @@ dati/rete/
 
 # Lo storico per le misure (HistData, Dukascopy): si riscarica
 dati/storico/
+dati/misura_vivo/

@@ -196,7 +196,16 @@ La richiesta, parola per parola (da Venice, accettata dal proprietario):
 
 Il numero che conta è l'R del sottoinsieme scelto, con l'intervallo tutto sopra zero.
 
-**A che punto è:** codice della misura **non ancora scritto**.
+**A che punto è:** il codice c'è, **`strumenti/misura_vivo.py`** (scritto e provato su tre mesi il 24/10). Il primo giro completo è partito il 24/10 su 8 mercati: EURUSD e GBPUSD dal 2011, AUDUSD dal 2011, NZDUSD dal 2011, USDCHF e USDCAD dal 2011 col DXY vero, oro dal 2007, argento dal 2010, fino ad agosto 2026. I risultati vanno nella sezione «Risultati» qui sotto quando ci sono; se mancano, va rilanciato:
+
+```
+python -m strumenti.misura_vivo raccogli --storico dati/storico --uscita dati/misura_vivo   # ~1 ora con 4 processori
+python -m strumenti.misura_vivo analizza --uscita dati/misura_vivo                         # scrive risultato.md
+```
+
+Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCHF, USDJPY, XAUUSD, con `python -m strumenti.scarica --ore`, lento) e quelle di HistData in `dati/storico/` (comando qui sotto). Senza Dukascopy, `misura_vivo` prende tutto da HistData (solo bid, spread stimato): basta aggiungere quei sei mercati al comando di HistData.
+
+**Risultati:** non ancora.
 
 **I dati:**
 - In questo container c'erano, in `dati/grezzi/ore/` (fuori da git, quindi **non ci sono** in una sessione nuova), le
@@ -218,7 +227,7 @@ Il numero che conta è l'R del sottoinsieme scelto, con l'intervallo tutto sopra
 - In alternativa c'è **Kaggle** (dataset `nameless-dati`: 85 mercati HistData e crypto Binance, celle in
   `kaggle_rete/`), ma lì la misura la deve lanciare il proprietario a mano.
 
-**Come farla** (`strumenti/misura_vivo.py`, da scrivere):
+**Come è fatta** (`strumenti/misura_vivo.py`):
 1. **Le ore di ogni strumento** e le giornaliere lunghe per 3, 6 e 12 mesi. Gli orari come dal vivo:
    `candele.SESSIONI[...] = "18"` per coppie e metalli, `"20"` per il DXY.
 2. **Mese per mese, per ogni strumento:**
