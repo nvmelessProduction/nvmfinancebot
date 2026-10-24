@@ -17,7 +17,7 @@ from datetime import datetime
 from nvm.agenti.cacciatore import Verso
 from nvm.dati.candele import costruisci
 from nvm.intelligenti import metodo, pareri as P
-from nvm.intelligenti.squadra import MASSIMO_PER_GIRO, SOGLIA_PUNTI, Squadra, Verdetto
+from nvm.intelligenti.squadra import SOGLIA_PUNTI, Squadra, Verdetto
 from nvm.prova.campo import Operazione, Uscita, simula
 from nvm.tempo import NEW_YORK, TF
 
@@ -123,8 +123,10 @@ def previsioni_del_giorno(squadra: Squadra, quadri: dict, adesso: int) -> str:
 
 
 def scegli(squadra: Squadra, decisioni, verdetti: dict, ctx: P.Contesto, occupati: set) -> str:
-    """Il Capo sceglie le migliori del giro: in ordine di probabilita', al massimo `MASSIMO_PER_GIRO`, niente sugli
-    strumenti gia' occupati. Quelle lasciate non si aprono (si seguono sulla carta e la squadra impara lo stesso).
+    """Il Capo mette in ordine le occasioni del giro, per probabilita', e le prende tutte, una per strumento e niente
+    sugli strumenti gia' occupati: nessun massimo (il proprietario, 22/10/2026: *"non deve esserci un massimo di
+    operazioni di apertura"*; quando il DXY fa il CRT nascono fino a 8 occasioni insieme, e il massimo di 3 lasciava
+    fuori l'argento). Quelle lasciate non si aprono (si seguono sulla carta e la squadra impara lo stesso).
     Restituisce il riassunto per l'equipe ("" se nel giro non c'era niente con tutte le regole del metodo)."""
     per_chiave = {d.chiave: d for d in decisioni}
     giri: dict = {}
@@ -146,10 +148,7 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
         segno = -1 if d.r.verso is Verso.SHORT else 1
         motivo = ""
         if not v.entra:
-            veto = v.pareri.get("Capo", {}).get("veto", "")
-            if veto:
-                motivo = veto
-            elif v.punti < SOGLIA_PUNTI:
+            if v.punti < SOGLIA_PUNTI:
                 contro = sorted((x for x in v.pareri_squadra if x.voto < 0), key=lambda x: x.voto)
                 motivo = "la squadra non è convinta" + (": contro " + ", ".join(f"{x.agente} ({x.voto:+d})"
                                                                                   for x in contro[:3]) if contro else "")
@@ -159,8 +158,6 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
             motivo = f"su {s} c'è già un'operazione aperta"
         elif any(s == x for x, _, _ in scelte):
             motivo = f"su {s} ho già scelto un'altra occasione in questo giro"
-        elif len(scelte) >= MASSIMO_PER_GIRO:
-            motivo = f"ho già scelto le {MASSIMO_PER_GIRO} migliori di questo giro"
         if motivo:
             if v.entra:
                 v.entra = False
@@ -187,12 +184,6 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
 
 def _p(x: float) -> str:
     return f"{x:.0%}"
-
-
-def _punti(x: float) -> str:
-    return f"{x:+.1f}".replace(".", ",")
-
-
 
 
 def valuta_piani(squadra: Squadra, basi: dict, fini: dict, adesso: int) -> int:
@@ -282,11 +273,14 @@ def benvenuto(strumenti: int) -> str:
             "liquidità ha preso, il Bias la sua previsione del giorno (la dice all'apertura e la tiene fino a sera) e "
             "quella della domenica, il Gap i gap, il DXY il dollaro, l'Orario l'ora, Livelli i costi e i target, il "
             "Grilletto la finta. Poi ci sentiamo fra colleghi: chi ha un motivo cambia voto e lo dice. Il Capo ascolta "
-            "tutti, pesa ognuno per quanto ci ha preso dal vivo, ed entra solo con almeno "
-            f"{_punti(SOGLIA_PUNTI)} punti a favore e mai contro la previsione della domenica; in ogni giro mette i CRT "
-            f"in ordine di probabilità e sceglie al massimo i {MASSIMO_PER_GIRO} migliori, e dice cosa prende e cosa "
-            "lascia. Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
-            "Il Rischio parte dall'1% del conto e si corregge coi risultati. Non siamo un'intelligenza artificiale che "
+            "tutti, pesa ognuno per quanto ci ha preso dal vivo, ed entra quando ci sono tutte le regole del metodo: i "
+            "voti, anche la previsione della domenica, cambiano la fiducia e la puntata, non dicono no; in ogni giro "
+            "mette i CRT "
+            "in ordine di probabilità e li prende tutti, uno per strumento, e dice cosa prende e cosa lascia. "
+            "Decide lui e se ne prende la responsabilità; dopo ogni operazione impara di chi fidarsi di più. "
+            "Il Rischio decide da solo quanto puntare: parte dall'1% del conto, punta di più dove il Capo crede di più e "
+            "di meno quando ha già altre operazioni aperte, anche nello stesso giro, e si corregge coi risultati. Non "
+            "siamo un'intelligenza artificiale che "
             "parla: siamo il metodo, il mestiere di ognuno e numeri che si correggono coi fatti.")
 
 

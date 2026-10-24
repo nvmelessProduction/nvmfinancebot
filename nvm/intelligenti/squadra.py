@@ -83,6 +83,10 @@ MINIMO_SIMILI = 15
 CERTEZZA_EVITA = 2.0
 # Il Rischio nasce puntando l'1% del conto: Romeo non dice un numero, dice di non esagerare.
 PUNTATA_INIZIALE = 0.01
+# Il Rischio riparte da zero una volta (il proprietario, 23/10/2026: *"resetta tutto quanto ciò che riguarda il rischio e
+# deve decidere lui quanto puntare"*): aveva imparato anche dalle operazioni aperte su CRT del DXY che non c'erano. Se
+# un giorno serve ripartire ancora, si cambia questa data.
+RIPARTENZA_RISCHIO = "2026-10-23"
 PASSO_RISCHIO = 0.01
 # Livelli nasce col piano delle foto (`foto.PIANI`).
 PIANO_ROMEO = 1
@@ -97,8 +101,6 @@ FIDUCIA_MASSIMA = 1.0
 BASE_VOTI = math.log(0.4 / 0.6)
 # Il Capo entra con almeno questi punti pesati a favore (un punto = un voto +1 di chi ha la fiducia di partenza).
 SOGLIA_PUNTI = 3.0
-# In un giro il Capo sceglie al massimo queste operazioni nuove: quelle con piu' probabilita'.
-MASSIMO_PER_GIRO = 3
 # Un ascolto del secondo giro si spegne se dal vivo, dopo almeno tante volte, ha cambiato il voto nel verso giusto
 # meno di questa parte delle volte (sentire quel collega non aiuta).
 ASCOLTO_MINIMO = 20
@@ -223,6 +225,9 @@ class Memoria:
         for a in VOTANO:
             self.capo["voti"].setdefault(a, FIDUCIA_VOTO)
         self.capo.setdefault("base_voti", BASE_VOTI)
+        if self.rischio.get("ripartito") != RIPARTENZA_RISCHIO:
+            self.rischio.clear()
+            self.rischio["ripartito"] = RIPARTENZA_RISCHIO
         for k, v in (("base", PUNTATA_INIZIALE), ("convinzione", 0.2), ("aperte", 0.2), ("stesso", 0.2), ("media", 0.0),
                      ("scarto", 0.1), ("volte", 0)):
             self.rischio.setdefault(k, v)
@@ -431,10 +436,29 @@ class Squadra:
         meno ancora se sono sullo stesso strumento. Quanto pesa ognuna lo impara dai risultati (il proprietario,
         07/10/2026: un'operazione alla volta per strumento? *"lo gestisce l'agente rischio. decisione sua"*)."""
         ri = self.memoria.rischio
-        # Quanto e' convinto il Capo rispetto al solito: si sa solo dopo un po' di occasioni.
-        z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0) if ri.get("volte", 0) >= 10 else 0.0
+        # Quanto e' convinto il Capo rispetto al solito. Finche' il solito non lo sa (meno di 10 occasioni prese),
+        # rispetto a una su due: punta di piu' sulle occasioni migliori fin dalla prima.
+        if ri.get("volte", 0) >= 10:
+            z = _stretto((p - ri["media"]) / max(ri["scarto"], 1e-6), -3.0, 3.0)
+        else:
+            z = _stretto((p - 0.5) / 0.1, -3.0, 3.0)
         esponente = ri["convinzione"] * z - ri["aperte"] * 100 * esposizione - ri.get("stesso", 0.2) * 100 * stesso
         return ri["base"] * math.exp(_stretto(esponente, -5.0, 3.0)), z
+
+    def ripunta(self, chiave: str, esposizione: float) -> float:
+        """La puntata di un'occasione gia' discussa, rifatta con quanto e' a rischio adesso, subito prima dell'ordine:
+        quando il DXY fa il CRT si aprono piu' coppie nello stesso giro, e ognuna vede quelle appena aperte (che con
+        lei vanno insieme, perche' le muove lo stesso dollaro). Quanto pesano lo impara il Rischio dai risultati.
+        0 se l'occasione non si conosce."""
+        with self._lucchetto:
+            d = self.memoria.discusse.get(chiave)
+            if not d:
+                return 0.0
+            g = d.setdefault("pareri", {}).setdefault("Rischio", {})
+            parte, z = self._rischio(float(d.get("fiducia", 0.5)), esposizione, float(g.get("stesso", 0.0)))
+            g.update({"parte": round(parte, 6), "z": round(z, 4), "esposizione": round(esposizione, 6)})
+            d["puntata"] = round(parte, 6)
+            return parte
 
     def riunione(self, chiave: str, strumento: str, m: Metodo, quando: int, piani: Optional[list] = None,
                  esposizione: float = 0.0, da_seguire: Optional[dict] = None, op=None, stesso: float = 0.0,
@@ -461,11 +485,10 @@ class Squadra:
             giudizi = self.giudizi(m)
             n_s, vinte_s, media_s, t_s = self.simili(m)
             punti = 0.0
-            usati, veto = [], ""
+            usati = []
             if pareri is not None:
                 # Il secondo giro: si sentono fra colleghi e chi ha un motivo cambia idea, dicendolo.
                 usati = confronto(pareri, self.memoria.ascolti_spenti())
-                veto = next((x.veto for x in pareri if x.veto), "")
                 # Decide il Capo, dopo aver sentito tutti.
                 p, punti = self.voti(pareri)
                 visti = set(m.atomi())
@@ -475,8 +498,9 @@ class Squadra:
                 # Con tutte le regole del metodo si entra: la squadra da' il suo parere ma non blocca piu' (il
                 # proprietario, 12/10/2026, dopo un AUDUSD perfetto lasciato per un voto contro: *"tu devi seguire
                 # quello che c'è scritto nelle foto e tutte le varie cose che io ti ho detto"*). Restano i no
-                # delle regole (`veto`: mai contro la previsione) e il Rischio decide quanto.
-                capo_entra = m.a_piu and stop_ok and not veto
+                # delle regole e il Rischio decide quanto. Dal 22/10/2026 non c'e' piu' un veto: la previsione della
+                # domenica e' solo un parere (*"Leva il veto ovunque"*).
+                capo_entra = m.a_piu and stop_ok
                 parte, z = self._rischio(p, esposizione, stesso)
             else:
                 p = self._capo(giudizi)
@@ -492,8 +516,7 @@ class Squadra:
                 ri["media"] = round(p if ri["volte"] == 1 else 0.95 * ri["media"] + 0.05 * p, 6)
                 ri["scarto"] = round(max(math.sqrt(0.95 * ri["scarto"] ** 2 + 0.05 * (p - ri["media"]) ** 2), 0.02), 6)
             if pareri is not None:
-                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, esposizione, stesso,
-                                                veto)
+                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, esposizione, stesso)
             else:
                 voci = self._voci(m, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano,
                                   (n_s, vinte_s, media_s), stesso)
@@ -509,7 +532,6 @@ class Squadra:
                 dati["voti"] = {x.agente: x.voto for x in pareri}
                 dati["ragioni"] = {x.agente: x.ragioni[:1] for x in pareri}
                 dati["ascolti"] = [[k, q] for k, q in usati]
-                dati["Capo"]["veto"] = veto
             v = Verdetto(entra, piano, round(puntata, 6), round(p, 3), voci, dati, lista, time.time() - t0,
                          a_piu=m.a_piu, pareri_squadra=list(pareri or []), punti=round(punti, 3))
             colonne = {a: dict(zip(("proprie", "sentite"), _colonne(a, m))) for a in AGENTI}
@@ -524,7 +546,7 @@ class Squadra:
         return v
 
     def _voci_della_squadra(self, m: Metodo, pareri: list[Parere], entra: bool, stop_ok: bool, p: float, punti: float,
-                            puntata: float, z: float, esposizione: float, stesso: float, veto: str = "") -> list:
+                            puntata: float, z: float, esposizione: float, stesso: float) -> list:
         """La riunione in equipe col metodo delle foto: ogni agente dice il suo voto e perche' (e, quando ha
         abbastanza casi dal vivo, quante volte ci prende); il Capo dice chi ha sentito, decide e se ne prende la
         responsabilita'; il Rischio dice quanto."""
@@ -538,7 +560,7 @@ class Squadra:
             voci.append(("Capo", "Non entriamo. Il metodo vuole " + ", ".join(MANCA_IN_PAROLE.get(d.nome, d.nome)
                                                                             for d in m.mancano) + "."))
             return voci
-        voci.append(("Capo", self.decisione_in_parole(m, pareri, entra, p, punti, puntata, veto)))
+        voci.append(("Capo", self.decisione_in_parole(m, pareri, entra, p, punti, puntata)))
         if entra:
             if z > 0.5:
                 testo = "il Capo è più convinto del solito, punto un po' di più"
@@ -564,7 +586,7 @@ class Squadra:
         return (" Dal vivo: " + "; ".join(parti) + ".") if parti else ""
 
     def decisione_in_parole(self, m: Metodo, pareri: list[Parere], entra: bool, p: float, punti: float,
-                            puntata: float, veto: str = "") -> str:
+                            puntata: float) -> str:
         """Il Capo: chi era a favore e chi contro, quanti punti fanno pesati, cosa decide e perche'."""
         compra = m.fatti.get("verso") == "acquisto"
         favore = [f"{x.agente} ({x.voto:+d})" for x in pareri if x.voto > 0]
@@ -580,8 +602,6 @@ class Squadra:
             if contro:
                 fine += f" Se va male, chi era contro peserà di più."
             return "Ho sentito tutti. " + sentiti + fine
-        if veto:
-            return "Ho sentito tutti. " + sentiti + f" Non entro: {veto}."
         if punti < SOGLIA_PUNTI:
             return ("Ho sentito tutti. " + sentiti + " Le regole del metodo ci sono, ma la squadra non è convinta "
                     "abbastanza: la lascio.")

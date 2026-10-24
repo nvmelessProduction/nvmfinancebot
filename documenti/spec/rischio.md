@@ -75,6 +75,11 @@ bot usa il più recente dei due (`rischio.json`, campo `quando`).
   (Fino al 27/09/2026 il controllo usava le stime prese per buone: su un
   conto da 1.000 € una giornata di prova arrivava ad aprire il minimo col
   31% del conto a rischio, e a oltre metà del conto a rischio in tutto.)
+  **Dal 23/10/2026 sui setup della squadra non vale più**: se la puntata sta
+  sotto il lotto minimo si apre il minimo, sempre, e il messaggio d'apertura
+  dice quanto rischia davvero (il proprietario, sull'oro lasciato con un
+  conto da 900 €: *"Se ci sta una cosa valida, deve aprire"*;
+  `Esecutore.apri(sempre_il_minimo=True)`).
 - **Una posizione o due.** Se il volume non si divide in due metà, si
   sceglie fra "tutta al primo target" e "tutta al secondo, con lo stop a
   pareggio dopo il primo" quella che fa crescere di più il conto.

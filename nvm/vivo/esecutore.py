@@ -1,10 +1,9 @@
 """L'Esecutore: porta sul conto demo le decisioni del Capo, con la puntata del Rischio.
 
 Ogni operazione e' una posizione sola (il proprietario, 07/10/2026: *"vorrei che apri una sola operazione"*),
-con lo stop e il target finale sul broker: se il bot si spegne, la posizione resta protetta. Quando il prezzo
-arriva al TP1 il bot chiude meta' e mette lo stop al prezzo d'entrata; se il lotto non si puo' dividere, sposta
-solo lo stop e tiene tutto fino al target finale. E' la stessa regola delle prove sullo storico
-(`nvm/prova/campo.py`).
+con lo stop e il target finale sul broker: se il bot si spegne, la posizione resta protetta. Alla chiusura della
+candela 3 del timeframe CRT il bot chiude il 25% e sposta lo stop oltre l'ingresso per coprire le commissioni;
+se il lotto non si puo' dividere, sposta solo lo stop e tiene tutto fino al target finale.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
-from nvm.agenti.cacciatore import Verso
+from nvm.agenti.cacciatore import MAI, Verso
 from nvm.agenti import portafoglio
 from nvm.agenti.rischio import USCITE, crescita_creduta, esiti, kelly
 from nvm.dati.minuti import CHIUSURA
@@ -64,15 +63,20 @@ class Viva:
     # strumenti aperti che vanno insieme a lei, per cui ha rischiato meno.
     da_sola: float = 0.0
     legate: list[str] = field(default_factory=list)
-    # Quando il prezzo ha toccato il primo obiettivo (per il kiss of death che non va superato).
+    # Quando è scattata la gestione (chiusura CRT per le foto, TP1 per i metodi storici).
     primo_quando: int = 0
-    # La posizione sola: quanti lotti chiude il bot al TP1 (0 = nessun parziale: il lotto non si divide, o le
-    # operazioni di prima con due posizioni) e se l'ha gia' fatto.
+    # La posizione sola: quanti lotti chiude il bot al completamento del CRT (metodo foto) o al TP1 (storico).
     meta: float = 0.0
     meta_fatta: bool = False
     # Non si usa piu': era la chiusura della candela d'ingresso, quando il pareggio scattava li' (dal 16 al
     # 20/10/2026). Resta perche' lo stato salvato sulla VPS lo contiene.
     tp1_entro: int = 0
+    # Metodo foto: il 25% e lo stop con commissioni coperte scattano alla chiusura della candela 3 del CRT.
+    # Zero per le posizioni vecchie salvate prima di questa regola.
+    fine_crt: int = 0
+    tf_crt: str = ""
+    gestione_alla_chiusura_crt: bool = False
+    parziale_rifiutato: bool = False
     # MT5 ha rifiutato lo stop a pareggio: si riprova ogni minuto senza ripetere l'allarme.
     pareggio_rifiutato: bool = False
     # Chiusa da una persona (dal terminale o dal telefono): il risultato non insegna niente alla squadra.
@@ -124,10 +128,12 @@ class Esecutore:
 
     def apri(self, d: Decisione, conto: Conto, aperte: list = (), pieno: Optional[float] = None,
              parte: Optional[float] = None, fiducia_minima: Optional[float] = None,
-             riduci: bool = True) -> tuple[Optional[Viva], Fatto]:
+             riduci: bool = True, sempre_il_minimo: bool = False) -> tuple[Optional[Viva], Fatto]:
         """Apre la decisione sul conto. `aperte`: le operazioni gia' aperte (`Viva`), perche' il
         Rischio punti sul conto intero e non su un'operazione alla volta. `riduci=False`: la puntata
-        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce."""
+        l'ha gia' decisa il Rischio della squadra, tenendo conto delle aperte; nessuno la riduce.
+        `sempre_il_minimo`: se la puntata sta sotto il lotto minimo si apre il minimo, sempre (un setup valido
+        della squadra non resta fuori per la grandezza del conto)."""
         k, op, verso = d.r.strumento, d.op, d.r.verso
         if not conto.demo:
             return None, Fatto(messaggi.allarme(f"il conto {conto.login} non è un demo: non apro {k}."))
@@ -193,7 +199,13 @@ class Esecutore:
             # molte volte la puntata giusta, e un conto piccolo si brucerebbe).
             v = max(volume, minimo)
             quota = v * per_lotto / conto.saldo
-            if dei_cervelli:
+            if sempre_il_minimo:
+                # Il proprietario, 23/10/2026, sull'oro lasciato per "conto troppo piccolo per il lotto minimo" (900 €,
+                # 0,01 lotti con lo stop di un CRT a 4 ore sono circa il 2-4% del conto): *"Se ci sta una cosa
+                # valida, deve aprire"*. Si apre il minimo e il messaggio dice quanto rischia davvero.
+                migliore = 1.0
+                uscita = USCITE[1] if op.parziale == 1.0 else USCITE[2]
+            elif dei_cervelli:
                 # La crescita torna a zero al doppio della puntata giusta (`crescita_creduta`).
                 migliore = 1.0 if quota < 2 * (da_sola - togli) else -1.0
                 # Col lotto minimo non si divide: tutto al target del piano (col pareggio al TP1).
@@ -235,11 +247,17 @@ class Esecutore:
             messi += e.volume
         ingresso = sum(prezzi) / len(prezzi)
         rischio = messi * per_lotto
+        scatto = getattr(d.r, "scatto", None)
+        crt = getattr(scatto, "crt", None)
+        fine_crt = int(crt.fine_candela_3) if crt is not None and crt.fine_candela_3 < MAI else 0
+        gestisci_a_chiusura = bool(getattr(d, "foto", None)) and fine_crt > 0
         viva = Viva(d.chiave, k, verso.value, d.r.quando, ingresso, op.stop, op.tp1, op.tp2, uscita,
                     tickets, messi, rischio, conto.valuta, pareggio_a=op.pareggio_a, basso=d.r.basso_tf.value,
                     livello=float(op.livello_model1 or 0.0), invalida_candele=op.invalida_candele,
                     tempo_candele=op.tempo_candele, da_sola=da_sola, legate=legate if togli > 0 else [],
-                    meta=meta if len(tickets) == 1 else 0.0)
+                    meta=meta if len(tickets) == 1 else 0.0, fine_crt=fine_crt,
+                    tf_crt=d.r.alto_tf.value if gestisci_a_chiusura else "",
+                    gestione_alla_chiusura_crt=gestisci_a_chiusura)
         try:
             testo = messaggi.apertura(d, messi, ingresso, rischio, conto.valuta, uscita,
                                       rischio / conto.saldo if conto.saldo else None, meta=meta)
@@ -247,11 +265,13 @@ class Esecutore:
             # L'ordine e' gia' sul conto: un messaggio sbagliato non deve farla perdere di vista al bot.
             testo = f"{'🔴 HO VENDUTO' if verso is Verso.SHORT else '🟢 HO COMPRATO'} {k}: {messi:g} lotti a {ingresso:g}"
         if volume < minimo:
-            testo += f"\n(La puntata giusta era più piccola del minimo che il broker accetta: apro il minimo, {minimo:g} lotti.)"
+            testo += (f"\n(La puntata giusta era più piccola del minimo che il broker accetta: apro il minimo, {minimo:g} "
+                      f"lotti, che rischia {rischio:.2f} {conto.valuta}"
+                      + (f", il {rischio / conto.saldo:.1%} del conto.)" if conto.saldo else ".)"))
         return viva, Fatto(testo)
 
     def sorveglia(self, vive: list[Viva]) -> tuple[list[Viva], list[Fatto]]:
-        """Pareggio dopo il primo target, e chiusure. Restituisce le operazioni ancora aperte."""
+        """Gestione alla chiusura del CRT o al TP1 per i metodi storici, e chiusure."""
         aperte = self.t.aperte(MAGIC)
         restano, fatti = [], []
         for v in vive:
@@ -300,36 +320,39 @@ class Esecutore:
                 continue
             bid, ask = self.t.prezzo(v.strumento)
             sola = len(v.tickets) == 1
-            # Il primo target: la parte al TP1 e' stata incassata, o il prezzo ci e' arrivato (anche fra un controllo
-            # e l'altro: le barre da un minuto dopo l'apertura). Lo stop va a pareggio solo li', mai alla chiusura della
-            # candela d'ingresso (il proprietario, 20/10/2026: *"lo deve mettere solo al tp1"*), anche sulle posizioni
-            # aperte prima, quando c'era quella regola (`tp1_entro`).
+            # Regola foto confermata dal proprietario: al completamento del CRT nel timeframe d'ingresso si chiude il
+            # 25% e si sposta lo stop con le commissioni coperte, anche senza aver toccato TP1.
+            completa_crt = (v.gestione_alla_chiusura_crt and v.fine_crt > 0 and int(time.time()) >= v.fine_crt)
             alto, basso = bid, bid
-            if sola and (not v.pareggio_fatto or (v.meta > 0 and not v.meta_fatta)):
+            if not v.gestione_alla_chiusura_crt and sola and (not v.pareggio_fatto or (v.meta > 0 and not v.meta_fatta)):
                 try:
                     e = self.t.estremi(v.strumento, v.quando)
                 except Exception:
                     e = None
                 if e is not None:
                     alto, basso = max(bid, e[0]), min(bid, e[1])
-            primo_preso = (v.uscita == USCITE[0] and not sola and v.tickets[0] in v.chiusi and v.incassato > 0) or (
+            tp1_preso = (v.uscita == USCITE[0] and not sola and v.tickets[0] in v.chiusi and v.incassato > 0) or (
                 (min(ask, basso + (ask - bid)) <= v.tp1) if v.short else (alto >= v.tp1))
-            if sola and v.meta > 0 and not v.meta_fatta and primo_preso:
-                # Il TP1: il bot chiude la sua parte della posizione (*"Quando arriva ... parzializza"*).
+            evento_gestione = completa_crt if v.gestione_alla_chiusura_crt else tp1_preso
+            if sola and v.meta > 0 and not v.meta_fatta and evento_gestione:
+                # Foto: scatta alla fine di N3. I metodi storici mantengono la gestione legata al TP1.
                 e = self.t.chiudi_posizione(v.strumento, ancora[0], v.meta)
                 if e.ok:
                     v.meta_fatta = True
+                    v.parziale_rifiutato = False
                 else:
                     parte = 100 * v.meta / v.volume if v.volume else 25
-                    fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: TP1 preso ma non riesco a chiudere il "
-                                                        f"{parte:.0f}% ({e.messaggio}): riprovo al minuto dopo.")))
-                    primo_preso = False
-            # Il pareggio: al livello che i Livelli avevano scelto all'apertura (nel metodo delle foto, il TP1). Se MT5
-            # lo rifiuta (mercato chiuso) si riprova ogni minuto, ma l'allarme arriva una volta sola.
+                    if not v.parziale_rifiutato:
+                        quando = f"alla chiusura del CRT {v.tf_crt}" if v.gestione_alla_chiusura_crt else "al TP1"
+                        fatti.append(Fatto(messaggi.allarme(f"{v.strumento}: {quando} non riesco a chiudere il "
+                                                            f"{parte:.0f}% ({e.messaggio}): riprovo al minuto dopo.")))
+                    v.parziale_rifiutato = True
+            # Se MT5 rifiuta lo stop (per esempio mercato chiuso), si riprova ogni minuto e si avvisa una volta sola.
             livello = v.ingresso + v.pareggio_a * (v.tp1 - v.ingresso)
             oltre = (ask <= livello) if v.short else (bid >= livello)
-            sposta = not v.pareggio_fatto and (oltre or (primo_preso and v.pareggio_a <= 1))
-            pari = self.pareggio(v, ancora) if sposta or (primo_preso and not v.primo_detto) else v.ingresso
+            sposta = not v.pareggio_fatto and (evento_gestione if v.gestione_alla_chiusura_crt else
+                                                (oltre or (evento_gestione and v.pareggio_a <= 1)))
+            pari = self.pareggio(v, ancora) if sposta or (evento_gestione and not v.primo_detto) else v.ingresso
             if sposta:
                 tutto_spostato = True
                 for ticket in ancora:
@@ -343,18 +366,25 @@ class Esecutore:
                 v.pareggio_rifiutato = not tutto_spostato
                 if tutto_spostato:
                     v.pareggio_fatto = True
-            if primo_preso and not v.primo_quando:
+            if evento_gestione and not v.primo_quando:
                 v.primo_quando = int(time.time())
-            if primo_preso and not v.primo_detto and v.uscita != USCITE[1]:
-                v.primo_detto = True
-                if sola and not v.meta_fatta:
-                    # Il lotto non si divideva: niente parziale, solo lo stop a pareggio.
-                    fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), pari, tp1=True,
-                                                         a_pareggio=v.pareggio_fatto)))
-                else:
-                    fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), pari, v.pareggio_fatto,
-                                                             None if v.pareggio_fatto else livello,
-                                                             parte=(v.meta / v.volume) if sola and v.meta and v.volume else None)))
+            if evento_gestione and not v.primo_detto:
+                parziale_in_attesa = v.gestione_alla_chiusura_crt and v.meta > 0 and not v.meta_fatta
+                if not parziale_in_attesa:
+                    v.primo_detto = True
+                    if v.gestione_alla_chiusura_crt:
+                        fatti.append(Fatto(messaggi.completamento_crt(
+                            v.strumento, v.tf_crt, pari, v.pareggio_fatto,
+                            parte=(v.meta / v.volume) if sola and v.meta and v.volume and v.meta_fatta else None,
+                            lotto_divisibile=bool(v.meta))))
+                    elif v.uscita != USCITE[1] and sola and not v.meta_fatta:
+                        # Il lotto non si divideva: niente parziale, solo lo stop a pareggio.
+                        fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), pari, tp1=True,
+                                                             a_pareggio=v.pareggio_fatto)))
+                    elif v.uscita != USCITE[1]:
+                        fatti.append(Fatto(messaggi.primo_target(v.strumento, Verso(v.verso), pari, v.pareggio_fatto,
+                                                                 None if v.pareggio_fatto else livello,
+                                                                 parte=(v.meta / v.volume) if sola and v.meta and v.volume else None)))
             elif sposta and v.pareggio_fatto:
                 fatti.append(Fatto(messaggi.pareggio(v.strumento, Verso(v.verso), pari)))
             restano.append(v)

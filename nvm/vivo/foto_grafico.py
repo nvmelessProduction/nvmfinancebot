@@ -216,7 +216,9 @@ def operazione_foto(d, viva=None) -> bytes:
     stop = float(viva.stop) if viva is not None else float(op.stop)
     ny = datetime.fromtimestamp(int(s.n3_inizio), tz=ROMA)
     quadro = Quadro(
-        titolo=f"{s.strumento} · CRT {NOMI_TF.get(s.tf, s.tf.value)} · {'VENDITA' if vende else 'ACQUISTO'}",
+        titolo=f"{s.strumento} · CRT {NOMI_TF.get(s.tf, s.tf.value)}"
+               f"{' del DXY' if s.dal_dxy else ' della TOTAL' if s.dal_totale else ''}"
+               f" · {'VENDITA' if vende else 'ACQUISTO'}",
         sottotitolo=f"Entrata all'apertura della candela 3: {ny.strftime('%d/%m/%Y %H:%M')} (ora italiana)",
         range_=(int(s.range_inizio), int(s.n2_inizio), float(s.range_alto), float(s.range_basso),
                 "Range (candela madre)" if s.dentro else "Range (candela 1)"),

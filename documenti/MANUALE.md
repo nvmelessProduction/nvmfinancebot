@@ -12,8 +12,8 @@ le regole, impara dai risultati dal vivo e decide.
 
 ## 1. Cosa fa
 
-- **Guarda 37 strumenti**: 28 coppie forex, oro, argento, petrolio WTI, S&P 500, Nasdaq, Dow Jones, DAX,
-  Bitcoin ed Ethereum (quelli che il tuo broker offre; Brent, FTSE e Nikkei tolti il 07/10/2026).
+- **Guarda 10 strumenti**: EURUSD, GBPUSD, NZDUSD, AUDUSD, USDCHF, USDCAD, XAUUSD, XAGUSD, BTCUSD ed ETHUSD.
+  DXY e TOTAL sono grafici guida, non strumenti negoziati.
 - **Le candele** aprono come sui future: il giorno alle 18 di New York (mezzanotte italiana), le 4 ore alle
   18, 22, 2, 6, 10 e 14 di New York; ci sono anche le 6 e 12 ore e le candele di 3, 6 e 12 mesi.
 - **Trova le occasioni** sui CRT a 1 ora, 4 ore, 6 ore, giorno, settimana e mese, ed entra **all'apertura
@@ -27,14 +27,24 @@ le regole, impara dai risultati dal vivo e decide.
     contro di noi (ha chiuso oltre la candela prima) e il prezzo non ha ancora preso il suo massimo o minimo,
     non si entra: prima si aspetta la presa di quel livello. Se nessuna blocca, basta un timeframe sopra
     dalla nostra parte o un gap da riempire nel nostro verso.
-  Se manca anche una regola non si entra; se ci sono tutte decide la squadra (sotto, *Come decide la squadra*).
+  Le coppie forex col dollaro entrano solo da un CRT valido del DXY con almeno un key level preso; per l'H1 servono
+  anche il key level del giorno e il massimo/minimo H4. Oro e argento entrano sui propri CRT completi, con il DXY
+  come parere. BTC ed ETH entrano solo da un CRT della TOTAL con key level preso. Se i grafici guida non hanno una
+  fonte oraria configurata e convalidata, le relative operazioni restano bloccate. Per le coppie e le crypto, i prezzi
+  dello strumento si misurano sugli intervalli reali delle candele guida: orari diversi non fanno sparire il setup.
+  Un secondo CRT guida che rappresenta la stessa presa di liquidità non genera un nuovo ingresso. Se manca una regola
+  non si entra; se ci sono tutte decide la squadra (sotto, *Come decide la squadra*).
   Al massimo un'operazione aperta per strumento (il proprietario, 07/10/2026): le altre occasioni su quello
   strumento si seguono sulla carta, e la squadra impara anche da quelle. Si entra solo entro 10 minuti
   dall'apertura della candela 3.
-- **Stop e obiettivi come nelle foto**: stop oltre la candela 2; **TP1** all'altro lato del range, dove si
-  chiude il **25%** e lo stop va al prezzo d'entrata; il resto al **target finale**: il gap del grafico grande
-  se c'è ed è valido, altrimenti il key level (l'altro lato del periodo di cui la finta ha preso la
-  liquidità). Un gap non è un target se il prezzo ci è già entrato (è mitigato) o se la terza candela che lo
+- **Stop e obiettivi come nelle foto**: stop oltre la candela 2; **TP1** è l'altro lato del range. Alla chiusura
+  effettiva della candela 3 del timeframe del CRT, il bot chiude a mercato il **25%** se il lotto si divide e porta lo
+  stop del resto oltre l'ingresso quanto basta per coprire le commissioni di apertura e chiusura, anche se il prezzo
+  non ha raggiunto TP1. Se il lotto non si divide, niente parziale.
+  Il resto va al **target finale**: key level opposto del timeframe più basso preso; se il setup viene dalla guida e manca un
+  livello dell'asset, usa il livello corrispondente al periodo della guida. Il target deve stare oltre TP1; se non è
+  valido si provano i fallback del metodo e, se non c'è un target almeno 1 R, tutto al TP1 se vale almeno 1 R. Un gap
+  non è un target se il prezzo ci è già entrato (è mitigato) o se la terza candela che lo
   ha creato ha accettato la precedente (chiusa oltre, con più corpo che ombra): allora non si punta nemmeno oltre.
   Se un gap già toccato contro di noi è nella reazione automatica e l'estremo dell'aggressione è un key level, il
   target è quel key level (la liquidazione). Al target finale almeno 1 volta il rischio.
@@ -42,8 +52,9 @@ le regole, impara dai risultati dal vivo e decide.
   decide lei). `python -m strumenti.foto --dati <cartella>` rifà le foto del proprietario una per una.
 - **Il gap** (agente *Gap*): le fasi aggressione, reazione automatica, liquidazione, continuazione; l'RSI
   serve solo lì, per la continuazione (minimi decrescenti sul grafico, crescenti sull'RSI).
-- **Il DXY** (agente *DXY*): l'indice del dollaro, calcolato dalle coppie; un suo setup rialzista vende le
-  coppie col dollaro al denominatore (e l'oro) e compra quelle col dollaro al numeratore.
+- **Il DXY** (agente *DXY*): guida in modo esclusivo le coppie forex col dollaro; un suo setup rialzista vende
+  EURUSD, GBPUSD, NZDUSD e AUDUSD e compra USDCHF e USDCAD. Oro e argento seguono i propri CRT, mentre il DXY
+  resta un parere.
 - **Come decide la squadra** (il proprietario, 07/10/2026: *"ognuno dà le proprie opinioni e poi il capo decide
   ma tutti vengono presi in considerazione"*; niente intelligenza artificiale esterna; `nvm/intelligenti/pareri.py`):
   - **primo giro**: ognuno guarda l'occasione col suo mestiere e vota da −2 a +2, dicendo perché. Il
@@ -53,22 +64,21 @@ le regole, impara dai risultati dal vivo e decide.
   - **secondo giro**: si sentono fra colleghi. Chi ha un motivo cambia voto e lo dice per nome (per esempio
     il Cacciatore che sente il Bias contro, o il Key level che sente le inside bar del Cacciatore). Se dal
     vivo sentire un collega non aiuta, quell'ascolto si spegne;
-  - **il Bias è fedele alle sue previsioni**: quella del giorno la fa all'apertura (le 18 di New York) e la
-    tiene fino a sera, cambia solo quando il livello è preso; la **previsione della domenica** non si tradisce
-    mai: contro quella il Capo non entra;
+  - **il Bias** mantiene le sue previsioni del giorno; la previsione settimanale contraria è un voto che riduce
+    la fiducia, non un veto che blocca il trade;
   - **il Capo** pesa i voti di tutti, ognuno per quanto ci ha preso dal vivo, stima quanto spesso il CRT va
-    bene ed entra solo con abbastanza punti a favore. In ogni giro mette in ordine i CRT per probabilità e
-    sceglie i migliori (al massimo 3); in équipe dice chi prende, chi lascia e perché. Decide lui e se ne prende
+    bene ed entra quando le regole del metodo sono rispettate. Riordina le occasioni per fiducia e dice in équipe
+    chi prende, chi lascia e perché. Decide lui e se ne prende
     la responsabilità; dopo ogni occasione finita impara di chi fidarsi;
-  - **il Rischio** parte dall'1% del conto, punta un po' di più quando il Capo è più convinto del solito e meno
-    quando ci sono altre operazioni aperte, e si corregge coi risultati;
+  - **il Rischio** riparte dall'1%, punta di più sulle occasioni più convincenti e riduce la puntata per operazioni
+    correlate già aperte. Ricalcola la puntata prima di ogni ordine. Sui setup validi della squadra apre comunque
+    il lotto minimo anche se questo supera la percentuale desiderata; Telegram mostra il rischio effettivo. Sul demo
+    il lotto minimo può esporre il conto al 2–4% o più per un singolo trade: non c'è un tetto fisso al rischio totale;
   - i risultati veri del broker contano più di quelli calcolati sulla carta;
-  - Livelli sceglie fra tre modi di uscire (tutto al TP1; il 25% al TP1 e il resto al target finale, come
-    nelle foto; il 25% al TP1 e il resto più in là).
-- **Una posizione sola per CRT** (il proprietario, 07/10/2026): sul broker stanno lo stop e il target finale;
-  quando il prezzo arriva al TP1 il bot chiude il 25% e mette lo stop al prezzo d'entrata. Se il lotto è
-  troppo piccolo per chiuderne il 25%, al TP1 sposta solo lo stop e tiene tutto fino al target finale. Lo stesso CRT non si apre mai due volte (il commento della posizione dice quale CRT è).
-- **Esce** allo stop, al pareggio dopo il TP1, o al target finale.
+  - Livelli sceglie il target finale secondo le foto; se manca un target valido, il restante 75% può uscire a TP1.
+- **Una posizione sola per CRT**: sul broker stanno lo stop e il target finale. Alla chiusura della candela 3 chiude
+  il 25% (se il lotto si divide) e sposta lo stop a un prezzo che copre le commissioni; lo stesso CRT non si apre due volte.
+- **Esce** allo stop, al target finale o a TP1 per la parte restante quando è il fallback scelto.
 - **Protegge il conto**:
   - stop e obiettivi stanno sempre sul broker, anche se il computer si spegne;
   - la dimensione delle operazioni tiene conto di tutte quelle aperte insieme.
@@ -151,7 +161,8 @@ bot non può toccare.
 
 **Il bot apre poche operazioni.** È voluto. Il Capo sceglie solo i CRT su cui la squadra è convinta,
 al massimo tre per giro. Su conti piccoli il lotto minimo del broker
-può essere troppo grande per la puntata giusta: in quel caso l'operazione si lascia.
+può essere più grande della puntata giusta: dal 23/10/2026 il bot apre lo stesso il lotto minimo e
+nel messaggio scrive quanto rischia davvero.
 
 **Quanto rischia?** Il Rischio parte dall'1% del conto per operazione, punta un po' di più quando
 il Capo è più convinto del solito e meno quando ci sono altre operazioni aperte, e si corregge coi

@@ -64,7 +64,7 @@ from nvm.vivo.stato import Seguita, Stato, archivia, archiviate, registra
 from nvm.vivo.telegram import Telegram, raggruppa
 from nvm.vivo.terminale import ErroreMT5, Terminale
 from nvm.vivo.tradingview import (INTERVALLI_TF, Accesso, ErroreTradingView, Fonte, QuotaFinita, RispostaRifiutata,
-                                  TradingView, candele_tv, ora_di_sessione)
+                                  TradingView, candele_tv, griglia)
 from nvm.vivo import rete_vivo
 
 RADICE = Path(__file__).resolve().parent
@@ -98,6 +98,7 @@ RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo 
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
 RITARDO_MASSIMO = 600     # metodo delle foto: oltre 10 minuti dall'apertura della candela 3 non si entra piu'
+DURATA_ALLARME = 480      # un giro che dura piu' di 8 minuti si dice: a 10 dall'apertura le occasioni non si aprono
 # Telegram accetta didascalie fino a 1024 caratteri: il messaggio d'apertura ci sta, se no parte subito dopo la foto.
 DIDASCALIA = 1000
 # Analisi su TradingView: per quanto vale una proposta (Apri / Lascia) dall'apertura della candela 3.
@@ -109,6 +110,19 @@ TOTAL_TRADINGVIEW = ""
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
+
+
+def _orario_in_parole(ora) -> str:
+    """L'orario di un grafico (`candele.SESSIONI`) come lo legge il proprietario."""
+    if ora is True:
+        return "orari UTC (4 ore alle 2-6-10 italiane con l'ora legale, alle 1-5-9 con l'ora solare)"
+    if ora in ("17", "18", "19", "20"):
+        # L'Italia sta 6 ore avanti a New York, tranne le poche settimane in cui l'ora legale cambia in una e non
+        # ancora nell'altra.
+        prima = (int(ora) + 6) % 24
+        return (f"sessione dalle {ora} di New York (di solito 4 ore alle "
+                f"{'-'.join(str((prima + 4 * k) % 24) for k in range(3))} italiane)")
+    return "nessun orario"
 
 
 def grafici_da_guardare(scelti) -> list[tuple[str, str]]:
@@ -545,6 +559,7 @@ class Bot:
         self.aggiorna_totale()
         di("Scarico le giornaliere di tanti anni (3, 6 e 12 mesi)...")
         self.aggiorna_lunghe(time.time())
+        self._di_gli_orari()
         adesso = time.time()
         if self.stato.ultimo_giro is None:
             self.stato.ultimo_giro = _su(adesso, 3600)
@@ -642,10 +657,11 @@ class Bot:
         """Sui grafici di TradingView le candele di ogni timeframe sono le sue, cosi' come sono, con i suoi orari (il
         proprietario, 13/10/2026: *"non deve costruire niente ma utilizzare i dati con gli orari che gli vengono forniti
         così come sono"*; *"1h 4h 6h 12h 1d 1w 1m 3m 12m"*). Le 1 ora sono le orarie (`_ore_nuove`); qui le altre. Dalle
-        candele a 4 ore si legge l'orario del grafico (`tradingview.ora_di_sessione`), che vale per tutti i calcoli del
+        candele a 4 ore si legge l'orario del grafico (`tradingview.griglia`), che vale per tutti i calcoli del
         bot e della rete. Un timeframe si riprende quando ne deve essere chiusa una candela nuova."""
         if not hasattr(self, "_prossime_tv"):
             self._prossime_tv, self._tf_rifiutati = {}, set()
+        self._orari_dalle_candele()
         nomi = list(self.strumenti) + [x for x in ("DXY", "TOTAL") if self.fonte.esiste(x)]
         cambiato = finita = False
         for s in nomi:
@@ -680,11 +696,12 @@ class Bot:
                     continue
                 if tf is TF.H4 and not weekend(s) and quante == DIRETTE[tf]:
                     # L'orario si legge quando arrivano tutte (le poche di un aggiornamento non bastano).
-                    ora = ora_di_sessione([int(b["t"]) // (1000 if int(b["t"]) > 10**11 else 1) for b in barre])
-                    if ora is None:
-                        self.allarme(f"TradingView: le candele a 4 ore di {s} non partono a orari fissi: uso "
-                                     f"{_candele_mod.SESSIONI.get(s, SESSIONE_TRADINGVIEW)} di New York.")
-                    elif _candele_mod.SESSIONI.get(s) != ora:
+                    ora, quota = griglia([int(b["t"]) // (1000 if int(b["t"]) > 10**11 else 1) for b in barre])
+                    if ora is not None and quota < 0.9:
+                        # Non e' chiaro: si usa la griglia che spiega piu' candele, non per forza quella delle coppie.
+                        self.allarme(f"TradingView: le candele a 4 ore di {s} non partono tutte a orari fissi (lo fa il "
+                                     f"{quota:.0%}): uso {_orario_in_parole(ora)}.")
+                    if ora is not None and _candele_mod.SESSIONI.get(s) != ora:
                         # L'orario del grafico e' un altro: le candele gia' avute si riprendono tutte con quello.
                         _candele_mod.SESSIONI[s] = ora
                         d = {}
@@ -700,6 +717,50 @@ class Bot:
             self.lunghe[s] = d
         if cambiato:
             self._salva_candele_tradingview()
+
+    def _orari_dalle_candele(self) -> None:
+        """L'orario di ogni grafico riletto dalle sue candele a 4 ore gia' avute, senza chiedere niente a TradingView. Se
+        e' un altro da quello in uso (la lettura di prima non era riuscita, o era sbagliata), le candele di quel grafico
+        si riprendono tutte con l'orario giusto. L'orario si leggeva solo quando arrivavano tutte le candele a 4 ore: fino
+        al 23/10/2026 il DXY e' rimasto sulle 18 di New York, gli orari delle coppie, anche dopo i riavvii."""
+        for s, d in list(self.lunghe.items()):
+            c = d.get(TF.H4) if isinstance(d, dict) else None
+            if c is None or len(c) < 60 or weekend(s):
+                continue
+            ora, quota = griglia(c.inizio[-DIRETTE[TF.H4]:])
+            prima = _candele_mod.SESSIONI.get(s)
+            if ora is None or ora == prima or quota < 0.6:
+                continue
+            _candele_mod.SESSIONI[s] = ora
+            self.lunghe[s] = {}
+            self._prossime_tv = {k: v for k, v in self._prossime_tv.items() if k[0] != s}
+            testo = (f"Orari del grafico {s} corretti: {_orario_in_parole(prima)} → {_orario_in_parole(ora)}. "
+                     "Riprendo tutte le sue candele con gli orari giusti.")
+            registra(CARTELLA, "orari", testo=testo)
+            di(testo)
+            self.tg.operativo("🕑 " + testo)
+
+    def _di_gli_orari(self) -> None:
+        """A ogni avvio, sul canale operativo, gli orari che il bot usa per il DXY e la TOTAL e la loro ultima candela a
+        4 ore chiusa: se sono sbagliati si vede subito sul grafico (fino al 23/10/2026 il DXY era sulle 18 di New York e
+        non lo diceva nessuno)."""
+        if not self._su_tradingview:
+            return
+        righe = []
+        for s in ("DXY", "TOTAL"):
+            if not self.fonte.esiste(s):
+                continue
+            d = self.lunghe.get(s)
+            c = d.get(TF.H4) if isinstance(d, dict) else None
+            riga = f"{s}: {_orario_in_parole(_candele_mod.calendario(s))}"
+            if c is not None and len(c):
+                if not weekend(s):
+                    riga += f", come il {griglia(c.inizio[-DIRETTE[TF.H4]:])[1]:.0%} delle sue candele a 4 ore"
+                riga += (f"; ultima candela a 4 ore chiusa {messaggi.ora_italiana(int(c.inizio[-1]))}–"
+                         f"{messaggi.ora_italiana(int(c.fine[-1]))} italiane")
+            righe.append(riga)
+        if righe:
+            self.tg.operativo("🕑 Orari dei grafici guida\n" + "\n".join(righe))
 
     def aggiorna_lunghe(self, adesso: float) -> None:
         """Le giornaliere lunghe, una volta al giorno: senza, i 3, 6 e 12 mesi si fanno con le orarie (due anni). Sui
@@ -820,7 +881,9 @@ class Bot:
     @staticmethod
     def _tema(d) -> str:
         """Di quale operazione si parla, in testa a ogni messaggio in equipe."""
-        return conversazione.tema(d.r.strumento, d.r.verso.value, d.r.alto_tf.value)
+        s = (getattr(d, "foto", None) or {}).get("setup")
+        guida = "DXY" if getattr(s, "dal_dxy", False) else "TOTAL" if getattr(s, "dal_totale", False) else ""
+        return conversazione.tema(d.r.strumento, d.r.verso.value, d.r.alto_tf.value, guida)
 
     def _disegna(self, d, viva, adesso: int, testo: Optional[str] = None) -> None:
         if getattr(d, "foto", None):
@@ -1406,7 +1469,7 @@ class Bot:
         if v is not None:
             # Quanto puntare l'ha deciso il Rischio della squadra quando ha proposto.
             viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata, parte=1.0,
-                                              fiducia_minima=0.0, riduci=False)
+                                              fiducia_minima=0.0, riduci=False, sempre_il_minimo=True)
         else:
             viva, fatto = self.esecutore.apri(d, conto, self.stato.vive)
         del self.proposte[ident]
@@ -1539,6 +1602,7 @@ class Bot:
         self.parla()
 
     def giro(self, ora: int) -> None:
+        inizio = time.time()
         dal = max(self.stato.ultimo_giro + 1, ora - 86400)
         # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini. Un errore su uno
         # strumento non ferma gli altri e non fa ripartire il giro (prima rifaceva da capo anche gli strumenti
@@ -1589,6 +1653,7 @@ class Bot:
         # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi (riavvio, MT5
         # lento) non si entra a un prezzo che non e' piu' quello.
         adesso, finestra = (int(time.time()), RITARDO_MASSIMO) if foto_metodo else (ora, 3600)
+        self._durata_del_giro(ora, inizio, time.time())
         decisioni = sorted((d for ds in tutte.values() for d in ds), key=lambda d: (d.r.quando, d.r.strumento))
         try:
             self._decidi(decisioni, adesso, finestra)
@@ -1618,6 +1683,15 @@ class Bot:
                 passo()
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _durata_del_giro(self, ora: int, inizio: float, fine: float) -> None:
+        """Registra quanto impiega la lettura dei grafici e segnala i giri lunghi prima degli ordini."""
+        durata = int(fine - inizio)
+        registra(CARTELLA, "durata del giro", ora=int(ora), secondi=durata, dall_apertura=int(fine - ora))
+        if durata > DURATA_ALLARME:
+            self.allarme(f"Il giro delle {messaggi.ora_italiana(ora)} ci ha messo {durata // 60} minuti e "
+                         f"{durata % 60} secondi a leggere le candele: oltre i {RITARDO_MASSIMO // 60} minuti "
+                         "dall'apertura della candela le occasioni non si aprono. Di solito è TradingView lento.")
 
     def _ore_nuove(self, s: str) -> None:
         """Le ore nuove dello strumento; se non ci sono ancora (all'avvio TradingView non rispondeva), tutte."""
@@ -1795,6 +1869,25 @@ class Bot:
         """Decidono i cervelli se hanno vinto l'esame, o se l'ha scelto il proprietario (`scelte.json`)."""
         return bool(self.cervelli is not None and (self.cervelli_info.get("decidono") or self.scelte.get("decidono_i_cervelli")))
 
+    def _perche_no(self, d, g: Optional[dict]) -> str:
+        """Perche' chi decide non prende l'occasione, in parole semplici."""
+        v = self._verdetti.get(d.chiave)
+        if v is None:
+            if self.squadra is not None:
+                return "la squadra non è riuscita a riunirsi su questa occasione (il dettaglio è nel registro)"
+            return "il Capo non la prende"
+        capo = v.pareri.get("Capo", {})
+        mancano = capo.get("mancano", [])
+        if mancano:
+            return "manca " + ", ".join(MANCA_IN_PAROLE.get(x, x) for x in mancano)
+        if v.lasciata:
+            return v.lasciata
+        if capo.get("veto"):
+            return capo["veto"]
+        if v.puntata <= 0:
+            return "il Rischio non trova una puntata possibile"
+        return "la squadra non è convinta" + (f" ({v.punti:+.1f} punti)" if v.punti else "")
+
     def _entra(self, d, g: Optional[dict]) -> bool:
         """Chi decide: la squadra intelligente. Solo se e' spenta (`scelte.json`), i cervelli o il Capo di prima."""
         v = self._verdetti.get(d.chiave)
@@ -1878,8 +1971,13 @@ class Bot:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
         # Quando decidono i cervelli, i Livelli scelgono anche il piano: dove lo stop, come il profitto.
         decisioni = [self._con_piano(d, giudizi[d.chiave]) for d in decisioni]
+        # Prima le occasioni in cui la squadra crede di piu': le altre del giro le vedono gia' aperte e il Rischio ci
+        # punta di meno.
+        decisioni.sort(key=lambda d: -(self._verdetti[d.chiave].fiducia if d.chiave in self._verdetti else 0.0))
         # Prima gli ordini, poi i messaggi: il mercato non aspetta Telegram.
         aperte, da_dire = set(), []
+        # Perche' un'occasione non si e' aperta, quando non lo decide la squadra (`_perche_no`).
+        motivi_no: dict[str, str] = {}
         for d in decisioni:
             g = giudizi[d.chiave]
             v = self._verdetti.get(d.chiave)
@@ -1889,6 +1987,7 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: candela 3 aperta da {int(adesso - d.r.quando)} s")
+                motivi_no[d.chiave] = f"arrivato tardi: la candela 3 era aperta da {int(adesso - d.r.quando) // 60} minuti"
             occupato = any(x.strumento == d.r.strumento for x in self.stato.vive)
             if self._entra(d, g) and adesso - d.r.quando <= finestra and occupato:
                 # Il proprietario, 07/10/2026: al massimo un'operazione aperta per strumento. Le altre occasioni
@@ -1898,17 +1997,27 @@ class Bot:
                 if v is not None and self.squadra is not None:
                     self.squadra.annulla(d.chiave)
                 registra(CARTELLA, "saltata", testo=f"{d.chiave}: su {d.r.strumento} c'è già un'operazione aperta")
+                motivi_no[d.chiave] = f"su {d.r.strumento} c'è già un'operazione aperta"
             elif self._entra(d, g) and adesso - d.r.quando <= finestra and self._lascia_la_rete(d):
                 # In automatico decide la rete (il proprietario, 12/10/2026: *"voglio che sia la rete a decidere"*):
                 # questo lo lascia. In équipe, con «Apri lo stesso» e «Correggi». Un setup con tutte le regole delle
                 # foto la rete non lo lascia mai (`rete_vivo.Giudizio.regole`).
                 self.stato.saltate["la rete neurale lo lascia"] = self.stato.saltate.get("la rete neurale lo lascia", 0) + 1
                 self._proponi(d, v, self._giudizi_rete.get(d.chiave))
+                motivi_no[d.chiave] = "la rete neurale la lascia: è in équipe con «Apri lo stesso»"
             elif self._entra(d, g) and adesso - d.r.quando <= finestra:
                 if v is not None:
-                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce.
-                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=v.puntata,
-                                                      parte=1.0, fiducia_minima=0.0, riduci=False)
+                    # Quanto puntare lo decide il Rischio della squadra, da solo: nessuno lo riduce. Lo rifa' adesso,
+                    # vedendo anche le operazioni appena aperte in questo giro (il proprietario, 23/10/2026: *"su
+                    # trade punterà di più, su altri trade punterà di meno, deve essere intelligente"*).
+                    puntata = v.puntata
+                    if self.squadra is not None and conto is not None:
+                        puntata = self.squadra.ripunta(d.chiave, self._esposizione(conto.saldo)[1]) or v.puntata
+                    # Sotto il lotto minimo si apre il minimo, sempre: un setup valido non resta fuori per la
+                    # grandezza del conto (il proprietario, 23/10/2026: *"Se ci sta una cosa valida, deve aprire"*).
+                    viva, fatto = self.esecutore.apri(d, conto, self.stato.vive, pieno=puntata,
+                                                      parte=1.0, fiducia_minima=0.0, riduci=False,
+                                                      sempre_il_minimo=True)
                 elif self._decidono_i_cervelli and g is not None:
                     r = self.cervelli_info.get("rischio", {})
                     # Quanto puntare lo dice il cervello del Rischio.
@@ -1925,6 +2034,8 @@ class Bot:
                 if viva is None and v is not None and self.squadra is not None:
                     # L'ordine non e' partito: per imparare conta come non presa.
                     self.squadra.annulla(d.chiave)
+                if viva is None:
+                    motivi_no[d.chiave] = fatto.saltata or fatto.testo.replace("⚠️", "").strip()
                 if viva is not None:
                     self.stato.vive.append(viva)
                     aperte.add(d.chiave)
@@ -1941,6 +2052,15 @@ class Bot:
                                     tp2=viva.tp2, rischio=viva.rischio, valuta=viva.valuta, chiave=viva.chiave,
                                     chi_decide=("squadra intelligente" if d.chiave in self._verdetti else
                                                 "cervelli" if self._decidono_i_cervelli else "Capo"))
+        # Le occasioni del metodo delle foto non aperte, col perche', sul canale operativo: il 21/10/2026 il bot non e'
+        # entrato su BTC ed ETH dopo il CRT della TOTAL e non l'ha detto da nessuna parte.
+        righe_no = [f"• {d.r.strumento} {'vendita' if d.r.verso is Verso.SHORT else 'acquisto'} "
+                    f"({d.r.alto_tf.value}): {motivi_no.get(d.chiave) or self._perche_no(d, giudizi[d.chiave])}"
+                    for d in decisioni if getattr(d, "foto", None) and d.chiave not in aperte]
+        if righe_no:
+            testo_no = "⏸ Occasioni non aperte:\n" + "\n".join(righe_no)
+            registra(CARTELLA, "non aperte", testo=testo_no)
+            self.tg.operativo(testo_no)
         for fatto in da_dire:
             if fatto.saltata:
                 # Non fa rumore: si conta nel riepilogo della sera (e resta nel registro).
@@ -2263,6 +2383,18 @@ def main() -> None:
     except ErroreMT5 as errore:
         di(f"Non parto: {errore}")
         bot.tg.operativo(messaggi.allarme(f"Non parto: {errore}"))
+        sys.exit(1)
+    except SystemExit:
+        raise
+    except Exception as errore:
+        # Qualunque altro errore all'avvio: prima il bot si chiudeva senza dire niente e avvia.bat lo rifaceva
+        # partire ogni minuto, in silenzio (21/10/2026). Ora lo dice, sul canale e qui.
+        testo = traceback.format_exc()
+        registra(CARTELLA, "errore", testo=testo)
+        di(f"Non parto per un errore del bot:\n{testo}")
+        bot.tg.operativo(messaggi.allarme(f"Non parto per un errore del bot: {errore!r}. Riprovo fra un minuto; "
+                                          "il dettaglio è nel registro e nella finestra del bot sulla VPS."))
+        bot.tg.svuota(30)
         sys.exit(1)
     di(f"Partito: lavoro su {len(bot.strumenti)} mercati. Da qui scrivo su Telegram; questa finestra resta aperta "
        "(chiuderla ferma il bot).")

@@ -2,9 +2,13 @@
 allora; mai senza stop; ogni agente impara il suo giudizio dal vivo; si confrontano e cambiano idea; il Capo
 lascia un'A+ solo con le prove; i risultati veri contano piu' di quelli sulla carta."""
 
+import math
 from types import SimpleNamespace as NS
 
+import pytest
+
 from nvm.intelligenti import al_lavoro
+from nvm.tempo import TF
 from nvm.intelligenti.metodo import Domanda, Metodo
 from nvm.intelligenti.pareri import VOTANO, Parere
 from nvm.intelligenti.squadra import (ESPERIENZA_MINIMA, MINIMO_SIMILI, PIANO_ROMEO, PUNTATA_INIZIALE, SOGLIA_PUNTI,
@@ -35,7 +39,9 @@ def _op(stop=1.0950, ingresso=1.1000, tp1=1.1050):
 def test_col_setup_delle_foto_si_entra_e_ognuno_dice_la_sua(tmp_path):
     sq = Squadra(tmp_path)
     v = sq.riunione("k1", "EURUSD", _metodo(), 1_700_000_000, op=_op())
-    assert v.entra and v.a_piu and v.puntata == PUNTATA_INIZIALE and all(v.lista.values())
+    assert v.entra and v.a_piu and all(v.lista.values())
+    # La puntata parte dall'1% e il Rischio ci mette di piu' quanto piu' il Capo ci crede, dalla prima occasione.
+    assert v.puntata == pytest.approx(PUNTATA_INIZIALE * math.exp(0.2 * (v.fiducia - 0.5) / 0.1), rel=0.01)
     chi = [c for c, _ in v.voci]
     assert chi[:3] == [a for _, a in OBBLIGATORIE] and chi[-2:] == ["Capo", "Rischio"]
     assert all(t.startswith("✅") for _, t in v.voci[:3])
@@ -242,8 +248,7 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
         v = verdetti[d.chiave]
         # Entra con tutte le regole del metodo, senza un no delle regole, se il Capo la sceglie nel giro: dal
         # 12/10/2026 i punti della squadra sono un parere, non bloccano.
-        veto = v.pareri.get("Capo", {}).get("veto", "")
-        assert v.entra == (m.a_piu and v.puntata > 0 and not veto and not v.lasciata)
+        assert v.entra == (m.a_piu and v.puntata > 0 and not v.lasciata)
         assert [x.agente for x in v.pareri_squadra] == list(VOTANO)
     assert any(verdetti[d.chiave].entra for d in decisioni) and not all(verdetti[d.chiave].entra for d in decisioni)
     al_lavoro.valuta_piani(sq, {"EURUSD": base}, {}, max(d.scadenza for d in decisioni) + 1)
@@ -251,6 +256,48 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
     finto = NS(_verdetti=verdetti, _decidono_i_cervelli=False, squadra=sq)
     for d in decisioni:
         assert vivo.Bot._entra(finto, d, None) is (verdetti[d.chiave].entra and verdetti[d.chiave].puntata > 0)
+
+
+def test_sugli_strumenti_guidati_le_regole_le_da_il_crt_del_dxy():
+    """Sugli strumenti guidati il key level lo deve prendere il CRT della guida (il proprietario, 22/10/2026: *"il
+    prezzo aveva preso due kl (WL-DL) e poi ha formato un crt h4 il bot doveva entrare automaticamente"*); dal 21 al
+    22/10 non si chiedeva, ed era un errore. La direzione dello strumento e' un parere: comanda la guida."""
+    from dataclasses import replace as cambia
+    from nvm.intelligenti import metodo
+    from nvm.vivo.giro import giro
+    from tests.test_vivo import CapoFinto, ore_finte
+    base = ore_finte(giorni=400)
+    decisioni = giro({"EURUSD": base}, int(base.t[0]) + 150 * 86400, int(base.t[-1]), CapoFinto(),
+                     gemelli={"EURUSD": base, "DXY": _dxy_specchio(base)})
+    assert decisioni
+    for d in decisioni:
+        assert d.foto["dxy"].presi, "il giro porta sulle coppie solo i CRT del DXY che hanno preso un key level"
+        m = metodo.valuta_foto(d)
+        kl = m.obbligatorie[1]
+        assert kl.si and kl.perche.startswith("il DXY") or d.foto["setup"].tf is TF.H1, kl.perche
+        senza = metodo.valuta_foto(cambia(d, foto={**d.foto, "dxy": cambia(d.foto["dxy"], presi=[])}))
+        assert not senza.a_piu and not senza.obbligatorie[1].si
+        if d.foto["setup"].tf is not TF.H1:
+            assert "non è il pattern" in senza.obbligatorie[1].perche
+        assert m.obbligatorie[2].si and "comanda il DXY" in m.obbligatorie[2].perche
+
+
+def test_le_occasioni_non_aperte_dicono_perche():
+    import vivo
+    bot = object.__new__(vivo.Bot)
+    bot.squadra = object()
+    capo = {"mancano": ["key level"]}
+    bot._verdetti = {"k": NS(pareri={"Capo": capo}, lasciata="", puntata=0.01, punti=1.0)}
+    d = NS(chiave="k")
+    assert "manca un key level" in bot._perche_no(d, None)
+    capo["mancano"] = []
+    # Il veto della domenica non c'e' piu' (22/10/2026): anche un vecchio verdetto che lo porta non lo dice.
+    capo["veto"] = "domenica abbiamo detto BTCUSD rialzista per la settimana"
+    assert not bot._perche_no(d, None).startswith("domenica abbiamo detto")
+    del capo["veto"]
+    bot._verdetti["k"].lasciata = "su BTCUSD c'è già un'operazione aperta"
+    assert "già un'operazione" in bot._perche_no(d, None)
+    assert "non è riuscita a riunirsi" in bot._perche_no(NS(chiave="altra"), None)
 
 
 def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tmp_path, monkeypatch):
@@ -285,9 +332,10 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     mandati, aperte = [], []
 
     class Esecutore:
-        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True):
+        def apri(self, d, conto, vive, pieno=None, parte=None, fiducia_minima=None, riduci=True,
+                 sempre_il_minimo=False):
             assert con_stop(d.op)
-            aperte.append((pieno, parte, riduci))
+            aperte.append((pieno, parte, riduci, sempre_il_minimo))
             viva = NS(chiave=d.chiave, strumento="EURUSD", verso=d.r.verso.value, tickets=[1], volume=0.1,
                       ingresso=d.op.ingresso, stop=d.op.stop, tp1=d.op.tp1, tp2=d.op.tp2, rischio=pieno * parte * 10000,
                       valuta="EUR", da_sola=pieno * parte, legate=[], pareggio_fatto=False)
@@ -307,7 +355,8 @@ def test_nel_bot_la_squadra_decide_apre_disegna_impara_e_fa_il_fine_settimana(tm
     bot.strumenti = ["EURUSD"]
     bot.disegni = disegni.Disegni(tmp_path, tmp_path / "comune")
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
-    assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci for x, p, riduci in aperte)
+    # Sotto il lotto minimo la squadra apre il minimo, sempre (23/10/2026).
+    assert len(aperte) == 1 and all(x > 0 and p == 1.0 and not riduci and minimo for x, p, riduci, minimo in aperte)
     # Lo stesso CRT una volta sola, anche se il giro si ripete.
     bot._decidi(decisioni[:1], int(decisioni[0].r.quando), 10**12)
     assert len(aperte) == 1
@@ -466,3 +515,28 @@ def test_sullo_stesso_strumento_decide_il_rischio(tmp_path):
         sq.riunione(f"s{i}", "EURUSD", _metodo(), 0, op=_op(), stesso=0.01)
         sq.rifletti(f"s{i}", 2.0, preso=True)
     assert sq.memoria.rischio["stesso"] < prima
+
+
+def test_il_rischio_riparte_da_zero_una_volta_e_punta_di_piu_sulle_migliori(tmp_path):
+    """Il proprietario, 23/10/2026: *"resetta tutto quanto ciò che riguarda il rischio e deve decidere lui quanto
+    puntare, su trade punterà di più, su altri trade punterà di meno"*."""
+    import json
+    from nvm.intelligenti import squadra as S
+    sq = Squadra(tmp_path)
+    sq.memoria.rischio.update({"base": 0.0001, "aperte": 3.0, "volte": 40, "media": 0.9})
+    sq.memoria.rischio.pop("ripartito")
+    sq.memoria.salva()
+    sq = Squadra(tmp_path)
+    assert sq.memoria.rischio["base"] == PUNTATA_INIZIALE and sq.memoria.rischio["volte"] == 0
+    assert sq.memoria.rischio["ripartito"] == S.RIPARTENZA_RISCHIO
+    # Ripartito una volta: quello che impara dopo resta.
+    sq.memoria.rischio["base"] = 0.02
+    sq.memoria.salva()
+    assert Squadra(tmp_path).memoria.rischio["base"] == 0.02
+    # Di piu' sull'occasione in cui il Capo crede di piu', di meno sulle altre.
+    assert sq._rischio(0.7, 0.0)[0] > sq._rischio(0.5, 0.0)[0] > sq._rischio(0.3, 0.0)[0]
+    # Le operazioni appena aperte nello stesso giro (lo stesso dollaro) gli fanno puntare di meno.
+    sq.riunione("k", "EURUSD", _metodo(), 1_700_000_000, op=_op())
+    sola = sq.ripunta("k", 0.0)
+    assert 0 < sq.ripunta("k", 0.03) < sola and sq.ripunta("non c'e'", 0.0) == 0.0
+    assert json.loads(json.dumps(sq.memoria.discusse["k"]["pareri"]["Rischio"]))["esposizione"] == 0.03

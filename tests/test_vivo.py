@@ -169,66 +169,6 @@ def test_il_grafico_del_dollaro_si_trova_col_nome_del_broker():
     assert not t2.esiste("DXY")
 
 
-def test_il_bot_usa_il_dxy_del_broker_quando_tradingview_non_e_attivo():
-    """Il DXY deve arrivare da MT5 (USDX) anche senza grafici TradingView."""
-    import vivo
-
-    dati = ore_finte("DXY", giorni=2)
-    chiamate, allarmi = [], []
-    fonte = NS(esiste=lambda nome: chiamate.append(("esiste", nome)) or True,
-               orarie=lambda nome, quante: (chiamate.append(("orarie", nome, quante)), dati)[1],
-               simbolo=lambda nome: "USDX")
-    bot = object.__new__(vivo.Bot)
-    bot.fonte, bot.terminale, bot.dxy = None, fonte, None
-    bot.allarme = allarmi.append
-
-    bot.aggiorna_dxy()
-
-    assert bot.dxy is dati
-    assert chiamate == [("esiste", "DXY"), ("orarie", "DXY", vivo.ORARIE)]
-    assert allarmi == []
-
-
-def test_con_asset_tradingview_il_dxy_guida_arriva_da_mt5_se_non_scelto_su_tv():
-    """Il feed TV degli asset non deve imporre un DXY TV implicito: senza override usa USDX su MT5."""
-    import vivo
-
-    dati = ore_finte("DXY", giorni=2)
-    allarmi = []
-    terminale = NS(esiste=lambda nome: nome == "DXY",
-                   orarie=lambda nome, quante: dati,
-                   simbolo=lambda nome: "USDX")
-    tv = NS(esiste=lambda nome: False, simbolo=lambda nome: "")
-    bot = object.__new__(vivo.Bot)
-    bot.fonte, bot.terminale, bot.dxy = tv, terminale, None
-    bot.allarme = allarmi.append
-
-    bot.aggiorna_dxy()
-
-    assert bot._fonte_dxy is terminale
-    assert bot.dxy is dati
-    assert allarmi == []
-
-
-def test_con_asset_tradingview_i_timeframe_lunghi_del_dxy_restano_sullo_stesso_feed():
-    """Le giornaliere guida MT5 vanno tenute separate dalle candele dirette degli asset TV."""
-    import vivo
-
-    adesso = utc(2026, 10, 21, 12)
-    lunghe = ore_finte("DXY", giorni=2)
-    chiamate = []
-    terminale = NS(giornaliere=lambda nome, quante: chiamate.append((nome, quante)) or lunghe)
-    tv = NS(esiste=lambda nome: False)
-    bot = object.__new__(vivo.Bot)
-    bot.fonte, bot.terminale, bot.dxy, bot.lunghe = tv, terminale, ore_finte("DXY", giorni=2), {}
-    bot._candele_tradingview = lambda istante: None
-
-    bot.aggiorna_lunghe(adesso)
-
-    assert bot.lunghe["DXY"] is lunghe
-    assert chiamate == [("DXY", vivo.LUNGHE)]
-
-
 # --- il giro fa quello che fa lo storico ---
 
 def test_il_giro_decide_come_lo_storico():
@@ -492,6 +432,27 @@ def test_il_lotto_minimo_si_apre_solo_se_il_conto_lo_regge():
             assert fatto.saltata == "conto troppo piccolo per il lotto minimo" and m.richieste == []
 
 
+def test_un_setup_della_squadra_si_apre_sempre_almeno_col_lotto_minimo():
+    """Il proprietario, 23/10/2026: *"Se ci sta una cosa valida, deve aprire"*. Con la puntata della squadra sotto il
+    lotto minimo, anche su un conto minuscolo, si apre il minimo e il messaggio dice quanto rischia davvero."""
+    d = _una_decisione()
+    m = MT5Finto(saldo=5.0)
+    m.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t = Terminale(mt5=m)
+    e = Esecutore(t)
+    viva, fatto = e.apri(d, t.conto(), pieno=0.01, parte=1.0, fiducia_minima=0.0, riduci=False,
+                         sempre_il_minimo=True)
+    assert viva is not None and fatto.saltata == "", fatto.testo
+    assert viva.volume == t.lotti("EURUSD")[0] and viva.meta == 0.0
+    assert "apro il minimo" in fatto.testo and "del conto" in fatto.testo
+    # Senza: la squadra con la stessa puntata lascia il minimo che rischia piu' del doppio.
+    m2 = MT5Finto(saldo=5.0)
+    m2.tick["EURUSD"] = NS(time=0, bid=d.op.ingresso, ask=d.op.ingresso + 0.0001)
+    t2 = Terminale(mt5=m2)
+    viva2, fatto2 = Esecutore(t2).apri(d, t2.conto(), pieno=0.01, parte=1.0, fiducia_minima=0.0, riduci=False)
+    assert viva2 is None and fatto2.saltata == "conto troppo piccolo per il lotto minimo"
+
+
 # --- l'equipe e la riunione ---
 
 def test_ogni_agente_dice_la_sua():
@@ -582,6 +543,25 @@ def test_il_diario_parla_come_una_persona():
     assert firma("Grilletto", x) == "primo colpo, senza liquidità presa"
 
 
+def test_un_errore_all_avvio_si_dice_su_telegram(tmp_path, monkeypatch):
+    """21/10/2026: un errore all'avvio che non fosse di MT5 chiudeva il bot senza un messaggio, e avvia.bat lo rifaceva
+    partire ogni minuto in silenzio. Ora lo dice sul canale operativo, ed esce col codice che fa riprovare."""
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    detti = []
+
+    class BotRotto:
+        tg = NS(operativo=detti.append, svuota=lambda *a: True)
+
+        def avvia(self):
+            raise KeyError("qualcosa che manca")
+    monkeypatch.setattr(vivo, "Bot", BotRotto)
+    with pytest.raises(SystemExit) as uscita:
+        vivo.main()
+    assert uscita.value.code == 1 and len(detti) == 1 and "Non parto per un errore del bot" in detti[0]
+    assert "KeyError" in detti[0] and (tmp_path / "registro.jsonl").exists()
+
+
 def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch):
     import pytest
     import vivo
@@ -596,27 +576,6 @@ def test_con_codice_nuovo_su_github_il_bot_si_fa_riavviare(tmp_path, monkeypatch
     assert uscita.value.code == vivo.AGGIORNATO
     assert (tmp_path / "riavvio").read_text(encoding="utf-8") == "Romeo nell'equipe"
     assert vivo.CONTROLLO_VERSIONE <= 120
-
-
-def test_il_bot_segnala_anche_un_git_pull_fatto_a_mano(monkeypatch):
-    import vivo
-    monkeypatch.setattr(vivo, "_versione_precedente_pull", lambda versione: "")
-    assert vivo._titolo_aggiornamento_manual("abc123456789", "") == ""
-    assert vivo._titolo_aggiornamento_manual("abc123456789", "abc123456789") == ""
-    monkeypatch.setattr(vivo, "_git", lambda *args: "Corregge il feed DXY")
-    assert vivo._titolo_aggiornamento_manual("abc123456789", "vecchia") == "Corregge il feed DXY"
-    monkeypatch.setattr(vivo, "_git", lambda *args: (_ for _ in ()).throw(RuntimeError("git non disponibile")))
-    assert vivo._titolo_aggiornamento_manual("abc123456789", "vecchia") == "commit abc1234567"
-
-
-def test_il_bot_riconosce_il_primo_pull_dal_reflog(monkeypatch):
-    import vivo
-    def git(*args):
-        if args[0] == "reflog":
-            return "nuova\tpull: Fast-forward\nvecchia\tcommit: versione precedente"
-        return "Aggiorna il CRT DXY"
-    monkeypatch.setattr(vivo, "_git", git)
-    assert vivo._titolo_aggiornamento_manual("nuova", "") == "Aggiorna il CRT DXY"
 
 
 # --- Romeo dal vivo: il comando /romeo ---
@@ -928,8 +887,10 @@ def test_il_bot_guarda_solo_i_mercati_della_lista_del_20_10():
     assert set(vivo.STRUMENTI_VIVO) == {"EURUSD", "GBPUSD", "NZDUSD", "AUDUSD", "XAUUSD", "XAGUSD",
                                         "USDCHF", "USDCAD", "BTCUSD", "ETHUSD"}
     assert all(n in vivo.STRUMENTI for n in vivo.STRUMENTI_VIVO)
-    # Tutti guidati: dal DXY i dieci col dollaro, dalla TOTAL le crypto.
-    assert {n for n in vivo.STRUMENTI_VIVO if n not in foto.CRYPTO_TOTALE} <= set(foto.GUIDATI_DAL_DXY)
+    # Guidati: dal DXY le coppie forex col dollaro, dalla TOTAL le crypto; l'oro e l'argento coi CRT loro (22/10/2026).
+    assert {n for n in vivo.STRUMENTI_VIVO if n not in foto.CRYPTO_TOTALE + ("XAUUSD", "XAGUSD")} <= \
+        set(foto.GUIDATI_DAL_DXY)
+    assert not {"XAUUSD", "XAGUSD"} & set(foto.GUIDATI_DAL_DXY)
     assert foto.verso_dal_dxy("XAGUSD", Verso.LONG) is Verso.SHORT and foto.verso_dal_dxy("USDCAD", Verso.LONG) is Verso.LONG
     dal_env = [("FX_IDC:EURUSD", "EURUSD"), ("FX_IDC:USDJPY", "USDJPY"), ("OANDA:US30USD", "US30"),
                ("FX_IDC:GBPUSD", "GBPUSD"), ("OANDA:XPTUSD", "XPTUSD")]
@@ -980,6 +941,25 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     with pytest.raises(RuntimeError):
         bot.giro(ora + 7200)
     assert bot.stato.ultimo_giro == ora + 3600
+
+
+def test_la_durata_del_giro_si_misura_e_oltre_8_minuti_si_dice(tmp_path, monkeypatch):
+    """Venice, 24/10/2026: se il giro dura troppo, oltre i 10 minuti dall'apertura della candela le occasioni non si
+    aprono. La durata va nel registro sempre; sopra gli 8 minuti arriva un allarme."""
+    import json
+
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    bot = object.__new__(vivo.Bot)
+    allarmi = []
+    bot.allarme = allarmi.append
+    ora = utc(2026, 10, 23, 12)
+    bot._durata_del_giro(ora, ora + 5, ora + 65)
+    assert allarmi == []
+    bot._durata_del_giro(ora, ora + 5, ora + 5 + vivo.DURATA_ALLARME + 30)
+    assert len(allarmi) == 1 and "8 minuti e 30 secondi" in allarmi[0] and "14:00" in allarmi[0]
+    righe = [json.loads(r) for r in (tmp_path / "registro.jsonl").read_text().splitlines()]
+    assert [r["secondi"] for r in righe if r["evento"] == "durata del giro"] == [60, vivo.DURATA_ALLARME + 30]
 
 
 def test_con_la_quota_di_tradingview_finita_un_messaggio_solo_e_nessuna_richiesta(tmp_path, monkeypatch):
@@ -1132,3 +1112,49 @@ def test_col_comando_piano_si_cambia_il_piano_di_un_operazione_aperta(tmp_path, 
     assert v.tp1 == 7799.0 and "sopra" in detti[-1]
     bot._piano(NS(chat="1", testo="/piano EURUSD 1.2 1.3"))
     assert "Non ho operazioni aperte su EURUSD" in detti[-1]
+
+
+def test_l_orario_sbagliato_salvato_si_corregge_dalle_candele_gia_avute(tmp_path, monkeypatch):
+    """Sulla VPS l'orario del DXY era rimasto sulle 18 di New York anche dopo i riavvii (si leggeva solo quando
+    arrivavano tutte le candele a 4 ore). Ora si rilegge dalle candele gia' avute: se e' un altro, si riprendono."""
+    import vivo
+    from nvm.dati import candele as C
+    from nvm.dati.candele import Candele
+    from nvm.tempo import TF, utc
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    monkeypatch.setitem(C.SESSIONI, "DXY", "18")
+    t = np.array([utc(2026, 9, 1) + k * 4 * 3600 for k in range(300)], np.int64)
+    p = np.ones((len(t), 4))
+    bot = object.__new__(vivo.Bot)
+    detti = []
+    bot.tg = NS(operativo=detti.append)
+    bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
+    bot._prossime_tv = {("DXY", TF.H4): 1, ("EURUSD", TF.H4): 2}
+    bot._orari_dalle_candele()
+    assert C.SESSIONI["DXY"] is True and bot.lunghe["DXY"] == {} and bot._prossime_tv == {("EURUSD", TF.H4): 2}
+    assert detti and "DXY" in detti[0] and "UTC" in detti[0]
+    # Gia' giusto: niente.
+    bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
+    bot._orari_dalle_candele()
+    assert len(detti) == 1 and bot.lunghe["DXY"]
+
+
+def test_all_avvio_il_bot_dice_gli_orari_del_dxy_e_della_total(monkeypatch):
+    """Il 23/10/2026 il DXY era sulle 18 di New York e non lo sapeva nessuno: ora a ogni avvio il bot dice che orari
+    usa per i grafici guida e la loro ultima candela a 4 ore, da confrontare col grafico."""
+    import vivo
+    from nvm.dati import candele as C
+    from nvm.dati.candele import Candele
+    from nvm.tempo import TF, utc
+    monkeypatch.setitem(C.SESSIONI, "DXY", True)
+    t = np.array([utc(2026, 10, 1) + k * 4 * 3600 for k in range(120)], np.int64)
+    p = np.ones((len(t), 4))
+    bot = object.__new__(vivo.Bot)
+    detti = []
+    bot.tg = NS(operativo=detti.append)
+    bot.fonte = NS(esiste=lambda s: s in ("DXY", "TOTAL"))
+    bot.lunghe = {"DXY": {TF.H4: Candele("DXY", TF.H4, t, t + 4 * 3600, p, p.copy(), np.ones(len(t)))}}
+    bot._di_gli_orari()
+    (testo,) = detti
+    assert testo.startswith("🕑 Orari dei grafici guida") and "DXY: orari UTC" in testo and "100%" in testo
+    assert "ultima candela a 4 ore chiusa 22:00–02:00" in testo and "TOTAL: orari UTC" in testo

@@ -1,6 +1,6 @@
 {
  "decidono_i_cervelli": false,
  "squadra_intelligente": true,
- "quando": "06/10/2026",
- "perche": "Il proprietario (06/10/2026): \"come nelle foto\" (spec/metodo_foto.md). CRT su 1 ora, 4 ore, 6 ore, giorno, settimana, mese con le candele dei future (18 di New York); entrata all'apertura della candela 3 a qualunque ora; stop oltre la candela 2; TP1 all'altro lato del range con metà e pareggio; target finale il gap del timeframe grande o il key level. Obbligatori: CRT, key level (massimo o minimo del periodo prima), direzione del timeframe di comando. Gap con le fasi e l'RSI, DXY per le coppie col dollaro. Bot intelligente, niente AI esterne, niente vent'anni; mai senza stop; nessun limite di operazioni: sullo stesso strumento decide il Rischio (07/10/2026). La candela 2 non deve sforare il range."
+ "quando": "24/10/2026",
+ "perche": "Metodo delle foto: Entry A a mercato all'apertura di N3; il Modello 1 su Order Block inferiore è distinto e resta spento finché il prezzo d'ingresso non è definito. Coppie col dollaro solo con un CRT valido del DXY; BTC ed ETH solo con un CRT valido della TOTAL; oro e argento sui propri CRT completi. CRT, key level e direzione sono i requisiti del metodo; i voti della squadra non fanno veto. Alla chiusura di N3 nel timeframe del CRT, chiudere il 25% se il lotto si divide e spostare lo stop oltre l'ingresso quanto basta a coprire commissioni di apertura e chiusura; senza lotto divisibile spostare comunque lo stop. Il target finale è il key level opposto del timeframe più basso preso, con i fallback documentati. Una posizione per strumento; il lotto minimo può aumentare il rischio effettivo. La rete Kaggle resta separata: il modello attuale dà un parere e non decide al posto delle regole."
 }

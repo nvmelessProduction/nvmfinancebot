@@ -8,7 +8,7 @@ from nvm.agenti.cacciatore import Verso
 from nvm.agenti.foto import Livello, Quadro
 from nvm.intelligenti import al_lavoro, pareri as P
 from nvm.intelligenti.metodo import Domanda, Metodo
-from nvm.intelligenti.squadra import FIDUCIA_VOTO, MASSIMO_PER_GIRO, SOGLIA_PUNTI, Squadra
+from nvm.intelligenti.squadra import FIDUCIA_VOTO, SOGLIA_PUNTI, Squadra
 from nvm.tempo import TF, utc
 from tests.test_vivo import ore_finte
 
@@ -139,9 +139,8 @@ def test_il_capo_sceglie_le_migliori_del_giro(tmp_path):
         decisioni.append(NS(chiave=s, r=NS(strumento=s, quando=n3, verso=Verso.LONG)))
     testo = al_lavoro.scegli(sq, decisioni, verdetti, P.Contesto(), {"USDCHF"})
     presi = [s for s, v in verdetti.items() if v.entra]
-    # I CRT con piu' probabilita', al massimo tre, niente sugli strumenti gia' occupati.
-    assert presi == ["CADJPY", "NZDJPY", "GBPUSD"] and len(presi) == MASSIMO_PER_GIRO
-    assert "già scelto le 3 migliori" in verdetti["EURCHF"].lasciata
+    # Tutti, nessun massimo (22/10/2026), niente sugli strumenti gia' occupati.
+    assert presi == ["CADJPY", "NZDJPY", "GBPUSD", "EURCHF", "AUDCAD"]
     assert "già un'operazione aperta" in verdetti["USDCHF"].lasciata
     assert testo.startswith("Giro delle 03:00 di New York") and "Scelgo: CADJPY" in testo and "Lascio:" in testo
 
@@ -159,18 +158,20 @@ def test_nel_secondo_giro_si_sentono_e_cambiano_idea_dicendo_perche():
     assert not P.confronto(pareri, {"Cacciatore sente Bias"}) and pareri[0].voto == 1
 
 
-def test_la_squadra_non_va_mai_contro_la_previsione_della_domenica(tmp_path):
+def test_la_previsione_della_domenica_e_un_parere_non_un_no(tmp_path):
+    """Il proprietario, 22/10/2026: *"Leva il veto ovunque"*. Dal 07/10 la previsione della domenica contraria fermava
+    l'operazione; ora e' un voto contro e basta."""
     ore = ore_finte(giorni=500)
     q = Quadro.da(ore, int(ore.t[-1]) + 3600)
     b = P.bias(_setup(), q, None, "ribassista")
-    assert b.voto == -2 and b.veto and "domenica" in b.veto
-    assert not P.bias(_setup(short=True), q, None, "ribassista").veto
-    # Anche con tutti gli altri a favore il Capo non entra contro la previsione, e lo dice.
+    assert not hasattr(b, "veto") and any("domenica" in r and "va contro" in r for r in b.ragioni)
+    assert b.voto < P.bias(_setup(), q, None, "rialzista").voto
+    # Con gli altri a favore il Capo entra lo stesso.
     sq = Squadra(tmp_path)
     voti = _pareri(Cacciatore=2, Key_level=2, Gap=2, DXY=1, Livelli=2, Grilletto=1)
     voti[2] = b
     v = sq.riunione("contro", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=voti)
-    assert v.a_piu and not v.entra and "non andiamo contro la nostra previsione" in v.voci[-1][1]
+    assert v.a_piu and v.entra and "veto" not in v.pareri["Capo"]
 
 
 def test_le_correlazioni_col_dxy():
@@ -194,8 +195,10 @@ def test_le_correlazioni_col_dxy():
     b = P.bias(_setup(n3=giorno + 3600), q, euro_su, None, dxy_su, q)
     assert b.voto == -1 and "dollaro sale" in b.ragioni[0]
     assert P.bias(_setup(short=True, n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 1
-    # Fuori dal forex (l'oro) il DXY non entra nel Bias.
+    # L'oro entra coi CRT suoi: nel Bias conta la sua previsione, il DXY e' un parere a parte (22/10/2026).
     assert P.bias(_setup(strumento="XAUUSD", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 2
+    # Fuori dagli strumenti guidati (il Nasdaq) il DXY non entra nel Bias.
+    assert P.bias(_setup(strumento="NAS100", n3=giorno + 3600), q, euro_su, None, dxy_su, q).voto == 2
 
 
 def test_il_dxy_comanda_il_bias_del_forex_anche_la_domenica_e_di_fondo_e_ribassista():
@@ -208,7 +211,22 @@ def test_il_dxy_comanda_il_bias_del_forex_anche_la_domenica_e_di_fondo_e_ribassi
     # Di fondo: l'euro in acquisto ha +1, l'USDCAD in acquisto -1 (il dollaro di fondo scende).
     assert P.bias(_setup(n3=giorno + 3600), q, None, None).voto == 1
     assert P.bias(_setup(strumento="USDCAD", n3=giorno + 3600), q, None, None).voto == -1
-    # La domenica del DXY rialzista vale per l'euro come ribassista: comprare l'euro e' contro, veto.
+    # La domenica del DXY rialzista vale per l'euro come ribassista: comprare l'euro e' contro (un voto, non un no).
     giu = P.bias(_setup(n3=giorno + 3600), q, None, None, None, q, "rialzista")
-    assert giu.veto and "il DXY domenica l'abbiamo detto rialzista" in giu.veto
-    assert not P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista").veto
+    su = P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista")
+    assert any("il DXY domenica l'abbiamo detto rialzista" in r for r in giu.ragioni)
+    assert any("il DXY domenica l'abbiamo detto rialzista" in r for r in su.ragioni)
+
+
+def test_l_oro_non_e_fermato_dalla_previsione_della_settimana_del_dxy():
+    """Il proprietario, 22/10/2026: *"per tradare Gold e Silver non devi attendere obbligatoriamente un CRT sul DXY ...
+    Il DXY può aiutarti a contestualizzare il movimento ... ma non deve essere un requisito obbligatorio"*. L'oro entra
+    coi CRT suoi: la previsione della domenica del DXY non lo ferma (dal 20 al 22/10 lo fermava)."""
+    from nvm.agenti import foto
+    from nvm.agenti.cacciatore import Verso
+    from nvm.intelligenti import pareri as P
+    oro = NS(strumento="XAUUSD", short=False, verso=Verso.LONG, n3_inizio=0)
+    assert P.bias(oro, None, None, None, None, None, "rialzista").voto == 0
+    assert "XAUUSD" not in foto.GUIDATI_DAL_DXY and "XAGUSD" not in foto.GUIDATI_DAL_DXY
+    # Le coppie forex col dollaro si', tutte.
+    assert set(foto.FOREX_DOLLARO) <= set(foto.GUIDATI_DAL_DXY)

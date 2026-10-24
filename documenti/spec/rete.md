@@ -5,6 +5,13 @@ comunque il bot riesce a fare le operazioni come nelle foto e ha un RR positivo,
 11/10/2026: *"iniziamo creando la rete neurale"*. Il bot dal vivo non la usa: si allena e si prova a parte
 (`nvm/rete/`, `requirements-rete.txt`).
 
+Aggiornamento operativo del 24/10/2026: il bot demo chiude a mercato il 25% e sposta lo stop a copertura delle
+commissioni alla chiusura effettiva della candela 3 del timeframe CRT, anche se il prezzo non ha raggiunto TP1.
+TP1 resta il livello opposto del range e un possibile target/fallback. La corsa Kaggle e i suoi file non
+vengono modificati. Il checkpoint già prodotto va rivalutato con questa gestione e con i setup guida corretti prima di
+considerarlo allineato al bot operativo; se le etichette incorporano una gestione diversa, servirà una nuova valutazione
+e potenzialmente un nuovo addestramento.
+
 ## Le tre scuole e l'esame
 
 1. **Scuola 1, leggere i grafici da sola**: si nasconde il 15% delle candele e la rete le indovina.
@@ -59,7 +66,8 @@ fa l'esame; nella scheda Output restano `occhi.pt` e `resoconto.json`. Risultati
 
 Ogni setup che il bot avrebbe visto negli anni, come lo vede dal vivo (`giro.occasioni_foto`: un'occasione per
 apertura e verso, il timeframe piu' grande; quadro tagliato all'apertura della candela 3), col trade del bot simulato
-ora per ora (`campo.simula`: 25% al TP1 col pareggio, il resto al target finale delle foto, o tutto al TP1; lo stop
+ora per ora (`campo.simula`: a TP1 chiude il 25% e mette lo stop con commissioni coperte;
+il resto va al target finale delle foto, o tutto al TP1; lo stop
 vince se una candela tocca tutti e due; commissioni tolte; scadenza `giro.TETTO_FOTO`). HistData ha solo il bid:
 l'ask e' bid + uno spread fisso prudente per strumento (`esperienza.SPREAD`). Mancano i setup presi dal DXY.
 

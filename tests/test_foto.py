@@ -542,17 +542,22 @@ def test_sulle_coppie_col_dollaro_entra_solo_il_pattern_del_dxy(monkeypatch):
     assert any(g.entra for g in guide)
     testo = "\n".join(messaggi.guide(guide))
     assert testo.startswith("📐 DXY: CRT long") and "▶️ GBPUSD: occasione in vendita" in testo
-    # Basta il CRT del DXY, anche senza un key level giornaliero preso: il 21/10/2026 il proprietario e' entrato
-    # sull'oro col CRT a 4 ore del DXY delle 12, che non l'aveva, e il bot no.
+    # Il CRT del DXY senza un key level preso non e' il pattern (il proprietario, 22/10/2026: *"il prezzo aveva preso
+    # due kl (WL-DL) e poi ha formato un crt h4"*); dal 21 al 22/10 bastava, ed era un errore. E lo si dice, una riga.
     monkeypatch.setattr(F, "trova", lambda q, *a: [] if q.strumento == "GBPUSD" else
                         [replace(s, presi=[]) for s in vero(q, *a)])
-    assert G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy})
-    # Quando non si entra, il perche'.
+    guide = []
+    assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy}, guide=guide)
+    testo = "\n".join(messaggi.guide(guide))
+    assert "✖️ Niente da nessuna parte: il CRT a 4 ore del DXY non ha preso un key level" in testo
+    assert "GBPUSD" not in testo
+    # Quando non si entra sullo strumento, il perche'.
+    monkeypatch.setattr(F, "trova", lambda q, *a: [] if q.strumento == "GBPUSD" else vero(q, *a))
     guide = []
     monkeypatch.setattr(F, "dal_dxy", lambda q, sd, verso=None: None)
     assert not G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy}, guide=guide)
     assert guide and not any(g.entra for g in guide)
-    assert "✖️ GBPUSD: niente, le sue candele non si possono mettere accanto" in "\n".join(messaggi.guide(guide))
+    assert "✖️ GBPUSD: niente, con i suoi prezzi in quelle ore" in "\n".join(messaggi.guide(guide))
 
 
 def test_senza_target_finale_tutto_al_tp1(monkeypatch):
@@ -643,3 +648,130 @@ def test_un_setup_della_total_fa_entrare_le_crypto_dalla_stessa_parte():
     oro = _ore(righe_b, "XAUUSD", spread=0.3)
     assert not [d for d in G.occasioni_foto("XAUUSD", oro, n3, n3, CapoFinto(), {"TOTAL": totale})
                 if d.foto["setup"].dal_totale]
+
+
+# --- Le correzioni del 22/10/2026 -----------------------------------------------------------------------------
+
+def test_il_dxy_con_altri_orari_arriva_lo_stesso_alle_coppie(monkeypatch):
+    """Il 22/10/2026 il DXY di Capital.com aveva le 4 ore alle 2-6-10-14 italiane (UTC), le coppie alle 0-4-8-12 (le 18
+    di New York). Il CRT a 4 ore del DXY delle 10 (presi il WL e il DL) non arrivava a nessuna coppia: il bot cercava la
+    candela della coppia partita alla stessa ora, e non c'era. Il proprietario: *"alle 10 entravi short su eurusd,
+    gbpusd"*. Si entra all'apertura della candela 3 del DXY, coi prezzi della coppia nelle ore delle sue candele."""
+    from nvm.dati import candele as C
+    monkeypatch.setitem(C.SESSIONI, "DXY", True)
+    monkeypatch.setitem(C.SESSIONI, "EURUSD", "18")
+    righe, n3 = _crypto(1.0980)
+    dxy = _ore([(t, 90 * o, 90 * h, 90 * l, 90 * c) for t, o, h, l, c in righe], "DXY", spread=0.0)
+    euro = _ore([(t, 1.21 / o, 1.21 / l, 1.21 / h, 1.21 / c) for t, o, h, l, c in righe], "EURUSD")
+    (sd,) = [s for s in F.trova(F.Quadro.da(dxy, n3), TF.H4, n3, n3) if s.verso is Verso.LONG]
+    assert "DL" in [l.nome for l in sd.presi] and sd.n2_inizio == n3 - 4 * ORA
+    q = F.Quadro.da(euro, n3)
+    # Sulla coppia nessuna candela a 4 ore parte quando parte la candela 2 del DXY.
+    assert sd.n2_inizio not in set(q.candele[TF.H4].inizio.tolist())
+    s = F.dal_dxy(q, sd)
+    assert s is not None and s.verso is Verso.SHORT and s.dal_dxy
+    assert (s.range_inizio, s.n2_inizio, s.n3_inizio) == (sd.range_inizio, sd.n2_inizio, sd.n3_inizio)
+    # Il range e la candela 2 sono quelli della coppia nelle ore delle candele del DXY.
+    ore = q.ore
+    a, b, c = np.searchsorted(ore.inizio, [sd.range_inizio, sd.n2_inizio, sd.n3_inizio])
+    assert s.tp1 == pytest.approx(ore.bid[a:b, 2].min()) == pytest.approx(1.21 / 1.1020, abs=1e-5)
+    assert s.stop >= ore.ask[b:c, 1].max() and s.stop >= s.entrata + F.stop_minimo(q, n3) - 1e-12
+    assert s.entrata == pytest.approx(1.21 / 1.1005, abs=1e-5) and s.presi_guida == sd.presi
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    guide = []
+    G.occasioni_foto("EURUSD", euro, n3, n3, CapoFinto(), {"EURUSD": euro, "DXY": dxy}, guide=guide)
+    assert guide and all(g.verso is Verso.SHORT for g in guide)
+    assert "accanto" not in "\n".join(messaggi.guide(guide))
+
+
+def test_lo_stesso_movimento_del_dxy_non_fa_entrare_di_nuovo(monkeypatch):
+    """Il 22/10/2026: alle 10 il CRT a 4 ore del DXY, alle 12 quello a 6 ore, sulla stessa presa (WL e DL). Il
+    proprietario: *"non doveva essere aperto nessun trade alle 12:00"*. Si entra una volta, al primo CRT."""
+    from types import SimpleNamespace as NS
+    from nvm.vivo import giro as G
+    t = utc(2026, 10, 22)
+    h4 = NS(tf=TF.H4, verso=Verso.LONG, n2_inizio=t + 4 * ORA, n3_inizio=t + 8 * ORA, n3_fine=t + 12 * ORA,
+            presi=["DL"])
+    h6 = NS(tf=TF.H6, verso=Verso.LONG, n2_inizio=t + 4 * ORA, n3_inizio=t + 10 * ORA, n3_fine=t + 16 * ORA,
+            presi=["DL"])
+    monkeypatch.setattr(F, "trova", lambda q, tf, dal, al: [x for x in (h4, h6)
+                                                             if x.tf is tf and dal <= x.n3_inizio <= al])
+    assert G.stesso_movimento(None, h6) is h4
+    assert G.stesso_movimento(None, h4) is None
+    # Se il CRT di prima non era il pattern (nessun key level), quello dopo vale.
+    h4.presi = []
+    assert G.stesso_movimento(None, h6) is None
+    # Se la candela 3 di quello di prima e' finita, e' un movimento nuovo.
+    h4.presi, h4.n3_fine = ["DL"], t + 10 * ORA
+    assert G.stesso_movimento(None, h6) is None
+
+
+def test_oro_e_argento_entrano_coi_crt_loro_anche_senza_il_dxy():
+    """Il proprietario, 22/10/2026: *"per tradare Gold e Silver non devi attendere obbligatoriamente un CRT sul DXY"*;
+    il 21/10 il CRT a 4 ore dell'oro delle 12, dopo la presa del DL, non e' stato aperto: dal 20/10 l'oro entrava solo
+    coi CRT del DXY."""
+    from nvm.dati import candele as C
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    ore, n3 = _foto_base()
+    # La foto base un'ora dopo: l'oro ha le candele dalle 18 di New York.
+    righe = [(int(t) + ORA, *(float(x) * ore.punto * 3700 for x in b)) for t, b in zip(ore.t, ore.bid)]
+    prima = [(int(ore.t[0]) + ORA - k * ORA, 4070.0, 4071.1, 4068.9, 4070.0) for k in range(240, 0, -1)]
+    oro, n3 = _ore(prima + righe, "XAUUSD", spread=0.3), n3 + ORA
+    assert C.calendario("XAUUSD") == "18"
+    q = F.Quadro.da(oro, n3)
+    (s,) = [s for s in F.trova(q, TF.H4, n3, n3) if s.verso is Verso.LONG]
+    assert [l.nome for l in s.presi] == ["DL"]
+    piatto = _ore([(t, 90.0, 90.01, 89.99, 90.0) for t, *_ in prima + righe], "DXY", spread=0.0)
+    for gemelli in ({}, {"XAUUSD": oro, "DXY": piatto}):
+        con = G.occasioni_foto("XAUUSD", oro, n3, n3, CapoFinto(), gemelli)
+        assert con and con[0].r.verso is Verso.LONG and not con[0].foto["setup"].dal_dxy
+    # Le regole obbligatorie sono quelle di sempre: il CRT, il key level preso dall'oro, la direzione.
+    from nvm.intelligenti import metodo
+    m = metodo.valuta_foto(con[0])
+    assert [x.nome for x in m.obbligatorie][:3] == ["CRT", "key level", "direzione"]
+    assert m.obbligatorie[1].si and "DL" in m.obbligatorie[1].perche
+
+
+def test_il_crt_della_coppia_nel_verso_del_dxy_da_piu_vantaggio(monkeypatch):
+    """Il proprietario, 22/10/2026: *"ovvio che se tra questi asset ci sono alcuni che hanno fatto crt rispetto ad altri
+    avranno più vantaggio statistico"*; *"i pattern sulle singole coppie aiutano a selezionare ... ma non possono
+    invertire o sostituire autonomamente il segnale direzionale"*. La sterlina che fa anche lei il CRT short ha la
+    stella nel 📐 e il voto del Cacciatore; la direzione resta quella del DXY."""
+    from nvm.intelligenti import pareri
+    from nvm.vivo import giro as G
+    from tests.test_vivo import CapoFinto
+    ore, n3 = _foto_base()
+    righe = [(int(t), *(float(x) * ore.punto for x in b)) for t, b in zip(ore.t, ore.bid)]
+    prima = [(int(ore.t[0]) - k * ORA, 1.1000, 1.1003, 1.0997, 1.1000) for k in range(240, 0, -1)]
+    righe = prima + righe
+    dxy = _ore([(t, 90 * o, 90 * h, 90 * l, 90 * c) for t, o, h, l, c in righe], "DXY", spread=0.0)
+    sterlina = _ore([(t, 1.21 / o, 1.21 / l, 1.21 / h, 1.21 / c) for t, o, h, l, c in righe], "GBPUSD")
+    guide = []
+    con = G.occasioni_foto("GBPUSD", sterlina, n3, n3, CapoFinto(), {"GBPUSD": sterlina, "DXY": dxy}, guide=guide)
+    assert con and con[0].foto["setup"].dal_dxy and TF.H4 in con[0].foto["allineati"]
+    assert TF.H4 in F.crt_propri(F.Quadro.da(sterlina, n3), con[0].foto["setup"])
+    assert "▶️ GBPUSD: occasione in vendita" in "\n".join(messaggi.guide(guide))
+    assert "★ fa anche lui il CRT" in "\n".join(messaggi.guide(guide))
+    voto = next(x for x in pareri.tutti(con[0], pareri.Contesto(), None) if x.agente == "Cacciatore")
+    assert voto.voto >= 1 and "GBPUSD fa anche lui il CRT" in voto.ragioni[0]
+    # Il titolo dei messaggi dice che il CRT e' del DXY (il 22/10 "AUDUSD · vendita · CRT H6" sembrava di AUDUSD).
+    import vivo
+    assert vivo.Bot._tema(con[0]).endswith("del DXY")
+
+
+def test_il_target_finale_sta_oltre_il_tp1_se_no_si_cerca_il_successivo():
+    """Il buy di ETH del 22/10/2026: il target finale sul TP1, dove doveva esserci il pareggio. Il key level opposto
+    non stava oltre il TP1: il piano col target finale era impossibile e si andava tutto al TP1, senza cercare gli
+    altri target. Era anche il motivo per cui 8 delle foto del proprietario non tornavano."""
+    ore, n3 = _foto_base()
+    q = F.Quadro.da(ore, n3)
+    (s,) = [s for s in F.trova(q, TF.H4, n3, n3) if s.verso is Verso.LONG]
+    # Il DH (1.1060) e' oltre il TP1 (1.1020): e' il target.
+    assert F.target_minimo(q, s).nome == "DH"
+    # Con il TP1 oltre il DH, il DH non e' piu' un target: si va avanti (qui, il DH di ieri e' lo stesso livello).
+    oltre = replace(s, tp1=1.1070)
+    assert F.target_minimo(q, oltre) is None
+    ob = F.obiettivo_finale(q, oltre)
+    assert ob.tipo == "range" or ob.prezzo > oltre.tp1
