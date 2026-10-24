@@ -160,7 +160,7 @@ con le fonti: `documenti/spec/metodo_foto.md`.
   - la misura sui vent'anni del 15/10 (fase 3 di Nameless su Kaggle, 740 mila setup, 85 mercati, con le regole di
     allora, **senza i setup del DXY**) dice **−0,08 R a operazione** in ogni periodo, circa −0,03 senza lo spread;
   - il Capo di quella prova non ha trovato un gruppo di setup che guadagni;
-  - **le regole di oggi non sono mai state misurate**: è il lavoro in corso (§7).
+  - **le regole di oggi, misurate il 24/10 sullo storico (§7.A), perdono −0,135 R a operazione** (6 mercati su 8).
 - **I dati della VPS** (ramo `dati-vps`: `vivo/registro.jsonl`, `libro.jsonl`, `stato.json`) sono fermi all'**8/10**.
   Per giudicare il demo serve che il proprietario lanci `consegna.bat` sulla VPS.
 - **Il PDF delle funzioni** l'ha ricevuto il proprietario (versione corretta del 24/10). L'ha chiesto per mandarlo al
@@ -205,7 +205,26 @@ python -m strumenti.misura_vivo analizza --uscita dati/misura_vivo              
 
 Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCHF, USDJPY, XAUUSD, con `python -m strumenti.scarica --ore`, lento) e quelle di HistData in `dati/storico/` (comando qui sotto). Senza Dukascopy, `misura_vivo` prende tutto da HistData (solo bid, spread stimato): basta aggiungere quei sei mercati al comando di HistData.
 
-**Risultati:** non ancora.
+**Risultati (24/10, 6 mercati su 8: EURUSD, GBPUSD, AUDUSD, NZDUSD, oro, argento; USDCHF e USDCAD in arrivo):**
+tutto in `documenti/registro/misure/2026-10-24-regole-di-oggi.md`.
+
+- **Il bot di oggi: −0,135 R a operazione**, intervallo [−0,174; −0,095], 17.161 operazioni (circa 1.000 l'anno).
+  - fino al 2022 −0,130, dal 2023 −0,154;
+  - negativo in 18 anni su 20 (positivi solo il 2009 e il 2022);
+  - all'1% composto il conto si azzera.
+- **Le varianti non migliorano niente**: target lontano −0,147, RR 1,5 −0,141, tutte e due insieme −0,148. Il
+  cambio di puntata non salva il conto (vedi il file). Quindi **0.4 e 0.5 non vanno sul demo**.
+- **Per gruppo:**
+  - coppie dal DXY −0,134, oro e argento −0,137;
+  - per mercato da −0,08 (NZDUSD) a −0,24 (AUDUSD);
+  - per timeframe tutti negativi tranne il settimanale (+0,18, ma con l'intervallo sopra e sotto lo zero e 383
+    operazioni); il mensile −0,52.
+- **Le occasioni che le regole scartano** rendono −0,155: le regole tolgono pochissimo.
+- **Come finiscono:** 65% allo stop (−1,06), 22% a pareggio dopo il TP1 (+0,24), 13% al target (+3,9). Il TP1
+  mediano sta a 1,8 R, il target a 5,2 R.
+- **Cosa vuol dire:** le regole di oggi, prese così, perdono, come diceva la fase 3 (−0,08 senza i setup del DXY). Il
+  prossimo passo, se il proprietario lo vuole, è la ricerca del selettore (tappe 1-3 di Venice), che si giudica
+  sull'esame dal 2023.
 
 **I dati:**
 - In questo container c'erano, in `dati/grezzi/ore/` (fuori da git, quindi **non ci sono** in una sessione nuova), le

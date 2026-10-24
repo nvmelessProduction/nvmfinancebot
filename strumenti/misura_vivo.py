@@ -213,31 +213,31 @@ def _riga_tab(nome: str, presi: list) -> str:
 
 
 def _conto(presi: list, regola: str) -> tuple[float, float]:
-    """Il conto in % del capitale iniziale (senza interesse composto): il rendimento finale e il drawdown massimo.
-    `regola`: "1%" fisso; "Rischio" come la squadra di oggi coi pesi di partenza (1% x e^(-20 x esposizione aperta));
-    "Rischio + idea" come prima, ma le operazioni nate dallo stesso CRT del DXY si dividono una puntata."""
-    eventi = sorted(presi, key=lambda p: p["n3"])
-    aperte, curva, conto = [], [0.0], 0.0
+    """Il conto composto, partendo da 1: quanto resta alla fine e il drawdown massimo (in % dal massimo). La puntata
+    si decide all'apertura; il risultato entra alla chiusura. `regola`: "1%" fisso; "Rischio" come la squadra di oggi
+    coi pesi di partenza (1% x e^(-0,2 x % gia' a rischio sulle aperte)); "Rischio + idea" come prima, ma le operazioni
+    nate dallo stesso CRT del DXY si dividono una puntata."""
     gruppi = {}
-    for p in eventi:
+    for p in presi:
         if p["guida"]:
             gruppi.setdefault((tuple(p["guida"]), p["n3"]), []).append(p)
-    for p in eventi:
-        for c in sorted([c for c in aperte if c[0] <= p["n3"]]):
-            conto += c[1]
-            curva.append(conto)
+    aperte, conto, massimo, dd = [], 1.0, 1.0, 0.0
+    for p in sorted(presi, key=lambda p: p["n3"]):
+        for c in sorted(c for c in aperte if c[0] <= p["n3"]):
+            conto *= 1 + c[1] / 100
+            massimo = max(massimo, conto)
+            dd = max(dd, 1 - conto / massimo)
         aperte = [c for c in aperte if c[0] > p["n3"]]
         esposizione = sum(c[2] for c in aperte)
-        puntata = 1.0 if regola == "1%" else 1.0 * math.exp(-0.2 * 100 * esposizione / 100)
+        puntata = 1.0 if regola == "1%" else math.exp(-0.2 * esposizione)
         if regola == "Rischio + idea" and p["guida"]:
             puntata /= len(gruppi[(tuple(p["guida"]), p["n3"])])
         aperte.append((p["chiusa"], puntata * p["erre"], puntata))
     for c in sorted(aperte):
-        conto += c[1]
-        curva.append(conto)
-    curva = np.array(curva)
-    dd = float((np.maximum.accumulate(curva) - curva).max())
-    return float(curva[-1]), dd
+        conto *= 1 + c[1] / 100
+        massimo = max(massimo, conto)
+        dd = max(dd, 1 - conto / massimo)
+    return conto, 100 * dd
 
 
 def analizza(uscita: Path) -> str:
@@ -265,11 +265,20 @@ def analizza(uscita: Path) -> str:
                 out.append(_riga_tab(f"CRT {tf}", [p for p in presi if p["tf"] == tf]))
             scartate = [{**r, "erre": r["esiti"][r["piano_vivo"]][0]} for r in righe if not r["a_piu"]]
             out.append(_riga_tab("scartate dalle regole (non A+), col piano del vivo", scartate))
+            out += ["", "Come finiscono:"]
+            for u in ("stop", "pareggio", "target", "scaduta"):
+                v = [p["erre"] for p in presi if p["uscita"] == u]
+                if v:
+                    out.append(f"- {u}: {len(v)} ({len(v) / len(presi):.0%}), R medio {sum(v) / len(v):+.2f}")
+            out += ["", "Anno per anno (operazioni, R medio, R in tutto):"]
+            for a in sorted({anno(p) for p in presi}):
+                v = [p["erre"] for p in presi if anno(p) == a]
+                out.append(f"- {a}: {len(v)}, {sum(v) / len(v):+.3f}, {sum(v):+.0f}")
         out.append("")
-        out.append("Il conto (somma delle puntate x R, in % del capitale iniziale; drawdown massimo):")
+        out.append("Il conto composto, partendo da 100 (quanto resta alla fine; il calo massimo dal punto piu' alto):")
         for regola in ("1%", "Rischio", "Rischio + idea"):
             fine, dd = _conto(presi, regola)
-            out.append(f"- {regola}: {fine:+.1f}% in tutto, drawdown massimo {dd:.1f}%")
+            out.append(f"- {regola}: resta {100 * fine:.2f}, calo massimo {dd:.0f}%")
         out.append("")
     out += ["Non misurati: BTC ed ETH (la TOTAL storica non c'e'). DXY vero di HistData dal 11/2010.",
             "Il pareggio nella simulazione e' all'ingresso preciso (dal vivo copre le commissioni): un filo prudente."]
