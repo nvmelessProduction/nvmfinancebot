@@ -27,9 +27,9 @@ class Impostazioni:
     # Nel .env: TRADINGVIEW_SIMBOLI=OANDA:EURUSD, OANDA:GBPUSD, OANDA:US30USD=US30. Vuota: si analizza su MT5.
     tradingview: tuple[tuple[str, str], ...] = field(default=(), repr=False)
     tradingview_sbagliati: tuple[str, ...] = field(default=(), repr=False)
-    # Il grafico del dollaro su TradingView (default CAPITALCOM:DXY).
+    # Feed DXY su TradingView, solo se scelto esplicitamente. Vuoto: DXY da MT5 (USDX FP Markets).
     tradingview_dxy: str = field(default="", repr=False)
-    # La capitalizzazione crypto su TradingView (default CRYPTOCAP:TOTAL): senza questo feed BTC/ETH sono bloccati.
+    # Feed TOTAL su TradingView, solo se scelto esplicitamente: senza una fonte TOTAL BTC/ETH sono bloccati.
     tradingview_totale: str = field(default="", repr=False)
 
     @property

@@ -7,8 +7,8 @@ nelle foto"*. Qui le regole, una funzione per ognuna, tutte sulle sole candele g
   la candela 1, o la candela madre se la candela 1 e le seguenti sono inside bar (*"è il range low h6 ...
   quando il prezzo o con la candela successiva fa inside bar o comunque fa il crt"*);
 - **l'entrata** all'apertura della candela 3 (*"non c'è limite di orario, entra ad apertura candela"*),
-  **lo stop** oltre l'estremo della candela 2, **il primo target** l'altro lato del range con parziale e
-  pareggio (*"il kl è sempre il tp1+be"*), **il target finale** il gap del timeframe alto, o il key level
+  **lo stop** oltre l'estremo della candela 2, **TP1** l'altro lato del range, **la gestione** con parziale
+  e stop oltre l'ingresso alla chiusura della candela 3 nel timeframe CRT, **il target finale** il gap del timeframe alto, o il key level
   se il gap non c'e' (`obiettivo_finale`);
 - **il key level** (`livelli_prima`): il massimo o minimo del periodo prima (DH/DL, WH/WL, MH/ML, 3 mesi,
   anno) preso dalla candela 2;
@@ -760,15 +760,15 @@ def target_dopo(q: Quadro, s: Setup, ob: Obiettivo) -> Optional[Obiettivo]:
     return min(candidati, key=lambda o: abs(o.prezzo - ob.prezzo))
 
 
-# I piani fra cui Livelli sceglie (nell'ordine di `nvm/vivo/giro.piani_foto`): sempre il TP1 all'altro lato del
-# range; cambia dove va il resto. Si parte da quello delle foto e si cambia solo se un altro rende di piu' dal vivo.
+# I piani fra cui Livelli sceglie (nell'ordine di `nvm/vivo/giro.piani_foto`): TP1 resta all'altro lato del range;
+# per il piano foto il 25% si chiude alla fine di N3, non al raggiungimento del TP1. Cambia dove va il resto.
 PIANI = (
     ("tutto al TP1", "chiudo tutto al TP1, l'altro lato del range"),
-    ("il 25% al TP1 e il resto al target finale", "il 25% al TP1 col pareggio e il resto al target finale, come nelle foto"),
-    ("il 25% al TP1 e il resto più in là", "il 25% al TP1 col pareggio e il resto al target ancora più in là"),
+    ("il 25% alla chiusura di N3 e il resto al target finale", "alla chiusura di N3 chiudo il 25% e sposto lo stop oltre l'ingresso; il resto va al target finale"),
+    ("il 25% alla chiusura di N3 e il resto più in là", "alla chiusura di N3 chiudo il 25% e sposto lo stop oltre l'ingresso; il resto va al target ancora più in là"),
 )
 PIANO_FOTO = 1
-# Quanto si chiude al TP1: il proprietario, 07/10/2026: *"deve prendere il 25% dell'operazione al posto del 50%"*.
+# Quanto si chiude alla fine di N3: il proprietario, 07/10/2026: *"deve prendere il 25% dell'operazione al posto del 50%"*.
 PARZIALE = 0.25
 # Il rendimento minimo al target finale, in R. Il proprietario, 12/10/2026, sui trade del demo a 0,9, 0,7 e 0,1 R
 # (target quasi raggiunto dalla candela 2): *"1/1,5"*. Ma il 13/10 sulle sue foto: *"quelli sono i trade che il bot e la

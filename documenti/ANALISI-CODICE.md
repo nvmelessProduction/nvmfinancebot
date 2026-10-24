@@ -29,14 +29,14 @@ le cose che vanno in conflitto, anche cose silenziose ... che tu mi analizzi let
 | 1 | Ogni ora le candele da TradingView: 10 strumenti, il DXY e la TOTAL. I quarti d'ora da MT5 | `vivo.Bot.giro`, `tradingview.Fonte` |
 | 2 | I CRT del DXY e della TOTAL che hanno preso un key level (dal 22/10). Quello a 1 ora solo se prende il key level del giorno e il massimo o minimo a 4 ore. L'oro e l'argento coi loro CRT (dal 22/10) | `foto.trova`, `giro.setup_buono`, `giro.occasioni_foto` |
 | 3 | Per ogni CRT della guida, il setup sullo strumento negli orari della guida (dal 22/10): stop oltre la sua candela 2, TP1 l'altro lato del suo range, target finale il key level opposto. Se lo strumento fa anche lui il CRT nel verso, ★ | `foto.dal_dxy`, `foto.dal_totale`, `foto.crt_propri`, `foto.obiettivo_finale` |
-| 4 | Il piano: 25% al TP1 e il resto al target; senza target (o sotto 1 R) tutto al TP1; se neanche il TP1 vale 1 R, niente | `giro._decisione_foto`, `giro.piani_foto` |
+| 4 | Il piano: alla chiusura di N3 nel timeframe CRT si chiude il 25% e si porta lo stop oltre l'ingresso per coprire le commissioni; il resto va al target finale o, se manca, a TP1 | `giro._decisione_foto`, `giro.piani_foto`, `esecutore.Esecutore.sorveglia` |
 | 5 | Messaggio 📐 sul canale operativo: su quali strumenti nasce l'occasione e, dove no, perché | `messaggi.guide` |
 | 6 | La squadra: regole del metodo (il CRT della guida col key level preso), voti (solo un parere), previsione della domenica (solo un voto, dal 22/10), il Rischio (quanto puntare) | `metodo.valuta_foto`, `pareri`, `squadra.Squadra.riunione` |
 | 7 | Il Capo: tutte le occasioni, una per strumento | `al_lavoro.scegli` |
 | 8 | La rete neurale: sui setup del DXY e della TOTAL scrive solo il suo parere | `rete_vivo.Rete.giudica` |
 | 9 | L'ordine su MT5, entro 10 minuti dall'apertura della candela 3, coi controlli del broker | `esecutore.Esecutore.apri` |
 | 10 | Messaggio ⏸ sul canale operativo per ogni occasione non aperta, col perché | `vivo.Bot._decidi`, `_perche_no` |
-| 11 | La gestione: al TP1 il 25% e lo stop a pareggio con le commissioni coperte; stop e target finale stanno sul broker | `esecutore.Esecutore.sorveglia` |
+| 11 | La gestione: alla chiusura della candela 3 nel timeframe d'ingresso il 25% e lo stop oltre l'ingresso con le commissioni coperte; stop e target finale stanno sul broker | `esecutore.Esecutore.sorveglia` |
 
 ## I controlli fra il CRT e l'ordine
 
@@ -73,6 +73,32 @@ Nei giorni scorsi due controlli dicevano no **in silenzio**. Erano proprio quell
    stava oltre il TP1 veniva preso lo stesso come target, il piano diventava impossibile e si andava tutto al TP1.
    Corretto: ora ne fallisce una sola, la 4/6 (il bot punta al DL, la foto al WL oltre il DL).
 5. **Il metodo dei video (Romeo).** Il 06/10: *"resta nel codice ma il bot usa le foto"*. Lo togliamo?
+
+## Decisioni successive del proprietario (24/10/2026)
+
+Le domande sopra fotografano i dubbi dell'analisi del 22/10; le indicazioni successive qui sotto li risolvono e hanno
+la precedenza:
+
+- **Una posizione per strumento:** al massimo una posizione attiva per asset; i setup A e B non devono aprire due
+  posizioni indipendenti sullo stesso scenario senza una regola di rischio esplicita.
+- **Entry A:** mercato all'apertura effettiva di N3 del CRT. L'Order Block non è un requisito per questa entrata.
+- **Entry B / Modello 1:** resta un modello separato con ordine limite su un Order Block valido di timeframe inferiore.
+  Non va attivato finché il livello d'ingresso OB non è definito in modo univoco.
+- **Guida dei mercati:** le coppie forex col dollaro entrano solo in base al CRT valido del DXY; BTC ed ETH solo in base
+  al CRT valido della TOTAL. Oro e argento possono operare sui propri CRT completi; il DXY è solo un parere per loro.
+  Una guida mancante o non verificata blocca i rispettivi ingressi.
+- **Gestione:** alla chiusura effettiva di N3 nel timeframe del CRT si chiude a mercato il 25% se il volume è divisibile
+  e si sposta lo stop oltre l'ingresso quanto basta per coprire le commissioni, anche senza aver toccato TP1. Se il
+  volume non è divisibile, niente parziale ma lo stop si sposta comunque. TP1 resta l'altro lato del range; il target
+  finale è il key level opposto del timeframe più basso preso, purché valido e almeno 1 R; si applicano i fallback
+  descritti nella scheda del metodo.
+- **Rete neurale:** Kaggle e i file/checkpoint in addestramento restano intatti. La rete attuale non deve vetoare setup
+  A+ conformi alla strategia; la rete Nameless si valuta a parte quando l'addestramento sarà disponibile.
+- **Rischio live:** seguire la regola più recente di Claude: rivalutare il rischio prima di ogni ordine, consentire il
+  lotto minimo per un setup valido anche se supera il rischio pianificato e non imporre un tetto di operazioni per giro.
+  Questo può produrre un rischio effettivo superiore al target percentuale e più operazioni correlate.
+- **Asset attivi:** EURUSD, GBPUSD, NZDUSD, AUDUSD, USDCHF, USDCAD, XAUUSD, XAGUSD, BTCUSD ed ETHUSD; DXY e TOTAL
+  sono solo grafici guida. XPT e le altre coppie sono escluse.
 
 ## Codice che non serve più
 

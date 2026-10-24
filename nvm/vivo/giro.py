@@ -1,14 +1,13 @@
 """Il giro di ogni ora: con le orarie chiuse fino ad adesso, cosa dice l'equipe.
 
 Col metodo delle foto (`METODO = "foto"`, quello dal vivo) le occasioni le trova `occasioni_foto`; sullo storico la
-stessa catena la rifa' `strumenti/misura_vivo.py`. Il vecchio metodo dei video (`METODO = "candela 3"`) usa la catena
-delle prove sullo storico (`nvm/prova/base.opera`, configurazione 1), chiamata sui soli dati gia' chiusi:
-`tests/test_vivo.py` lo controlla ora per ora.
+stessa catena la rifà `strumenti/misura_vivo.py`. Il vecchio metodo dei video (`METODO = "candela 3"`) usa la catena
+delle prove sullo storico (`nvm/prova/base.opera`, configurazione 1), chiamata sui soli dati già chiusi.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -36,7 +35,7 @@ COPPIE = ((TF.MN, TF.D1), (TF.W1, TF.H4), (TF.D1, TF.H1))
 # La quarta coppia di Romeo si guarda con i quarti d'ora di MT5, ogni quarto d'ora.
 COPPIA_VELOCE = (TF.H4, TF.M15)
 # Come nascono le occasioni: "foto" è il metodo del proprietario (`documenti/spec/metodo_foto.md`): ingresso
-# all'apertura della candela 3, stop oltre la 2, al TP1 (a prezzo) il 25% e lo stop a pareggio, e target finale sul
+# all'apertura della candela 3, stop oltre la 2, alla chiusura del CRT il 25% e lo stop con commissioni coperte, e target finale sul
 # key level del timeframe più basso preso, se disponibile. "candela 3" è il metodo dei video; "model1" quello di prima.
 METODO = "foto"
 # Fino a quando si segue sulla carta un'occasione del metodo delle foto, per timeframe del CRT.
@@ -296,7 +295,7 @@ def setup_buono(s) -> bool:
 
 
 def piani_foto(s, ob, altro, quando: int) -> list:
-    """Il piano dal vivo chiude il 25% al TP1 (col pareggio) e manda il resto al target finale.
+    """Il piano dal vivo chiude il 25% alla fine del CRT (col pareggio) e manda il resto al target finale.
     Se questo non rende almeno `foto.RR_MINIMO` volte il rischio, non genera un ingresso."""
     fuori = []
     rischio = abs(s.ingresso - s.stop)
@@ -319,12 +318,14 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ob = foto.obiettivo_finale(q, s)
     altro = foto.target_dopo(q, s, ob)
     piani = piani_foto(s, ob, altro, s.n3_inizio)
-    # Il 25% al TP1 e il resto al target finale; se il target finale manca o non rende 1 R, tutto al TP1 (foto 1 della
-    # cartella 3; la regola scritta: *"se manca quel livello, valgono i fallback ... o altro lato del range"*). Dal
-    # 16/10 al 21/10/2026 in quel caso si saltava: il 21/10 il bot non e' entrato sull'argento.
+    # Il 25% si chiude alla fine di N3, il resto al target finale; se il target finale manca o non rende 1 R,
+    # il resto punta a TP1 (foto 1 della cartella 3; la regola scritta: *"se manca quel livello, valgono i fallback ...").
     op = piani[1] or piani[0]
     if op is None:
         return None
+    if piani[1] is None:
+        # Se manca un target finale valido, il resto esce al TP1; il 25% viene comunque preso alla chiusura di N3.
+        op = replace(op, parziale=foto.PARZIALE, pareggio=True)
     crt = s.crt(TF.H1)
     ore = q.ore
     indice = min(int(np.searchsorted(ore.inizio, s.n3_inizio)), max(len(ore) - 1, 0))
@@ -341,9 +342,9 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ora = Orario(int(datetime.fromtimestamp(s.n3_inizio, tz=NEW_YORK).hour),
                  int(datetime.fromtimestamp(s.n2_inizio, tz=NEW_YORK).hour))
     x = np.zeros(len(capo.media)) if getattr(capo, "media", None) is not None else np.zeros(1)
-    # La squadra puo' scegliere solo il piano del metodo: 25% al TP1 e target finale, o tutto al TP1. Il terzo piano
-    # (`piani[2]`, il resto a un target ancora piu' in la') e' calcolato ma spento: `piani_romeo` ne passa uno solo.
-    # Le colonne del Capo di prima (`x`) restano a zero: col metodo delle foto decide la squadra, non lui.
+    # La squadra puo' scegliere solo il piano del metodo: 25% alla fine di N3 e target finale, o tutto a TP1. Il terzo
+    # piano (`piani[2]`, il resto a un target ancora piu' in la') e' calcolato ma spento. Le colonne del vecchio Capo
+    # (`x`) restano a zero: col metodo delle foto decide la squadra.
     return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
                      piani_romeo=[op, None, None] if op is piani[0] else [None, op, None],
                      foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy, "quadro_dxy": quadro_dxy,

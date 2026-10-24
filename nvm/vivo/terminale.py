@@ -285,7 +285,7 @@ class Terminale:
         return Esito(True, "stop spostato")
 
     def chiudi_posizione(self, strumento: str, ticket: int, volume: Optional[float] = None) -> Esito:
-        """Chiude una posizione a mercato, tutta o solo `volume` lotti (il parziale al TP1)."""
+        """Chiude una posizione a mercato, tutta o solo `volume` lotti (il parziale di gestione)."""
         posizioni = self.mt5.positions_get(ticket=int(ticket))
         if not posizioni:
             return Esito(True, "già chiusa")

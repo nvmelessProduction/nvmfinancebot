@@ -867,7 +867,6 @@ class Squadra:
                               "lezione": f"Avevo detto di no{perche(a)} ed è andata bene lo stesso: lo segno."})
             fatte.append({"agente": "Capo", "giusto": True, "lezione": testo + vero})
         elif d.get("pareri", {}).get("Capo", {}).get("veto"):
-            # Solo le occasioni discusse prima del 22/10/2026, quando la previsione della domenica era un no.
             fatte.append({"agente": "Capo", "giusto": not bene, "lezione":
                           f"L'ho lasciata perché andava contro la nostra previsione della domenica: sarebbe andata "
                           f"{'bene' if bene else 'male'}. La previsione la seguiamo sempre." + vero})

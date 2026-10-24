@@ -101,11 +101,12 @@ RITARDO_MASSIMO = 600     # metodo delle foto: oltre 10 minuti dall'apertura del
 DURATA_ALLARME = 480      # un giro che dura piu' di 8 minuti si dice: a 10 dall'apertura le occasioni non si aprono
 # Telegram accetta didascalie fino a 1024 caratteri: il messaggio d'apertura ci sta, se no parte subito dopo la foto.
 DIDASCALIA = 1000
-# Analisi su TradingView: per quanto vale una proposta (Apri / Lascia) dall'apertura della candela 3, e il grafico del
-# dollaro se nel .env non c'e' TRADINGVIEW_DXY.
+# Analisi su TradingView: per quanto vale una proposta (Apri / Lascia) dall'apertura della candela 3.
 VALIDITA_PROPOSTA = 1800
-DXY_TRADINGVIEW = "CAPITALCOM:DXY"
-TOTAL_TRADINGVIEW = "CRYPTOCAP:TOTAL"
+# I grafici guida non vengono aggiunti automaticamente a TradingView: il DXY usa FP Markets/MT5 USDX se non
+# configurato esplicitamente; BTC ed ETH restano bloccati se manca una fonte TOTAL esplicitamente configurata.
+DXY_TRADINGVIEW = ""
+TOTAL_TRADINGVIEW = ""
 # I file che, se cambiano, chiedono di riavviare il bot. Il resto (documenti,
 # registro, casi) si aggiorna in silenzio.
 DA_RIAVVIO = (".py", ".json", ".npz", ".bat", ".txt")
@@ -196,6 +197,35 @@ def _versione() -> str:
         return _git("rev-parse", "HEAD")
     except Exception:
         return ""
+
+
+def _versione_precedente_pull(versione: str) -> str:
+    """La versione prima dell'ultimo `git pull`, utile anche quando il bot non aveva ancora un marcatore salvato."""
+    if not versione:
+        return ""
+    try:
+        voci = _git("reflog", "-2", "--format=%H%x09%gs").splitlines()
+    except Exception:
+        return ""
+    if len(voci) < 2:
+        return ""
+    corrente, separatore, azione = voci[0].partition("\t")
+    precedente = voci[1].split("\t", 1)[0]
+    return precedente if separatore and corrente == versione and azione.lower().startswith("pull:") else ""
+
+
+def _titolo_aggiornamento_manual(versione: str, precedente: str) -> str:
+    """Titolo del codice arrivato con un `git pull` manuale dall'ultimo avvio riuscito."""
+    if not versione:
+        return ""
+    if not precedente:
+        precedente = _versione_precedente_pull(versione)
+    if not precedente or versione == precedente:
+        return ""
+    try:
+        return _git("log", "-1", "--format=%s")
+    except Exception:
+        return f"commit {versione[:10]}"
 
 
 def _versione_nuova(partito_da: str) -> str:
@@ -387,6 +417,12 @@ class Bot:
         return getattr(self, "fonte", None) or self.terminale
 
     @property
+    def _fonte_dxy(self):
+        """Il DXY viene dal grafico TradingView solo se scelto esplicitamente; altrimenti dal simbolo USDX di MT5."""
+        tv = getattr(self, "fonte", None)
+        return tv if tv is not None and tv.esiste("DXY") else self.terminale
+
+    @property
     def _su_tradingview(self) -> bool:
         return getattr(self, "fonte", None) is not None
 
@@ -398,9 +434,9 @@ class Bot:
         return self.terminale if il_metodo() == "foto" else self._fonte
 
     def _accendi_tradingview(self) -> None:
-        """Con i grafici di TradingView nel .env (TRADINGVIEW_SIMBOLI) il bot analizza li' e apre da solo sul demo,
-        come decide la squadra. Da tenere presente: le condizioni d'uso di TradingView limitano il trading automatico
-        sui loro dati senza un permesso scritto."""
+        """Con i grafici di TradingView nel .env (TRADINGVIEW_SIMBOLI) il bot analizza li'. Le condizioni di
+        TradingView vietano il trading automatico sui loro dati senza un permesso scritto: il bot propone, e apre
+        solo col vostro «Apri»."""
         self.fonte = None
         if self.imp.tradingview_sbagliati:
             self.allarme("TradingView: questi grafici non li capisco: " + ", ".join(self.imp.tradingview_sbagliati) +
@@ -519,7 +555,7 @@ class Bot:
         di("Cerco il grafico del dollaro (USDX)...")
         self.aggiorna_dxy()
         if self.dxy is not None:
-            di(f"Dollaro: leggo il grafico {self._fonte.simbolo('DXY')}.")
+            di(f"Dollaro: leggo il grafico {self._fonte_dxy.simbolo('DXY')}.")
         self.aggiorna_totale()
         di("Scarico le giornaliere di tanti anni (3, 6 e 12 mesi)...")
         self.aggiorna_lunghe(time.time())
@@ -531,13 +567,24 @@ class Bot:
             self.stato.ultimo_quarto = _su(adesso, 900)
         self.stato.salva(CARTELLA)
         riavvio = CARTELLA / "riavvio"
+        versione_avvisata = CARTELLA / "versione_avvisata"
         presentati = CARTELLA / "presentati"
         da_aggiornamento = riavvio.exists()
+        try:
+            versione_precedente = versione_avvisata.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            versione_precedente = ""
         if da_aggiornamento:
             self.tg.operativo(messaggi.aggiornato(riavvio.read_text(encoding="utf-8")))
             riavvio.unlink()
         else:
-            self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(self.strumenti), self.terminale.scarto))
+            titolo = _titolo_aggiornamento_manual(self.versione, versione_precedente)
+            if titolo:
+                self.tg.operativo(messaggi.aggiornato(titolo))
+            else:
+                self.tg.operativo(messaggi.avvio(conto.login, conto.server, conto.saldo, conto.valuta, list(self.strumenti), self.terminale.scarto))
+        if self.versione:
+            versione_avvisata.write_text(self.versione, encoding="utf-8")
         if mancanti:
             self.tg.operativo(messaggi.mancanti(mancanti, len(self.strumenti)))
         di("Mando il messaggio di avvio su Telegram e preparo disegni e foto...")
@@ -720,6 +767,17 @@ class Bot:
         grafici di TradingView, le sue candele di ogni timeframe (`_candele_tradingview`)."""
         if self._su_tradingview:
             self._candele_tradingview(adesso)
+            # Se gli asset sono su TradingView ma il DXY guida viene da MT5, ricostruisce i timeframe lunghi
+            # esclusivamente dalle giornaliere dello stesso feed MT5 (senza mescolare con il DXY TV salvato in passato).
+            if getattr(self, "dxy", None) is not None and self._fonte_dxy is self.terminale:
+                giorno = int(adesso // 86400)
+                if giorno != getattr(self, "_lunghe_dxy_del", None):
+                    self._lunghe_dxy_del = giorno
+                    try:
+                        self.lunghe["DXY"] = self.terminale.giornaliere("DXY", LUNGHE)
+                    except Exception:
+                        registra(CARTELLA, "errore", testo=traceback.format_exc())
+                        self.allarme("Non riesco a caricare le candele giornaliere del DXY da MT5: segnali USD sospesi.")
             return
         giorno = int(adesso // 86400)
         if giorno == self._lunghe_del:
@@ -733,26 +791,26 @@ class Bot:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def aggiorna_dxy(self) -> None:
-        """Carica il DXY di TradingView, con CAPITALCOM:DXY come sorgente predefinita.
-        Se non è disponibile, i segnali sulle coppie USD restano bloccati."""
+        """Carica il DXY dal feed attivo: su FP Markets è USDX, se disponibile.
+        Se il conto non espone il simbolo, i segnali sulle coppie USD restano bloccati."""
         self.dxy = getattr(self, "dxy", None)
-        if not self._su_tradingview or not self._fonte.esiste("DXY"):
+        fonte = self._fonte_dxy
+        if not fonte.esiste("DXY"):
             self.dxy = None
-            self.allarme("Per operare sulle coppie USD serve il DXY di TradingView (CAPITALCOM:DXY): "
-                         "i segnali restano bloccati finché non è disponibile.")
+            self.allarme("Segnali USD bloccati: il simbolo DXY (USDX su FP Markets) non è disponibile nel feed selezionato.")
             return
         try:
             if self.dxy is None:
-                self.dxy = self._fonte.orarie("DXY", ORARIE)
+                self.dxy = fonte.orarie("DXY", ORARIE)
             else:
-                self.dxy = _unisci(self.dxy, self._fonte.orarie("DXY", 50), ORARIE)
+                self.dxy = _unisci(self.dxy, fonte.orarie("DXY", 50), ORARIE)
         except QuotaFinita as errore:
             self._quota_tradingview(errore)
             return
         except Exception:
             registra(CARTELLA, "errore", testo=traceback.format_exc())
         if self.dxy is None:
-            self.allarme(f"TradingView: il grafico del dollaro ({self._fonte.simbolo('DXY')}) non arriva: "
+            self.allarme(f"Il feed DXY ({fonte.simbolo('DXY')}) non arriva: "
                          "i segnali sulle coppie USD restano bloccati.")
 
     def aggiorna_totale(self) -> None:
@@ -760,7 +818,7 @@ class Bot:
         self.totale = getattr(self, "totale", None)
         if not self._su_tradingview or not self._fonte.esiste("TOTAL"):
             self.totale = None
-            self.allarme("BTC ed ETH restano bloccati: serve la TOTAL di TradingView (CRYPTOCAP:TOTAL).")
+            self.allarme("BTC ed ETH restano bloccati: configura una fonte TOTAL oraria autorizzata e validata.")
             return
         try:
             self.totale = (self._fonte.orarie("TOTAL", ORARIE) if self.totale is None
@@ -1627,10 +1685,7 @@ class Bot:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
 
     def _durata_del_giro(self, ora: int, inizio: float, fine: float) -> None:
-        """Quanto ci ha messo il giro a leggere le candele e trovare le occasioni, prima degli ordini: nel registro
-        sempre, sul canale operativo se supera gli 8 minuti. TradingView risponde a una richiesta al secondo: in un'ora
-        normale sono una quindicina, quando chiudono insieme 4 ore, giorno, settimana e mese anche 90; oltre i 10 minuti
-        dall'apertura della candela le occasioni non si aprono piu' (`RITARDO_MASSIMO`)."""
+        """Registra quanto impiega la lettura dei grafici e segnala i giri lunghi prima degli ordini."""
         durata = int(fine - inizio)
         registra(CARTELLA, "durata del giro", ora=int(ora), secondi=durata, dall_apertura=int(fine - ora))
         if durata > DURATA_ALLARME:
@@ -1827,6 +1882,8 @@ class Bot:
             return "manca " + ", ".join(MANCA_IN_PAROLE.get(x, x) for x in mancano)
         if v.lasciata:
             return v.lasciata
+        if capo.get("veto"):
+            return capo["veto"]
         if v.puntata <= 0:
             return "il Rischio non trova una puntata possibile"
         return "la squadra non è convinta" + (f" ({v.punti:+.1f} punti)" if v.punti else "")

@@ -144,5 +144,6 @@ conto, più del doppio della puntata del Rischio, e il bot non apriva (la leva n
 quanto si perde allo stop). Il proprietario: *"Se ci sta una cosa valida, deve aprire"*. Da ora sui setup della
 squadra, se la puntata sta sotto il lotto minimo, si apre il minimo, sempre, e il messaggio d'apertura dice quanto
 rischia davvero (`Esecutore.apri(sempre_il_minimo=True)`, `tests/test_vivo.py::
-test_un_setup_della_squadra_si_apre_sempre_almeno_col_lotto_minimo`). Con 0,01 lotti il 25% al TP1 non si può
-chiudere: tutta la posizione va al target finale, col pareggio al TP1.
+test_un_setup_della_squadra_si_apre_sempre_almeno_col_lotto_minimo`). Con 0,01 lotti il 25% non si poteva
+chiudere: **allora** tutta la posizione andava al target finale, col pareggio al TP1. La regola attuale sposta il
+pareggio alla chiusura di N3 e copre le commissioni.

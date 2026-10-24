@@ -16,3 +16,4 @@ Le regole che non si violano mai (i dettagli sono in RECAP §2):
 - **Nel repository:** mai il nome del socio né il titolo del suo libro; niente screenshot di WhatsApp.
 - **Lingua:** si scrive in italiano semplice, coi numeri veri anche quando vanno male. Il proprietario spesso ascolta
   le risposte mentre guida.
+

@@ -1,6 +1,6 @@
 # Passaggio di consegne: tutto quello che serve per ripartire
 
-_Aggiornato il 24/10/2026, dopo il commit `de50bef`._
+_Aggiornato il 24/10/2026, dopo i commit di Claude fino a `832cf28`; integrate le decisioni più recenti del proprietario._
 
 **Chi lavora su questo progetto legge questo file per primo e lo aggiorna prima di chiudere ogni sessione.** Va
 aggiornato soprattutto in: §5 (stato del bot), §6 (decisioni aperte), §7 (lavoro in corso). Il proprietario lo vuole
@@ -102,8 +102,9 @@ con le fonti: `documenti/spec/metodo_foto.md`.
 - **Ingresso, stop e TP1:**
   - ingresso all'apertura della candela 3;
   - stop oltre la candela 2, almeno `max(5 pip, 7% del range giornaliero medio di 14 giorni)`;
-  - TP1 all'altro lato del range: lì si chiude il 25% (se il lotto si divide) e lo stop va a pareggio più le
-    commissioni (`esecutore.Esecutore.pareggio`). Mai alla chiusura della candela d'ingresso.
+  - alla chiusura effettiva di N3 nel timeframe CRT il bot chiude a mercato il 25% se il lotto si divide e porta lo
+    stop oltre l'ingresso per coprire le commissioni, anche se il prezzo non ha raggiunto TP1. Se il lotto non si
+    divide, niente parziale ma lo stop si sposta comunque. TP1 resta l'altro lato del range e non è il trigger.
 - **Il target finale** (`foto.obiettivo_finale`), in quest'ordine:
   1. il key level opposto del timeframe più basso preso, solo se sta oltre il TP1;
   2. un gap valido;
@@ -112,8 +113,8 @@ con le fonti: `documenti/spec/metodo_foto.md`.
   5. il DH o DL di ieri;
   6. se no, tutto al TP1.
   - Il piano deve rendere almeno 1 R (`foto.RR_MINIMO = 1.0`).
-  - I piani sono due: il 25% al TP1 col resto al target, oppure tutto al TP1. Il terzo piano (target più in là) è
-    calcolato ma **spento**: `piani_romeo` ne passa uno solo.
+  - Il piano base è 25% alla chiusura di N3 e il resto al target finale; se manca un target finale valido, il restante
+    75% punta a TP1. Il terzo piano (target più in là) è calcolato ma **spento**: `piani_romeo` ne passa uno solo.
 - **La squadra** (`nvm/intelligenti/`):
   - le regole obbligatorie sono CRT, key level (quello della guida per i guidati) e direzione;
   - 8 agenti votano da −2 a +2: Cacciatore, Key level, Bias, Gap, DXY, Orario, Livelli, Grilletto;
@@ -126,8 +127,9 @@ con le fonti: `documenti/spec/metodo_foto.md`.
   - puntata = base × e^(convinzione·z − aperte·100·esposizione − stesso·100·stesso), con l'esponente tenuto fra −5 e 3;
   - la ricalcola prima di ogni ordine vedendo le operazioni appena aperte (`Squadra.ripunta`), senza tetti;
   - esempio: 6 coppie dallo stesso CRT del DXY puntano 1%, poi 0,82, 0,70, 0,60, 0,54 e 0,48%, in tutto circa il 4,1%.
-- **La rete neurale:** sui setup con tutte le regole, e su quelli del DXY o della TOTAL, entra sempre. Se ne lascia
-  uno, in équipe compare il pulsante «Apri lo stesso» (valido 30 minuti); dopo ogni apertura c'è «Correggi».
+- **La rete neurale:** la corsa Kaggle resta separata e non va modificata mentre è in corso. Il modello attuale è un
+  parere e non può vetoare un setup A+ conforme alle regole; il checkpoint si rivaluta dopo l'addestramento rispetto
+  alle nuove etichette e alla gestione alla chiusura di N3.
 - **L'Esecutore** (`nvm/vivo/esecutore.py`) controlla: solo conto demo, Algo Trading acceso, lo stop c'è, il prezzo
   non è già oltre lo stop o il TP1, la distanza minima del broker, il CRT non è già aperto (commento sull'ordine).
   - **Dal 23/10, sotto il lotto minimo apre sempre il minimo** (`sempre_il_minimo=True` dalla squadra) e scrive quanto
@@ -148,19 +150,24 @@ con le fonti: `documenti/spec/metodo_foto.md`.
 ## 5. Stato al 24/10/2026
 
 - **Gli ultimi commit sul ramo:**
+  - `832cf28` completa la pulizia dei riferimenti al veto, agli orari e alle scelte non più attuali;
+  - `45e5dd1` aggiunge `strumenti/misura_vivo.py` e avvia la misura storica delle regole operative;
+  - `b567d62` aggiunge questo passaggio di consegne e `CLAUDE.md`;
   - `de50bef` durata del giro misurata, allarme oltre 8 minuti;
   - `a55edcb` sotto il lotto minimo si apre sempre il minimo;
   - `5869c77` orari dei grafici guida in ore italiane;
   - `5cab224` Rischio ripartito da zero e più intelligente;
   - `f3d48a3` orari del DXY e della TOTAL a ogni avvio;
   - prima: le correzioni del 22-23/10, descritte in `documenti/CORREZIONE-22-10.md`.
-- **Le prove:** 407 in tutto; passano tutte tranne `test_foto.py::test_gli_esempi_del_proprietario[4/6-...]`, attesa
-  (§6).
+- **Le prove sul ramo Claude prima di queste modifiche:** 407; una è attesa, `test_foto.py::test_gli_esempi_del_proprietario[4/6-...]` (§6).
+  Per questa revisione le prove non sono state rilanciate.
 - **Il risultato atteso, il punto più importante:**
   - la misura sui vent'anni del 15/10 (fase 3 di Nameless su Kaggle, 740 mila setup, 85 mercati, con le regole di
     allora, **senza i setup del DXY**) dice **−0,08 R a operazione** in ogni periodo, circa −0,03 senza lo spread;
   - il Capo di quella prova non ha trovato un gruppo di setup che guadagni;
-  - **le regole di oggi non sono mai state misurate**: è il lavoro in corso (§7).
+  - la misura aggiunta da Claude usa ancora `campo.simula`, che attiva la gestione al TP1: non valida la nuova regola
+    del 25% e dello stop con commissioni alla chiusura di N3. Va aggiornata e rilanciata prima di giudicare le regole
+    attuali (§7.A). Il checkpoint e i file dell'addestramento Kaggle restano intatti.
 - **I dati della VPS** (ramo `dati-vps`: `vivo/registro.jsonl`, `libro.jsonl`, `stato.json`) sono fermi all'**8/10**.
   Per giudicare il demo serve che il proprietario lanci `consegna.bat` sulla VPS.
 - **Il PDF delle funzioni** l'ha ricevuto il proprietario (versione corretta del 24/10). L'ha chiesto per mandarlo al
@@ -196,16 +203,9 @@ La richiesta, parola per parola (da Venice, accettata dal proprietario):
 
 Il numero che conta è l'R del sottoinsieme scelto, con l'intervallo tutto sopra zero.
 
-**A che punto è:** il codice c'è, **`strumenti/misura_vivo.py`** (scritto e provato su tre mesi il 24/10). Il primo giro completo è partito il 24/10 su 8 mercati: EURUSD e GBPUSD dal 2011, AUDUSD dal 2011, NZDUSD dal 2011, USDCHF e USDCAD dal 2011 col DXY vero, oro dal 2007, argento dal 2010, fino ad agosto 2026. I risultati vanno nella sezione «Risultati» qui sotto quando ci sono; se mancano, va rilanciato:
-
-```
-python -m strumenti.misura_vivo raccogli --storico dati/storico --uscita dati/misura_vivo   # ~1 ora con 4 processori
-python -m strumenti.misura_vivo analizza --uscita dati/misura_vivo                         # scrive risultato.md
-```
-
-Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCHF, USDJPY, XAUUSD, con `python -m strumenti.scarica --ore`, lento) e quelle di HistData in `dati/storico/` (comando qui sotto). Senza Dukascopy, `misura_vivo` prende tutto da HistData (solo bid, spread stimato): basta aggiungere quei sei mercati al comando di HistData.
-
-**Risultati:** non ancora.
+**A che punto è:** Claude ha aggiunto `strumenti/misura_vivo.py`, provato su tre mesi e avviato la raccolta completa
+su otto mercati il 24/10. I risultati non sono stati allegati. Il simulatore usato da questo script conserva la vecchia
+gestione al TP1: la raccolta attuale è esplorativa e non basta a validare la gestione decisa dopo.
 
 **I dati:**
 - In questo container c'erano, in `dati/grezzi/ore/` (fuori da git, quindi **non ci sono** in una sessione nuova), le
@@ -223,7 +223,7 @@ Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCH
   scarica_tutto(['DXY','USDCAD','NZDUSD','XAGUSD','EURUSD','GBPUSD','AUDUSD','USDCHF','USDJPY','XAUUSD'], Path('dati/storico'), pausa=0.5)"
   ```
 
-  `dati/` è fuori da git per le cartelle `grezzi` e `tabelle`. Aggiungere `dati/storico/` al `.gitignore`.
+  `dati/storico/` e `dati/misura_vivo/` sono esclusi da git e vanno ricreati o riempiti nella nuova sessione.
 - In alternativa c'è **Kaggle** (dataset `nameless-dati`: 85 mercati HistData e crypto Binance, celle in
   `kaggle_rete/`), ma lì la misura la deve lanciare il proprietario a mano.
 
@@ -237,9 +237,9 @@ Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCH
    - Per accettare un'occasione usare le stesse regole della squadra: `metodo.valuta_foto` e `a_piu`.
 3. **Una sola operazione aperta per strumento**: le occasioni mentre una è aperta si saltano. Ritardo zero
    all'ingresso.
-4. **L'esito** con `nvm.prova.campo.simula`: il 25% al TP1 col pareggio più commissioni, il resto al target, la
-   scadenza di `giro.TETTO_FOTO`, i costi (spread vero dove c'è l'ask, se no la stima, più `campo.COMMISSIONE`). Come
-   riferimento: `kaggle_rete/esperienza.py` e `nvm/nameless/esiti.py`, che lo fanno già per i setup senza DXY.
+4. **L'esito** con `nvm.prova.campo.simula`: il codice di Claude attiva ancora il parziale e il pareggio al TP1, non
+   alla chiusura di N3. Prima di usare i risultati per la nuova strategia va allineato alla gestione live, incluso il
+   prezzo dello stop che copre le commissioni; il modello e i file della corsa Kaggle in corso restano intatti.
 5. **Le varianti nello stesso run:**
    - target come oggi, oppure lontano (`foto.target_dopo`, il terzo piano) quando il vicino rende meno di 1,5 R;
    - `RR_MINIMO` 1,0 contro 1,5;
@@ -259,22 +259,13 @@ Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCH
 8. **Scrivere i risultati** in `documenti/registro/tentativi.md` e qui. Niente collegato al vivo se non passa il
    cancello.
 
-### 7.B Voce 0.6 di Venice: la pulizia del codice che dice cose non più vere (FATTA il 24/10, non cambia le decisioni)
+### 7.B Voce 0.6 di Venice: pulizia dei riferimenti non più attuali (FATTA il 24/10)
 
-Fatto: veto tolto (resta solo la lettura delle occasioni discusse prima del 22/10, per la riunione del sabato), `ora_di_sessione` tolta (le prove usano `griglia`), `scelte.json` riscritto, i commenti di `_accendi_tradingview` e di `giro.py` corretti, la riga «dimensione e scelta» in `metodo_foto.md`. Era così:
-
-- **`veto`**: il campo `Parere.veto` in `nvm/intelligenti/pareri.py` non lo assegna più nessuno. Va tolto con i suoi
-  usi (`squadra.riunione`, `al_lavoro._scegli_nel_giro`, `decisione_in_parole`), con prove.
-- **`tradingview.ora_di_sessione`**: la usano solo le prove. Va tolta lei con le sue prove, **non** la regola: scrivere
-  sempre la griglia migliore e allarmare sotto il 90% è giusto. Venice aveva chiesto il contrario (0.3) e ha
-  riconosciuto l'errore: rimetterebbe il bug del 23/10.
-- **`nvm/vivo/scelte.json`**: il campo `perche` è vecchio («metà al TP1», «nessun limite di operazioni»). Va riscritto
-  com'è oggi.
-- **Commenti che non sono più veri:**
-  - `vivo.Bot._accendi_tradingview`: dice «il bot propone e apre solo col vostro Apri»; non è più così, apre da solo;
-  - l'inizio di `nvm/vivo/giro.py`: dice «decide come avrebbe deciso sullo storico», non vale per il metodo delle foto;
-  - il commento su `piani_romeo` va bene, ma va detto che il terzo piano è spento.
-- **`documenti/spec/metodo_foto.md`**: aggiungere la riga «dimensione e scelta» (§2 punto 8 di questo file).
+Claude ha rimosso il veto attivo dalla squadra, lasciando solo la lettura dei vecchi dati salvati; ha eliminato
+`tradingview.ora_di_sessione` mantenendo `griglia` e l'allarme sotto il 90%; ha aggiornato `scelte.json`, i commenti
+del giro dal vivo e la regola «dimensione e scelta» nella specifica. La pulizia non cambia la strategia. La revisione
+di Codex mantiene queste modifiche e sostituisce le descrizioni del parziale al TP1 con la regola più recente: 25% e
+stop con commissioni alla chiusura di N3.
 
 ### 7.C Altre cose rimaste da prima
 
@@ -332,7 +323,8 @@ Fatto: veto tolto (resta solo la lettura delle occasioni discusse prima del 22/1
 - **06/10:** il proprietario manda le sue foto, e il bot passa al «metodo delle foto».
 - **13/10:** le candele di TradingView così come sono; le foto diventano le prove.
 - **13-15/10:** Nameless su Kaggle (fasi 0-3). La fase 3 dice −0,08 R a operazione prendendoli tutti.
-- **20/10:** forex solo col DXY, crypto solo con la TOTAL, 10 mercati, pareggio solo al TP1.
+- **20/10:** forex col DXY, crypto con la TOTAL, 10 mercati; il 24/10 il proprietario ha confermato che parziale e
+  stop con commissioni coperte scattano alla chiusura di N3 nel timeframe d'ingresso, anche se il prezzo non tocca TP1.
 - **22-23/10:** le correzioni:
   - il DXY sugli orari suoi, il key level della guida, lo stesso movimento;
   - metalli coi loro CRT, niente veto;
@@ -341,3 +333,20 @@ Fatto: veto tolto (resta solo la lettura delle occasioni discusse prima del 22/1
   - il Rischio da zero;
   - il lotto minimo.
 - **24/10:** l'audit di Venice e la misura delle regole di oggi.
+
+
+## 11. Decisioni operative successive e stato della revisione
+
+- **Entry A:** mercato all'apertura effettiva di N3; l'Order Block non è obbligatorio.
+- **Entry B / Modello 1:** modello separato con limite sull'OB del timeframe inferiore. Non si attiva finché non è
+  definito in modo univoco il prezzo dell'OB. Non aprire due posizioni indipendenti sullo stesso scenario senza regole
+  di rischio esplicite.
+- **Mercati:** forex USD solo da CRT DXY; BTC/ETH solo da CRT TOTAL; oro/argento sui propri CRT completi, DXY solo
+  come parere. XPT e le altre coppie escluse.
+- **Target finale:** key level opposto del timeframe più basso preso, con i fallback della scheda del metodo. Il
+  25% alla chiusura di N3 è distinto dal TP1 come livello di prezzo.
+- **Rischio:** il minimo broker può esporre il conto al 2–4% o più per trade; non c'è un tetto totale e possono aprirsi
+  più trade correlati. Il Rischio viene rivalutato prima di ogni ordine.
+- **PR #4:** la revisione resta in bozza e non distribuisce il codice sul ramo live. La verifica di test dell'upstream
+  è antecedente a queste modifiche; in questa sincronizzazione non sono stati eseguiti test.
+

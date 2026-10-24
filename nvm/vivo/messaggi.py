@@ -177,7 +177,7 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
              quota: Optional[float] = None, meta: float = 0.0) -> str:
     """Il canale operativo: cosa ho fatto sul conto, quanto posso perdere e quanto posso guadagnare.
     `uscita`: "due meta'", "primo target" o "secondo target" (`nvm/agenti/rischio.USCITE`); `meta`: i lotti
-    che il bot chiude al TP1 (la posizione e' una sola)."""
+    che il bot chiude alla fine di N3 per il metodo foto, o al TP1 nei metodi storici (la posizione e' una sola)."""
     k, op, r = d.r.strumento, d.op, d.r
     vende = r.verso is Verso.SHORT
     distanza = abs(prezzo_vero - op.stop) or 1e-12
@@ -191,8 +191,8 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
         righe.append(f"🎯 Obiettivo: {prezzo(k, op.tp1)} → circa {guadagno(op.tp1, 1.0)}")
     elif uscita == "secondo target" and getattr(d, "foto", None) and 0 < op.parziale < 1:
         ob = d.foto.get("obiettivo")
-        righe.append(f"🛡 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → lì sposto lo stop a pareggio (commissioni coperte). "
-                     f"Il lotto è troppo piccolo per chiuderne il {_it(100 * op.parziale, 0)}%")
+        righe.append(f"🛡 A chiusura CRT {d.r.alto_tf.value}: chiudo il {_it(100 * op.parziale, 0)}% e sposto lo stop oltre l'ingresso, "
+                     "con le commissioni coperte; TP1 resta il livello opposto del range.")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → tutto, "
                      f"circa {guadagno(op.tp2, 1.0)}")
     elif uscita == "secondo target":
@@ -202,8 +202,9 @@ def apertura(d: Decisione, volume: float, prezzo_vero: float, rischio: float, va
         ob = d.foto.get("obiettivo")
         p = op.parziale if 0 < op.parziale < 1 else 0.25
         mezzo = f" ({_it(meta, 2)} lotti)" if meta else ""
-        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)} → chiudo il {_it(100 * p, 0)}%{mezzo}, "
-                     f"circa {guadagno(op.tp1, p)}, e metto lo stop a pareggio (commissioni coperte)")
+        righe.append(f"🛡 A chiusura CRT {d.r.alto_tf.value}: chiudo il {_it(100 * p, 0)}%{mezzo} e sposto lo stop oltre l'ingresso, "
+                     "con le commissioni coperte.")
+        righe.append(f"🎯 TP1 (l'altro lato del range): {prezzo(k, op.tp1)}")
         righe.append(f"🎯 Target finale ({ob.nome if ob is not None else 'il resto'}): {prezzo(k, op.tp2)} → il resto, "
                      f"circa {guadagno(op.tp2, 1 - p)}")
     else:
@@ -221,6 +222,21 @@ def primo_target(k: str, verso: Verso, ingresso: float, a_pareggio: bool = True,
         return (f"{testa}\nSul resto lo stop ora è a pareggio, con le commissioni coperte ({prezzo(k, ingresso)}): "
                 "da qui non può più perdere.")
     return f"{testa}\nSul resto lo stop andrà al prezzo d'entrata quando il prezzo arriva a {prezzo(k, livello)}."
+
+
+def completamento_crt(k: str, tf: str, ingresso: float, a_pareggio: bool = True,
+                      parte: Optional[float] = None, lotto_divisibile: bool = True) -> str:
+    """Gestione della posizione alla chiusura della candela 3 del timeframe d'ingresso."""
+    if parte:
+        azione = f"ho chiuso il {_it(100 * parte, 0)}% al mercato"
+    elif lotto_divisibile:
+        azione = "ho completato la parzializzazione"
+    else:
+        azione = "il lotto non consente di chiudere il 25%"
+    testo = f"⌛ {k}: CRT {tf} completato; {azione}."
+    if a_pareggio:
+        return f"{testo}\nSul resto lo stop è a pareggio con le commissioni coperte ({prezzo(k, ingresso)})."
+    return f"{testo}\nMT5 non ha ancora accettato lo stop con le commissioni coperte: riprovo al minuto dopo."
 
 
 def uscita_anticipata(k: str, verso: Verso, motivo: str) -> str:
