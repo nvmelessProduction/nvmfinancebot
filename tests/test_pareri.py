@@ -164,14 +164,14 @@ def test_la_previsione_della_domenica_e_un_parere_non_un_no(tmp_path):
     ore = ore_finte(giorni=500)
     q = Quadro.da(ore, int(ore.t[-1]) + 3600)
     b = P.bias(_setup(), q, None, "ribassista")
-    assert not b.veto and any("domenica" in r and "va contro" in r for r in b.ragioni)
+    assert not hasattr(b, "veto") and any("domenica" in r and "va contro" in r for r in b.ragioni)
     assert b.voto < P.bias(_setup(), q, None, "rialzista").voto
     # Con gli altri a favore il Capo entra lo stesso.
     sq = Squadra(tmp_path)
     voti = _pareri(Cacciatore=2, Key_level=2, Gap=2, DXY=1, Livelli=2, Grilletto=1)
     voti[2] = b
     v = sq.riunione("contro", "EURUSD", _metodo(), LONDRA, op=_op(), pareri=voti)
-    assert v.a_piu and v.entra and not v.pareri["Capo"]["veto"]
+    assert v.a_piu and v.entra and "veto" not in v.pareri["Capo"]
 
 
 def test_le_correlazioni_col_dxy():
@@ -214,8 +214,8 @@ def test_il_dxy_comanda_il_bias_del_forex_anche_la_domenica_e_di_fondo_e_ribassi
     # La domenica del DXY rialzista vale per l'euro come ribassista: comprare l'euro e' contro (un voto, non un no).
     giu = P.bias(_setup(n3=giorno + 3600), q, None, None, None, q, "rialzista")
     su = P.bias(_setup(short=True, n3=giorno + 3600), q, None, None, None, q, "rialzista")
-    assert not giu.veto and any("il DXY domenica l'abbiamo detto rialzista" in r for r in giu.ragioni)
-    assert not su.veto and any("il DXY domenica l'abbiamo detto rialzista" in r for r in su.ragioni)
+    assert any("il DXY domenica l'abbiamo detto rialzista" in r for r in giu.ragioni)
+    assert any("il DXY domenica l'abbiamo detto rialzista" in r for r in su.ragioni)
 
 
 def test_l_oro_non_e_fermato_dalla_previsione_della_settimana_del_dxy():
@@ -226,7 +226,7 @@ def test_l_oro_non_e_fermato_dalla_previsione_della_settimana_del_dxy():
     from nvm.agenti.cacciatore import Verso
     from nvm.intelligenti import pareri as P
     oro = NS(strumento="XAUUSD", short=False, verso=Verso.LONG, n3_inizio=0)
-    assert not P.bias(oro, None, None, None, None, None, "rialzista").veto
+    assert P.bias(oro, None, None, None, None, None, "rialzista").voto == 0
     assert "XAUUSD" not in foto.GUIDATI_DAL_DXY and "XAGUSD" not in foto.GUIDATI_DAL_DXY
     # Le coppie forex col dollaro si', tutte.
     assert set(foto.FOREX_DOLLARO) <= set(foto.GUIDATI_DAL_DXY)

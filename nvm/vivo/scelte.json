@@ -1,6 +1,6 @@
 {
  "decidono_i_cervelli": false,
  "squadra_intelligente": true,
- "quando": "06/10/2026",
- "perche": "Il proprietario (06/10/2026): \"come nelle foto\" (spec/metodo_foto.md). CRT su 1 ora, 4 ore, 6 ore, giorno, settimana, mese con le candele dei future (18 di New York); entrata all'apertura della candela 3 a qualunque ora; stop oltre la candela 2; TP1 all'altro lato del range con metà e pareggio; target finale il gap del timeframe grande o il key level. Obbligatori: CRT, key level (massimo o minimo del periodo prima), direzione del timeframe di comando. Gap con le fasi e l'RSI, DXY per le coppie col dollaro. Bot intelligente, niente AI esterne, niente vent'anni; mai senza stop; nessun limite di operazioni: sullo stesso strumento decide il Rischio (07/10/2026). La candela 2 non deve sforare il range."
+ "quando": "24/10/2026",
+ "perche": "Decide la squadra intelligente col metodo delle foto (documenti/spec/metodo_foto.md, documenti/RECAP.md). Coppie col dollaro solo col CRT del DXY che ha preso un key level; BTC ed ETH solo con quello della TOTAL; oro e argento coi loro CRT. Obbligatori: CRT, key level, direzione (sui guidati la direzione e' un parere). I voti della squadra non bloccano e non c'e' veto (22/10/2026). Il 25% al TP1 col pareggio piu' le commissioni, il resto al target finale. Il Rischio decide la puntata, senza tetti; sotto il lotto minimo si apre il minimo (23/10/2026). Una operazione aperta per strumento, nessun massimo per giro. I cervelli dei vent'anni non decidono. Mai senza stop."
 }

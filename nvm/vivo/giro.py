@@ -1,8 +1,8 @@
 """Il giro di ogni ora: con le orarie chiuse fino ad adesso, cosa dice l'equipe.
 
-E' la stessa catena delle prove sullo storico (`nvm/prova/base.opera`, con la
-configurazione 1: manuale, stop all'estremo), chiamata sui soli dati gia'
-chiusi. Per questo il bot dal vivo decide come avrebbe deciso sullo storico:
+Col metodo delle foto (`METODO = "foto"`, quello dal vivo) le occasioni le trova `occasioni_foto`; sullo storico la
+stessa catena la rifa' `strumenti/misura_vivo.py`. Il vecchio metodo dei video (`METODO = "candela 3"`) usa la catena
+delle prove sullo storico (`nvm/prova/base.opera`, configurazione 1), chiamata sui soli dati gia' chiusi:
 `tests/test_vivo.py` lo controlla ora per ora.
 """
 
@@ -341,7 +341,9 @@ def _decisione_foto(s, q, capo: Capo, dxy=None, allineati=(), quadro_dxy=None, t
     ora = Orario(int(datetime.fromtimestamp(s.n3_inizio, tz=NEW_YORK).hour),
                  int(datetime.fromtimestamp(s.n2_inizio, tz=NEW_YORK).hour))
     x = np.zeros(len(capo.media)) if getattr(capo, "media", None) is not None else np.zeros(1)
-    # La squadra puo' scegliere solo il piano del metodo: 25% al TP1 e target finale, o tutto al TP1.
+    # La squadra puo' scegliere solo il piano del metodo: 25% al TP1 e target finale, o tutto al TP1. Il terzo piano
+    # (`piani[2]`, il resto a un target ancora piu' in la') e' calcolato ma spento: `piani_romeo` ne passa uno solo.
+    # Le colonne del Capo di prima (`x`) restano a zero: col metodo delle foto decide la squadra, non lui.
     return Decisione(r, op, s.n3_inizio + TETTO_FOTO.get(s.tf, 30 * 86400), None, ora, None, 0.5, 0.0, 0.0, x,
                      piani_romeo=[op, None, None] if op is piani[0] else [None, op, None],
                      foto={"setup": s, "quadro": q, "obiettivo": ob, "dopo": altro, "dxy": dxy, "quadro_dxy": quadro_dxy,

@@ -108,7 +108,7 @@ Il DXY apre alle 2 italiane, eppure il bot ha detto "CRT a 6 ore" con la candela
   non da' le 6 e 12 ore: alle 00:00 "CRT long 6 ore, giornaliero del DXY" e quattro coppie aperte, col target finale
   sul TP1. Con la correzione: alle 00:00 niente, alle 2:00 il CRT giornaliero del DXY, sui suoi orari.
 - **La correzione.**
-  - L'orario si capisce col 90% delle candele, e vince la griglia che ne spiega di piu' (`tradingview.ora_di_sessione`).
+  - L'orario si capisce col 90% delle candele, e vince la griglia che ne spiega di piu' (`tradingview.griglia`).
   - Si rilegge dalle candele a 4 ore gia' avute a ogni aggiornamento; se era sbagliato, le candele di quel grafico si
     riprendono tutte e lo si dice sul canale operativo con 🕑 (`vivo.Bot._orari_dalle_candele`).
 

@@ -485,11 +485,10 @@ class Squadra:
             giudizi = self.giudizi(m)
             n_s, vinte_s, media_s, t_s = self.simili(m)
             punti = 0.0
-            usati, veto = [], ""
+            usati = []
             if pareri is not None:
                 # Il secondo giro: si sentono fra colleghi e chi ha un motivo cambia idea, dicendolo.
                 usati = confronto(pareri, self.memoria.ascolti_spenti())
-                veto = next((x.veto for x in pareri if x.veto), "")
                 # Decide il Capo, dopo aver sentito tutti.
                 p, punti = self.voti(pareri)
                 visti = set(m.atomi())
@@ -499,9 +498,9 @@ class Squadra:
                 # Con tutte le regole del metodo si entra: la squadra da' il suo parere ma non blocca piu' (il
                 # proprietario, 12/10/2026, dopo un AUDUSD perfetto lasciato per un voto contro: *"tu devi seguire
                 # quello che c'è scritto nelle foto e tutte le varie cose che io ti ho detto"*). Restano i no
-                # delle regole e il Rischio decide quanto. La previsione della domenica dal 22/10/2026 e' solo un
-                # parere (*"Leva il veto ovunque"*): nessun parere mette piu' il `veto`.
-                capo_entra = m.a_piu and stop_ok and not veto
+                # delle regole e il Rischio decide quanto. Dal 22/10/2026 non c'e' piu' un veto: la previsione della
+                # domenica e' solo un parere (*"Leva il veto ovunque"*).
+                capo_entra = m.a_piu and stop_ok
                 parte, z = self._rischio(p, esposizione, stesso)
             else:
                 p = self._capo(giudizi)
@@ -517,8 +516,7 @@ class Squadra:
                 ri["media"] = round(p if ri["volte"] == 1 else 0.95 * ri["media"] + 0.05 * p, 6)
                 ri["scarto"] = round(max(math.sqrt(0.95 * ri["scarto"] ** 2 + 0.05 * (p - ri["media"]) ** 2), 0.02), 6)
             if pareri is not None:
-                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, esposizione, stesso,
-                                                veto)
+                voci = self._voci_della_squadra(m, pareri, entra, stop_ok, p, punti, puntata, z, esposizione, stesso)
             else:
                 voci = self._voci(m, giudizi, entra, stop_ok, evita, p, puntata, z, esposizione, piano,
                                   (n_s, vinte_s, media_s), stesso)
@@ -534,7 +532,6 @@ class Squadra:
                 dati["voti"] = {x.agente: x.voto for x in pareri}
                 dati["ragioni"] = {x.agente: x.ragioni[:1] for x in pareri}
                 dati["ascolti"] = [[k, q] for k, q in usati]
-                dati["Capo"]["veto"] = veto
             v = Verdetto(entra, piano, round(puntata, 6), round(p, 3), voci, dati, lista, time.time() - t0,
                          a_piu=m.a_piu, pareri_squadra=list(pareri or []), punti=round(punti, 3))
             colonne = {a: dict(zip(("proprie", "sentite"), _colonne(a, m))) for a in AGENTI}
@@ -549,7 +546,7 @@ class Squadra:
         return v
 
     def _voci_della_squadra(self, m: Metodo, pareri: list[Parere], entra: bool, stop_ok: bool, p: float, punti: float,
-                            puntata: float, z: float, esposizione: float, stesso: float, veto: str = "") -> list:
+                            puntata: float, z: float, esposizione: float, stesso: float) -> list:
         """La riunione in equipe col metodo delle foto: ogni agente dice il suo voto e perche' (e, quando ha
         abbastanza casi dal vivo, quante volte ci prende); il Capo dice chi ha sentito, decide e se ne prende la
         responsabilita'; il Rischio dice quanto."""
@@ -563,7 +560,7 @@ class Squadra:
             voci.append(("Capo", "Non entriamo. Il metodo vuole " + ", ".join(MANCA_IN_PAROLE.get(d.nome, d.nome)
                                                                             for d in m.mancano) + "."))
             return voci
-        voci.append(("Capo", self.decisione_in_parole(m, pareri, entra, p, punti, puntata, veto)))
+        voci.append(("Capo", self.decisione_in_parole(m, pareri, entra, p, punti, puntata)))
         if entra:
             if z > 0.5:
                 testo = "il Capo è più convinto del solito, punto un po' di più"
@@ -589,7 +586,7 @@ class Squadra:
         return (" Dal vivo: " + "; ".join(parti) + ".") if parti else ""
 
     def decisione_in_parole(self, m: Metodo, pareri: list[Parere], entra: bool, p: float, punti: float,
-                            puntata: float, veto: str = "") -> str:
+                            puntata: float) -> str:
         """Il Capo: chi era a favore e chi contro, quanti punti fanno pesati, cosa decide e perche'."""
         compra = m.fatti.get("verso") == "acquisto"
         favore = [f"{x.agente} ({x.voto:+d})" for x in pareri if x.voto > 0]
@@ -605,8 +602,6 @@ class Squadra:
             if contro:
                 fine += f" Se va male, chi era contro peserà di più."
             return "Ho sentito tutti. " + sentiti + fine
-        if veto:
-            return "Ho sentito tutti. " + sentiti + f" Non entro: {veto}."
         if punti < SOGLIA_PUNTI:
             return ("Ho sentito tutti. " + sentiti + " Le regole del metodo ci sono, ma la squadra non è convinta "
                     "abbastanza: la lascio.")
@@ -872,6 +867,7 @@ class Squadra:
                               "lezione": f"Avevo detto di no{perche(a)} ed è andata bene lo stesso: lo segno."})
             fatte.append({"agente": "Capo", "giusto": True, "lezione": testo + vero})
         elif d.get("pareri", {}).get("Capo", {}).get("veto"):
+            # Solo le occasioni discusse prima del 22/10/2026, quando la previsione della domenica era un no.
             fatte.append({"agente": "Capo", "giusto": not bene, "lezione":
                           f"L'ho lasciata perché andava contro la nostra previsione della domenica: sarebbe andata "
                           f"{'bene' if bene else 'male'}. La previsione la seguiamo sempre." + vero})

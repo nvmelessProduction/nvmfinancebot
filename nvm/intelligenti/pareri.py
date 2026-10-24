@@ -61,8 +61,6 @@ class Parere:
     # Il voto del primo giro (solo il suo mestiere) e cosa ha detto dopo aver sentito un collega.
     primo: Optional[int] = None
     sentito: str = ""
-    # Un no che il Capo non puo' superare: la squadra non va contro la sua previsione della domenica.
-    veto: str = ""
 
     @property
     def segno(self) -> str:

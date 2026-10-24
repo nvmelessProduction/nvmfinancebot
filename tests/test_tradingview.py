@@ -658,12 +658,12 @@ def _ora_italiana(anno, mese, giorno, ora):
 
 def test_l_orario_del_grafico_si_legge_dalle_sue_candele_a_4_ore():
     """Il proprietario, 13/10/2026: *"i grafici che noi abbiamo collegato già vanno 0, 4, 8, 12, 16, 20"*."""
-    from nvm.vivo.tradingview import ora_di_sessione
+    from nvm.vivo.tradingview import griglia
     mezzanotte = _ora_italiana(2026, 10, 5, 0)
-    assert ora_di_sessione([mezzanotte + k * 4 * 3600 for k in range(60)]) == "18"       # 0-4-8 italiane
-    assert ora_di_sessione([mezzanotte - 3600 + k * 4 * 3600 for k in range(60)]) == "17"  # 23-3-7, come MT5
-    assert ora_di_sessione([utc(2026, 10, 20) + k * 4 * 3600 for k in range(80)]) is True  # UTC, anche col cambio d'ora
-    assert ora_di_sessione([mezzanotte + k * 4 * 3600 + 1800 for k in range(60)]) is None  # alle mezze: non si capisce
+    assert griglia([mezzanotte + k * 4 * 3600 for k in range(60)])[0] == "18"       # 0-4-8 italiane
+    assert griglia([mezzanotte - 3600 + k * 4 * 3600 for k in range(60)])[0] == "17"  # 23-3-7, come MT5
+    assert griglia([utc(2026, 10, 20) + k * 4 * 3600 for k in range(80)])[0] is True  # UTC, anche col cambio d'ora
+    assert griglia([mezzanotte + k * 4 * 3600 + 1800 for k in range(60)])[0] is None  # alle mezze: non si capisce
 
 
 def test_le_candele_di_tradingview_restano_come_sono():
@@ -754,25 +754,27 @@ def test_il_bot_prende_ogni_timeframe_da_tradingview_e_lo_riprende_quando_chiude
 def test_l_orario_del_dxy_si_legge_anche_con_la_candela_della_domenica_fuori_griglia():
     """23/10/2026: sul DXY di Capital.com la settimana apre la domenica sera con una candela a 4 ore fuori griglia (una
     ogni 30 circa). Col 98% richiesto l'orario non si capiva, il bot usava le 18 di New York (0-4-8 italiane, gli orari
-    delle coppie) e alle 00:00 ha visto un "CRT a 6 ore del DXY", che apre alle 2."""
-    from nvm.vivo.tradingview import ora_di_sessione
+    delle coppie) e alle 00:00 ha visto un "CRT a 6 ore del DXY", che apre alle 2. Ora vince la griglia che spiega piu' candele; sotto il 90% c'e' un
+    allarme, ma l'orario si usa."""
+    from nvm.vivo.tradingview import griglia
     t = []
     for w in range(100):
         domenica = utc(2024, 10, 20) + w * 7 * 86400
         t.append(domenica + 22 * 3600)                                         # l'apertura della settimana
         t += [domenica + g * 86400 + h * 3600 for g in range(1, 6) for h in range(0, 24, 4)]
-    assert ora_di_sessione(t[-3000:]) is True
+    ora, quota = griglia(t[-3000:])
+    assert ora is True and quota >= 0.9
     # Le coppie dalle 18 di New York restano "18" anche con qualche candela storta.
     mezzanotte = _ora_italiana(2026, 10, 5, 0)
     coppia = [mezzanotte + k * 4 * 3600 for k in range(60)] + [mezzanotte + 3600]
-    assert ora_di_sessione(coppia) == "18"
+    assert griglia(coppia)[0] == "18"
 
 
 def test_la_griglia_che_spiega_piu_candele():
     from nvm.vivo.tradingview import griglia
     t = [utc(2026, 10, 1) + k * 4 * 3600 for k in range(80)]
     assert griglia(t) == (True, 1.0)
-    # Con il 15% fuori posto non e' "chiaro" (ora_di_sessione dice None), ma la griglia giusta resta l'UTC.
+    # Con il 15% fuori posto non e' "chiaro" (sotto il 90%: allarme), ma la griglia giusta resta l'UTC.
     storte = t[:68] + [x + 3600 for x in t[68:]]
     ora, quota = griglia(storte)
     assert ora is True and 0.8 < quota < 0.9

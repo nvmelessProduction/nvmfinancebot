@@ -398,9 +398,9 @@ class Bot:
         return self.terminale if il_metodo() == "foto" else self._fonte
 
     def _accendi_tradingview(self) -> None:
-        """Con i grafici di TradingView nel .env (TRADINGVIEW_SIMBOLI) il bot analizza li'. Le condizioni di
-        TradingView vietano il trading automatico sui loro dati senza un permesso scritto: il bot propone, e apre
-        solo col vostro «Apri»."""
+        """Con i grafici di TradingView nel .env (TRADINGVIEW_SIMBOLI) il bot analizza li' e apre da solo sul demo,
+        come decide la squadra. Da tenere presente: le condizioni d'uso di TradingView limitano il trading automatico
+        sui loro dati senza un permesso scritto."""
         self.fonte = None
         if self.imp.tradingview_sbagliati:
             self.allarme("TradingView: questi grafici non li capisco: " + ", ".join(self.imp.tradingview_sbagliati) +
@@ -1827,8 +1827,6 @@ class Bot:
             return "manca " + ", ".join(MANCA_IN_PAROLE.get(x, x) for x in mancano)
         if v.lasciata:
             return v.lasciata
-        if capo.get("veto"):
-            return capo["veto"]
         if v.puntata <= 0:
             return "il Rischio non trova una puntata possibile"
         return "la squadra non è convinta" + (f" ({v.punti:+.1f} punti)" if v.punti else "")

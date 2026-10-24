@@ -59,7 +59,7 @@ SPOSTAMENTO = 7 * 3600  # 17:00 di New York (la mezzanotte di MT5) -> mezzanotte
 SPOSTAMENTO_18 = 6 * 3600
 ORE_18 = "18"   # il valore del calendario (`candele.calendario`) per gli strumenti che aprono alle 18
 # Sui grafici di TradingView il calendario e' quello del grafico collegato (`candele.SESSIONI`): l'ora di New York
-# in cui apre la sessione ("17", "18", "19", "20"), letta dalle sue candele a 4 ore (`tradingview.ora_di_sessione`).
+# in cui apre la sessione ("17", "18", "19", "20"), letta dalle sue candele a 4 ore (`tradingview.griglia`).
 # La giornata del forex, per i controlli sui dati (`nvm/dati/controlli.py`): chiude alle 17:00 di New York.
 SPOSTAMENTO_FOREX = 7 * 3600
 

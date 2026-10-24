@@ -259,7 +259,9 @@ Servono le ore di Dukascopy in `dati/grezzi/ore/` (EURUSD, GBPUSD, AUDUSD, USDCH
 8. **Scrivere i risultati** in `documenti/registro/tentativi.md` e qui. Niente collegato al vivo se non passa il
    cancello.
 
-### 7.B Voce 0.6 di Venice: la pulizia del codice che dice cose non più vere (da fare, non cambia le decisioni)
+### 7.B Voce 0.6 di Venice: la pulizia del codice che dice cose non più vere (FATTA il 24/10, non cambia le decisioni)
+
+Fatto: veto tolto (resta solo la lettura delle occasioni discusse prima del 22/10, per la riunione del sabato), `ora_di_sessione` tolta (le prove usano `griglia`), `scelte.json` riscritto, i commenti di `_accendi_tradingview` e di `giro.py` corretti, la riga «dimensione e scelta» in `metodo_foto.md`. Era così:
 
 - **`veto`**: il campo `Parere.veto` in `nvm/intelligenti/pareri.py` non lo assegna più nessuno. Va tolto con i suoi
   usi (`squadra.riunione`, `al_lavoro._scegli_nel_giro`, `decisione_in_parole`), con prove.

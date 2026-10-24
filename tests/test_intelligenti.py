@@ -248,8 +248,7 @@ def test_la_squadra_si_riunisce_sulle_occasioni_delle_foto(tmp_path):
         v = verdetti[d.chiave]
         # Entra con tutte le regole del metodo, senza un no delle regole, se il Capo la sceglie nel giro: dal
         # 12/10/2026 i punti della squadra sono un parere, non bloccano.
-        veto = v.pareri.get("Capo", {}).get("veto", "")
-        assert v.entra == (m.a_piu and v.puntata > 0 and not veto and not v.lasciata)
+        assert v.entra == (m.a_piu and v.puntata > 0 and not v.lasciata)
         assert [x.agente for x in v.pareri_squadra] == list(VOTANO)
     assert any(verdetti[d.chiave].entra for d in decisioni) and not all(verdetti[d.chiave].entra for d in decisioni)
     al_lavoro.valuta_piani(sq, {"EURUSD": base}, {}, max(d.scadenza for d in decisioni) + 1)
@@ -287,14 +286,15 @@ def test_le_occasioni_non_aperte_dicono_perche():
     import vivo
     bot = object.__new__(vivo.Bot)
     bot.squadra = object()
-    capo = {"mancano": ["key level"], "veto": ""}
+    capo = {"mancano": ["key level"]}
     bot._verdetti = {"k": NS(pareri={"Capo": capo}, lasciata="", puntata=0.01, punti=1.0)}
     d = NS(chiave="k")
     assert "manca un key level" in bot._perche_no(d, None)
     capo["mancano"] = []
+    # Il veto della domenica non c'e' piu' (22/10/2026): anche un vecchio verdetto che lo porta non lo dice.
     capo["veto"] = "domenica abbiamo detto BTCUSD rialzista per la settimana"
-    assert bot._perche_no(d, None).startswith("domenica abbiamo detto")
-    capo["veto"] = ""
+    assert not bot._perche_no(d, None).startswith("domenica abbiamo detto")
+    del capo["veto"]
     bot._verdetti["k"].lasciata = "su BTCUSD c'è già un'operazione aperta"
     assert "già un'operazione" in bot._perche_no(d, None)
     assert "non è riuscita a riunirsi" in bot._perche_no(NS(chiave="altra"), None)

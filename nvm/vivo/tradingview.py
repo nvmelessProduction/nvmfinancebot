@@ -509,17 +509,6 @@ def griglia(inizi) -> tuple[object, float]:
     return {1: "17", 2: "18", 3: "19", 0: "20"}[int(valori[np.argmax(quanti)])], quota_ny
 
 
-def ora_di_sessione(inizi) -> object:
-    """Il calendario di un grafico di TradingView, dalle sue candele a 4 ore (`griglia`), se e' chiaro: almeno il 90%
-    delle candele sulla stessa griglia. None se non si capisce. Il DXY di Capital.com apre la settimana la domenica
-    sera con una candela fuori griglia (una ogni 30 circa): fino al 23/10/2026 ci voleva il 98%, sul DXY non si capiva
-    e il bot usava le 18 di New York (le 0-4-8 italiane, gli orari delle coppie) invece dell'UTC (2-6-10), prendeva per
-    chiuse candele a meta' e vedeva CRT che sul grafico non c'erano (il "CRT a 6 ore delle 00:00" del 23/10, quando il
-    DXY apre alle 2)."""
-    ora, quota = griglia(inizi)
-    return ora if quota >= 0.9 else None
-
-
 def candele_tv(strumento: str, tf: TF, barre: list[dict], adesso: float) -> Candele:
     """Le candele di TradingView di un timeframe come `Candele` del bot, cosi' come sono: i prezzi e gli orari di
     TradingView, solo quelle gia' chiuse. Per giorno, settimana e mese TradingView puo' segnare la candela con la data

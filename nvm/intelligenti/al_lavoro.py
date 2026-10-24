@@ -148,10 +148,7 @@ def _scegli_nel_giro(squadra: Squadra, per_chiave: dict, a_piu: list, ctx: P.Con
         segno = -1 if d.r.verso is Verso.SHORT else 1
         motivo = ""
         if not v.entra:
-            veto = v.pareri.get("Capo", {}).get("veto", "")
-            if veto:
-                motivo = veto
-            elif v.punti < SOGLIA_PUNTI:
+            if v.punti < SOGLIA_PUNTI:
                 contro = sorted((x for x in v.pareri_squadra if x.voto < 0), key=lambda x: x.voto)
                 motivo = "la squadra non è convinta" + (": contro " + ", ".join(f"{x.agente} ({x.voto:+d})"
                                                                                   for x in contro[:3]) if contro else "")
