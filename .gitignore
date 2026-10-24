@@ -28,3 +28,6 @@ dati/video_tmp/
 
 # I pesi e i resoconti della rete neurale (nvm/rete/scuola.py): si rifanno allenandola
 dati/rete/
+
+# Lo storico per le misure (HistData, Dukascopy): si riscarica
+dati/storico/
