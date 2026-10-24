@@ -943,6 +943,25 @@ def test_un_errore_su_uno_strumento_non_rifa_il_giro_e_non_riapre(tmp_path, monk
     assert bot.stato.ultimo_giro == ora + 3600
 
 
+def test_la_durata_del_giro_si_misura_e_oltre_8_minuti_si_dice(tmp_path, monkeypatch):
+    """Venice, 24/10/2026: se il giro dura troppo, oltre i 10 minuti dall'apertura della candela le occasioni non si
+    aprono. La durata va nel registro sempre; sopra gli 8 minuti arriva un allarme."""
+    import json
+
+    import vivo
+    monkeypatch.setattr(vivo, "CARTELLA", tmp_path)
+    bot = object.__new__(vivo.Bot)
+    allarmi = []
+    bot.allarme = allarmi.append
+    ora = utc(2026, 10, 23, 12)
+    bot._durata_del_giro(ora, ora + 5, ora + 65)
+    assert allarmi == []
+    bot._durata_del_giro(ora, ora + 5, ora + 5 + vivo.DURATA_ALLARME + 30)
+    assert len(allarmi) == 1 and "8 minuti e 30 secondi" in allarmi[0] and "14:00" in allarmi[0]
+    righe = [json.loads(r) for r in (tmp_path / "registro.jsonl").read_text().splitlines()]
+    assert [r["secondi"] for r in righe if r["evento"] == "durata del giro"] == [60, vivo.DURATA_ALLARME + 30]
+
+
 def test_con_la_quota_di_tradingview_finita_un_messaggio_solo_e_nessuna_richiesta(tmp_path, monkeypatch):
     """20/10/2026: finita la quota giornaliera di TradingView, il bot mandava un allarme per grafico a ogni minuto (il
     testo cambiava col conto alla rovescia) e riprovava il giro, bruciando altre richieste. Ora: un messaggio, il giro

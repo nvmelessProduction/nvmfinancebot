@@ -98,6 +98,7 @@ RITARDO_GIRO = 5        # secondi dopo la chiusura, per dare al broker il tempo 
 AGGIORNATO = 3          # codice d'uscita: "mi sono aggiornato, riavviami"
 CONTROLLO_VERSIONE = 120  # ogni quanti secondi guarda su GitHub se c'e' una versione nuova
 RITARDO_MASSIMO = 600     # metodo delle foto: oltre 10 minuti dall'apertura della candela 3 non si entra piu'
+DURATA_ALLARME = 480      # un giro che dura piu' di 8 minuti si dice: a 10 dall'apertura le occasioni non si aprono
 # Telegram accetta didascalie fino a 1024 caratteri: il messaggio d'apertura ci sta, se no parte subito dopo la foto.
 DIDASCALIA = 1000
 # Analisi su TradingView: per quanto vale una proposta (Apri / Lascia) dall'apertura della candela 3, e il grafico del
@@ -1543,6 +1544,7 @@ class Bot:
         self.parla()
 
     def giro(self, ora: int) -> None:
+        inizio = time.time()
         dal = max(self.stato.ultimo_giro + 1, ora - 86400)
         # Uno strumento alla volta: le ore nuove, poi subito le decisioni e gli ordini. Un errore su uno
         # strumento non ferma gli altri e non fa ripartire il giro (prima rifaceva da capo anche gli strumenti
@@ -1593,6 +1595,7 @@ class Bot:
         # Si entra all'apertura della candela 3 (*"entra ad apertura candela"*): se il bot arriva tardi (riavvio, MT5
         # lento) non si entra a un prezzo che non e' piu' quello.
         adesso, finestra = (int(time.time()), RITARDO_MASSIMO) if foto_metodo else (ora, 3600)
+        self._durata_del_giro(ora, inizio, time.time())
         decisioni = sorted((d for ds in tutte.values() for d in ds), key=lambda d: (d.r.quando, d.r.strumento))
         try:
             self._decidi(decisioni, adesso, finestra)
@@ -1622,6 +1625,18 @@ class Bot:
                 passo()
             except Exception:
                 registra(CARTELLA, "errore", testo=traceback.format_exc())
+
+    def _durata_del_giro(self, ora: int, inizio: float, fine: float) -> None:
+        """Quanto ci ha messo il giro a leggere le candele e trovare le occasioni, prima degli ordini: nel registro
+        sempre, sul canale operativo se supera gli 8 minuti. TradingView risponde a una richiesta al secondo: in un'ora
+        normale sono una quindicina, quando chiudono insieme 4 ore, giorno, settimana e mese anche 90; oltre i 10 minuti
+        dall'apertura della candela le occasioni non si aprono piu' (`RITARDO_MASSIMO`)."""
+        durata = int(fine - inizio)
+        registra(CARTELLA, "durata del giro", ora=int(ora), secondi=durata, dall_apertura=int(fine - ora))
+        if durata > DURATA_ALLARME:
+            self.allarme(f"Il giro delle {messaggi.ora_italiana(ora)} ci ha messo {durata // 60} minuti e "
+                         f"{durata % 60} secondi a leggere le candele: oltre i {RITARDO_MASSIMO // 60} minuti "
+                         "dall'apertura della candela le occasioni non si aprono. Di solito è TradingView lento.")
 
     def _ore_nuove(self, s: str) -> None:
         """Le ore nuove dello strumento; se non ci sono ancora (all'avvio TradingView non rispondeva), tutte."""
