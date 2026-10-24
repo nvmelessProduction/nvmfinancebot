@@ -31,6 +31,4 @@ dati/rete/
 
 # Lo storico per le misure (HistData, Dukascopy): si riscarica
 dati/storico/
-
-# I risultati della misura storica (strumenti/misura_vivo.py)
 dati/misura_vivo/
